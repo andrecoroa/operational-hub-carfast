@@ -14,6 +14,7 @@ from app.models.work_hierarchy import (
     WorkQueue,
 )
 from app.services.management_center import ensure_management_defaults
+from app.services.photo_capture import ensure_photo_action_defaults
 from app.services.stock import ensure_stock_defaults
 from app.services.workshop_configuration import ensure_workshop_configuration_defaults
 
@@ -104,6 +105,11 @@ INITIAL_PERMISSIONS = [
     ("stock.conference", "Conferir documentos de Stock"),
     ("management_center.read", "Ver Centro de Gestão e Acompanhamento"),
     ("management_center.write", "Gerir Centro de Gestão e Acompanhamento"),
+    ("photos.capture", "Capturar e submeter fotografias"),
+    ("photos.read", "Consultar fotografias"),
+    ("photos.review", "Aprovar, rejeitar e pedir nova captura"),
+    ("photos.configure", "Gerir configuração de passos Tirar fotografia"),
+    ("photos.remove", "Remover fotografias conforme a política de retenção"),
 ]
 
 INITIAL_ROLES = [
@@ -170,6 +176,11 @@ DEFAULT_ROLE_PERMISSIONS = {
         "stock.read",
         "stock.manage",
         "stock.compatibility.manage",
+        "photos.capture",
+        "photos.read",
+        "photos.review",
+        "photos.configure",
+        "photos.remove",
     },
     "auditor": {
         "dashboard.read",
@@ -241,6 +252,11 @@ DEFAULT_ROLE_PERMISSIONS = {
         "stock.inventory.confirm",
         "stock.compatibility.manage",
         "stock.conference",
+        "photos.capture",
+        "photos.read",
+        "photos.review",
+        "photos.configure",
+        "photos.remove",
     },
     "operator": {
         "dashboard.read",
@@ -274,6 +290,8 @@ DEFAULT_ROLE_PERMISSIONS = {
         "stock.operate",
         "stock.inventory.count",
         "stock.conference",
+        "photos.capture",
+        "photos.read",
     },
     "viewer": {
         "dashboard.read",
@@ -289,6 +307,7 @@ DEFAULT_ROLE_PERMISSIONS = {
         "documents.read",
         "management_center.read",
         "stock.read",
+        "photos.read",
     },
 }
 
@@ -370,6 +389,7 @@ def seed_initial_data(db: Session) -> None:
     seed_email_channels(db)
     ensure_management_defaults(db)
     ensure_workshop_configuration_defaults(db)
+    ensure_photo_action_defaults(db)
     ensure_stock_defaults(db)
     db.commit()
 

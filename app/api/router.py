@@ -8,6 +8,7 @@ from app.api.routes import (
     imports,
     integrations,
     organization,
+    photo_actions,
     settings,
     stock,
     tasks,
@@ -25,6 +26,7 @@ api_router.include_router(
     classification_proposals.router, prefix="/api", tags=["classification-proposals"]
 )
 api_router.include_router(organization.router, tags=["organization"])
+api_router.include_router(photo_actions.router, tags=["photo-actions"])
 api_router.include_router(settings.router, tags=["settings"])
 api_router.include_router(stock.router)
 api_router.include_router(vehicles.router, tags=["vehicles"])

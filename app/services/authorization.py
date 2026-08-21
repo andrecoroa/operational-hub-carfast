@@ -37,6 +37,11 @@ PERMISSION_ALIASES: dict[str, set[str]] = {
         "classification.validate",
         "classification.merge_reclassify",
         "classification.catalog.manage",
+        "photos.capture",
+        "photos.read",
+        "photos.review",
+        "photos.configure",
+        "photos.remove",
     },
     "users.manage": {
         "admin.dashboard.read",

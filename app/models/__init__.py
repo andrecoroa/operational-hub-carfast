@@ -58,6 +58,12 @@ from app.models.management_center import (
     ManagementRule,
 )
 from app.models.organization import OrganizationalUnit, Team, TeamMember, UserOrganizationalUnit
+from app.models.photo_capture import (
+    PhotoActionDefinition,
+    PhotoCaptureItem,
+    PhotoCaptureSession,
+    PhotoMedia,
+)
 from app.models.pilot import PilotFeedback
 from app.models.portal import (
     PortalInvitation,
@@ -224,6 +230,10 @@ __all__ = [
     "ManagementRule",
     "OrganizationalUnit",
     "Permission",
+    "PhotoActionDefinition",
+    "PhotoCaptureItem",
+    "PhotoCaptureSession",
+    "PhotoMedia",
     "PilotFeedback",
     "PortalInvitation",
     "PortalOrganization",

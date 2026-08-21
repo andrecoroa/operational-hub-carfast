@@ -43,9 +43,45 @@
   const bindTemplates = (root) => {
     root.querySelectorAll("[data-email-template]").forEach((select) => select.addEventListener("change", () => {
       const textarea = select.closest("form")?.querySelector('textarea[name="body"]');
+      const subject = select.closest("form")?.querySelector('[data-email-compose-subject]');
       const option = select.selectedOptions[0];
       if (textarea && option?.dataset.body) textarea.value = option.dataset.body;
+      if (subject && option?.dataset.subject) subject.value = option.dataset.subject;
     }));
+    root.querySelectorAll("[data-email-template-search]").forEach((search) => {
+      const select = search.closest("form")?.querySelector("[data-email-template]");
+      search.addEventListener("input", () => {
+        const query = search.value.trim().toLowerCase();
+        [...(select?.options || [])].forEach((option, index) => {
+          if (!index) return;
+          option.hidden = Boolean(query) && !(option.dataset.search || "").includes(query);
+        });
+      });
+    });
+  };
+  const bindReplyModes = (root) => {
+    root.querySelectorAll(".email-composer").forEach((composer) => {
+      const form = composer.querySelector(".email-reply-form");
+      const modeInput = form?.querySelector("[data-email-compose-mode-value]");
+      const to = form?.querySelector("[data-email-compose-to]");
+      const cc = form?.querySelector("[data-email-compose-cc]");
+      const subject = form?.querySelector("[data-email-compose-subject]");
+      let replyAllTo = [];
+      let replyAllCc = [];
+      try { replyAllTo = JSON.parse(form?.dataset.replyAllTo || "[]"); } catch (_) { replyAllTo = []; }
+      try { replyAllCc = JSON.parse(form?.dataset.replyAllCc || "[]"); } catch (_) { replyAllCc = []; }
+      composer.querySelectorAll("[data-email-compose-mode]").forEach((button) => button.addEventListener("click", () => {
+        const mode = button.dataset.emailComposeMode;
+        composer.querySelectorAll("[data-email-compose-mode]").forEach((item) => item.classList.toggle("active", item === button));
+        if (modeInput) modeInput.value = mode;
+        if (to) to.value = mode === "reply_all" ? replyAllTo.join(", ") : mode === "reply" ? (form.dataset.replyTo || "") : "";
+        if (cc) cc.value = mode === "reply_all" ? replyAllCc.join(", ") : "";
+        if (subject) {
+          const raw = subject.value.replace(/^(Re|Fwd):\s*/i, "");
+          subject.value = `${mode === "forward" ? "Fwd" : "Re"}: ${raw}`;
+        }
+      }));
+    });
   };
   const bindReplySenders = (root) => {
     root.querySelectorAll(".email-reply-form").forEach((form) => {
@@ -66,6 +102,7 @@
   const bindThread = (root = document) => {
     bindWorkHierarchy(root);
     bindTemplates(root);
+    bindReplyModes(root);
     bindReplySenders(root);
     root.querySelectorAll("[data-email-modal-close]").forEach((button) => button.addEventListener("click", () => dialog?.close()));
     root.querySelectorAll("[data-email-show-images]").forEach((button) => button.addEventListener("click", () => {

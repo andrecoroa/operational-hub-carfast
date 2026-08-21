@@ -11,7 +11,7 @@ from datetime import UTC, datetime, timedelta
 from email.utils import parsedate_to_datetime
 from pathlib import Path
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -19,6 +19,7 @@ from app.models.email import (
     EmailAttachment,
     EmailAuditEvent,
     EmailChannel,
+    EmailChannelAlias,
     EmailInboxRule,
     EmailMessage,
     EmailMessageDelivery,
@@ -183,7 +184,15 @@ def _new_delivery(
     payload: dict,
     logical_key: str,
     canonical: bool,
+    alias: EmailChannelAlias | None = None,
 ) -> EmailMessageDelivery:
+    original_recipient = (
+        str(payload.get("OriginalRecipient") or "").strip()
+        or (alias.address if alias else None)
+    )
+    technical_recipient = (
+        alias.inbound_forward_address if alias else None
+    ) or _delivery_inbound_address(payload) or None
     return EmailMessageDelivery(
         message_id=message.id,
         channel_id=channel.id,
@@ -194,9 +203,11 @@ def _new_delivery(
             payload.get("MessageID") or payload.get("MessageId") or ""
         )
         or None,
-        original_recipient=str(payload.get("OriginalRecipient") or "").strip() or None,
-        technical_recipient=str(payload.get("To") or "").strip() or None,
-        inbound_address=_delivery_inbound_address(payload) or None,
+        original_recipient=original_recipient,
+        technical_recipient=technical_recipient,
+        inbound_address=(alias.address if alias else None)
+        or _delivery_inbound_address(payload)
+        or None,
         mailbox_hash=str(payload.get("MailboxHash") or "").strip() or None,
         to_json=payload.get("ToFull") or [],
         cc_json=payload.get("CcFull") or [],
@@ -213,12 +224,17 @@ def reply_all_recipients(
     internal_addresses = {_address(from_address)}
     for channel in channels:
         internal_addresses.add(_address(channel.address))
+        internal_addresses.add(_address(channel.default_reply_address))
         internal_addresses.add(_address(channel.inbound_forward_address))
         if channel.inbound_hash:
             internal_addresses.add(
                 f"{POSTMARK_INBOUND_LOCAL_PART}+{channel.inbound_hash.casefold()}"
                 f"@{POSTMARK_INBOUND_DOMAIN}"
             )
+    aliases = list(db.scalars(select(EmailChannelAlias)))
+    for alias in aliases:
+        internal_addresses.add(_address(alias.address))
+        internal_addresses.add(_address(alias.inbound_forward_address))
     internal_addresses.discard("")
 
     def external(address: str) -> bool:
@@ -275,8 +291,22 @@ def _channel_for_payload(db: Session, payload: dict) -> EmailChannel:
         if mailbox_hash and mailbox_hash not in mailbox_hashes:
             mailbox_hashes.append(mailbox_hash)
     for mailbox_hash in mailbox_hashes:
+        alias = db.scalar(
+            select(EmailChannelAlias)
+            .join(EmailChannel, EmailChannel.id == EmailChannelAlias.channel_id)
+            .where(
+                EmailChannelAlias.active.is_(True),
+                EmailChannel.active.is_(True),
+                func.lower(EmailChannelAlias.inbound_hash) == mailbox_hash,
+            )
+        )
+        if alias:
+            return db.get(EmailChannel, alias.channel_id)
         channel = db.scalar(
-            select(EmailChannel).where(func.lower(EmailChannel.inbound_hash) == mailbox_hash)
+            select(EmailChannel).where(
+                EmailChannel.active.is_(True),
+                func.lower(EmailChannel.inbound_hash) == mailbox_hash,
+            )
         )
         if channel:
             return channel
@@ -294,10 +324,27 @@ def _channel_for_payload(db: Session, payload: dict) -> EmailChannel:
                 addresses.add(address)
     channel = None
     if addresses:
+        alias = db.scalar(
+            select(EmailChannelAlias)
+            .join(EmailChannel, EmailChannel.id == EmailChannelAlias.channel_id)
+            .where(
+                EmailChannelAlias.active.is_(True),
+                EmailChannel.active.is_(True),
+                or_(
+                    func.lower(EmailChannelAlias.address).in_(addresses),
+                    func.lower(EmailChannelAlias.inbound_forward_address).in_(addresses),
+                ),
+            )
+        )
+        if alias:
+            return db.get(EmailChannel, alias.channel_id)
         channel = db.scalar(
             select(EmailChannel).where(
-                (EmailChannel.address.in_(addresses))
-                | (EmailChannel.inbound_forward_address.in_(addresses))
+                EmailChannel.active.is_(True),
+                or_(
+                    func.lower(EmailChannel.address).in_(addresses),
+                    func.lower(EmailChannel.inbound_forward_address).in_(addresses),
+                ),
             )
         )
     if not channel:
@@ -326,10 +373,54 @@ def _channel_for_payload(db: Session, payload: dict) -> EmailChannel:
         f"{POSTMARK_INBOUND_LOCAL_PART}@{POSTMARK_INBOUND_DOMAIN}" in addresses
         or "hub@carfast.pt" in addresses
     ):
-        channel = db.scalar(select(EmailChannel).where(EmailChannel.code == "test"))
+        channel = db.scalar(
+            select(EmailChannel).where(
+                EmailChannel.code == "test", EmailChannel.active.is_(True)
+            )
+        )
     if channel:
         return channel
     raise ValueError("Inbound payload does not identify a configured email channel.")
+
+
+def _alias_for_payload(
+    db: Session, payload: dict, channel_id: int
+) -> EmailChannelAlias | None:
+    hashes = {
+        str(value or "").strip().casefold()
+        for value in [
+            payload.get("MailboxHash"),
+            *(
+                item.get("MailboxHash")
+                for item in (payload.get("ToFull") or [])
+                if isinstance(item, dict)
+            ),
+        ]
+        if str(value or "").strip()
+    }
+    addresses = {
+        _address(item.get("Email"))
+        for field in ("ToFull", "CcFull")
+        for item in (payload.get(field) or [])
+        if isinstance(item, dict)
+    }
+    for value in (payload.get("OriginalRecipient"), payload.get("To")):
+        addresses.update(
+            address
+            for address in (_address(part) for part in re.split(r"[,;]", str(value or "")))
+            if address
+        )
+    return db.scalar(
+        select(EmailChannelAlias).where(
+            EmailChannelAlias.channel_id == channel_id,
+            EmailChannelAlias.active.is_(True),
+            or_(
+                func.lower(EmailChannelAlias.address).in_(addresses),
+                func.lower(EmailChannelAlias.inbound_forward_address).in_(addresses),
+                func.lower(EmailChannelAlias.inbound_hash).in_(hashes),
+            ),
+        )
+    )
 
 
 def _storage_root() -> Path:
@@ -378,6 +469,7 @@ def ingest_inbound(db: Session, payload: dict) -> tuple[EmailThread, bool]:
         raise ValueError("Inbound event already exists without a linked email message.")
 
     channel = _channel_for_payload(db, payload)
+    channel_alias = _alias_for_payload(db, payload, channel.id)
     event = EmailWebhookEvent(event_key=key, event_type="inbound", payload_json=payload)
     db.add(event)
     db.flush()
@@ -400,16 +492,20 @@ def ingest_inbound(db: Session, payload: dict) -> tuple[EmailThread, bool]:
             message.recipients_json, payload.get("ToFull") or []
         )
         message.cc_json = _merge_recipients(message.cc_json, payload.get("CcFull") or [])
-        db.add(
-            _new_delivery(
-                message=message,
-                channel=channel,
-                event=event,
-                payload=payload,
-                logical_key=logical_key,
-                canonical=False,
-            )
+        delivery = _new_delivery(
+            message=message,
+            channel=channel,
+            event=event,
+            payload=payload,
+            logical_key=logical_key,
+            canonical=False,
+            alias=channel_alias,
         )
+        db.add(delivery)
+        if delivery.original_recipient and not thread.original_recipient_address:
+            thread.original_recipient_address = delivery.original_recipient
+        if delivery.technical_recipient and not thread.technical_recipient_address:
+            thread.technical_recipient_address = delivery.technical_recipient
         event.processed = True
         db.add(
             EmailAuditEvent(
@@ -467,6 +563,13 @@ def ingest_inbound(db: Session, payload: dict) -> tuple[EmailThread, bool]:
     created_thread = thread is None
     if not thread:
         now = datetime.now(UTC)
+        original_recipient = (
+            str(payload.get("OriginalRecipient") or "").strip()
+            or (channel_alias.address if channel_alias else None)
+        )
+        technical_recipient = (
+            channel_alias.inbound_forward_address if channel_alias else None
+        ) or _delivery_inbound_address(payload) or None
         thread = EmailThread(
             channel_id=channel.id,
             subject=subject,
@@ -474,6 +577,9 @@ def ingest_inbound(db: Session, payload: dict) -> tuple[EmailThread, bool]:
             sender_email=sender,
             sender_name=payload.get("FromName"),
             external_conversation_id=conversation_id or external_id,
+            functional_owner_user_id=channel.functional_owner_user_id,
+            original_recipient_address=original_recipient,
+            technical_recipient_address=technical_recipient,
             work_queue_id=(
                 rule.default_queue_id
                 if rule and rule.default_queue_id
@@ -495,7 +601,9 @@ def ingest_inbound(db: Session, payload: dict) -> tuple[EmailThread, bool]:
                 else channel.default_subcategory_id
             ),
             classification_status=(
-                "classified"
+                "review"
+                if channel.requires_triage
+                else "classified"
                 if (
                     rule.default_queue_id
                     if rule and rule.default_queue_id
@@ -507,6 +615,9 @@ def ingest_inbound(db: Session, payload: dict) -> tuple[EmailThread, bool]:
                     else channel.default_department_id
                 )
                 else "unclassified"
+            ),
+            administrative_review_required=(
+                channel.administrative_review_on_unclassified
             ),
             document_type=(
                 rule.default_document_type
@@ -548,6 +659,7 @@ def ingest_inbound(db: Session, payload: dict) -> tuple[EmailThread, bool]:
         external_message_id=external_id,
         direction="inbound",
         state="received",
+        compose_mode="inbound",
         sender=sender,
         recipients_json=payload.get("ToFull") or [],
         cc_json=payload.get("CcFull") or [],
@@ -567,6 +679,7 @@ def ingest_inbound(db: Session, payload: dict) -> tuple[EmailThread, bool]:
             payload=payload,
             logical_key=logical_key,
             canonical=True,
+            alias=channel_alias,
         )
     )
     for item in payload.get("Attachments") or []:
@@ -629,7 +742,12 @@ def ingest_inbound(db: Session, payload: dict) -> tuple[EmailThread, bool]:
                 recipients_json=payload.get("ToFull") or [],
                 subject=subject,
                 received_at=message.received_at,
-                mailbox=channel.address,
+                mailbox=(
+                    thread.original_recipient_address
+                    or channel.default_reply_address
+                    or channel.address
+                    or channel.name
+                ),
                 source_url=f"/v2-clean/email/{thread.id}",
                 rule_code=f"email_channel:{channel.code}:{channel.auto_task_mode}",
             )
@@ -645,7 +763,18 @@ def ingest_inbound(db: Session, payload: dict) -> tuple[EmailThread, bool]:
             )
         )
     event.processed = True
-    db.add(EmailAuditEvent(thread_id=thread.id, message_id=message.id, action="inbound_received"))
+    db.add(
+        EmailAuditEvent(
+            thread_id=thread.id,
+            message_id=message.id,
+            action="inbound_received",
+            details_json={
+                "logical_message_key": logical_key,
+                "original_recipient": thread.original_recipient_address,
+                "technical_recipient": thread.technical_recipient_address,
+            },
+        )
+    )
     if cross_channel_delivery:
         db.add(
             EmailAuditEvent(
@@ -682,6 +811,10 @@ def send_message(
         item.get("Email") if isinstance(item, dict) else str(item)
         for item in (message.cc_json or [])
     ]
+    bcc_recipients = [
+        item.get("Email") if isinstance(item, dict) else str(item)
+        for item in (message.bcc_json or [])
+    ]
     body = {
         "From": from_address,
         "To": ",".join(filter(None, recipients)),
@@ -696,6 +829,8 @@ def send_message(
     }
     if any(cc_recipients):
         body["Cc"] = ",".join(filter(None, cc_recipients))
+    if any(bcc_recipients):
+        body["Bcc"] = ",".join(filter(None, bcc_recipients))
     if reply_to:
         body["ReplyTo"] = reply_to
     outbound_headers = []

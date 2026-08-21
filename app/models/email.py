@@ -319,6 +319,14 @@ class EmailMessage(TimestampMixin, Base):
     )
     template_version: Mapped[int | None] = mapped_column(Integer)
     template_snapshot_json: Mapped[dict | None] = mapped_column(JSON)
+    supplier_id: Mapped[int | None] = mapped_column(
+        ForeignKey("stock_suppliers.id", ondelete="SET NULL"), index=True
+    )
+    supplier_type_id: Mapped[int | None] = mapped_column(
+        ForeignKey("supplier_types.id", ondelete="SET NULL"), index=True
+    )
+    context_module: Mapped[str | None] = mapped_column(String(80), index=True)
+    context_code: Mapped[str | None] = mapped_column(String(120), index=True)
     postmark_error: Mapped[str | None] = mapped_column(Text)
 
 
@@ -509,6 +517,14 @@ class EmailTemplate(TimestampMixin, Base):
     subcategory_id: Mapped[int | None] = mapped_column(
         ForeignKey("work_subcategories.id", ondelete="SET NULL"), index=True
     )
+    supplier_id: Mapped[int | None] = mapped_column(
+        ForeignKey("stock_suppliers.id", ondelete="SET NULL"), index=True
+    )
+    supplier_type_id: Mapped[int | None] = mapped_column(
+        ForeignKey("supplier_types.id", ondelete="SET NULL"), index=True
+    )
+    module_code: Mapped[str | None] = mapped_column(String(80), index=True)
+    context_code: Mapped[str | None] = mapped_column(String(120), index=True)
     active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
     created_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
 

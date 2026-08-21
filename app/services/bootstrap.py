@@ -6,6 +6,8 @@ from app.models.admin import Permission, Role, RolePermission
 from app.models.email import EmailChannel, EmailChannelAlias
 from app.models.organization import OrganizationalUnit, Team
 from app.models.settings import SettingsCatalog, SettingsValue
+from app.models.stock import StockSupplier
+from app.models.suppliers import SupplierType, SupplierTypeAssignment
 from app.models.work_hierarchy import (
     ServiceDeskCategoryPolicy,
     ServiceDeskTicketType,
@@ -103,6 +105,9 @@ INITIAL_PERMISSIONS = [
     ("stock.inventory.confirm", "Confirmar diferenças e acertos de inventário"),
     ("stock.compatibility.manage", "Gerir compatibilidades artigo-viatura"),
     ("stock.conference", "Conferir documentos de Stock"),
+    ("suppliers.read", "Consultar fornecedores"),
+    ("suppliers.write", "Editar fornecedores"),
+    ("suppliers.configuration.manage", "Gerir tipos e modelos de fornecedores"),
     ("management_center.read", "Ver Centro de Gestão e Acompanhamento"),
     ("management_center.write", "Gerir Centro de Gestão e Acompanhamento"),
     ("photos.capture", "Capturar e submeter fotografias"),
@@ -391,7 +396,52 @@ def seed_initial_data(db: Session) -> None:
     ensure_workshop_configuration_defaults(db)
     ensure_photo_action_defaults(db)
     ensure_stock_defaults(db)
+    seed_supplier_types(db)
     db.commit()
+
+
+SUPPLIER_TYPE_DEFINITIONS = (
+    ("stock", "Stock", "stock", 10),
+    ("workshop", "Oficina", "workshop", 20),
+    ("fleet", "Frota", "fleet", 30),
+    ("finance", "Financeiro", "finance", 40),
+    ("general_services", "Serviços gerais", "general", 50),
+    ("other", "Outros", "general", 90),
+)
+
+
+def seed_supplier_types(db: Session) -> None:
+    existing = {item.code for item in db.scalars(select(SupplierType))}
+    for code, name, module_code, sort_order in SUPPLIER_TYPE_DEFINITIONS:
+        if code not in existing:
+            db.add(
+                SupplierType(
+                    code=code,
+                    name=name,
+                    module_code=module_code,
+                    sort_order=sort_order,
+                    active=True,
+                )
+            )
+    db.flush()
+    stock_type = db.scalar(select(SupplierType).where(SupplierType.code == "stock"))
+    if not stock_type:
+        return
+    assigned_supplier_ids = set(
+        db.scalars(
+            select(SupplierTypeAssignment.supplier_id).where(
+                SupplierTypeAssignment.supplier_type_id == stock_type.id
+            )
+        )
+    )
+    for supplier_id in db.scalars(select(StockSupplier.id)):
+        if supplier_id not in assigned_supplier_ids:
+            db.add(
+                SupplierTypeAssignment(
+                    supplier_id=supplier_id,
+                    supplier_type_id=stock_type.id,
+                )
+            )
 
 
 SERVICE_DESK_TICKET_TYPES = (

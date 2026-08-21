@@ -93,6 +93,13 @@ from app.models.stock import (
     StockReceiptLine,
     StockSupplier,
 )
+from app.models.suppliers import (
+    Supplier,
+    SupplierAddress,
+    SupplierContact,
+    SupplierType,
+    SupplierTypeAssignment,
+)
 from app.models.tasks import (
     QuickRecord,
     Task,
@@ -263,6 +270,11 @@ __all__ = [
     "StockReceiptInvoiceLink",
     "StockReceiptLine",
     "StockSupplier",
+    "Supplier",
+    "SupplierAddress",
+    "SupplierContact",
+    "SupplierType",
+    "SupplierTypeAssignment",
     "Task",
     "TaskAssignmentEvent",
     "TaskComment",

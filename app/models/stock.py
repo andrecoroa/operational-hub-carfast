@@ -58,7 +58,24 @@ class StockSupplier(TimestampMixin, Base):
     email: Mapped[str | None] = mapped_column(String(255))
     phone: Mapped[str | None] = mapped_column(String(80))
     address: Mapped[str | None] = mapped_column(Text)
+    address_line2: Mapped[str | None] = mapped_column(String(200))
+    postal_code: Mapped[str | None] = mapped_column(String(40), index=True)
+    city: Mapped[str | None] = mapped_column(String(120), index=True)
+    country_code: Mapped[str | None] = mapped_column(String(2), default="PT", index=True)
+    legal_name: Mapped[str | None] = mapped_column(String(240), index=True)
+    registration_number: Mapped[str | None] = mapped_column(String(80), index=True)
+    website: Mapped[str | None] = mapped_column(String(500))
+    contact_name: Mapped[str | None] = mapped_column(String(160))
+    secondary_email: Mapped[str | None] = mapped_column(String(255))
+    secondary_phone: Mapped[str | None] = mapped_column(String(80))
     payment_terms: Mapped[str | None] = mapped_column(String(160))
+    notes: Mapped[str | None] = mapped_column(Text)
+    created_by_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), index=True
+    )
+    updated_by_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), index=True
+    )
     active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
 
 

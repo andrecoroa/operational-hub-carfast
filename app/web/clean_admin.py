@@ -62,7 +62,6 @@ from app.models.work_hierarchy import (
 from app.models.workshop_phased import WorkshopTemplate
 from app.services.audit import record_audit
 from app.services.authorization import get_user_permission_codes
-from app.services.bootstrap import postmark_inbound_address
 from app.services.classification_proposals import (
     approve_proposal,
     archive_proposal,
@@ -1684,7 +1683,6 @@ def clean_admin_work_classification(request: Request):
                 )
                 if not (item["type"] == "proposal" and item["id"] == proposal.id)
             ]
-        all_queues_by_id = {item.id: item for item in all_queues}
         all_departments_by_id = {item.id: item for item in all_departments}
         all_categories_by_id = {item.id: item for item in all_categories}
 

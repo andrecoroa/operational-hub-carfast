@@ -25,6 +25,7 @@ from app.models.email import (
     EmailChannelRole,
     EmailChannelUser,
     EmailMessage,
+    EmailMessageDelivery,
     EmailTemplate,
     EmailThread,
 )
@@ -35,8 +36,23 @@ from app.services.authorization import get_user_permission_codes
 from app.services.email_postmark import (
     ensure_email_channels,
     ingest_inbound,
+    reply_all_recipients,
     send_message,
     webhook_authorized,
+)
+from app.services.service_desk import (
+    assignment_label,
+    assignment_target_user_allowed,
+    claim_email_thread,
+    email_eligible_teams,
+    email_eligible_users,
+    initialize_email_operations,
+    initialize_task_service_desk,
+    local_datetime,
+    mark_email_first_response,
+    mark_email_resolved,
+    sla_snapshot,
+    transition_email_waiting,
 )
 from app.services.work_classification import (
     ATTACHMENT_STATUSES,
@@ -50,20 +66,6 @@ from app.services.work_classification import (
     user_work_scope_allows,
     validate_work_hierarchy,
     work_hierarchy_context,
-)
-from app.services.service_desk import (
-    assignment_target_user_allowed,
-    assignment_label,
-    claim_email_thread,
-    email_eligible_teams,
-    email_eligible_users,
-    initialize_email_operations,
-    initialize_task_service_desk,
-    local_datetime,
-    mark_email_first_response,
-    mark_email_resolved,
-    sla_snapshot,
-    transition_email_waiting,
 )
 
 email_router = APIRouter()
@@ -424,6 +426,30 @@ def _thread_view_data(db, thread: EmailThread) -> dict:
                 ),
             }
         )
+    deliveries = list(
+        db.scalars(
+            select(EmailMessageDelivery)
+            .where(EmailMessageDelivery.message_id.in_(message_ids or [-1]))
+            .order_by(EmailMessageDelivery.message_id, EmailMessageDelivery.id)
+        )
+    )
+    deliveries_by_message: dict[int, list[EmailMessageDelivery]] = {
+        message.id: [] for message in messages
+    }
+    received_originally_by_message: dict[int, list[str]] = {
+        message.id: [] for message in messages
+    }
+    for delivery in deliveries:
+        deliveries_by_message[delivery.message_id].append(delivery)
+        label = delivery.original_recipient or delivery.inbound_address
+        if label and label.casefold() not in {
+            item.casefold() for item in received_originally_by_message[delivery.message_id]
+        }:
+            received_originally_by_message[delivery.message_id].append(label)
+    latest_inbound = next(
+        (message for message in reversed(messages) if message.direction == "inbound"),
+        None,
+    )
     return {
         "messages": messages,
         "message_refs": {
@@ -431,7 +457,26 @@ def _thread_view_data(db, thread: EmailThread) -> dict:
             for position, message in enumerate(messages, 1)
         },
         "attachments_by_message": grouped,
+        "deliveries_by_message": deliveries_by_message,
+        "received_originally_by_message": received_originally_by_message,
+        "latest_inbound_message": latest_inbound,
         "thread_reference": thread_reference(thread),
+    }
+
+
+def _reply_all_context(db, view_data: dict, channel: EmailChannel) -> dict:
+    source = view_data["latest_inbound_message"]
+    if not source:
+        return {
+            "reply_source_message_id": None,
+            "reply_all_to": [],
+            "reply_all_cc": [],
+        }
+    reply_to, reply_cc = reply_all_recipients(db, source, channel.address)
+    return {
+        "reply_source_message_id": source.id,
+        "reply_all_to": reply_to,
+        "reply_all_cc": reply_cc,
     }
 
 
@@ -830,6 +875,7 @@ def email_thread(request: Request, thread_id: int):
         )
         workflow_context = {
             **work_hierarchy_context(db),
+            **_reply_all_context(db, view_data, channel),
             "email_users": eligible_users,
             "email_teams": eligible_teams,
             "email_assignment_label": assignment_label(
@@ -958,6 +1004,11 @@ def email_thread_preview(request: Request, thread_id: int):
         )
         workflow_context = {
             **work_hierarchy_context(db),
+            **_reply_all_context(
+                db,
+                view_data,
+                db.get(EmailChannel, thread.channel_id),
+            ),
             "email_users": eligible_users,
             "email_teams": eligible_teams,
             "email_assignment_label": assignment_label(
@@ -1572,6 +1623,8 @@ def email_reply(
     thread_id: int,
     body: str = Form(...),
     recipient_email: str = Form(""),
+    reply_mode: str = Form("sender"),
+    reply_source_message_id: int | None = Form(None),
     submit: str = Form("draft"),
 ):
     auth = _auth(request, "email.reply", "email.manage", "admin.manage")
@@ -1606,8 +1659,38 @@ def email_reply(
             return RedirectResponse(
                 f"/v2-clean/email/{thread_id}?error=forbidden", status_code=303
             )
-        clean_recipient = recipient_email.strip() or thread.sender_email.strip()
-        if not EMAIL_ADDRESS_PATTERN.fullmatch(clean_recipient):
+        source_message = (
+            db.get(EmailMessage, reply_source_message_id)
+            if reply_source_message_id
+            else None
+        )
+        if (
+            not source_message
+            or source_message.thread_id != thread.id
+            or source_message.direction != "inbound"
+        ):
+            source_message = db.scalar(
+                select(EmailMessage)
+                .where(
+                    EmailMessage.thread_id == thread.id,
+                    EmailMessage.direction == "inbound",
+                )
+                .order_by(EmailMessage.id.desc())
+            )
+        clean_recipient = recipient_email.strip() or (thread.sender_email or "").strip()
+        if reply_mode == "all" and source_message:
+            recipients, cc_recipients = reply_all_recipients(
+                db, source_message, sender_channel.address
+            )
+        else:
+            recipients = [{"Email": clean_recipient}]
+            cc_recipients = []
+        recipient_addresses = [item["Email"] for item in recipients]
+        cc_addresses = [item["Email"] for item in cc_recipients]
+        if not recipient_addresses or any(
+            not EMAIL_ADDRESS_PATTERN.fullmatch(address)
+            for address in [*recipient_addresses, *cc_addresses]
+        ):
             return RedirectResponse(
                 f"/v2-clean/email/{thread_id}?error=invalid_recipient", status_code=303
             )
@@ -1620,7 +1703,8 @@ def email_reply(
             direction="outbound",
             state=state,
             sender=sender_channel.address,
-            recipients_json=[{"Email": clean_recipient}],
+            recipients_json=recipients,
+            cc_json=cc_recipients,
             subject=f"Re: {thread.subject}",
             text_body=body,
             created_by_id=user_id,
@@ -1681,7 +1765,10 @@ def email_reply(
                 details_json={
                     "sender_channel_id": sender_channel.id,
                     "sender": sender_channel.address,
-                    "recipient": clean_recipient,
+                    "reply_mode": "all" if reply_mode == "all" else "sender",
+                    "recipients": recipient_addresses,
+                    "cc": cc_addresses,
+                    "source_message_id": source_message.id if source_message else None,
                 },
             )
         )

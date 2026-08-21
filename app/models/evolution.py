@@ -11,7 +11,8 @@ class EvolutionRecord(TimestampMixin, Base):
     __tablename__ = "evolution_records"
     __table_args__ = (
         CheckConstraint(
-            "record_type IN ('improvement', 'question', 'problem', 'feature')",
+            "record_type IN ('improvement', 'question', 'error', 'decision', "
+            "'future_implementation', 'problem', 'feature')",
             name="ck_evolution_records_type",
         ),
         CheckConstraint(

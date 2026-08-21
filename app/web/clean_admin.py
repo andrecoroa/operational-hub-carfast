@@ -6,6 +6,7 @@ import csv
 import io
 import re
 from datetime import UTC, date, datetime, time, timedelta
+from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
@@ -170,6 +171,18 @@ ADMIN_NAV = (
         ("admin.dashboard.read", "admin.manage"),
     ),
     (
+        "operations",
+        "Operações e Service Desk",
+        "/v2-clean/admin/operations",
+        (
+            "admin.dashboard.read",
+            "admin.settings.read",
+            "admin.audit.read",
+            "service_desk.classifications.manage",
+            "admin.manage",
+        ),
+    ),
+    (
         "users",
         "Utilizadores",
         "/v2-clean/admin/users",
@@ -245,8 +258,11 @@ ADMIN_NAV = (
 EVOLUTION_TYPE_LABELS = {
     "improvement": "Melhoria",
     "question": "Dúvida",
-    "problem": "Problema",
-    "feature": "Nova funcionalidade",
+    "error": "Erro",
+    "decision": "Decisão",
+    "future_implementation": "Implementação futura",
+    "problem": "Problema (legado)",
+    "feature": "Nova funcionalidade (legado)",
 }
 EVOLUTION_STATUS_LABELS = {
     "registered": "Registado",
@@ -273,6 +289,214 @@ ADMIN_MODULE_LABELS = {
     "documentation": "Documentação",
     "system": "Sistema",
 }
+
+QUICK_EVOLUTION_TYPE_LABELS = {
+    code: EVOLUTION_TYPE_LABELS[code]
+    for code in ("improvement", "question", "error", "decision", "future_implementation")
+}
+
+ADMIN_DOMAIN_DEFINITIONS = (
+    {
+        "code": "operations",
+        "label": "Operações e Service Desk",
+        "description": "Trabalho, processos, Email, permissões operacionais e auditoria.",
+        "items": (
+            (
+                "operations",
+                "Área central",
+                "/v2-clean/admin/operations",
+                (
+                    "admin.dashboard.read",
+                    "admin.settings.read",
+                    "admin.audit.read",
+                    "service_desk.classifications.manage",
+                    "admin.manage",
+                ),
+            ),
+            (
+                "task_center",
+                "Centro de Tarefas",
+                "/v2-clean/tasks",
+                (
+                    "tasks.read",
+                    "tasks.operational.read",
+                    "tasks.management.read",
+                    "service_desk.read",
+                    "admin.manage",
+                ),
+            ),
+            (
+                "process_center",
+                "Centro de Processos",
+                "/v2-clean/processes",
+                ("management_center.read", "management_center.write", "admin.manage"),
+            ),
+            (
+                "email_center",
+                "Email",
+                "/v2-clean/email",
+                ("email.read", "email.manage", "admin.manage"),
+            ),
+            (
+                "work_classification",
+                "Permissões operacionais",
+                "/v2-clean/admin/work-classification",
+                (
+                    "admin.settings.read",
+                    "admin.settings.manage",
+                    "service_desk.classifications.manage",
+                    "settings.manage",
+                    "admin.manage",
+                ),
+            ),
+            (
+                "operations_audit",
+                "Auditoria operacional",
+                "/v2-clean/admin/audit?q=service_desk",
+                ("admin.audit.read", "admin.audit.export", "admin.manage"),
+            ),
+        ),
+    },
+    {
+        "code": "users_access",
+        "label": "Utilizadores e Acessos",
+        "description": "Contas, perfis, permissões e revisão de acessos.",
+        "items": (
+            (
+                "users",
+                "Utilizadores",
+                "/v2-clean/admin/users",
+                ("admin.users.read", "admin.users.manage", "users.manage", "admin.manage"),
+            ),
+            (
+                "roles",
+                "Perfis e permissões",
+                "/v2-clean/admin/roles",
+                ("admin.roles.read", "admin.roles.manage", "users.manage", "admin.manage"),
+            ),
+            (
+                "security",
+                "Segurança e acessos",
+                "/v2-clean/admin/security",
+                (
+                    "admin.security.read",
+                    "admin.security.manage",
+                    "users.manage",
+                    "admin.manage",
+                ),
+            ),
+        ),
+    },
+    {
+        "code": "organization",
+        "label": "Organização",
+        "description": "Unidades, áreas autorizadas e equipas.",
+        "items": (
+            (
+                "organization",
+                "Organização e equipas",
+                "/v2-clean/admin/organization",
+                (
+                    "admin.organization.read",
+                    "admin.organization.manage",
+                    "users.manage",
+                    "admin.manage",
+                ),
+            ),
+        ),
+    },
+    {
+        "code": "operational_modules",
+        "label": "Módulos Operacionais",
+        "description": "Parametrização comum e modelos versionados.",
+        "items": (
+            (
+                "settings",
+                "Configurações",
+                "/v2-clean/admin/settings",
+                (
+                    "admin.settings.read",
+                    "admin.settings.manage",
+                    "settings.manage",
+                    "admin.manage",
+                ),
+            ),
+            (
+                "workshop_models",
+                "Modelos da Oficina",
+                "/v2-clean/admin/workshop-models",
+                (
+                    "admin.workshop_models.read",
+                    "admin.workshop_models.manage",
+                    "admin.workshop_models.publish",
+                    "settings.manage",
+                    "admin.manage",
+                ),
+            ),
+            (
+                "module_directory",
+                "Configuração por módulo",
+                "/v2-clean/admin/modules/general",
+                (
+                    "admin.dashboard.read",
+                    "admin.settings.read",
+                    "settings.manage",
+                    "admin.manage",
+                ),
+            ),
+        ),
+    },
+    {
+        "code": "integrations",
+        "label": "Integrações",
+        "description": "Estado, entradas, encaminhamento e erros de integração.",
+        "items": (
+            (
+                "integrations",
+                "Integrações",
+                "/v2-clean/admin/integrations",
+                (
+                    "admin.integrations.read",
+                    "admin.integrations.manage",
+                    "settings.manage",
+                    "admin.manage",
+                ),
+            ),
+        ),
+    },
+    {
+        "code": "system_audit",
+        "label": "Sistema e Auditoria",
+        "description": "Visão geral, rastreabilidade e exportação.",
+        "items": (
+            (
+                "overview",
+                "Visão geral",
+                "/v2-clean/admin/overview",
+                ("admin.dashboard.read", "admin.manage"),
+            ),
+            (
+                "audit",
+                "Auditoria",
+                "/v2-clean/admin/audit",
+                ("admin.audit.read", "admin.audit.export", "admin.manage"),
+            ),
+        ),
+    },
+    {
+        "code": "evolution",
+        "label": "Evolução da Aplicação",
+        "description": "Registos, decisões, prioridade, implementação e histórico.",
+        "items": (
+            (
+                "evolution",
+                "Gestão da evolução",
+                "/v2-clean/admin/evolution",
+                ("admin.evolution.read", "admin.evolution.manage", "admin.manage"),
+            ),
+        ),
+    },
+)
 
 ADMIN_MODULE_NAV = {
     "general": {
@@ -449,10 +673,30 @@ def _layout_context(
         for code, label, href, required in ADMIN_NAV
         if permissions.intersection(required)
     ]
+    domains = []
+    for definition in ADMIN_DOMAIN_DEFINITIONS:
+        items = [
+            {"code": code, "label": label, "href": href}
+            for code, label, href, required in definition["items"]
+            if permissions.intersection(required)
+        ]
+        if not items:
+            continue
+        domains.append(
+            {
+                "code": definition["code"],
+                "label": definition["label"],
+                "description": definition["description"],
+                "items": items,
+                "active": section in {item["code"] for item in items}
+                or section == definition["code"],
+            }
+        )
     return {
         "active_menu": "clean_admin",
         "admin_section": section,
         "admin_nav": nav,
+        "admin_domains": domains,
         "current_admin_user": user,
         "current_admin_permissions": permissions,
         "admin_module_labels": ADMIN_MODULE_LABELS,
@@ -556,6 +800,24 @@ def clean_admin_overview(request: Request):
             audit_users=audit_users,
             auth_mode="local",
         )
+    return templates.TemplateResponse(request, "clean_admin.html", context)
+
+
+@clean_admin_router.get("/v2-clean/admin/operations", response_class=HTMLResponse)
+def clean_admin_operations(request: Request):
+    access = _authorized(
+        request,
+        "admin.dashboard.read",
+        "admin.settings.read",
+        "admin.audit.read",
+        "service_desk.classifications.manage",
+        "admin.manage",
+    )
+    if not access:
+        return _denied(request)
+    user_id, permissions = access
+    with SessionLocal() as db:
+        context = _layout_context(db, user_id, permissions, "operations")
     return templates.TemplateResponse(request, "clean_admin.html", context)
 
 
@@ -3763,15 +4025,54 @@ def clean_admin_update_value(
     return _redirect("/v2-clean/admin/settings", "saved")
 
 
-def _evolution_access(request: Request, *, manage: bool = False):
+def _evolution_access(
+    request: Request,
+    *,
+    create: bool = False,
+    manage: bool = False,
+):
     if manage:
         return _authorized(request, "admin.evolution.manage", "admin.manage")
+    if create:
+        return _authorized(
+            request,
+            "admin.evolution.create",
+            "admin.evolution.manage",
+            "admin.manage",
+        )
     return _authorized(
         request,
         "admin.evolution.read",
         "admin.evolution.manage",
         "admin.manage",
     )
+
+
+def _safe_evolution_origin_url(raw_url: str) -> str:
+    value = raw_url.strip()
+    parsed = urlsplit(value)
+    if parsed.scheme or parsed.netloc or not parsed.path.startswith("/"):
+        return "/v2-clean"
+    path = parsed.path[:220]
+    query = f"?{parsed.query[:120]}" if parsed.query else ""
+    return f"{path}{query}"[:255]
+
+
+def _evolution_module_from_url(origin_url: str) -> str:
+    path = urlsplit(origin_url).path.lower()
+    route_modules = (
+        (("/email",), "email"),
+        (("/tasks", "/task-board", "/processes", "/management-center"), "service_desk"),
+        (("/workshop",), "workshop"),
+        (("/stock",), "stock"),
+        (("/fleet",), "fleet_sales"),
+        (("/documentation", "/documents", "/diagnostics"), "documentation"),
+        (("/admin",), "system"),
+    )
+    for prefixes, module in route_modules:
+        if any(prefix in path for prefix in prefixes):
+            return module
+    return "general"
 
 
 @clean_admin_router.get("/v2-clean/admin/modules/{module_code}")
@@ -3918,6 +4219,7 @@ def clean_admin_evolution(request: Request):
                 "direction": direction,
             },
             evolution_type_labels=EVOLUTION_TYPE_LABELS,
+            quick_evolution_type_labels=QUICK_EVOLUTION_TYPE_LABELS,
             evolution_status_labels=EVOLUTION_STATUS_LABELS,
             evolution_priority_labels=EVOLUTION_PRIORITY_LABELS,
             admin_module_labels=ADMIN_MODULE_LABELS,
@@ -3945,7 +4247,7 @@ def clean_admin_create_evolution_record(
     reference_branch: str = Form(""),
     reference_commit: str = Form(""),
 ):
-    access = _evolution_access(request, manage=True)
+    access = _evolution_access(request, create=True)
     if not access:
         return _denied(request)
     user_id, _permissions = access
@@ -3995,6 +4297,67 @@ def clean_admin_create_evolution_record(
         )
         db.commit()
         return _redirect(f"/v2-clean/admin/evolution/{record.id}", "created")
+
+
+@clean_admin_router.post("/evolution/quick")
+def clean_quick_create_evolution_record(
+    request: Request,
+    record_type: str = Form(""),
+    title: str = Form(""),
+    description: str = Form(""),
+    priority: str = Form("normal"),
+    current_url: str = Form("/v2-clean"),
+    module: str = Form("general"),
+    context: str = Form(""),
+):
+    access = _evolution_access(request, create=True)
+    if not access:
+        return JSONResponse({"error": "forbidden"}, status_code=403)
+    user_id, _permissions = access
+    origin_url = _safe_evolution_origin_url(current_url)
+    inferred_module = _evolution_module_from_url(origin_url)
+    if inferred_module == "general" and module in ADMIN_MODULE_LABELS:
+        inferred_module = module
+    if (
+        record_type not in QUICK_EVOLUTION_TYPE_LABELS
+        or priority not in EVOLUTION_PRIORITY_LABELS
+        or not title.strip()
+        or not description.strip()
+    ):
+        return JSONResponse({"error": "invalid"}, status_code=422)
+    with SessionLocal() as db:
+        record = EvolutionRecord(
+            record_type=record_type,
+            module=inferred_module,
+            title=title.strip()[:200],
+            description=description.strip(),
+            origin=f"Barra lateral global · {origin_url}"[:160],
+            priority=priority,
+            status="registered",
+            notes=(f"Contexto automático: {context.strip()[:1000]}" if context.strip() else None),
+            reference_chat=origin_url,
+            created_by_id=user_id,
+            updated_by_id=user_id,
+        )
+        db.add(record)
+        db.flush()
+        record_audit(
+            db,
+            action="clean_admin.evolution.quick_created",
+            entity_type="evolution_record",
+            entity_id=record.id,
+            user_id=user_id,
+            after_json=_evolution_record_snapshot(record),
+        )
+        db.commit()
+        return JSONResponse(
+            {
+                "id": record.id,
+                "detail_url": f"/v2-clean/admin/evolution/{record.id}",
+                "message": "Registo de evolução criado.",
+            },
+            status_code=201,
+        )
 
 
 @clean_admin_router.get("/v2-clean/admin/evolution/{record_id}", response_class=HTMLResponse)

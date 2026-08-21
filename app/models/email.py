@@ -285,6 +285,40 @@ class EmailWebhookEvent(TimestampMixin, Base):
     error: Mapped[str | None] = mapped_column(Text)
 
 
+class EmailMessageDelivery(TimestampMixin, Base):
+    __tablename__ = "email_message_deliveries"
+    __table_args__ = (
+        UniqueConstraint("webhook_event_id", name="uq_email_message_delivery_event"),
+        UniqueConstraint(
+            "channel_id",
+            "logical_key",
+            "canonical_marker",
+            name="uq_email_message_delivery_canonical",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    message_id: Mapped[int] = mapped_column(
+        ForeignKey("email_messages.id", ondelete="CASCADE"), index=True
+    )
+    channel_id: Mapped[int] = mapped_column(
+        ForeignKey("email_channels.id", ondelete="RESTRICT"), index=True
+    )
+    webhook_event_id: Mapped[int] = mapped_column(
+        ForeignKey("email_webhook_events.id", ondelete="RESTRICT"), index=True
+    )
+    logical_key: Mapped[str] = mapped_column(String(128), index=True)
+    canonical_marker: Mapped[str | None] = mapped_column(String(20))
+    postmark_message_id: Mapped[str | None] = mapped_column(String(255), index=True)
+    original_recipient: Mapped[str | None] = mapped_column(String(500))
+    technical_recipient: Mapped[str | None] = mapped_column(String(500))
+    inbound_address: Mapped[str | None] = mapped_column(String(500))
+    mailbox_hash: Mapped[str | None] = mapped_column(String(255), index=True)
+    to_json: Mapped[list | None] = mapped_column(JSON)
+    cc_json: Mapped[list | None] = mapped_column(JSON)
+    received_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
+
+
 class EmailAuditEvent(Base):
     __tablename__ = "email_audit_events"
 

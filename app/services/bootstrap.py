@@ -43,6 +43,7 @@ INITIAL_PERMISSIONS = [
     ("admin.security.read", "Ver revisão de acessos"),
     ("admin.security.manage", "Gerir controlos de segurança"),
     ("admin.evolution.read", "Consultar Registo de Evolução"),
+    ("admin.evolution.create", "Criar registos de evolução"),
     ("admin.evolution.manage", "Gerir Registo de Evolução"),
     ("experience.legacy.access", "Abrir versão anterior da CarFast"),
     ("vehicles.read", "Ver viaturas"),
@@ -112,6 +113,7 @@ INITIAL_ROLES = [
 DEFAULT_ROLE_PERMISSIONS = {
     "user_admin": {
         "dashboard.read",
+        "admin.evolution.create",
         "admin.dashboard.read",
         "admin.users.read",
         "admin.users.manage",
@@ -123,6 +125,7 @@ DEFAULT_ROLE_PERMISSIONS = {
     },
     "functional_admin": {
         "dashboard.read",
+        "admin.evolution.create",
         "experience.legacy.access",
         "admin.dashboard.read",
         "admin.settings.read",
@@ -158,6 +161,7 @@ DEFAULT_ROLE_PERMISSIONS = {
     },
     "auditor": {
         "dashboard.read",
+        "admin.evolution.create",
         "admin.dashboard.read",
         "admin.users.read",
         "admin.roles.read",
@@ -179,6 +183,7 @@ DEFAULT_ROLE_PERMISSIONS = {
     },
     "manager": {
         "dashboard.read",
+        "admin.evolution.create",
         "vehicles.read",
         "vehicles.write",
         "fleet.commerce.manage",
@@ -224,6 +229,7 @@ DEFAULT_ROLE_PERMISSIONS = {
     },
     "operator": {
         "dashboard.read",
+        "admin.evolution.create",
         "vehicles.read",
         "workshop.read",
         "workshop.write",
@@ -253,6 +259,7 @@ DEFAULT_ROLE_PERMISSIONS = {
     },
     "viewer": {
         "dashboard.read",
+        "admin.evolution.create",
         "vehicles.read",
         "workshop.read",
         "tasks.read",

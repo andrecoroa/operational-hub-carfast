@@ -13,20 +13,7 @@
         </div>
         <span class="pill muted-pill">{{ current_admin_user.email if current_admin_user else "" }}</span>
       </div>
-      <nav class="clean-admin-nav" aria-label="Secções de administração">
-        {% for item in admin_nav %}
-          <a href="{{ item.href }}" {% if admin_section == item.code %}class="active"{% endif %}>{{ item.label }}</a>
-        {% endfor %}
-      </nav>
-      <details class="clean-admin-module-directory">
-        <summary>Configuração por módulo</summary>
-        <div class="clean-admin-module-table-wrap">
-          <table class="clean-admin-module-table">
-            <thead><tr><th>Módulo</th>{% for code,label in admin_module_dimension_labels.items() %}<th>{{ label }}</th>{% endfor %}</tr></thead>
-            <tbody>{% for module_code,module_label in admin_module_labels.items() %}<tr><th><a href="/v2-clean/admin/modules/{{ module_code }}">{{ module_label }}</a></th>{% for dimension_code in admin_module_dimension_labels %}{% set target = admin_module_nav[module_code][dimension_code] %}<td><a href="{{ target[1] }}">{{ target[0] }}</a></td>{% endfor %}</tr>{% endfor %}</tbody>
-          </table>
-        </div>
-      </details>
+      {% include "_clean_admin_directory.html" %}
     </header>
 
     {% if request.query_params.get("error") %}
@@ -90,6 +77,35 @@
             </tbody>
           </table>
         </div>
+      </section>
+    {% endif %}
+
+    {% if admin_section == "operations" %}
+      <section class="clean-admin-operations-hero clean-card-wide">
+        <div>
+          <p class="eyebrow">Área central</p>
+          <h3>Operações e Service Desk</h3>
+          <p>Um ponto de entrada para executar trabalho e administrar capacidades, regras, elegibilidade e rastreabilidade sem duplicar dados.</p>
+        </div>
+      </section>
+      <section class="clean-admin-operations-grid clean-card-wide">
+        {% for domain in admin_domains if domain.code == "operations" %}
+          {% for item in domain['items'] if item.code != "operations" %}
+            <a class="clean-admin-operation-card" href="{{ item.href }}">
+              <span>{{ loop.index|string }}</span>
+              <strong>{{ item.label }}</strong>
+              {% if item.code == "task_center" %}<small>Tickets, tarefas e filas de execução.</small>{% endif %}
+              {% if item.code == "process_center" %}<small>Processos, associações e acompanhamento.</small>{% endif %}
+              {% if item.code == "email_center" %}<small>Conversas e operação das caixas autorizadas.</small>{% endif %}
+              {% if item.code == "work_classification" %}<small>Âmbitos, SLA, supervisores, executores e regras.</small>{% endif %}
+              {% if item.code == "operations_audit" %}<small>Histórico filtrado das decisões operacionais.</small>{% endif %}
+            </a>
+          {% endfor %}
+        {% endfor %}
+      </section>
+      <section class="clean-panel clean-card-wide clean-admin-preservation-note">
+        <div><p class="eyebrow">Fonte única</p><h3>Configuração ligada à operação real</h3></div>
+        <p>As ligações acima reutilizam as rotas, tabelas, permissões e históricos atuais. Alterar uma regra ou âmbito continua a passar pelas validações server-side existentes.</p>
       </section>
     {% endif %}
 

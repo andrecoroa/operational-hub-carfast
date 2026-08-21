@@ -6,8 +6,7 @@
   <main class="content clean-content clean-admin-content">
     <header class="clean-header-shell clean-card-wide clean-admin-header">
       <div class="clean-header-topbar"><div><p class="eyebrow">Administração / Registo de Evolução</p><h2>#{{ evolution_record.id }} · {{ evolution_record.title }}</h2><p>O histórico abaixo é acrescentado; alterações anteriores não são apagadas.</p></div><a class="button-link secondary-link" href="/v2-clean/admin/evolution">Voltar ao registo</a></div>
-      <nav class="clean-admin-nav" aria-label="Secções de administração">{% for item in admin_nav %}<a href="{{ item.href }}" {% if admin_section == item.code %}class="active"{% endif %}>{{ item.label }}</a>{% endfor %}</nav>
-      <details class="clean-admin-module-directory"><summary>Configuração por módulo</summary><div class="clean-admin-module-table-wrap"><table class="clean-admin-module-table"><thead><tr><th>Módulo</th>{% for code,label in admin_module_dimension_labels.items() %}<th>{{ label }}</th>{% endfor %}</tr></thead><tbody>{% for module_code,module_label in admin_module_labels.items() %}<tr><th><a href="/v2-clean/admin/modules/{{ module_code }}">{{ module_label }}</a></th>{% for dimension_code in admin_module_dimension_labels %}{% set target = admin_module_nav[module_code][dimension_code] %}<td><a href="{{ target[1] }}">{{ target[0] }}</a></td>{% endfor %}</tr>{% endfor %}</tbody></table></div></details>
+      {% include "_clean_admin_directory.html" %}
     </header>
     {% if request.query_params.get('error') %}<div class="alert clean-card-wide">Não foi possível concluir: {{ request.query_params.get('error') }}.</div>{% endif %}
     {% if request.query_params.get('saved') or request.query_params.get('created') %}<div class="success clean-card-wide">Alteração guardada e auditada.</div>{% endif %}

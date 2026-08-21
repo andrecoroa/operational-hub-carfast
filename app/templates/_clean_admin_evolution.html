@@ -1,8 +1,8 @@
 <header class="clean-admin-section-header clean-card-wide">
   <div>
-    <p class="eyebrow">Administração / Geral</p>
-    <h2>Registo de Evolução</h2>
-    <p>Propostas, dúvidas e problemas permanecem consultáveis até e depois da decisão.</p>
+    <p class="eyebrow">Administração / Evolução da aplicação</p>
+    <h2>Evolução da aplicação</h2>
+    <p>Melhorias, dúvidas, erros, decisões e implementações futuras permanecem consultáveis antes e depois da decisão.</p>
   </div>
 </header>
 
@@ -30,7 +30,7 @@
 <details class="clean-panel clean-card-wide evolution-create">
   <summary><strong>Novo registo</strong><span>Registar sem converter imediatamente em trabalho</span></summary>
   <form class="clean-admin-form evolution-form" method="post" action="/v2-clean/admin/evolution">
-    <label>Tipo<select name="record_type" required>{% for code,label in evolution_type_labels.items() %}<option value="{{ code }}">{{ label }}</option>{% endfor %}</select></label>
+    <label>Tipo<select name="record_type" required>{% for code,label in quick_evolution_type_labels.items() %}<option value="{{ code }}">{{ label }}</option>{% endfor %}</select></label>
     <label>Módulo<select name="module" required>{% for code,label in admin_module_labels.items() %}<option value="{{ code }}">{{ label }}</option>{% endfor %}</select></label>
     <label>Prioridade<select name="priority" required>{% for code,label in evolution_priority_labels.items() %}<option value="{{ code }}" {% if code == 'normal' %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
     <label>Origem<input name="origin" maxlength="160" placeholder="reunião, utilizador, incidente…"></label>

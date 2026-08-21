@@ -60,10 +60,21 @@ EXPERIENCE_NEUTRAL_PREFIXES = (
     *PERMISSION_ALLOWED_PREFIXES,
     "/choose-experience",
     "/switch-experience",
+    "/evolution/quick",
 )
 
 WEB_PERMISSION_RULES = (
     (("/",), {"GET": {"dashboard.read"}}),
+    (
+        ("/evolution/quick",),
+        {
+            "POST": {
+                "admin.evolution.create",
+                "admin.evolution.manage",
+                "admin.manage",
+            }
+        },
+    ),
     (
         ("/v2-clean/email",),
         {
@@ -94,6 +105,7 @@ WEB_PERMISSION_RULES = (
                 "admin.security.read",
                 "admin.security.manage",
                 "admin.evolution.read",
+                "admin.evolution.create",
                 "admin.evolution.manage",
                 "admin.manage",
                 "users.manage",
@@ -111,6 +123,7 @@ WEB_PERMISSION_RULES = (
                 "admin.integrations.manage",
                 "admin.security.manage",
                 "admin.evolution.manage",
+                "admin.evolution.create",
                 "admin.manage",
                 "users.manage",
                 "settings.manage",

@@ -29,6 +29,7 @@ PERMISSION_ALIASES: dict[str, set[str]] = {
         "admin.security.read",
         "admin.security.manage",
         "admin.evolution.read",
+        "admin.evolution.create",
         "admin.evolution.manage",
     },
     "users.manage": {

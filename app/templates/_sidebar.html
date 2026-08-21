@@ -81,6 +81,9 @@
         "admin.integrations.manage",
         "admin.security.read",
         "admin.security.manage",
+        "admin.evolution.read",
+        "admin.evolution.manage",
+        "service_desk.classifications.manage",
         "admin.manage",
         "users.manage",
         "settings.manage"
@@ -131,6 +134,17 @@
   </nav>
   <div class="sidebar-footer">
     <div class="sidebar-footer-actions">
+      {% if nav_has_permission(request, "admin.evolution.create", "admin.evolution.manage", "admin.manage") %}
+        <button
+          class="sidebar-evolution-create"
+          type="button"
+          data-evolution-open
+          title="Novo registo de evolução"
+          aria-label="Novo registo de evolução"
+        >
+          <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg>
+        </button>
+      {% endif %}
       <form class="sidebar-logout" method="post" action="/logout">
         <button type="submit"><span class="sidebar-action-label">Terminar sessão</span></button>
       </form>
@@ -155,6 +169,128 @@
     </div>
   </div>
 </aside>
+
+{% if nav_has_permission(request, "admin.evolution.create", "admin.evolution.manage", "admin.manage") %}
+  <dialog class="quick-evolution-dialog" data-evolution-dialog aria-labelledby="quick-evolution-title">
+    <form method="post" action="/evolution/quick" data-evolution-form>
+      <header>
+        <div>
+          <p class="eyebrow">Evolução da aplicação</p>
+          <h2 id="quick-evolution-title">Novo registo de evolução</h2>
+          <p>Fica registado sem interromper o trabalho nesta página.</p>
+        </div>
+        <button class="secondary compact-button" type="button" data-evolution-close aria-label="Fechar">Fechar</button>
+      </header>
+      <div class="quick-evolution-context" aria-label="Contexto automático">
+        <span><small>Módulo</small><strong data-evolution-module-label>Geral</strong></span>
+        <span><small>Origem</small><strong data-evolution-origin-label></strong></span>
+      </div>
+      <input type="hidden" name="current_url" data-evolution-current-url>
+      <input type="hidden" name="module" data-evolution-module value="general">
+      <input type="hidden" name="context" data-evolution-context>
+      <div class="quick-evolution-form-grid">
+        <label>Tipo
+          <select name="record_type" required>
+            <option value="improvement">Melhoria</option>
+            <option value="question">Dúvida</option>
+            <option value="error">Erro</option>
+            <option value="decision">Decisão</option>
+            <option value="future_implementation">Implementação futura</option>
+          </select>
+        </label>
+        <label>Prioridade
+          <select name="priority" required>
+            <option value="low">Baixa</option>
+            <option value="normal" selected>Normal</option>
+            <option value="high">Alta</option>
+            <option value="urgent">Urgente</option>
+          </select>
+        </label>
+        <label class="quick-evolution-span">Título<input name="title" maxlength="200" required></label>
+        <label class="quick-evolution-span">Descrição<textarea name="description" rows="4" required></textarea></label>
+      </div>
+      <p class="clean-field-help">Anexos podem ser ligados com segurança na gestão completa, através de documentos já tratados pela CarFast.</p>
+      <p class="quick-evolution-result" data-evolution-result role="status" aria-live="polite"></p>
+      <footer>
+        {% if nav_has_permission(request, "admin.evolution.read", "admin.evolution.manage", "admin.manage") %}
+          <a class="button-link secondary-link" href="/v2-clean/admin/evolution">Abrir gestão completa</a>
+        {% endif %}
+        <button type="submit">Registar</button>
+      </footer>
+    </form>
+  </dialog>
+  <script>
+    (() => {
+      const dialog = document.querySelector("[data-evolution-dialog]");
+      const form = document.querySelector("[data-evolution-form]");
+      const openButton = document.querySelector("[data-evolution-open]");
+      if (!dialog || !form || !openButton) return;
+      const moduleNames = {
+        general: "Geral",
+        service_desk: "Operações / Service Desk",
+        email: "Email",
+        workshop: "Oficina",
+        stock: "Stock",
+        fleet_sales: "Frota e Venda",
+        documentation: "Documentação",
+        system: "Sistema",
+      };
+      const inferModule = (path) => {
+        if (path.includes("/email")) return "email";
+        if (["/tasks", "/task-board", "/processes", "/management-center"].some((part) => path.includes(part))) return "service_desk";
+        if (path.includes("/workshop")) return "workshop";
+        if (path.includes("/stock")) return "stock";
+        if (path.includes("/fleet")) return "fleet_sales";
+        if (["/documentation", "/documents", "/diagnostics"].some((part) => path.includes(part))) return "documentation";
+        if (path.includes("/admin")) return "system";
+        return "general";
+      };
+      const fillContext = () => {
+        const currentUrl = `${window.location.pathname}${window.location.search}`;
+        const module = inferModule(window.location.pathname.toLowerCase());
+        const heading = document.querySelector("main h1, main h2, main h3")?.textContent?.trim() || document.title;
+        form.querySelector("[data-evolution-current-url]").value = currentUrl;
+        form.querySelector("[data-evolution-module]").value = module;
+        form.querySelector("[data-evolution-context]").value = heading;
+        form.querySelector("[data-evolution-module-label]").textContent = moduleNames[module];
+        form.querySelector("[data-evolution-origin-label]").textContent = currentUrl;
+      };
+      openButton.addEventListener("click", () => {
+        fillContext();
+        form.querySelector("[data-evolution-result]").textContent = "";
+        dialog.showModal();
+        form.elements.title.focus();
+      });
+      dialog.querySelector("[data-evolution-close]").addEventListener("click", () => dialog.close());
+      dialog.addEventListener("click", (event) => {
+        if (event.target === dialog) dialog.close();
+      });
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const submit = form.querySelector("button[type='submit']");
+        const result = form.querySelector("[data-evolution-result]");
+        submit.disabled = true;
+        result.textContent = "A registar…";
+        try {
+          const response = await fetch(form.action, {
+            method: "POST",
+            body: new FormData(form),
+            headers: { Accept: "application/json" },
+          });
+          const payload = await response.json();
+          if (!response.ok) throw new Error(payload.error || "Não foi possível registar.");
+          result.textContent = `${payload.message} #${payload.id}`;
+          form.elements.title.value = "";
+          form.elements.description.value = "";
+        } catch (error) {
+          result.textContent = `Erro: ${error.message}`;
+        } finally {
+          submit.disabled = false;
+        }
+      });
+    })();
+  </script>
+{% endif %}
 
 {% if is_clean_experience %}
   <script>

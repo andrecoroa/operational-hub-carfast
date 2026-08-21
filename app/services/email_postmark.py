@@ -790,6 +790,7 @@ def send_message(
     reply_to: str | None = None,
     parent_message_id: str | None = None,
     references: list[str] | None = None,
+    attachments: list[EmailAttachment] | None = None,
 ) -> dict:
     if not settings.email_outbound_enabled:
         raise RuntimeError("O envio externo está desligado neste ambiente.")
@@ -825,6 +826,20 @@ def send_message(
         body["Bcc"] = ",".join(filter(None, bcc_recipients))
     if reply_to:
         body["ReplyTo"] = reply_to
+    if attachments:
+        try:
+            body["Attachments"] = [
+                {
+                    "Name": attachment.file_name,
+                    "Content": base64.b64encode(
+                        Path(attachment.storage_path).read_bytes()
+                    ).decode(),
+                    "ContentType": attachment.content_type or "application/octet-stream",
+                }
+                for attachment in attachments
+            ]
+        except OSError as exc:
+            raise RuntimeError("Um anexo da resposta já não está disponível.") from exc
     outbound_headers = []
     if parent_message_id:
         outbound_headers.append({"Name": "In-Reply-To", "Value": f"<{parent_message_id}>"})

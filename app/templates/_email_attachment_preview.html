@@ -1,7 +1,7 @@
 <section class="email-attachment-preview" data-email-attachment-id="{{ attachment.id }}">
   <header><div><p class="eyebrow">{{ reference }}</p><h3>{{ attachment.file_name }}</h3><p>{{ attachment.content_type or 'Tipo desconhecido' }} · {{ (attachment.size / 1024)|round(1) }} KB</p></div><button type="button" class="email-modal-close" data-email-attachment-close aria-label="Fechar">×</button></header>
   <div class="email-attachment-preview-grid">
-    <section class="email-attachment-file"><iframe src="/v2-clean/email/attachments/{{ attachment.id }}/file" title="Pré-visualização do anexo"></iframe></section>
+    <section class="email-attachment-file">{% if can_preview %}<iframe src="/v2-clean/email/attachments/{{ attachment.id }}/file" title="Pré-visualização do anexo"></iframe>{% else %}<div class="email-attachment-unavailable"><strong>Pré-visualização indisponível</strong><p>Este formato só é transferido após uma ação explícita.</p><a class="button-link secondary-link" href="/v2-clean/email/attachments/{{ attachment.id }}/file?download=true">Descarregar ficheiro</a></div>{% endif %}</section>
     {% if can_alter %}<form method="post" action="/v2-clean/email/attachments/{{ attachment.id }}/classify" class="email-attachment-form">
       <h4>Decidir tratamento</h4>
       <label>Tipo de documento<select name="document_type"><option value="">Por classificar</option>{% for code,label in document_types.items() %}<option value="{{ code }}" {% if attachment.document_type == code %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
@@ -9,7 +9,7 @@
       <label>Encaminhar para<select name="destination"><option value="">Manter na conversa</option>{% for code,label in work_natures.items() %}<option value="{{ code }}" {% if attachment.destination == code %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
       <label>Estado<select name="status">{% for code,label in attachment_statuses.items() %}<option value="{{ code }}" {% if attachment.status == code %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
       <label>Notas<textarea name="notes" rows="4">{{ attachment.notes or '' }}</textarea></label>
-      <footer><button type="submit">Guardar classificação</button><a class="button-link secondary-link" href="/v2-clean/email/attachments/{{ attachment.id }}/file" target="_blank">Abrir ficheiro</a></footer>
-    </form>{% else %}<aside class="email-attachment-form"><h4>Consulta</h4><p>A classificação deste anexo está disponível apenas para leitura.</p><a class="button-link secondary-link" href="/v2-clean/email/attachments/{{ attachment.id }}/file" target="_blank">Abrir ficheiro</a></aside>{% endif %}
+      <footer><button type="submit">Guardar classificação</button>{% if can_preview %}<a class="button-link secondary-link" href="/v2-clean/email/attachments/{{ attachment.id }}/file" target="_blank" rel="noopener">Abrir ficheiro</a>{% else %}<a class="button-link secondary-link" href="/v2-clean/email/attachments/{{ attachment.id }}/file?download=true">Descarregar</a>{% endif %}</footer>
+    </form>{% else %}<aside class="email-attachment-form"><h4>Consulta</h4><p>A classificação deste anexo está disponível apenas para leitura.</p>{% if can_preview %}<a class="button-link secondary-link" href="/v2-clean/email/attachments/{{ attachment.id }}/file" target="_blank" rel="noopener">Abrir ficheiro</a>{% else %}<a class="button-link secondary-link" href="/v2-clean/email/attachments/{{ attachment.id }}/file?download=true">Descarregar</a>{% endif %}</aside>{% endif %}
   </div>
 </section>

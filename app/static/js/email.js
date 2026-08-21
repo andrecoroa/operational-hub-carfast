@@ -99,11 +99,51 @@
       refresh();
     });
   };
+  const bindBodyViews = (root) => {
+    root.querySelectorAll("[data-email-body-view]").forEach((button) => button.addEventListener("click", () => {
+      const messageId = button.dataset.emailMessageId;
+      const frame = root.querySelector(`#email-body-${messageId}`);
+      if (!frame) return;
+      const view = button.dataset.emailBodyView === "text" ? "text" : "html";
+      frame.src = `${frame.dataset.emailBodyBase}?view=${view}`;
+      button.closest(".email-body-switch")?.querySelectorAll("[data-email-body-view]").forEach((item) => item.classList.toggle("active", item === button));
+    }));
+  };
+  const bindPanelSwitch = (root) => {
+    const shell = root.querySelector("[data-email-thread-id]");
+    const triage = root.querySelector('[data-email-panel="triage"]');
+    const composer = root.querySelector('[data-email-panel="composer"]');
+    const showComposer = (visible) => {
+      if (!triage || !composer) return;
+      triage.hidden = visible;
+      composer.hidden = !visible;
+      shell?.classList.toggle("is-composing", visible);
+      if (visible) {
+        composer.querySelector('textarea[name="body"]')?.focus();
+        if (window.matchMedia("(max-width: 900px)").matches) {
+          composer.scrollIntoView({block: "start"});
+        }
+      }
+    };
+    root.querySelectorAll("[data-email-open-composer]").forEach((button) => button.addEventListener("click", () => showComposer(true)));
+    root.querySelectorAll("[data-email-close-composer]").forEach((button) => button.addEventListener("click", () => showComposer(false)));
+  };
+  const bindLinkKinds = (root) => {
+    root.querySelectorAll("[data-email-link-kind]").forEach((select) => {
+      const hidden = select.form?.querySelector("[data-email-link-type]");
+      const refresh = () => { if (hidden) hidden.value = select.value === "process" ? "process" : "entity"; };
+      select.addEventListener("change", refresh);
+      refresh();
+    });
+  };
   const bindThread = (root = document) => {
     bindWorkHierarchy(root);
     bindTemplates(root);
     bindReplyModes(root);
     bindReplySenders(root);
+    bindBodyViews(root);
+    bindPanelSwitch(root);
+    bindLinkKinds(root);
     root.querySelectorAll("[data-email-modal-close]").forEach((button) => button.addEventListener("click", () => dialog?.close()));
     root.querySelectorAll("[data-email-show-images]").forEach((button) => button.addEventListener("click", () => {
       const frame = document.getElementById(button.dataset.emailShowImages);
@@ -183,11 +223,21 @@
   };
   const openPreview = async (threadId) => {
     if (!dialog || !threadId) return;
+    const previousShell = dialog.querySelector("[data-email-thread-id]");
+    const previousConversationScroll = previousShell?.querySelector(".email-conversation")?.scrollTop || 0;
+    const previousTriageScroll = previousShell?.querySelector(".email-triage-pane")?.scrollTop || 0;
     dialog.innerHTML = '<div class="email-preview-loading">A abrir conversa…</div>';
-    dialog.showModal();
+    if (!dialog.open) dialog.showModal();
     const response = await fetch(`/v2-clean/email/${threadId}/preview`, {headers: {"X-Requested-With": "fetch"}});
     dialog.innerHTML = await response.text();
     bindThread(dialog);
+    requestAnimationFrame(() => {
+      const conversation = dialog.querySelector(".email-conversation");
+      const triage = dialog.querySelector(".email-triage-pane");
+      if (conversation) conversation.scrollTop = previousConversationScroll;
+      if (triage) triage.scrollTop = previousTriageScroll;
+    });
+    document.querySelectorAll("[data-email-preview]").forEach((row) => row.classList.toggle("is-selected", row.dataset.emailPreview === String(threadId)));
   };
   document.querySelectorAll("[data-email-preview]").forEach((element) => element.addEventListener("click", (event) => {
     if (event.target.closest("a, button")) return;
@@ -198,5 +248,6 @@
     openPreview(button.dataset.emailPreviewTrigger);
   }));
   dialog?.addEventListener("click", (event) => { if (event.target === dialog) dialog.close(); });
+  dialog?.addEventListener("close", () => document.querySelectorAll("[data-email-preview]").forEach((row) => row.classList.remove("is-selected")));
   bindThread();
 })();

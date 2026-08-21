@@ -9,10 +9,11 @@ from html.parser import HTMLParser
 from mimetypes import guess_type
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Annotated
 from urllib.parse import urlparse
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, Form, Header, Request
+from fastapi import APIRouter, File, Form, Header, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import func, or_, select
@@ -122,6 +123,14 @@ STATUS_LABELS = {
 }
 
 EMAIL_ADDRESS_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+EMAIL_LINK_KINDS = {
+    "vehicle": "Matrícula",
+    "supplier": "Fornecedor",
+    "task": "Tarefa",
+    "process": "Processo",
+    "document": "Documento",
+    "entity": "Entidade",
+}
 
 
 class _SafeEmailHTMLParser(HTMLParser):
@@ -203,8 +212,8 @@ class _SafeEmailHTMLParser(HTMLParser):
         self.parts.append(escape(data))
 
 
-def _safe_email_document(message: EmailMessage) -> str:
-    if message.html_body:
+def _safe_email_document(message: EmailMessage, *, plain_text: bool = False) -> str:
+    if message.html_body and not plain_text:
         parser = _SafeEmailHTMLParser()
         parser.feed(message.html_body)
         body = "".join(parser.parts)
@@ -219,6 +228,59 @@ def _safe_email_document(message: EmailMessage) -> str:
         ".plain{white-space:pre-wrap}</style></head><body>"
         f"{body}</body></html>"
     )
+
+
+def _attachment_media_type(attachment: EmailAttachment) -> str:
+    guessed_type = guess_type(attachment.file_name or "")[0]
+    stored_type = (attachment.content_type or "").split(";", 1)[0].strip().lower()
+    if stored_type in {"", "application/octet-stream", "binary/octet-stream"}:
+        return guessed_type or "application/octet-stream"
+    return stored_type
+
+
+def _attachment_can_preview(attachment: EmailAttachment) -> bool:
+    media_type = _attachment_media_type(attachment)
+    return (
+        media_type == "application/pdf"
+        or media_type.startswith("image/")
+        or media_type.startswith("text/")
+    )
+
+
+def _store_outbound_attachments(
+    db,
+    *,
+    thread: EmailThread,
+    message: EmailMessage,
+    uploads: list[UploadFile],
+) -> list[EmailAttachment]:
+    stored: list[EmailAttachment] = []
+    prepared: list[tuple[str, str | None, bytes]] = []
+    folder = Path(settings.email_storage_root or "var/email") / str(thread.id) / str(message.id)
+    for upload in uploads:
+        if not upload.filename:
+            continue
+        content = upload.file.read()
+        if len(content) > settings.email_max_attachment_bytes:
+            raise ValueError("attachment_too_large")
+        safe_name = re.sub(r"[^A-Za-z0-9._-]", "_", Path(upload.filename).name)
+        prepared.append((safe_name, upload.content_type, content))
+    for position, (safe_name, content_type, content) in enumerate(prepared, 1):
+        path = folder / f"out-{position:02d}-{safe_name}"
+        folder.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(content)
+        attachment = EmailAttachment(
+            message_id=message.id,
+            file_name=safe_name,
+            content_type=content_type,
+            size=len(content),
+            storage_path=str(path),
+            sha256=hashlib.sha256(content).hexdigest(),
+            status="associated",
+        )
+        db.add(attachment)
+        stored.append(attachment)
+    return stored
 
 
 def _auth(request: Request, *required: str):
@@ -711,6 +773,10 @@ def _thread_view_data(db, thread: EmailThread) -> dict:
         "origins_by_message": deliveries_by_message,
         "received_originally_by_message": received_originally_by_message,
         "latest_inbound_message": latest_inbound,
+        "has_unread": any(
+            message.direction == "inbound" and message.state == "received"
+            for message in messages
+        ),
         "thread_links": list(
             db.scalars(
                 select(EmailThreadLink)
@@ -1545,7 +1611,7 @@ def email_thread_preview(request: Request, thread_id: int):
 
 
 @email_router.get("/v2-clean/email/messages/{message_id}/body", response_class=HTMLResponse)
-def email_message_body(request: Request, message_id: int):
+def email_message_body(request: Request, message_id: int, view: str = "html"):
     auth = _auth(
         request,
         "email.read",
@@ -1568,7 +1634,7 @@ def email_message_body(request: Request, message_id: int):
         ):
             return HTMLResponse("Sem acesso.", status_code=403)
         return HTMLResponse(
-            _safe_email_document(message),
+            _safe_email_document(message, plain_text=view == "text"),
             headers={
                 "Content-Security-Policy": (
                     "default-src 'none'; img-src https: http:; "
@@ -1878,6 +1944,7 @@ def email_attachment_preview(request: Request, attachment_id: int):
                 "attachment": attachment,
                 "thread": thread,
                 "reference": reference,
+                "can_preview": _attachment_can_preview(attachment),
                 "can_alter": bool(
                     permissions.intersection(
                         {"email.triage", "email.manage", "admin.manage"}
@@ -1897,7 +1964,7 @@ def email_attachment_preview(request: Request, attachment_id: int):
 
 
 @email_router.get("/v2-clean/email/attachments/{attachment_id}/file")
-def email_attachment_file(request: Request, attachment_id: int):
+def email_attachment_file(request: Request, attachment_id: int, download: bool = False):
     auth = _auth(request, "email.read", "email.triage", "email.manage", "admin.manage")
     if not auth:
         return HTMLResponse("Sem acesso.", status_code=403)
@@ -1914,23 +1981,19 @@ def email_attachment_file(request: Request, attachment_id: int):
         if not path.is_file():
             return HTMLResponse("Ficheiro indisponível.", status_code=404)
 
-        guessed_type = guess_type(attachment.file_name or path.name)[0]
-        stored_type = (attachment.content_type or "").split(";", 1)[0].strip().lower()
-        if stored_type in {"", "application/octet-stream", "binary/octet-stream"}:
-            media_type = guessed_type or "application/octet-stream"
-        else:
-            media_type = stored_type
-        can_preview = (
-            media_type == "application/pdf"
-            or media_type.startswith("image/")
-            or media_type.startswith("text/")
-        )
+        media_type = _attachment_media_type(attachment)
+        can_preview = _attachment_can_preview(attachment)
+        if not can_preview and not download:
+            return HTMLResponse(
+                "Este formato não tem pré-visualização segura. Usa a ação Descarregar.",
+                status_code=415,
+            )
 
         return FileResponse(
             path,
             media_type=media_type,
-            filename=None if can_preview else attachment.file_name,
-            headers={"Content-Disposition": "inline"} if can_preview else None,
+            filename=attachment.file_name if download else None,
+            headers={"Content-Disposition": "inline"} if can_preview and not download else None,
         )
 
 
@@ -2079,6 +2142,44 @@ def email_status(request: Request, thread_id: int, status: str = Form(...)):
     return RedirectResponse(f"/v2-clean/email/{thread_id}?saved=status", status_code=303)
 
 
+@email_router.post("/v2-clean/email/{thread_id}/read")
+def email_mark_read(request: Request, thread_id: int):
+    auth = _auth(request, "email.triage", "email.manage", "admin.manage")
+    if not auth:
+        return RedirectResponse(
+            f"/v2-clean/email/{thread_id}?error=forbidden", status_code=303
+        )
+    user_id, permissions = auth
+    with SessionLocal() as db:
+        thread = db.get(EmailThread, thread_id)
+        if not thread or not _can_use_channel(
+            db, user_id, permissions, thread.channel_id, "alter", thread=thread
+        ):
+            return RedirectResponse(
+                f"/v2-clean/email/{thread_id}?error=forbidden", status_code=303
+            )
+        messages = db.scalars(
+            select(EmailMessage).where(
+                EmailMessage.thread_id == thread.id,
+                EmailMessage.direction == "inbound",
+                EmailMessage.state == "received",
+            )
+        ).all()
+        for message in messages:
+            message.state = "read"
+        if messages:
+            db.add(
+                EmailAuditEvent(
+                    thread_id=thread.id,
+                    user_id=user_id,
+                    action="marked_read",
+                    details_json={"message_ids": [message.id for message in messages]},
+                )
+            )
+            db.commit()
+    return RedirectResponse(f"/v2-clean/email/{thread_id}?saved=read", status_code=303)
+
+
 @email_router.post("/v2-clean/email/{thread_id}/claim")
 def email_claim(request: Request, thread_id: int):
     auth = _auth(request, "email.assume", "email.manage", "admin.manage")
@@ -2127,6 +2228,7 @@ def email_reply(
     sender_address: str = Form(""),
     template_id: str = Form(""),
     submit: str = Form("draft"),
+    attachments: Annotated[list[UploadFile] | None, File()] = None,
 ):
     auth = _auth(request, "email.reply", "email.manage", "admin.manage")
     if not auth:
@@ -2300,8 +2402,20 @@ def email_reply(
         )
         message.approval_fingerprint = _message_fingerprint(message)
         db.add(message)
-        thread.status = "waiting_approval" if state == "pending_approval" else "in_progress"
         db.flush()
+        try:
+            outbound_attachments = _store_outbound_attachments(
+                db,
+                thread=thread,
+                message=message,
+                uploads=attachments or [],
+            )
+        except ValueError:
+            return RedirectResponse(
+                f"/v2-clean/email/{thread_id}?error=attachment_too_large",
+                status_code=303,
+            )
+        thread.status = "waiting_approval" if state == "pending_approval" else "in_progress"
         if submit == "send":
             prior_messages = db.scalars(
                 select(EmailMessage)
@@ -2322,6 +2436,7 @@ def email_reply(
                     reply_to=requested_sender,
                     parent_message_id=parent_message_id,
                     references=references,
+                    attachments=outbound_attachments,
                 )
             except RuntimeError as exc:
                 message.postmark_error = str(exc)
@@ -2519,6 +2634,13 @@ def email_approve(request: Request, thread_id: int, message_id: int):
         references = [
             item.external_message_id for item in prior_messages if item.external_message_id
         ]
+        outbound_attachments = list(
+            db.scalars(
+                select(EmailAttachment)
+                .where(EmailAttachment.message_id == message.id)
+                .order_by(EmailAttachment.id)
+            )
+        )
         try:
             result = send_message(
                 message,
@@ -2526,6 +2648,7 @@ def email_approve(request: Request, thread_id: int, message_id: int):
                 reply_to=message.sender,
                 parent_message_id=parent_message_id,
                 references=references,
+                attachments=outbound_attachments,
             )
             message.state, message.sent_at, message.approved_by_id, message.approved_at = (
                 "sent",
@@ -2577,12 +2700,20 @@ def email_add_link(
     request: Request,
     thread_id: int,
     link_type: str = Form(...),
+    link_kind: str = Form(""),
     label: str = Form(...),
     reference: str = Form(""),
     url: str = Form(""),
 ):
     auth = _auth(request, "email.triage", "email.manage", "admin.manage")
-    if not auth or link_type not in {"process", "entity"} or not label.strip():
+    resolved_link_kind = link_kind or link_type
+    if (
+        not auth
+        or link_type not in {"process", "entity"}
+        or resolved_link_kind not in EMAIL_LINK_KINDS
+        or (resolved_link_kind == "process") != (link_type == "process")
+        or not label.strip()
+    ):
         return RedirectResponse(f"/v2-clean/email/{thread_id}?error=forbidden", status_code=303)
     user_id, permissions = auth
     with SessionLocal() as db:
@@ -2596,7 +2727,7 @@ def email_add_link(
         link = EmailThreadLink(
             thread_id=thread.id,
             link_type=link_type,
-            label=label.strip()[:200],
+            label=f"{EMAIL_LINK_KINDS[resolved_link_kind]} · {label.strip()}"[:200],
             reference=reference.strip()[:255] or None,
             url=url.strip() or None,
             created_by_id=user_id,
@@ -2610,6 +2741,7 @@ def email_add_link(
                 action=f"{link_type}_linked",
                 details_json={
                     "link_id": link.id,
+                    "link_kind": resolved_link_kind,
                     "label": link.label,
                     "reference": link.reference,
                     "url": link.url,

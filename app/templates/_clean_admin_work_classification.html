@@ -36,6 +36,7 @@
 <nav class="clean-work-admin-nav" aria-label="Áreas de configuração">
   <button type="button" class="is-active" data-work-admin-tab="desk">Service Desk</button>
   <button type="button" data-work-admin-tab="structure">Estrutura</button>
+  {% if can_validate_classifications or can_merge_classifications %}<button type="button" data-work-admin-tab="proposals">Propostas <span>{{ classification_proposals|selectattr('active')|list|length }}</span></button>{% endif %}
   {% if can_view_profiles_config %}
   <button type="button" data-work-admin-tab="permissions">Permissões</button>
   {% endif %}
@@ -306,6 +307,50 @@
 </dialog>
 {% endif %}
 
+{% if can_validate_classifications or can_merge_classifications %}
+<section class="clean-work-admin-view classification-proposal-admin" data-work-admin-view="proposals" hidden>
+  <div class="clean-work-view-heading">
+    <div><h3>Propostas de Categoria/Subcategoria</h3><p>Revisão transversal com impacto, utilizações e auditoria. Nenhuma decisão converte automaticamente para “Outro”.</p></div>
+    <div class="classification-proposal-filters"><label>Estado<select data-proposal-admin-status><option value="active">Pendentes/observação</option><option value="all">Todos</option><option value="priority">3+ utilizações</option><option value="archive">Arquivo sugerido</option></select></label><label>Origem<select data-proposal-admin-module><option value="">Todas</option><option value="service_desk">Service Desk</option><option value="email">Email</option><option value="service_desk_api">API</option></select></label></div>
+  </div>
+  {% if request.query_params.get('proposal_decided') %}<div class="clean-alert-success">Decisão aplicada e utilizações reclassificadas numa única transação.</div>{% endif %}
+  {% if request.query_params.get('proposal_error') %}<div class="clean-alert-warning">Não foi possível aplicar a decisão: {{ request.query_params.get('proposal_error') }}.</div>{% endif %}
+  <div class="clean-table-scroll">
+    <table class="clean-table classification-proposal-table">
+      <thead><tr><th>Proposta</th><th>Hierarquia</th><th>Origem e motivo</th><th>Semelhantes</th><th>Utilizações</th><th>Estado</th><th>Decisão</th></tr></thead>
+      <tbody>
+      {% for proposal in classification_proposals %}
+        <tr data-proposal-admin-row data-active="{{ '1' if proposal.active else '0' }}" data-priority="{{ '1' if proposal.usage_count >= 3 else '0' }}" data-archive="{{ '1' if classification_archive_suggested.get(proposal.id) else '0' }}" data-module="{{ proposal.origin_module }}">
+          <td><code>{{ proposal.provisional_code }}</code><strong>{{ proposal.proposed_name }}</strong><small>{{ 'Categoria' if proposal.kind == 'category' else 'Subcategoria' }}</small></td>
+          <td><span>{{ work_departments_by_id.get(proposal.department_id).name if work_departments_by_id.get(proposal.department_id) else 'Departamento histórico' }}</span>{% if proposal.category_id %}<small>{{ work_categories_by_id.get(proposal.category_id).name if work_categories_by_id.get(proposal.category_id) else 'Categoria histórica' }}</small>{% elif proposal.parent_proposal_id %}<small>{{ classification_proposals|selectattr('id','equalto',proposal.parent_proposal_id)|map(attribute='provisional_code')|first or 'Proposta superior' }}</small>{% endif %}</td>
+          <td><strong>{{ proposal.origin_module }}</strong>{% if proposal.origin_url %}<a href="{{ proposal.origin_url }}">Abrir origem</a>{% endif %}<small>{{ proposal.reason }}</small></td>
+          <td>{% for item in classification_similar.get(proposal.id, []) %}<span class="classification-similar-item"><b>{{ item.name }}</b><small>{{ item.code }} · {{ 'oficial' if item.type == 'official' else (item.usage_count|string ~ ' usos') }}</small></span>{% else %}<span class="muted">Sem semelhantes fortes</span>{% endfor %}</td>
+          <td><strong class="{{ 'classification-review-priority' if proposal.usage_count >= 3 else '' }}">{{ proposal.usage_count }} utilização(ões)</strong>{% if proposal.usage_count >= 3 %}<span class="clean-status-pill is-warning">Revisão prioritária</span>{% endif %}{% for usage in classification_proposal_usages if usage.proposal_id == proposal.id %}<small>{{ usage.module }} #{{ usage.entity_id }}{% if usage.origin_url %} · <a href="{{ usage.origin_url }}">abrir</a>{% endif %}</small>{% endfor %}{% if proposal.last_used_at %}<small>Última: {{ (proposal.last_used_at|lisbon_datetime).strftime('%d/%m/%Y %H:%M') }}</small>{% endif %}</td>
+          <td><span class="clean-status-pill {{ 'is-active' if proposal.active else 'is-inactive' }}">{{ {'pending':'Pendente','observation':'Em observação','approved':'Aprovada','linked':'Associada','merged':'Fundida','rejected':'Recusada','archived':'Arquivada'}.get(proposal.status, proposal.status) }}</span>{% if classification_archive_suggested.get(proposal.id) %}<small>Sem uso há 30+ dias · arquivo sugerido</small>{% endif %}</td>
+          <td>
+          {% if proposal.active %}
+            <details class="classification-decision-panel"><summary>Rever</summary>
+              <form method="post" action="/v2-clean/admin/work-classification/proposals/{{ proposal.id }}/decision">
+                <label>Decisão<select name="action" required data-proposal-decision><option value="approve">Aprovar{% if proposal.proposed_name %} / alterar nome e aprovar{% endif %}</option><option value="link">Associar a existente</option>{% if can_merge_classifications %}<option value="merge">Fundir noutra proposta</option>{% endif %}<option value="reject">Recusar e exigir reclassificação</option><option value="observe">Manter em observação</option><option value="archive">Arquivar</option></select></label>
+                <label>Nome ao aprovar<input name="approved_name" value="{{ proposal.proposed_name }}" maxlength="160"></label>
+                <label>Classificação existente<select name="target_id"><option value="">Selecionar quando aplicável</option>{% if proposal.kind == 'category' %}{% for item in work_categories if item.active %}<option value="{{ item.id }}">{{ item.code }} · {{ item.name }}</option>{% endfor %}{% else %}{% for item in work_subcategories if item.active %}<option value="{{ item.id }}">{{ item.code }} · {{ item.name }}</option>{% endfor %}{% endif %}</select></label>
+                {% if can_merge_classifications %}<label>Proposta de destino<select name="target_proposal_id"><option value="">Selecionar quando aplicável</option>{% for item in classification_proposals if item.active and item.kind == proposal.kind and item.id != proposal.id %}<option value="{{ item.id }}">{{ item.provisional_code }} · {{ item.proposed_name }}</option>{% endfor %}</select></label>{% endif %}
+                <label>Notas / motivo<textarea name="notes" rows="2" {% if proposal.status == 'rejected' %}required{% endif %}></textarea></label>
+                <p class="classification-decision-impact">Impacto: {{ proposal.usage_count }} registo(s) associado(s) serão reclassificados de forma transacional; o código provisório e a auditoria serão preservados.</p>
+                <label class="checkbox-label"><input type="checkbox" name="confirmed" required> Confirmo esta decisão e o impacto indicado</label>
+                <button type="submit">Aplicar decisão</button>
+              </form>
+            </details>
+          {% else %}—{% endif %}
+          </td>
+        </tr>
+      {% else %}<tr><td colspan="7">Ainda não existem propostas provisórias.</td></tr>{% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endif %}
+
 <script>
 document.addEventListener('DOMContentLoaded', () => {
   const adminTabs = document.querySelectorAll('[data-work-admin-tab]');
@@ -333,6 +378,21 @@ document.addEventListener('DOMContentLoaded', () => {
   const requestedAdminTab = [...adminTabs].find((button) => button.dataset.workAdminTab === requestedAdminView);
   requestedAdminTab?.click();
   areaSearch?.addEventListener('input', applyAreaSearch);
+  const proposalStatus = document.querySelector('[data-proposal-admin-status]');
+  const proposalModule = document.querySelector('[data-proposal-admin-module]');
+  const filterProposals = () => {
+    document.querySelectorAll('[data-proposal-admin-row]').forEach((row) => {
+      const statusMatch = proposalStatus?.value === 'all'
+        || (proposalStatus?.value === 'active' && row.dataset.active === '1')
+        || (proposalStatus?.value === 'priority' && row.dataset.priority === '1')
+        || (proposalStatus?.value === 'archive' && row.dataset.archive === '1');
+      const moduleMatch = !proposalModule?.value || row.dataset.module === proposalModule.value;
+      row.hidden = !(statusMatch && moduleMatch);
+    });
+  };
+  proposalStatus?.addEventListener('change', filterProposals);
+  proposalModule?.addEventListener('change', filterProposals);
+  filterProposals();
   let activeLevel = 'queue';
   const levelTabs = document.querySelectorAll('[data-work-level]');
   const rows = document.querySelectorAll('[data-work-row]');

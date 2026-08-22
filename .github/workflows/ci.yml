@@ -22,11 +22,11 @@ jobs:
       APP_ENV: test
       APP_SECRET_KEY: ci-only-not-a-secret
       DATABASE_URL: postgresql+psycopg://carfast:carfast@localhost:5432/carfast_test
-      DOCUMENT_ARCHIVE_ROOT: ${{ runner.temp }}/carfast-documents
-      DOCUMENT_INVOICE_INBOX_PATH: ${{ runner.temp }}/carfast-documents/inbox
+      DOCUMENT_ARCHIVE_ROOT: /tmp/carfast-documents
+      DOCUMENT_INVOICE_INBOX_PATH: /tmp/carfast-documents/inbox
       EMAIL_INBOUND_ENABLED: "false"
       EMAIL_OUTBOUND_ENABLED: "false"
-      EMAIL_STORAGE_ROOT: ${{ runner.temp }}/carfast-email
+      EMAIL_STORAGE_ROOT: /tmp/carfast-email
       INTEGRATION_API_KEY: ""
       POSTMARK_SERVER_TOKEN: ""
 

@@ -1,0 +1,44 @@
+services:
+  app:
+    build:
+      context: ..
+      dockerfile: .devcontainer/Dockerfile
+    command: sleep infinity
+    environment:
+      APP_ENV: development
+      APP_SECRET_KEY: codespaces-development-only
+      DATABASE_URL: postgresql+psycopg://carfast:carfast@postgres:5432/carfast_dev
+      DOCUMENT_ARCHIVE_ROOT: /workspaces/.carfast-data/documents
+      DOCUMENT_INVOICE_INBOX_PATH: /workspaces/.carfast-data/documents/inbox
+      EMAIL_INBOUND_ENABLED: "false"
+      EMAIL_OUTBOUND_ENABLED: "false"
+      EMAIL_STORAGE_ROOT: /workspaces/.carfast-data/email
+      INTEGRATION_API_KEY: ""
+      POSTMARK_SERVER_TOKEN: ""
+      CARFAST_ADMIN_EMAIL: admin@carfast.local
+      CARFAST_ADMIN_PASSWORD: LocalDevelopment123!
+    volumes:
+      - ..:/workspaces/carfast:cached
+      - carfast-data:/workspaces/.carfast-data
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:17-bookworm
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: carfast_dev
+      POSTGRES_USER: carfast
+      POSTGRES_PASSWORD: carfast
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U carfast -d carfast_dev"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
+volumes:
+  carfast-data:
+  postgres-data:

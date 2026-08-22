@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import difflib
 import hashlib
 import json
 import re
@@ -118,7 +119,18 @@ def main() -> None:
     args = parser.parse_args()
     rendered = json.dumps(build_snapshot(), ensure_ascii=False, indent=2, sort_keys=True) + "\n"
     if args.check:
-        if not BASELINE_PATH.exists() or BASELINE_PATH.read_text(encoding="utf-8") != rendered:
+        expected = BASELINE_PATH.read_text(encoding="utf-8") if BASELINE_PATH.exists() else ""
+        if expected != rendered:
+            print(
+                "".join(
+                    difflib.unified_diff(
+                        expected.splitlines(keepends=True),
+                        rendered.splitlines(keepends=True),
+                        fromfile="frozen",
+                        tofile="current",
+                    )
+                )
+            )
             raise SystemExit(
                 "Phase 2 architecture baseline drifted; review and regenerate explicitly"
             )

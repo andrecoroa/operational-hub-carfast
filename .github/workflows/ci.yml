@@ -65,13 +65,18 @@ jobs:
         run: |
           python -m compileall -q app scripts
           python -c "from app.main import app; assert app.title"
-          python -m ruff check scripts/check_migration_heads.py scripts/bootstrap_installation.py scripts/check_clean_install.py
+          python -m ruff check scripts/check_migration_heads.py scripts/bootstrap_installation.py scripts/check_clean_install.py scripts/capture_architecture_baseline.py app/platform app/models/platform.py migrations/versions/fff37f8a9b0d_add_module_catalogue.py tests/test_modular_foundation.py
+
+      - name: Verify frozen architecture baseline
+        run: python -m scripts.capture_architecture_baseline --check
 
       - name: Validate Alembic graph
         run: python scripts/check_migration_heads.py
 
       - name: Apply migrations to isolated PostgreSQL
         run: |
+          python -m alembic upgrade head
+          python -m alembic downgrade ffae1f2a3b4c
           python -m alembic upgrade head
           python -m alembic current --check-heads
 
@@ -87,3 +92,4 @@ jobs:
           tests/test_navigation_rbac.py
           tests/test_email_postmark.py
           tests/test_service_desk_operations.py
+          tests/test_modular_foundation.py

@@ -65,7 +65,7 @@ jobs:
         run: |
           python -m compileall -q app scripts
           python -c "from app.main import app; assert app.title"
-          python -m ruff check scripts/check_migration_heads.py scripts/bootstrap_installation.py scripts/check_clean_install.py scripts/capture_architecture_baseline.py app/platform app/models/platform.py migrations/versions/fff37f8a9b0d_add_module_catalogue.py tests/test_modular_foundation.py
+          python -m ruff check scripts/check_migration_heads.py scripts/bootstrap_installation.py scripts/check_clean_install.py scripts/capture_architecture_baseline.py app/platform app/models/platform.py app/core/return_context.py migrations/versions/fff37f8a9b0d_add_module_catalogue.py tests/test_modular_foundation.py tests/test_visual_foundation.py
 
       - name: Verify frozen architecture baseline
         run: python -m scripts.capture_architecture_baseline --check
@@ -93,3 +93,4 @@ jobs:
           tests/test_email_postmark.py
           tests/test_service_desk_operations.py
           tests/test_modular_foundation.py
+          tests/test_visual_foundation.py

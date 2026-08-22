@@ -15,6 +15,7 @@ from sqlalchemy import delete, func, or_, select
 
 from app.core.config import settings
 from app.core.database import SessionLocal
+from app.core.return_context import issue_return_context, resolve_return_context
 from app.core.security import hash_password
 from app.models.admin import Permission, Role, RolePermission, User, UserRole
 from app.models.audit import AuditLog
@@ -766,6 +767,34 @@ def _layout_context(
 def _redirect(path: str, flag: str, value: str = "1") -> RedirectResponse:
     separator = "&" if "?" in path else "?"
     return RedirectResponse(f"{path}{separator}{flag}={value}", status_code=303)
+
+
+EVOLUTION_RETURN_PREFIXES = ("/v2-clean/admin/evolution",)
+
+
+def _evolution_return_context(request: Request) -> tuple[str, str]:
+    raw_token = request.query_params.get("return_context", "")
+    resolved = resolve_return_context(
+        settings.app_secret_key,
+        raw_token,
+        allowed_prefixes=EVOLUTION_RETURN_PREFIXES,
+    )
+    if resolved:
+        return raw_token, resolved.url
+    token = issue_return_context(
+        settings.app_secret_key,
+        path="/v2-clean/admin/evolution",
+    )
+    return token, "/v2-clean/admin/evolution"
+
+
+def _evolution_post_action_target(token: str, fallback: str) -> str:
+    resolved = resolve_return_context(
+        settings.app_secret_key,
+        token,
+        allowed_prefixes=EVOLUTION_RETURN_PREFIXES,
+    )
+    return resolved.url if resolved else fallback
 
 
 def _role_codes_for_user(db, user_id: int) -> set[str]:
@@ -4827,6 +4856,12 @@ def clean_admin_evolution(request: Request):
     status = query_params.get("status", "").strip()
     sort = query_params.get("sort", "updated")
     direction = query_params.get("direction", "desc")
+    foundation_enabled = settings.visual_foundation_enabled
+    return_context_token = issue_return_context(
+        settings.app_secret_key,
+        path=request.url.path,
+        query=str(request.url.query),
+    )
     sort_fields = {
         "created": EvolutionRecord.created_at,
         "updated": EvolutionRecord.updated_at,
@@ -4899,6 +4934,8 @@ def clean_admin_evolution(request: Request):
             users_by_id=all_users,
             teams_by_id=all_teams,
             can_manage=bool(permissions.intersection({"admin.evolution.manage", "admin.manage"})),
+            foundation_ui_enabled=foundation_enabled,
+            return_context_token=return_context_token,
         )
     return templates.TemplateResponse(request, "clean_admin.html", context)
 
@@ -4917,6 +4954,8 @@ def clean_admin_create_evolution_record(
     reference_chat: str = Form(""),
     reference_branch: str = Form(""),
     reference_commit: str = Form(""),
+    submit_action: str = Form("save"),
+    return_context: str = Form(""),
 ):
     access = _evolution_access(request, create=True)
     if not access:
@@ -4967,7 +5006,15 @@ def clean_admin_create_evolution_record(
             after_json=_evolution_record_snapshot(record),
         )
         db.commit()
-        return _redirect(f"/v2-clean/admin/evolution/{record.id}", "created")
+        if settings.visual_foundation_enabled and submit_action == "save_close":
+            return _redirect(
+                _evolution_post_action_target(return_context, "/v2-clean/admin/evolution"),
+                "created",
+            )
+        detail_url = f"/v2-clean/admin/evolution/{record.id}"
+        if settings.visual_foundation_enabled and return_context:
+            detail_url = f"{detail_url}?return_context={return_context}"
+        return _redirect(detail_url, "created")
 
 
 @clean_admin_router.post("/evolution/quick")
@@ -5037,6 +5084,7 @@ def clean_admin_evolution_detail(request: Request, record_id: int):
     if not access:
         return _denied(request)
     user_id, permissions = access
+    return_context_token, return_target = _evolution_return_context(request)
     with SessionLocal() as db:
         record = db.get(EvolutionRecord, record_id)
         if not record:
@@ -5095,6 +5143,9 @@ def clean_admin_evolution_detail(request: Request, record_id: int):
             users_by_id={item.id: item for item in users},
             teams_by_id={item.id: item for item in teams},
             can_manage=bool(permissions.intersection({"admin.evolution.manage", "admin.manage"})),
+            foundation_ui_enabled=settings.visual_foundation_enabled,
+            return_context_token=return_context_token,
+            return_target=return_target,
         )
     return templates.TemplateResponse(request, "clean_admin_evolution_detail.html", context)
 
@@ -5117,6 +5168,8 @@ def clean_admin_update_evolution_record(
     reference_chat: str = Form(""),
     reference_branch: str = Form(""),
     reference_commit: str = Form(""),
+    submit_action: str = Form("save"),
+    return_context: str = Form(""),
 ):
     access = _evolution_access(request, manage=True)
     if not access:
@@ -5193,7 +5246,15 @@ def clean_admin_update_evolution_record(
                 after_json=_evolution_record_snapshot(record),
             )
             db.commit()
-        return _redirect(f"/v2-clean/admin/evolution/{record_id}", "saved")
+        if settings.visual_foundation_enabled and submit_action == "save_close":
+            return _redirect(
+                _evolution_post_action_target(return_context, "/v2-clean/admin/evolution"),
+                "saved",
+            )
+        detail_url = f"/v2-clean/admin/evolution/{record_id}"
+        if settings.visual_foundation_enabled and return_context:
+            detail_url = f"{detail_url}?return_context={return_context}"
+        return _redirect(detail_url, "saved")
 
 
 @clean_admin_router.post("/v2-clean/admin/evolution/{record_id}/comments")

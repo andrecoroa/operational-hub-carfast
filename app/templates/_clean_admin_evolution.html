@@ -1,4 +1,8 @@
-<header class="clean-admin-section-header clean-card-wide">
+{% import "_ui_primitives.html" as ui %}
+{% if foundation_ui_enabled %}
+{{ ui.breadcrumbs([{'label':'Administração','href':'/v2-clean/admin'}, {'label':'Evolução da aplicação','href':''}]) }}
+{% endif %}
+<header class="clean-admin-section-header clean-card-wide{% if foundation_ui_enabled %} ui-page-header ui-surface{% endif %}">
   <div>
     <p class="eyebrow">Administração / Evolução da aplicação</p>
     <h2>Evolução da aplicação</h2>
@@ -13,7 +17,7 @@
       <a href="/v2-clean/admin/evolution?status={{ code }}" class="pill muted-pill">{{ label }} · {{ evolution_status_counts.get(code, 0) }}</a>
     {% endfor %}
   </div>
-  <form class="clean-admin-filter-form evolution-filter-form" method="get" action="/v2-clean/admin/evolution">
+  <form class="clean-admin-filter-form evolution-filter-form{% if foundation_ui_enabled %} ui-filter-bar{% endif %}" method="get" action="/v2-clean/admin/evolution">
     <label>Pesquisa<input name="q" value="{{ evolution_filters.q }}" placeholder="título, descrição, origem ou referência"></label>
     <label>Tipo<select name="record_type"><option value="">Todos</option>{% for code,label in evolution_type_labels.items() %}<option value="{{ code }}" {% if evolution_filters.record_type == code %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
     <label>Módulo<select name="module"><option value="">Todos</option>{% for code,label in admin_module_labels.items() %}<option value="{{ code }}" {% if evolution_filters.module == code %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
@@ -30,6 +34,7 @@
 <details class="clean-panel clean-card-wide evolution-create">
   <summary><strong>Novo registo</strong><span>Registar sem converter imediatamente em trabalho</span></summary>
   <form class="clean-admin-form evolution-form" method="post" action="/v2-clean/admin/evolution">
+    {% if foundation_ui_enabled %}<input type="hidden" name="return_context" value="{{ return_context_token }}">{% endif %}
     <label>Tipo<select name="record_type" required>{% for code,label in quick_evolution_type_labels.items() %}<option value="{{ code }}">{{ label }}</option>{% endfor %}</select></label>
     <label>Módulo<select name="module" required>{% for code,label in admin_module_labels.items() %}<option value="{{ code }}">{{ label }}</option>{% endfor %}</select></label>
     <label>Prioridade<select name="priority" required>{% for code,label in evolution_priority_labels.items() %}<option value="{{ code }}" {% if code == 'normal' %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
@@ -42,21 +47,22 @@
     <label>Branch<input name="reference_branch" maxlength="255"></label>
     <label>Commit<input name="reference_commit" maxlength="80"></label>
     <button type="submit">Registar</button>
+    {% if foundation_ui_enabled %}{{ ui.button('Registar e fechar', 'submit', 'secondary', 'submit_action', 'save_close') }}{% endif %}
   </form>
 </details>
 {% endif %}
 
 <section class="clean-panel clean-card-wide">
   <div class="table-heading flat-heading"><div><p class="eyebrow">Até 500 resultados</p><h3>Registos</h3></div></div>
-  <div class="table-wrap">
+  <div class="table-wrap{% if foundation_ui_enabled %} ui-table-container{% endif %}"{% if foundation_ui_enabled %} tabindex="0" role="region" aria-label="Registos de evolução"{% endif %}>
     <table class="evolution-table">
       <thead><tr><th>ID</th><th>Tipo / módulo</th><th>Título</th><th>Origem</th><th>Prioridade</th><th>Estado</th><th>Responsável</th><th>Atualização</th></tr></thead>
       <tbody>
         {% for item in evolution_records %}
           <tr>
-            <td><a href="/v2-clean/admin/evolution/{{ item.id }}">#{{ item.id }}</a></td>
+            <td><a href="/v2-clean/admin/evolution/{{ item.id }}{% if foundation_ui_enabled %}?return_context={{ return_context_token|urlencode }}{% endif %}">#{{ item.id }}</a></td>
             <td><strong>{{ evolution_type_labels[item.record_type] }}</strong><small>{{ admin_module_labels[item.module] }}</small></td>
-            <td><a href="/v2-clean/admin/evolution/{{ item.id }}"><strong>{{ item.title }}</strong></a><small>{{ item.description|truncate(100) }}</small></td>
+            <td><a href="/v2-clean/admin/evolution/{{ item.id }}{% if foundation_ui_enabled %}?return_context={{ return_context_token|urlencode }}{% endif %}"><strong>{{ item.title }}</strong></a><small>{{ item.description|truncate(100) }}</small></td>
             <td>{{ item.origin or '—' }}</td>
             <td><span class="pill muted-pill">{{ evolution_priority_labels[item.priority] }}</span></td>
             <td><span class="clean-status-pill {{ 'is-active' if item.status in ['approved','implementation','completed'] else 'is-inactive' }}">{{ evolution_status_labels[item.status] }}</span></td>

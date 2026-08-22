@@ -11,7 +11,7 @@ from collections import Counter
 from pathlib import Path
 from typing import Any
 
-from app.main import WEB_PERMISSION_RULES, app
+from app.main import WEB_PERMISSION_RULES
 from app.services.authorization import PERMISSION_ALIASES
 from app.services.navigation import (
     NAVIGATION_FUNCTIONAL_SOURCES,
@@ -40,18 +40,15 @@ def _canonical(value: Any) -> Any:
 
 def _routes() -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
-    for route in app.routes:
-        methods = getattr(route, "methods", None)
-        if not methods or not getattr(route, "include_in_schema", False):
-            continue
-        rows.append(
-            {
-                "path": route.path,
-                "methods": sorted(methods),
-                "name": route.name,
-            }
-        )
-    return sorted(rows, key=lambda row: (row["path"], row["methods"], row["name"]))
+    decorator = re.compile(
+        r"@(?:router|app)\.(delete|get|head|options|patch|post|put)"
+        r"\(\s*[f]?['\"]([^'\"]+)"
+    )
+    for source in sorted((PROJECT_ROOT / "app").rglob("*.py")):
+        relative = source.relative_to(PROJECT_ROOT).as_posix()
+        for method, path in decorator.findall(source.read_text(encoding="utf-8")):
+            rows.append({"path": path, "methods": [method.upper()], "source": relative})
+    return sorted(rows, key=lambda row: (row["source"], row["path"], row["methods"]))
 
 
 def _source_baseline() -> dict[str, Any]:

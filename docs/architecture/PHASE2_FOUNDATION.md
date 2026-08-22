@@ -16,8 +16,10 @@ post-action behaviour remain operational.
 ## Frozen baseline
 
 `scripts/capture_architecture_baseline.py` records deterministic counts and hashes
-for routes, permissions, legacy aliases, navigation composition, redirects, form
-actions and SQLAlchemy tables. It contains no record values or secrets.
+for declared route decorators, permissions, legacy aliases, navigation composition,
+redirects, form actions and SQLAlchemy tables. It contains no record values or
+secrets. Source declarations avoid environment-dependent router introspection while
+still detecting additions, removals and destination changes.
 
 ```bash
 python -m scripts.capture_architecture_baseline

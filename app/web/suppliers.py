@@ -5,21 +5,24 @@ from collections import defaultdict
 
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 
 from app.api.deps import DbSession
+from app.core.config import settings
 from app.models.admin import User
 from app.models.audit import AuditLog
 from app.models.documents import Document, DocumentLink
 from app.models.email import EmailTemplate
-from app.models.stock import StockInvoiceImport, StockSupplier
+from app.models.stock import StockInvoiceImport
 from app.models.suppliers import (
     SupplierAddress,
     SupplierContact,
     SupplierType,
     SupplierTypeAssignment,
 )
+from app.partners.compat import StockSupplier
+from app.partners.facade import PartnersFacade
 from app.services.audit import record_audit
 from app.services.authorization import get_user_permission_codes
 from app.web.router import templates
@@ -63,22 +66,8 @@ def supplier_list(request: Request, db: DbSession, q: str = "", state: str = "ac
     if isinstance(access, RedirectResponse):
         return access
     user, permissions = access
-    statement = select(StockSupplier).order_by(StockSupplier.name)
-    if state == "active":
-        statement = statement.where(StockSupplier.active.is_(True))
-    elif state == "inactive":
-        statement = statement.where(StockSupplier.active.is_(False))
-    if q.strip():
-        token = f"%{q.strip()}%"
-        statement = statement.where(
-            or_(
-                StockSupplier.name.ilike(token),
-                StockSupplier.legal_name.ilike(token),
-                StockSupplier.tax_id.ilike(token),
-                StockSupplier.email.ilike(token),
-            )
-        )
-    suppliers = list(db.scalars(statement))
+    active = True if state == "active" else False if state == "inactive" else None
+    suppliers = PartnersFacade(db).list_records(query=q, active=active)
     supplier_ids = [item.id for item in suppliers]
     type_rows = db.execute(
         select(SupplierTypeAssignment.supplier_id, SupplierType)
@@ -108,6 +97,7 @@ def supplier_list(request: Request, db: DbSession, q: str = "", state: str = "ac
             "q": q,
             "state": state,
             "can_edit": bool(permissions.intersection({"suppliers.write", "admin.manage"})),
+            "foundation_ui_enabled": settings.visual_foundation_enabled,
         },
     )
 
@@ -163,7 +153,7 @@ def supplier_detail(request: Request, supplier_id: int, db: DbSession):
     if isinstance(access, RedirectResponse):
         return access
     user, permissions = access
-    supplier = db.get(StockSupplier, supplier_id)
+    supplier = PartnersFacade(db).get_record(supplier_id)
     if not supplier:
         return RedirectResponse("/v2-clean/suppliers?error=missing", status_code=303)
     document_rows = db.execute(
@@ -200,6 +190,7 @@ def supplier_detail(request: Request, supplier_id: int, db: DbSession):
             "audit_users": {item.id: item for item in db.scalars(select(User))},
             "can_edit": bool(permissions.intersection({"suppliers.write", "admin.manage"})),
             "can_email": bool(permissions.intersection({"email.reply", "email.manage", "admin.manage"})) and supplier.active and bool(supplier.email),
+            "foundation_ui_enabled": settings.visual_foundation_enabled,
         },
     )
 

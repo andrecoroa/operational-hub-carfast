@@ -35,10 +35,10 @@ from app.models.email import (
     EmailThreadLink,
 )
 from app.models.organization import Team, TeamMember
-from app.models.stock import StockSupplier
 from app.models.suppliers import SupplierTypeAssignment
 from app.models.tasks import Task, TaskEmailOrigin
 from app.models.work_hierarchy import WorkCategory, WorkDepartment, WorkQueue, WorkSubcategory
+from app.partners.compat import StockSupplier
 from app.services.authorization import get_user_permission_codes
 from app.services.classification_proposals import (
     attach_selection_to_entity,

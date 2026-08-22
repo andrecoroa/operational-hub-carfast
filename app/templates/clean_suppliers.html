@@ -2,18 +2,18 @@
 {% block body %}
 <div class="app-shell clean-shell">
   {% set active_menu = "suppliers" %}{% include "_sidebar.html" %}
-  <main class="content clean-content supplier-page">
-    <header class="supplier-hero">
+  <main class="content clean-content supplier-page{% if foundation_ui_enabled %} ui-foundation{% endif %}">
+    <header class="supplier-hero{% if foundation_ui_enabled %} ui-page-header ui-surface{% endif %}">
       <div><p class="eyebrow">Entidade transversal</p><h1>Fornecedores</h1><p>Uma ficha reutilizável por Stock, Oficina, Frota, Financeiro e Documentação.</p></div>
       {% if can_edit %}<button type="button" data-dialog-open="supplier-create">Novo fornecedor</button>{% endif %}
     </header>
     {% if request.query_params.get('error') %}<div class="clean-alert-warning">Não foi possível concluir: {{ request.query_params.get('error') }}.</div>{% endif %}
-    <form class="supplier-filter" method="get">
+    <form class="supplier-filter{% if foundation_ui_enabled %} ui-filter-bar{% endif %}" method="get">
       <label>Pesquisar<input name="q" value="{{ q }}" placeholder="Nome, NIF, email"></label>
       <label>Estado<select name="state"><option value="active" {% if state == 'active' %}selected{% endif %}>Ativos</option><option value="all" {% if state == 'all' %}selected{% endif %}>Todos</option><option value="inactive" {% if state == 'inactive' %}selected{% endif %}>Inativos</option></select></label>
       <button>Filtrar</button>
     </form>
-    <section class="supplier-card supplier-table-wrap"><table class="supplier-table"><thead><tr><th>Fornecedor</th><th>NIF/VAT</th><th>Contacto</th><th>Tipos de fornecimento</th><th>Estado</th></tr></thead><tbody>
+    <section class="supplier-card supplier-table-wrap{% if foundation_ui_enabled %} ui-table-container{% endif %}"{% if foundation_ui_enabled %} tabindex="0" role="region" aria-label="Parceiros e fornecedores"{% endif %}><table class="supplier-table"><thead><tr><th>Fornecedor</th><th>NIF/VAT</th><th>Contacto</th><th>Tipos de fornecimento</th><th>Estado</th></tr></thead><tbody>
       {% for supplier in suppliers %}<tr><td><a href="/v2-clean/suppliers/{{ supplier.id }}"><strong>{{ supplier.name }}</strong></a><small>{{ supplier.legal_name or '' }}</small></td><td>{{ supplier.tax_id or '-' }}</td><td>{{ supplier.email or '-' }}<small>{{ supplier.phone or '' }}</small></td><td>{% for item in types_by_supplier.get(supplier.id, []) %}<span class="supplier-chip">{{ item.name }}</span>{% else %}<span class="supplier-muted">Sem tipo</span>{% endfor %}</td><td><span class="clean-status-pill {{ 'is-active' if supplier.active else 'is-inactive' }}">{{ 'Ativo' if supplier.active else 'Inativo' }}</span></td></tr>
       {% else %}<tr><td colspan="5" class="supplier-empty">Sem fornecedores neste filtro.</td></tr>{% endfor %}
     </tbody></table></section>

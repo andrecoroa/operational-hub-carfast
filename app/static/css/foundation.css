@@ -43,7 +43,7 @@
 
 *, *::before, *::after { box-sizing: border-box; }
 html, body { max-width: 100%; overflow-x: clip; }
-.ui-foundation { min-width: 0; color: var(--ui-color-text); font-family: var(--ui-font-sans); }
+.ui-foundation { box-sizing: border-box; width: 100%; max-width: 100%; min-width: 0; color: var(--ui-color-text); font-family: var(--ui-font-sans); }
 .ui-surface { min-width: 0; background: var(--ui-color-surface); border: 1px solid var(--ui-color-border); border-radius: var(--ui-radius-md); box-shadow: var(--ui-elevation-1); }
 .ui-page-header { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--ui-space-5); padding: var(--ui-space-6); }
 .ui-page-header__copy { min-width: 0; }

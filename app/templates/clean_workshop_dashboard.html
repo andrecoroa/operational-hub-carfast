@@ -45,23 +45,53 @@
           <span>Cada contador mostra o total disponível nesse conjunto. A tabela abaixo apresenta classificação, fase atual e situação do processo.</span>
         </div>
         <nav class="clean-workshop-scope-row" aria-label="Filtro de processos de oficina">
-          <a class="{% if scope == 'open' %}active{% endif %}" href="/v2-clean/workshop?scope=open">
+          <a class="{% if scope == 'open' %}active{% endif %}" href="/v2-clean/workshop?scope=open&amp;{{ filter_query }}">
             <span>Processos abertos</span>
             <strong>{{ metrics.open }}</strong>
           </a>
-          <a class="{% if scope == 'closed' %}active{% endif %}" href="/v2-clean/workshop?scope=closed">
+          <a class="{% if scope == 'closed' %}active{% endif %}" href="/v2-clean/workshop?scope=closed&amp;{{ filter_query }}">
             <span>Processos fechados</span>
             <strong>{{ metrics.closed }}</strong>
           </a>
-          <a class="{% if scope == 'cancelled' %}active{% endif %}" href="/v2-clean/workshop?scope=cancelled">
+          <a class="{% if scope == 'cancelled' %}active{% endif %}" href="/v2-clean/workshop?scope=cancelled&amp;{{ filter_query }}">
             <span>Processos cancelados</span>
             <strong>{{ metrics.cancelled }}</strong>
           </a>
-          <a class="{% if scope == 'all' %}active{% endif %}" href="/v2-clean/workshop?scope=all">
+          <a class="{% if scope == 'all' %}active{% endif %}" href="/v2-clean/workshop?scope=all&amp;{{ filter_query }}">
             <span>Todos os processos</span>
             <strong>{{ metrics.total }}</strong>
           </a>
         </nav>
+        <form class="clean-workshop-dashboard-filters" method="get" action="/v2-clean/workshop">
+          <input type="hidden" name="scope" value="{{ scope }}">
+          <label>
+            <span>Local</span>
+            <select name="location">
+              <option value="all" {% if location == 'all' %}selected{% endif %}>Todos</option>
+              <option value="internal" {% if location == 'internal' %}selected{% endif %}>Oficina interna</option>
+              <option value="external" {% if location == 'external' %}selected{% endif %}>Oficina externa</option>
+            </select>
+          </label>
+          <label>
+            <span>Fase atual</span>
+            <select name="phase">
+              <option value="all" {% if phase == 'all' %}selected{% endif %}>Todas</option>
+              {% for option in phase_options %}
+                <option value="{{ option.value }}" {% if phase == option.value %}selected{% endif %}>{{ option.label }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label>
+            <span>Estado</span>
+            <select name="situation">
+              <option value="all" {% if situation == 'all' %}selected{% endif %}>Todos</option>
+              <option value="in_progress" {% if situation == 'in_progress' %}selected{% endif %}>Em curso</option>
+              <option value="waiting" {% if situation == 'waiting' %}selected{% endif %}>Em espera</option>
+            </select>
+          </label>
+          <button type="submit">Aplicar filtros</button>
+          <a href="/v2-clean/workshop?scope={{ scope }}">Limpar</a>
+        </form>
         <div class="clean-workshop-list-head">
           <span>Viatura / processo</span>
           <span>Abertura / tempo</span>
@@ -104,6 +134,9 @@
                   {% if row.operational_situation == 'waiting' %}
                     <form method="post" action="/v2-clean/workshop/{{ process.id }}/operational-situation">
                       <input type="hidden" name="scope" value="{{ scope }}">
+                      <input type="hidden" name="location" value="{{ location }}">
+                      <input type="hidden" name="phase" value="{{ phase }}">
+                      <input type="hidden" name="situation" value="{{ situation }}">
                       <button type="submit" name="action" value="resume" class="clean-workshop-situation-action">Retomar</button>
                     </form>
                   {% else %}
@@ -111,6 +144,9 @@
                       <summary>Colocar em espera</summary>
                       <form method="post" action="/v2-clean/workshop/{{ process.id }}/operational-situation">
                         <input type="hidden" name="scope" value="{{ scope }}">
+                        <input type="hidden" name="location" value="{{ location }}">
+                        <input type="hidden" name="phase" value="{{ phase }}">
+                        <input type="hidden" name="situation" value="{{ situation }}">
                         <select name="waiting_reason" required>
                           <option value="">Motivo da espera</option>
                           <option>A aguardar peças</option>
@@ -128,6 +164,9 @@
             </div>
           {% else %}
             <p class="muted">
+              {% if location != 'all' or phase != 'all' or situation != 'all' %}
+                Nenhum processo corresponde aos filtros selecionados.
+              {% else %}
               {% if scope == "closed" %}
                 Ainda sem processos de Oficina fechados nesta experiência.
               {% elif scope == "cancelled" %}
@@ -136,6 +175,7 @@
                 Ainda sem processos de Oficina nesta experiência.
               {% else %}
                 Ainda sem processos de Oficina abertos nesta experiência.
+              {% endif %}
               {% endif %}
             </p>
           {% endfor %}

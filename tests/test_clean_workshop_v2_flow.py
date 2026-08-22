@@ -274,6 +274,17 @@ def test_workshop_dashboard_shows_operational_context_and_updates_situation(
     assert "Ruído ao travar" in dashboard.text
     assert "Oficina Parceira" in dashboard.text
     assert "Colocar em espera" in dashboard.text
+    assert "Fase atual" in dashboard.text
+    assert "Em espera" in dashboard.text
+
+    filtered = authenticated_client.get(
+        "/v2-clean/workshop?scope=open&location=external&phase=entrada&situation=in_progress"
+    )
+    assert filtered.status_code == 200
+    assert "WX-10-AA" in filtered.text
+    assert 'value="external" selected' in filtered.text
+    internal = authenticated_client.get("/v2-clean/workshop?location=internal")
+    assert "WX-10-AA" not in internal.text
 
     missing_reason = authenticated_client.post(
         f"/v2-clean/workshop/{process.id}/operational-situation",
@@ -300,6 +311,14 @@ def test_workshop_dashboard_shows_operational_context_and_updates_situation(
     waiting_dashboard = authenticated_client.get("/v2-clean/workshop")
     assert "A aguardar peças" in waiting_dashboard.text
     assert "Retomar" in waiting_dashboard.text
+    waiting_filtered = authenticated_client.get(
+        "/v2-clean/workshop?location=external&phase=entrada&situation=waiting"
+    )
+    assert "WX-10-AA" in waiting_filtered.text
+    in_progress_filtered = authenticated_client.get(
+        "/v2-clean/workshop?location=external&phase=entrada&situation=in_progress"
+    )
+    assert "WX-10-AA" not in in_progress_filtered.text
 
     resumed = authenticated_client.post(
         f"/v2-clean/workshop/{process.id}/operational-situation",

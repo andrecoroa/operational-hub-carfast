@@ -7254,12 +7254,34 @@ async def clean_workshop_diagnostic_catalog_update(
     )
 
 @web_router.get("/v2-clean/workshop", response_class=HTMLResponse)
-def clean_workshop_dashboard(request: Request, scope: str = "open"):
+def clean_workshop_dashboard(
+    request: Request,
+    scope: str = "open",
+    location: str = "all",
+    phase: str = "all",
+    situation: str = "all",
+):
     denied = clean_experience_denied(request)
     if denied:
         return denied
     if scope not in {"open", "closed", "cancelled", "all"}:
         scope = "open"
+    if location not in {"all", "internal", "external"}:
+        location = "all"
+    if situation not in {"all", "in_progress", "waiting"}:
+        situation = "all"
+    phase_options = [
+        {"value": str(step["key"]), "label": str(step["label"])}
+        for step in CLEAN_WORKSHOP_STEP_DEFS
+    ]
+    if phase not in {"all", *(option["value"] for option in phase_options)}:
+        phase = "all"
+    filter_params = {
+        "location": location,
+        "phase": phase,
+        "situation": situation,
+    }
+    filter_query = urlencode(filter_params)
     with SessionLocal() as db:
         v2_process_filter = or_(
             WorkshopPhasedProcess.origin == "v2_clean",
@@ -7344,10 +7366,12 @@ def clean_workshop_dashboard(request: Request, scope: str = "open"):
             recent_query = recent_query.where(WorkshopPhasedProcess.status == "closed")
         elif scope == "cancelled":
             recent_query = recent_query.where(WorkshopPhasedProcess.status == "cancelled")
+        if phase != "all":
+            recent_query = recent_query.where(WorkshopPhasedProcess.current_phase_code == phase)
         recent_processes = db.scalars(
             recent_query.order_by(
                 WorkshopPhasedProcess.updated_at.desc(), WorkshopPhasedProcess.id.desc()
-            ).limit(40)
+            ).limit(250 if location != "all" or situation != "all" else 40)
         ).all()
         process_rows: list[dict[str, object]] = []
         now = datetime.now(UTC)
@@ -7389,8 +7413,7 @@ def clean_workshop_dashboard(request: Request, scope: str = "open"):
                 operational_situation = "closed"
             elif process.status == "cancelled":
                 operational_situation = "cancelled"
-            process_rows.append(
-                {
+            row = {
                     "process": process,
                     "opened_at": opened_at,
                     "elapsed_days": elapsed_days,
@@ -7401,7 +7424,15 @@ def clean_workshop_dashboard(request: Request, scope: str = "open"):
                     "operational_situation": operational_situation,
                     "waiting_reason": str(metadata.get("operational_waiting_reason") or "").strip(),
                 }
-            )
+            if location != "all" and (
+                (location == "external") != (row["location_type"] == "Externa")
+            ):
+                continue
+            if situation != "all" and row["operational_situation"] != situation:
+                continue
+            process_rows.append(row)
+            if len(process_rows) == 40:
+                break
         return templates.TemplateResponse(
             request,
             "clean_workshop_dashboard.html",
@@ -7418,6 +7449,11 @@ def clean_workshop_dashboard(request: Request, scope: str = "open"):
                 "recent_processes": recent_processes,
                 "process_rows": process_rows,
                 "scope": scope,
+                "location": location,
+                "phase": phase,
+                "situation": situation,
+                "phase_options": phase_options,
+                "filter_query": filter_query,
             },
         )
 
@@ -7433,15 +7469,22 @@ async def clean_workshop_operational_situation_save(request: Request, process_id
     return_scope = str(form.get("scope") or "open").strip().lower()
     if return_scope not in {"open", "closed", "cancelled", "all"}:
         return_scope = "open"
+    return_filters = {
+        "scope": return_scope,
+        "location": str(form.get("location") or "all"),
+        "phase": str(form.get("phase") or "all"),
+        "situation": str(form.get("situation") or "all"),
+    }
+    return_query = urlencode(return_filters)
     if action not in {"wait", "resume"} or (action == "wait" and not waiting_reason):
         return RedirectResponse(
-            f"/v2-clean/workshop?scope={return_scope}&situation_error=invalid",
+            f"/v2-clean/workshop?{return_query}&situation_error=invalid",
             status_code=303,
         )
     with SessionLocal() as db:
         process = db.get(WorkshopPhasedProcess, process_id)
         if not process or process.status in {"closed", "cancelled"}:
-            return RedirectResponse(f"/v2-clean/workshop?scope={return_scope}", status_code=303)
+            return RedirectResponse(f"/v2-clean/workshop?{return_query}", status_code=303)
         metadata = dict(process.metadata_json or {}) if isinstance(process.metadata_json, dict) else {}
         before = {
             "operational_situation": metadata.get("operational_situation"),
@@ -7471,7 +7514,7 @@ async def clean_workshop_operational_situation_save(request: Request, process_id
         )
         db.commit()
     return RedirectResponse(
-        f"/v2-clean/workshop?scope={return_scope}#workshop-process-{process_id}",
+        f"/v2-clean/workshop?{return_query}#workshop-process-{process_id}",
         status_code=303,
     )
 

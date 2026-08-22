@@ -167,6 +167,10 @@ States:
 | removed-code | no | through retained reader/export policy | not loaded | preserved per retention |
 
 `hidden` is not a module state; it is a per-user navigation outcome. Required Core cannot be disabled.
+The catalogue records modules, capabilities, dependencies and installed/configured
+version. Its only installation lifecycle states are `available`, `active`,
+`disabled` and `retiring`; `removed-code` above describes a later retention
+condition, not a selectable catalogue state.
 
 ### Manifest contract
 
@@ -238,10 +242,14 @@ Canonical shape:
 
 ```text
 entity_type, entity_id, installation_id,
-display_snapshot, source_version, linked_at, linked_by
+display_snapshot, contract_version, source_version, linked_at, linked_by
 ```
 
 References are validated through the owner when active. Snapshots support historical readability but never become a second master record.
+An `EntityReference` is immutable after publication, carries an explicit contract
+version and retains the minimum display snapshot needed to read historical context
+when the owner is disabled or unavailable. Corrections create a superseding
+reference rather than rewriting published evidence.
 
 ### Events
 
@@ -258,6 +266,9 @@ owner_module, entity_reference, payload
 Initial event families: task lifecycle, process lifecycle, communication received/delivered, document received/classified/linked, vehicle state changed, workshop material requested, stock movement recorded and partner changed.
 
 Handlers must be idempotent. Failed optional handlers enter an audited retry/dead-letter state and do not roll back an already-valid owner transaction unless the contract explicitly requires atomicity.
+Published events and their envelopes are immutable and versioned. Compatibility is
+handled by version-aware consumers/upcasters; an emitted event is never edited in
+place. The reference snapshot included in an event is deliberately minimal.
 
 ## 8. Controlled degradation
 
@@ -291,6 +302,11 @@ AND scope allows entity
 AND restrictions allow fields/action
 AND contextual policy passes
 ```
+
+The default is deny. One policy-decision result is consumed by server-side
+authorization and by UI composition; hiding a control never replaces server
+enforcement. During transition, a legacy adapter translates current grants and
+restrictions into the canonical decision without broadening effective access.
 
 ### Actions
 
@@ -366,6 +382,10 @@ This replaces the current overlapping flat navigation, domain directory and tech
 
 ## 11. Visual system target
 
+The incremental implementation uses CSS Custom Properties and the existing
+template macros/components. No new CSS or JavaScript UI framework is introduced
+for this consolidation.
+
 ### Tokens
 
 - colour: semantic surface/text/border/action/success/warning/danger/info tokens;
@@ -396,6 +416,7 @@ Tables scroll inside their container, keep actions discoverable and provide a ca
 
 ### Accessibility/responsiveness gates
 
+- WCAG 2.2 AA is the acceptance baseline;
 - keyboard navigation and visible focus;
 - labelled controls and errors linked to fields;
 - contrast and non-colour state indicators;
@@ -442,15 +463,9 @@ Passing these tests proves extensibility; it does not authorize those modules.
 
 ## 14. Decisions required before implementation
 
-These are technical governance decisions, not blockers to this target specification:
-
-1. Choose the exact package-root names and migration sequence for `core_platform` and modules.
-2. Approve the catalogue schema and whether capability state is stored separately from module state.
-3. Approve the canonical `EntityReference`, event envelope and compatibility version policy.
-4. Approve permission action vocabulary, scope intersection rules and default-deny migration.
-5. Select token values and the initial accessible component implementation approach.
-6. Approve retention/read policy for disabled and removed-code modules.
-7. Define which current seeded rows are reference data versus CarFast installation configuration.
-8. Approve the first characterization slice and measurable acceptance baseline.
-9. Approve migration maintenance windows, backup targets and rollback authority before any production rehearsal.
-10. Decide whether automatic Render PR previews must be disabled before future structural PRs to avoid unintended resources.
+The architectural choices above are approved. Phase 2 starts with characterization
+and the Core composition foundation only; it does not move a real domain module.
+Remaining implementation decisions must stay inside that approved slice: exact
+package names, the additive catalogue DDL after review, baseline metric format and
+the detailed compatibility mapping. Production rehearsal, anonymized data,
+staging, costs and any legacy retirement still require separate approval.

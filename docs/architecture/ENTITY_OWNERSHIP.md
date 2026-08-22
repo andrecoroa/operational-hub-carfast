@@ -23,7 +23,7 @@ No **R?** item may be removed based on this document alone.
 | `organizational_units`, `user_organizational_units`, `teams`, `team_members` | Core Organization | C; remove CarFast-specific seeds from clean path |
 | `settings_catalogs`, `settings_values` | Core Settings | A; add owner/schema/secret/environment metadata |
 | `audit_log` | Core Audit | C; immutable envelope/correlation expansion |
-| `evolution_records`, comments/history/documents | Core product feedback or Service Desk | HYPOTHESIS: keep as Core governance until functional owner approved |
+| `evolution_records`, comments/history/documents | Core Evolution | DECISION |
 | `pilot_feedback` | Core product feedback | R? after evidence/retention decision |
 
 New Core-owned tables are required for installation, module catalogue/state, event outbox, notification registry, search provider state and job execution. Their creation is not authorized in Phase 1.
@@ -45,7 +45,7 @@ New Core-owned tables are required for installation, module catalogue/state, eve
 | `email_channel_users`, roles, executor eligibilities, templates, thread links | Email/Communications | C; access decisions delegated to Core policy |
 | `email_intakes`, `email_intake_attachments` | Email legacy intake | A/H; reconcile with canonical email records |
 | `management_process_types`, processes, associations, rules, actions, evidences, history | Processes | A; characterize current management centre flows |
-| `claim_incidents`, `claim_rentway_ars`, `claim_refstro_lines` | Processes or Automotive incidents | HYPOTHESIS; decide by lifecycle, not screen location |
+| `claim_incidents`, `claim_rentway_ars`, `claim_refstro_lines` | Automotive incidents/claims | DECISION; any associated task remains owned by Service Desk |
 
 ### Document Management
 
@@ -54,9 +54,9 @@ New Core-owned tables are required for installation, module catalogue/state, eve
 | `documents`, `document_events`, `document_workflow_states` | Documents | C; generic `status` becomes A during transition |
 | `document_links` | Documents | C contract link |
 | `diagnostic_documents`, `diagnostic_extractions` | Documents with Automotive document profile | C; Automotive supplies interpretation contract |
-| `vehicle_document_records`, tags, alerts, pending actions, audit fields | Documents or Automotive/Fleet | A; split generic document ownership from vehicle operational projections |
+| `vehicle_document_records`, tags, alerts, pending actions, audit fields | Documents + Automotive/Fleet split | DECISION; document/binary/metadata belong to Documents, operational requirement/association/projection to Automotive |
 | `task_documents` | Documents↔Service Desk association | A; replace direct shared-table assumption with link contract |
-| `import_batches`, files, raw rows, errors, mappings | Core technical import framework or owning module | HYPOTHESIS: framework metadata Core, import definition/results owned by module |
+| `import_batches`, files, raw rows, errors, mappings | Common technical framework + owning module | DECISION; framework mechanics are common, imported data and business results belong to the relevant module |
 | `photo_action_definitions` | owning module configuration | A; manifest contribution |
 | `photo_media`, capture sessions/items | Documents/media service | A; binary ownership and business workflow must separate |
 
@@ -72,7 +72,7 @@ New Core-owned tables are required for installation, module catalogue/state, eve
 | `workshop_templates`, versions, diagnostic catalogue/suggestions, counters | Workshop configuration | C; installation/reference classification required |
 | `workshop_material_needs` | Workshop | C request; Stock fulfils through contract |
 | `workshop_processes`, notes, evidences, services, readings | Workshop legacy | A/H until every active/historical process reconciles |
-| `incidents`, evidences, events | Automotive shared incident capability or Workshop | HYPOTHESIS based on actual flows |
+| `incidents`, evidences, events | Automotive shared incident capability | DECISION |
 | `vehicle_sale_profiles`, images, publications, leads, proposals, proposal lines | Vehicle Sales | C |
 | `portal_organizations`, users, invitations, publication access | Vehicle Sales external access adapter | A; hypothetical future portal is not designed here |
 
@@ -106,15 +106,15 @@ New Core-owned tables are required for installation, module catalogue/state, eve
 | Core Identity/Access | `users`, `roles`, `permissions`, `user_roles`, `role_permissions` |
 | Core Organization | `organizational_units`, `user_organizational_units`, `teams`, `team_members` |
 | Core Settings/Audit | `settings_catalogs`, `settings_values`, `audit_log` |
-| Core product governance (provisional) | `evolution_records`, `evolution_record_comments`, `evolution_record_history`, `evolution_record_documents`, `pilot_feedback` |
-| Core/module import framework (ownership split pending) | `import_batches`, `import_files`, `import_raw_rows`, `import_errors`, `import_mappings` |
+| Core Evolution | `evolution_records`, `evolution_record_comments`, `evolution_record_history`, `evolution_record_documents`, `pilot_feedback` |
+| Common import framework; business payload owned by source module | `import_batches`, `import_files`, `import_raw_rows`, `import_errors`, `import_mappings` |
 | Service Desk — Tasks | `tasks`, `task_comments`, `task_documents`, `task_history`, `task_assignment_events`, `task_sla_events`, `task_participants`, `task_email_origins`, `task_help_requests`, `task_notifications`, `task_guided_flow_runs`, `task_guided_flow_step_runs`, `task_recurrence_templates`, `task_recurrence_occurrences`, `quick_records` |
 | Service Desk — classification/access | `work_queues`, `work_departments`, `work_categories`, `work_subcategories`, `service_desk_ticket_types`, `service_desk_category_policies`, `service_desk_category_supervisors`, `service_desk_category_executors`, `role_work_scopes`, `work_source_defaults`, `classification_sequences`, `classification_proposals`, `classification_proposal_usages`, `classification_proposal_audits` |
 | Service Desk — Email | `email_channels`, `email_channel_aliases`, `email_inbox_rules`, `email_threads`, `email_messages`, `email_attachments`, `email_webhook_events`, `email_message_deliveries`, `email_audit_events`, `email_channel_users`, `email_channel_roles`, `email_executor_eligibilities`, `email_templates`, `email_thread_links`, `email_intakes`, `email_intake_attachments` |
-| Service Desk — Processes | `management_process_types`, `management_processes`, `management_process_associations`, `management_rules`, `management_actions`, `management_evidences`, `management_history`, `claim_incidents`, `claim_rentway_ars`, `claim_refstro_lines` |
+| Service Desk — Processes | `management_process_types`, `management_processes`, `management_process_associations`, `management_rules`, `management_actions`, `management_evidences`, `management_history` |
 | Document Management | `documents`, `document_links`, `document_events`, `document_workflow_states`, `diagnostic_documents`, `diagnostic_extractions`, `vehicle_document_records`, `vehicle_document_record_tags`, `vehicle_document_alerts`, `vehicle_document_pending_actions`, `vehicle_document_audit_fields`, `photo_action_definitions`, `photo_media`, `photo_capture_sessions`, `photo_capture_items` |
 | Automotive — Vehicle/Fleet | `vehicles`, `vehicle_identifiers`, `vehicle_lifecycle_events`, `vehicle_operational_status_events`, `vehicle_manual_fields`, `vehicle_external_snapshots`, `vehicle_financial_plans`, `vehicle_financial_plan_installments`, `vehicle_history_audits`, `vehicle_history_audit_documents`, `vehicle_history_audit_readings`, `vehicle_history_audit_services`, `vehicle_history_audit_issues`, `vehicle_history_audit_truths`, `vehicle_history_audit_rules` |
-| Automotive — incidents (placement pending) | `incidents`, `incident_evidences`, `incident_events` |
+| Automotive — incidents/claims | `incidents`, `incident_evidences`, `incident_events`, `claim_incidents`, `claim_rentway_ars`, `claim_refstro_lines` |
 | Automotive — Workshop legacy | `workshop_processes`, `workshop_process_notes`, `workshop_process_evidences`, `workshop_process_services`, `workshop_technical_readings` |
 | Automotive — Workshop target | `workshop_phased_processes`, `workshop_public_counters`, `workshop_templates`, `workshop_template_versions`, `workshop_diagnostic_catalog_items`, `workshop_diagnostic_suggestions`, `workshop_material_needs`, `workshop_phased_process_services`, `workshop_phased_process_phases`, `workshop_phased_process_alerts`, `workshop_phased_technical_reports`, `workshop_phased_technical_checks`, `workshop_phased_technical_incidents`, `workshop_phased_closure_checks` |
 | Automotive — Sales/portal adapter | `vehicle_sale_profiles`, `vehicle_images`, `vehicle_sale_publications`, `vehicle_sale_leads`, `vehicle_sale_proposals`, `vehicle_sale_proposal_lines`, `portal_organizations`, `portal_users`, `portal_invitations`, `portal_publication_access` |

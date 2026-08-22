@@ -41,7 +41,7 @@ empty PostgreSQL + empty storage
   -> installation-specific branding/endpoints/secrets
 ```
 
-It must contain no CarFast users, documents, email, processes, tasks, vehicles, suppliers, stock, audit events, domains or branding. Production cleaning/anonymization is forbidden as a creation method.
+It must contain no CarFast users, documents, email, processes, tasks, vehicles, suppliers, stock, audit events, domains or branding. Its seeds contain only technical codes/states/types, canonical permissions and the module catalogue. Production cleaning/anonymization is forbidden as a creation method.
 
 ## 2. Data classification gate
 
@@ -142,15 +142,24 @@ Dependencies: Phase 1 approval.
 
 Work:
 
-1. capture baseline routes/permissions/post-actions/data invariants;
-2. introduce module manifest interfaces and read-only registry;
-3. add installation/module-state schema additively;
-4. compose navigation/Admin/settings/jobs behind compatibility adapters;
-5. implement policy-decision API while keeping legacy permission mappings.
+1. capture and freeze baseline routes, permissions, post-actions/destinations,
+   current composition and data invariants;
+2. introduce module manifest interfaces and a read-only registry, validated only
+   with a fictitious technical module;
+3. add the minimum catalogue/`installation_modules` schema only if its detailed
+   proposal, PostgreSQL migration, unique Alembic head and reversal path are clear;
+4. compose navigation/Admin/settings/jobs behind a feature gate, with legacy
+   composition selected by default;
+5. implement a policy-decision API and legacy mapping without changing effective
+   access;
+6. add characterization/differential tests and prove Core starts without importing
+   the fictitious module.
 
 Reversibility: feature-gated composer; legacy composition remains selectable.
 
-Acceptance: no visible functional regression; inactive test module contributes nothing; Core starts without importing test module.
+Acceptance: no visible functional regression or permission delta; inactive test
+module contributes nothing; legacy composer remains the default; Core starts
+without importing the fictitious module.
 
 ### Phase 3 — Shared UI and post-action foundation
 
@@ -288,17 +297,15 @@ No structural slice is merge-ready unless:
 9. documentation and audit evidence are current;
 10. production deploy behaviour is explicitly authorized.
 
-## 8. Decisions still required before code
+## 8. Approved Phase 2 guardrails and remaining approvals
 
-1. Exact Phase 2 first slice and baseline metrics.
-2. Catalogue/capability schema and state vocabulary.
-3. Permission vocabulary, scope precedence and restriction representation.
-4. EntityReference/event schema versioning and retention.
-5. Ownership of Evolution feedback, generic imports, claims/incidents and vehicle document projections.
-6. Reference-data list and removal of CarFast-specific clean seeds.
-7. Visual token values/component technology and accessibility benchmark.
-8. Historical access policy for disabled/removed-code modules.
-9. Authorized source and handling rules for representative anonymized rehearsal data.
-10. Render PR Preview policy and eventual staging budget/configuration.
+The ten architectural definitions are approved: catalogue states, default-deny
+permission decision, immutable versioned references/events, ownership resolutions,
+clean seed boundary, existing CSS/macro technology with WCAG 2.2 AA, authorized
+read-only history for disabled modules, synthetic-only initial rehearsals and
+automatic PR Previews disabled before structural work.
 
-Until these are approved, implementation must not guess. None prevents review of the Phase 1 documentation itself.
+Phase 2 may decide only implementation details that preserve those definitions.
+An anonymized production copy, staging/paid resources, production rehearsal,
+effective permission change, real-module movement and any legacy removal require a
+new approval.

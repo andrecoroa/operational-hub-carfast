@@ -6,7 +6,6 @@ from app.models.admin import Permission, Role, RolePermission
 from app.models.email import EmailChannel, EmailChannelAlias
 from app.models.organization import OrganizationalUnit, Team
 from app.models.settings import SettingsCatalog, SettingsValue
-from app.models.stock import StockSupplier
 from app.models.suppliers import SupplierType, SupplierTypeAssignment
 from app.models.work_hierarchy import (
     ServiceDeskCategoryPolicy,
@@ -15,6 +14,7 @@ from app.models.work_hierarchy import (
     WorkDepartment,
     WorkQueue,
 )
+from app.partners.compat import StockSupplier
 from app.services.management_center import ensure_management_defaults
 from app.services.navigation import (
     NAVIGATION_PERMISSIONS,

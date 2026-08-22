@@ -35,8 +35,8 @@ from app.models.stock import (
     StockReceipt,
     StockReceiptInvoiceLink,
     StockReceiptLine,
-    StockSupplier,
 )
+from app.partners.compat import StockSupplier
 from app.schemas.stock import (
     StockArticleVehicleCompatibilityCreate,
     StockConferenceAction,

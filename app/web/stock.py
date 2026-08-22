@@ -36,11 +36,11 @@ from app.models.stock import (
     StockReceipt,
     StockReceiptInvoiceLink,
     StockReceiptLine,
-    StockSupplier,
 )
-from app.models.vehicles import Vehicle
 from app.models.suppliers import SupplierType, SupplierTypeAssignment
+from app.models.vehicles import Vehicle
 from app.models.workshop_phased import WorkshopMaterialNeed, WorkshopPhasedProcess
+from app.partners.compat import StockSupplier
 from app.schemas.stock import (
     StockArticleVehicleCompatibilityCreate,
     StockConferenceAction,
@@ -56,8 +56,8 @@ from app.schemas.stock import (
     StockReceiptCreate,
     StockReceiptLineCreate,
 )
-from app.services.authorization import get_user_permission_codes
 from app.services.audit import record_audit
+from app.services.authorization import get_user_permission_codes
 from app.services.document_workflow import classify_invoice_nature
 from app.services.stock import (
     StockDomainError,
@@ -74,8 +74,8 @@ from app.services.stock import (
     create_vehicle_compatibility,
     ensure_invoice_import,
     extract_stock_invoice,
-    low_stock_rows,
     link_invoice_to_receipt,
+    low_stock_rows,
     regularize_discrepancy,
     review_and_validate_invoice,
     save_inventory_counts,

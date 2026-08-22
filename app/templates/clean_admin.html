@@ -3,7 +3,7 @@
 <div class="app-shell clean-shell">
   {% set active_menu = "clean_admin" %}
   {% include "_sidebar.html" %}
-  <main class="content clean-content clean-admin-content">
+  <main class="content clean-content clean-admin-content{% if foundation_ui_enabled %} ui-foundation{% endif %}">
     <header class="clean-header-shell clean-card-wide clean-admin-header">
       <div class="clean-header-topbar">
         <div>

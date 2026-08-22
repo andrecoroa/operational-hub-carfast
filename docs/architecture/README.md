@@ -1,8 +1,8 @@
 # CarFast modular target architecture
 
-Status: **Phase 1 approved; Phase 2 compatibility foundation in progress**
+Status: **Phases 1–2 approved; Phase 3 visual/post-action slice in progress**
 
-Baseline: `integration/modular-architecture` at `0491b84daf8ae6d0df56cb771579c5d43f06d99f`
+Baseline: `integration/modular-architecture` at `be2f5bce7ed6079e2135ce48111c209ed580760c`
 
 Production baseline: Render remains at `58a150c701221b64c43bd14fcb671683f3722ebe`
 
@@ -14,6 +14,7 @@ This specification translates the approved structural diagnosis into an incremen
 - [ENTITY_OWNERSHIP.md](ENTITY_OWNERSHIP.md): current table inventory, proposed ownership, dependencies and legacy classification.
 - [MIGRATION_AND_ROADMAP.md](MIGRATION_AND_ROADMAP.md): separate CarFast/clean-install paths, tests, reconciliation, phases, reversibility, risks and acceptance gates.
 - [PHASE2_FOUNDATION.md](PHASE2_FOUNDATION.md): frozen baseline, compatibility APIs, additive catalogue and reversal path.
+- [PHASE3_VISUAL_FOUNDATION.md](PHASE3_VISUAL_FOUNDATION.md): gated visual primitives, signed ReturnContext, representative slice and migration gates.
 
 ## Statement labels
 

@@ -1,0 +1,304 @@
+# Migration, validation and roadmap
+
+## 1. Two separate delivery paths
+
+### Path A — Existing CarFast installation
+
+Goal: move the existing company installation to the target architecture without losing or invalidating any operational or historical evidence.
+
+Preservation set includes:
+
+- documents and physical objects, attachments and previews;
+- active and historical processes, phases, statuses, assignees, dates and context;
+- tasks/tickets, comments, recurrence, SLA and assignment history;
+- email threads, messages, attachments, webhook/delivery evidence;
+- vehicles, Workshop, Sales, Stock, purchasing and partner records;
+- users, roles, permission grants, scopes and organization;
+- links, events, imports, notifications and audit history.
+
+Migration characteristics:
+
+- additive before subtractive;
+- idempotent and resumable;
+- explicit compatibility windows;
+- rehearsed only on isolated PostgreSQL/storage copies;
+- counts, links, hashes and business-state reconciliation;
+- backup and rollback proof before production approval.
+
+### Path B — Reusable clean installation
+
+Goal: create a new company from the same code and migrations with no CarFast operational/configuration data.
+
+Sequence:
+
+```text
+empty PostgreSQL + empty storage
+  -> Alembic base..head
+  -> versioned reference seeds
+  -> installation onboarding
+  -> first organization + administrator
+  -> initial module selection
+  -> installation-specific branding/endpoints/secrets
+```
+
+It must contain no CarFast users, documents, email, processes, tasks, vehicles, suppliers, stock, audit events, domains or branding. Production cleaning/anonymization is forbidden as a creation method.
+
+## 2. Data classification gate
+
+Before a seed or migration is approved, every affected record/table is classified:
+
+| Class | Versioning | Clean install | CarFast migration |
+|---|---|---|---|
+| schema | Alembic | create | upgrade |
+| reference data | explicit idempotent seed/migration | include | reconcile/update |
+| installation configuration | onboarding/admin | create new | preserve/transform |
+| operational data | business workflows/imports | exclude | preserve/reconcile |
+
+The existing `seed_initial_data` remains a compatibility bootstrap until its CarFast-specific organization/mailbox/module defaults are separated.
+
+## 3. Test strategy
+
+### Characterization tests
+
+Freeze current observable behaviour before moving a slice:
+
+- route/status/permission and server-validation outcomes;
+- primary queries and record counts;
+- state transitions and audit writes;
+- post-action destinations/context;
+- document/storage access;
+- background job and integration behaviour;
+- representative HTML/component behaviour where contract-relevant.
+
+Tests should identify intentional current behaviour versus known debt; they must not blindly make every legacy outcome canonical.
+
+### Contract tests
+
+Each port/event/reference has producer and consumer tests for version, authorization, idempotency, unavailable owner, disabled module, retry and historical snapshot.
+
+### Module-combination tests
+
+Minimum matrix:
+
+| Core | SD | Docs | Auto | Stock | Partners | Expected |
+|---:|---:|---:|---:|---:|---:|---|
+| on | off | off | off | off | off | login/Admin core/recovery work |
+| on | on | off | off | off | on | tasks/process/email without archive/vehicle/stock |
+| on | off | on | off | off | off | autonomous upload/triage/archive |
+| on | off | off | on | off | on | vehicle/Fleet/Workshop/Sales without Stock |
+| on | off | off | off | on | on | autonomous Stock/Purchasing |
+| on | on | on | on | on | on | full CarFast integration |
+| on | mixed capabilities | on | on | on | on | capability-level composition works |
+
+Each combination tests navigation, direct URL, permissions, Admin, search, notifications, jobs, history and controlled degradation.
+
+### Clean-install tests
+
+- migrate empty PostgreSQL base-to-head;
+- seed twice with identical results;
+- assert zero operational/configuration-specific records and files;
+- onboard company/admin/modules;
+- start and health-check app;
+- exercise supported module combinations;
+- prove no outbound email/webhook/network integration;
+- validate per-install branding/endpoints/secrets.
+
+### Preservation/reconciliation tests
+
+| Layer | Checks |
+|---|---|
+| database | table/domain counts, PK sets, nullability, unique/FK/orphan checks |
+| workflows | open-state/phase/assignee/date/context equivalence |
+| documents | metadata count, object existence, size, SHA-256, readable sample, link targets |
+| email | thread/message/attachment/delivery ordering and IDs |
+| authorization | users, roles, grants, scopes, effective-access samples |
+| audit | event count/order/actor/entity/correlation and immutability |
+| financial/stock | totals, immutable ledger balances and proposal/order amounts |
+
+Reports are machine-readable and retained as release evidence. Any unexplained mismatch blocks cutover.
+
+## 4. Incremental roadmap
+
+### Phase 0 — Remote foundation (complete)
+
+Outcome: Codespaces, PostgreSQL CI, Alembic head check, clean-bootstrap control, repository instructions and branch workflow.
+
+### Phase 1 — Target specification (this phase)
+
+Deliverables: architecture, ownership, dependencies, contracts, permissions, UI/post-action system, legacy strategy, two migration paths, tests and roadmap.
+
+Acceptance:
+
+- all approved decisions represented;
+- statements labelled fact/decision/recommendation/hypothesis;
+- no functional code/schema changes;
+- ownership covers every current model table family;
+- decisions pending explicitly listed;
+- Strategy approval before Phase 2.
+
+### Phase 2 — Characterization and composition foundation
+
+Dependencies: Phase 1 approval.
+
+Work:
+
+1. capture baseline routes/permissions/post-actions/data invariants;
+2. introduce module manifest interfaces and read-only registry;
+3. add installation/module-state schema additively;
+4. compose navigation/Admin/settings/jobs behind compatibility adapters;
+5. implement policy-decision API while keeping legacy permission mappings.
+
+Reversibility: feature-gated composer; legacy composition remains selectable.
+
+Acceptance: no visible functional regression; inactive test module contributes nothing; Core starts without importing test module.
+
+### Phase 3 — Shared UI and post-action foundation
+
+Dependencies: token/component decisions and Phase 2 registry.
+
+Work: tokens, shell, key primitives, ReturnContext, accessibility/responsive test harness. Apply first to a low-risk representative surface, not a broad redesign.
+
+Reversibility: old templates/routes remain behind route-level switch.
+
+Acceptance: 320 px no body overflow, keyboard/focus/contrast gates, deterministic Save/Close/Cancel/Back tests.
+
+### Phase 4 — Partners boundary
+
+Rationale: removes Stock ownership from a widely referenced entity and creates a reusable reference pattern.
+
+Work: Partners application facade over existing tables, stable partner reference, adapters for `StockSupplier`, Email/Suppliers pages and Documents. No destructive rename initially.
+
+Reversibility: facade delegates to current storage.
+
+Acceptance: Stock/Email/Workshop use contracts; partner history and all supplier links reconcile.
+
+### Phase 5 — Document Management boundary
+
+Dependencies: reference/event contracts and storage reconciliation tooling.
+
+Work: document application services, binary-object contract, source adapters, replace cross-domain writes, reconcile direct FKs and generic links without deletion.
+
+Reversibility: dual-read comparison and old routes retained.
+
+Acceptance: standalone Documents combination passes; every object/metadata/link reconciles.
+
+### Phase 6 — Service Desk boundary
+
+Dependencies: Core policy/composition and Documents contract.
+
+Work: package Tasks, Processes and Email capabilities; characterize management centre; separate internal contracts; normalize permissions and post-actions.
+
+Reversibility: legacy routes map to new application commands.
+
+Acceptance: capability on/off matrix, mailbox restrictions, SLA/process/task history and email delivery evidence reconcile.
+
+### Phase 7 — Stock & Purchasing boundary
+
+Dependencies: Partners and Documents contracts.
+
+Work: isolate ledger/purchasing services; remove direct Workshop imports; material request/fulfilment contract; location/cost restrictions.
+
+Reversibility: Workshop adapter can remain manual.
+
+Acceptance: Stock operates without Workshop; ledger totals and immutable movements reconcile exactly.
+
+### Phase 8 — Automotive & Fleet boundary
+
+Dependencies: Documents, Partners, Service Desk and Stock contracts.
+
+Work: vehicle core facade, Fleet/Workshop/Sales capability packages, phased/legacy Workshop bridge, source projections and process preservation.
+
+Reversibility: dual-read/compare legacy Workshop, no deletion.
+
+Acceptance: open processes preserve phase/responsible/dates/actions; Fleet without Workshop/Sales and Workshop without Stock pass.
+
+### Phase 9 — Legacy retirement preparation
+
+Dependencies: all domain boundaries stable and observed.
+
+Work: classify every adapter/table/route, freeze legacy writes, export evidence, run retention windows and propose removals individually.
+
+Reversibility: read-only legacy readers retained until approval.
+
+Acceptance: zero unexplained usage, complete reconciliation and explicit functional/legal approval per candidate.
+
+### Phase 10 — CarFast rehearsal and production proposal
+
+Dependencies: green characterization/contract/module/clean-install suites.
+
+Work only after separate authorization: restore isolated DB/storage, run idempotent rehearsal, reconcile, performance test, rollback rehearsal and produce cutover dossier.
+
+No production execution is implied.
+
+## 5. Migration mechanics
+
+For each slice:
+
+```text
+characterize
+ -> add target schema/contracts
+ -> backfill idempotently
+ -> dual-read compare
+ -> switch writes through owner
+ -> observe/reconcile
+ -> freeze legacy writes
+ -> retain read adapter
+ -> propose retirement separately
+```
+
+Migration PR rules:
+
+- one objective/branch;
+- unique Alembic head before and after integration;
+- never mechanically cherry-pick divergent migrations;
+- PostgreSQL empty upgrade plus representative isolated-copy rehearsal;
+- transaction/batch strategy documented;
+- restart/resume markers and idempotency keys;
+- backup/rollback and reconciliation commands reviewed;
+- no document object move without hash and accessibility verification.
+
+## 6. Risks and controls
+
+| Risk | Severity | Control |
+|---|---:|---|
+| hidden legacy consumer | critical | telemetry + characterization + compatibility window |
+| document/object mismatch | critical | metadata/object/hash/link reconciliation |
+| active process loses context | critical | state snapshot and workflow-specific acceptance tests |
+| permission broadening | critical | old/new effective-decision differential tests; default deny |
+| divergent migrations | critical | semantic reconciliation and unique-head CI |
+| circular module dependency | high | manifest validation and architecture import tests |
+| dual-write drift | high | owner transaction + outbox; differential reports |
+| visual rewrite scope explosion | high | component-first representative slices |
+| disabled module causes 500/jobs | high | module-combination and degradation tests |
+| clean seed contains CarFast data | high | explicit classification and forbidden-value/zero-data assertions |
+| automatic preview/deploy resources | high | verify Render/GitHub settings before each integration |
+
+## 7. Release gates
+
+No structural slice is merge-ready unless:
+
+1. ownership and contracts are approved;
+2. characterization is green or intentional deltas are approved;
+3. authorization is enforced server-side and navigation matches;
+4. unique Alembic head and PostgreSQL upgrade pass;
+5. clean-install baseline remains empty/idempotent;
+6. affected module combinations pass;
+7. reconciliation has no unexplained mismatch;
+8. degradation and rollback are tested;
+9. documentation and audit evidence are current;
+10. production deploy behaviour is explicitly authorized.
+
+## 8. Decisions still required before code
+
+1. Exact Phase 2 first slice and baseline metrics.
+2. Catalogue/capability schema and state vocabulary.
+3. Permission vocabulary, scope precedence and restriction representation.
+4. EntityReference/event schema versioning and retention.
+5. Ownership of Evolution feedback, generic imports, claims/incidents and vehicle document projections.
+6. Reference-data list and removal of CarFast-specific clean seeds.
+7. Visual token values/component technology and accessibility benchmark.
+8. Historical access policy for disabled/removed-code modules.
+9. Authorized source and handling rules for representative anonymized rehearsal data.
+10. Render PR Preview policy and eventual staging budget/configuration.
+
+Until these are approved, implementation must not guess. None prevents review of the Phase 1 documentation itself.

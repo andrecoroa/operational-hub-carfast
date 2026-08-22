@@ -13,6 +13,7 @@ from sqlalchemy import or_, select
 
 from app.api.deps import DbSession
 from app.core.config import settings
+from app.documents import DocumentManagementFacade, LinkIngestionRequest, SourceReference
 from app.models.documents import Document, DocumentEvent
 from app.models.integrations import EmailIntake, EmailIntakeAttachment
 from app.models.tasks import QuickRecord
@@ -353,40 +354,34 @@ def create_document(db: DbSession, intake: EmailIntake, payload: EmailIntakePayl
     document_type = "workshop_other" if area == "workshop" else "finance_other"
     document_date = (payload.received_at or datetime.now(UTC)).date()
     title = clip(payload.subject, 200) or "Documento recebido por e-mail"
-    document = Document(
-        title=title,
-        document_type=document_type,
-        classification=area,
-        status="unclassified",
-        source="email",
-        entry_channel=clip(payload.source_mailbox, 120),
-        source_sender=clip(payload.sender, 255),
-        source_subject=clip(payload.subject, 255),
-        original_name=title[:255],
-        file_name=title[:255],
-        file_type=None,
-        file_size=None,
-        storage_provider="sharepoint",
-        storage_path=link,
-        storage_key=clip(payload.email_url, 2000),
-        external_url=link,
-        folder_path=suggest_folder_path(area, document_date, document_type),
-        document_date=document_date,
-        uploaded_by_id=None,
-        archived_by_id=None,
-        archived_at=None,
-        archived=False,
-    )
-    db.add(document)
-    db.flush()
-    db.add(
-        DocumentEvent(
-            document_id=document.id,
-            action="created_from_email",
-            old_value=None,
-            new_value=f"Entrada de e-mail #{intake.id}. Pasta sugerida: {document.folder_path}",
-            user_id=None,
-        )
+    document = DocumentManagementFacade(db).ingest_link(
+        LinkIngestionRequest(
+            title=title,
+            document_type=document_type,
+            classification=area,
+            status="unclassified",
+            source="email",
+            entry_channel=clip(payload.source_mailbox, 120),
+            source_sender=clip(payload.sender, 255),
+            source_subject=clip(payload.subject, 255),
+            original_name=title[:255],
+            file_name=title[:255],
+            storage_provider="sharepoint",
+            storage_path=link,
+            storage_key=clip(payload.email_url, 2000),
+            external_url=link,
+            folder_path=suggest_folder_path(area, document_date, document_type),
+            document_date=document_date,
+            uploaded_by_id=None,
+        ),
+        source_reference=SourceReference(
+            module="service_desk",
+            entity_type="email_intake",
+            entity_id=str(intake.id),
+            display_snapshot=title,
+        ),
+        event_action="created_from_email",
+        event_detail=f"Entrada de e-mail #{intake.id}. Pasta sugerida: {suggest_folder_path(area, document_date, document_type)}",
     )
     preview = clean_html_preview(payload.body_preview, 4000)
     if preview:

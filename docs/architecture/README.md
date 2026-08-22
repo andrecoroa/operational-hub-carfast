@@ -16,6 +16,7 @@ This specification translates the approved structural diagnosis into an incremen
 - [PHASE2_FOUNDATION.md](PHASE2_FOUNDATION.md): frozen baseline, compatibility APIs, additive catalogue and reversal path.
 - [PHASE3_VISUAL_FOUNDATION.md](PHASE3_VISUAL_FOUNDATION.md): gated visual primitives, signed ReturnContext, representative slice and migration gates.
 - [PHASE4_PARTNERS_BOUNDARY.md](PHASE4_PARTNERS_BOUNDARY.md): Partners ownership facade, stable references, compatibility adapters and reconciliation.
+- [PHASE5_DOCUMENT_MANAGEMENT_BOUNDARY.md](PHASE5_DOCUMENT_MANAGEMENT_BOUNDARY.md): document ownership facade, ingestion/link contracts, object reconciliation and standalone composition.
 
 ## Statement labels
 

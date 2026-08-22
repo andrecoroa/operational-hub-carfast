@@ -11984,6 +11984,7 @@ def clean_document_detail(
                 "ocr_batch_lines": ocr_batch_lines,
                 "ocr_batch_label": ocr_batch_label or "",
                 "return_to": safe_return_to,
+                "foundation_ui_enabled": settings.visual_foundation_enabled,
             },
         )
 
@@ -13356,6 +13357,7 @@ def clean_documentation_center(request: Request):
                     _documentation_row(document, state)
                     for document, state in inbox_records
                 ],
+                "foundation_ui_enabled": settings.visual_foundation_enabled,
             },
         )
 

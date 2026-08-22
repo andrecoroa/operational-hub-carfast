@@ -11,8 +11,6 @@ from collections import Counter
 from pathlib import Path
 from typing import Any
 
-from fastapi.routing import APIRoute
-
 from app.main import WEB_PERMISSION_RULES, app
 from app.services.authorization import PERMISSION_ALIASES
 from app.services.navigation import (
@@ -41,12 +39,18 @@ def _canonical(value: Any) -> Any:
 
 
 def _routes() -> list[dict[str, Any]]:
-    rows = []
+    rows: list[dict[str, Any]] = []
     for route in app.routes:
-        if isinstance(route, APIRoute):
-            rows.append(
-                {"path": route.path, "methods": sorted(route.methods or ()), "name": route.name}
-            )
+        methods = getattr(route, "methods", None)
+        if not methods or not getattr(route, "include_in_schema", False):
+            continue
+        rows.append(
+            {
+                "path": route.path,
+                "methods": sorted(methods),
+                "name": route.name,
+            }
+        )
     return sorted(rows, key=lambda row: (row["path"], row["methods"], row["name"]))
 
 

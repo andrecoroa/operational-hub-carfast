@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     postmark_message_stream: str = "outbound"
     postmark_inbound_basic_user: str | None = None
     postmark_inbound_basic_password: str | None = None
+    modular_composer_enabled: bool = False
 
     @property
     def enable_docs(self) -> bool:

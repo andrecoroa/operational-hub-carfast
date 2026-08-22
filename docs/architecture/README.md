@@ -1,8 +1,8 @@
 # CarFast modular target architecture
 
-Status: **Phase 1 target specification — documentation only**
+Status: **Phase 1 approved; Phase 2 compatibility foundation in progress**
 
-Baseline: `integration/modular-architecture` at `a90b11da5eca05a374a1c0797befb8ff8950234f`
+Baseline: `integration/modular-architecture` at `0491b84daf8ae6d0df56cb771579c5d43f06d99f`
 
 Production baseline: Render remains at `58a150c701221b64c43bd14fcb671683f3722ebe`
 
@@ -13,6 +13,7 @@ This specification translates the approved structural diagnosis into an incremen
 - [TARGET_ARCHITECTURE.md](TARGET_ARCHITECTURE.md): logical/technical architecture, module catalogue, composition, contracts, permissions, Administration, visual system and post-action behaviour.
 - [ENTITY_OWNERSHIP.md](ENTITY_OWNERSHIP.md): current table inventory, proposed ownership, dependencies and legacy classification.
 - [MIGRATION_AND_ROADMAP.md](MIGRATION_AND_ROADMAP.md): separate CarFast/clean-install paths, tests, reconciliation, phases, reversibility, risks and acceptance gates.
+- [PHASE2_FOUNDATION.md](PHASE2_FOUNDATION.md): frozen baseline, compatibility APIs, additive catalogue and reversal path.
 
 ## Statement labels
 

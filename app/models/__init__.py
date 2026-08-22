@@ -64,6 +64,12 @@ from app.models.photo_capture import (
     PhotoCaptureSession,
     PhotoMedia,
 )
+from app.models.platform import (
+    InstallationModule,
+    ModuleCapability,
+    ModuleDefinition,
+    ModuleDependency,
+)
 from app.models.pilot import PilotFeedback
 from app.models.portal import (
     PortalInvitation,
@@ -243,6 +249,10 @@ __all__ = [
     "PhotoCaptureSession",
     "PhotoMedia",
     "PilotFeedback",
+    "InstallationModule",
+    "ModuleCapability",
+    "ModuleDefinition",
+    "ModuleDependency",
     "PortalInvitation",
     "PortalOrganization",
     "PortalPublicationAccess",

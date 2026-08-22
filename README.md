@@ -26,6 +26,12 @@ uvicorn app.main:app --reload
 
 Antes de usar em ambiente real, configurar `DATABASE_URL` para PostgreSQL.
 
+## Desenvolvimento remoto
+
+O repositório inclui um ambiente reproduzível para GitHub Codespaces, PostgreSQL
+isolado e CI em pull requests. Consulte `docs/REMOTE_DEVELOPMENT.md`. Emails,
+webhooks e integrações externas permanecem desativados por omissão.
+
 ## Deploy Render
 
 O projeto inclui `render.yaml` para criar:

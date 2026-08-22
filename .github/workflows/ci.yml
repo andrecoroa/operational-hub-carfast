@@ -1,0 +1,89 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - v2/production
+      - integration/modular-architecture
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  fast-checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      APP_ENV: test
+      APP_SECRET_KEY: ci-only-not-a-secret
+      DATABASE_URL: postgresql+psycopg://carfast:carfast@localhost:5432/carfast_test
+      DOCUMENT_ARCHIVE_ROOT: /tmp/carfast-documents
+      DOCUMENT_INVOICE_INBOX_PATH: /tmp/carfast-documents/inbox
+      EMAIL_INBOUND_ENABLED: "false"
+      EMAIL_OUTBOUND_ENABLED: "false"
+      EMAIL_STORAGE_ROOT: /tmp/carfast-email
+      INTEGRATION_API_KEY: ""
+      POSTMARK_SERVER_TOKEN: ""
+
+    services:
+      postgres:
+        image: postgres:17-bookworm
+        env:
+          POSTGRES_DB: carfast_test
+          POSTGRES_USER: carfast
+          POSTGRES_PASSWORD: carfast
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U carfast -d carfast_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-dev.txt
+
+      - name: Compile and import application
+        run: |
+          python -m compileall -q app scripts
+          python -c "from app.main import app; assert app.title"
+          python -m ruff check scripts/check_migration_heads.py scripts/bootstrap_installation.py scripts/check_clean_install.py
+
+      - name: Validate Alembic graph
+        run: python scripts/check_migration_heads.py
+
+      - name: Apply migrations to isolated PostgreSQL
+        run: |
+          python -m alembic upgrade head
+          python -m alembic current --check-heads
+
+      - name: Validate reusable clean installation
+        run: |
+          python -m scripts.bootstrap_installation
+          python -m scripts.check_clean_install
+
+      - name: Run tests
+        run: >-
+          python -m pytest -q
+          tests/test_foundation_api.py
+          tests/test_navigation_rbac.py
+          tests/test_email_postmark.py
+          tests/test_service_desk_operations.py

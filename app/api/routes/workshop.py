@@ -10,7 +10,9 @@ from sqlalchemy.orm import Session, object_session
 from app.api.auth import require_method_permission
 from app.core.config import settings
 from app.core.database import get_db
-from app.models.documents import Document, DocumentEvent, DocumentLink
+from app.documents import SourceReference
+from app.documents.adapters import upsert_external_link_document
+from app.models.documents import Document, DocumentLink
 from app.models.tasks import Task
 from app.models.vehicles import Vehicle, VehicleExternalSnapshot
 from app.models.workshop_phased import (
@@ -270,76 +272,26 @@ def _upsert_workshop_document_from_link(
 
     clean_type = _workshop_document_type(document_type)
     clean_plate = ((vehicle.plate if vehicle else process.plate_snapshot) or "").strip().upper()
-    document = db.get(Document, existing_document_id) if existing_document_id else None
-    if not document:
-        document = db.scalar(
-            select(Document)
-            .join(DocumentLink, DocumentLink.document_id == Document.id)
-            .where(
-                Document.classification == "workshop",
-                Document.vehicle_id == process.vehicle_id,
-                Document.storage_path == clean_link,
-                DocumentLink.entity_type == "workshop_phased_process",
-                DocumentLink.entity_id == str(process.id),
-            )
-        )
-    created = document is None
-    if created:
-        document = Document(
-            title=title[:200],
-            original_name=title[:255],
-            file_name=title[:255],
-            storage_provider="link",
-            uploaded_by_id=user_id,
-        )
-        db.add(document)
-
-    document.title = title[:200]
-    document.document_type = clean_type
-    document.classification = "workshop"
-    document.status = "associated"
-    document.source = "workshop"
-    document.entry_channel = "workshop_process_link"
-    document.source_subject = source_subject or title
-    document.storage_provider = "link"
-    document.storage_path = clean_link
-    document.storage_key = clean_link
-    document.external_url = clean_link
-    document.folder_path = _workshop_document_folder(process)
-    document.vehicle_id = process.vehicle_id
-    document.workshop_process_id = None
-    document.plate = clean_plate or None
-    document.uploaded_by_id = document.uploaded_by_id or user_id
-    db.flush()
-
-    existing_link = db.scalar(
-        select(DocumentLink).where(
-            DocumentLink.document_id == document.id,
-            DocumentLink.entity_type == "workshop_phased_process",
-            DocumentLink.entity_id == str(process.id),
-        )
+    return upsert_external_link_document(
+        db,
+        source_reference=SourceReference(
+            module="workshop",
+            entity_type="workshop_phased_process",
+            entity_id=str(process.id),
+            display_snapshot=title,
+        ),
+        link=clean_link,
+        title=title,
+        document_type=clean_type,
+        classification="workshop",
+        entry_channel="workshop_process_link",
+        folder_path=_workshop_document_folder(process),
+        vehicle_id=process.vehicle_id,
+        plate=clean_plate or None,
+        user_id=user_id,
+        existing_document_id=existing_document_id,
+        source_subject=source_subject,
     )
-    if not existing_link:
-        db.add(
-            DocumentLink(
-                document_id=document.id,
-                entity_type="workshop_phased_process",
-                entity_id=str(process.id),
-                category=clean_type,
-            )
-        )
-    else:
-        existing_link.category = clean_type
-    db.add(
-        DocumentEvent(
-            document_id=document.id,
-            action="document.associated" if created else "document.updated_from_workshop",
-            old_value=None,
-            new_value=clean_link,
-            user_id=user_id,
-        )
-    )
-    return document.id
 
 
 def _technical_report_response(report: WorkshopTechnicalReport) -> dict[str, Any]:

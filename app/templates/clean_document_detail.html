@@ -3,11 +3,11 @@
 <div class="app-shell clean-shell">
   {% set active_menu = "documents" %}
   {% include "_sidebar.html" %}
-  <main class="content clean-content">
+  <main class="content clean-content{% if foundation_ui_enabled %} ui-foundation ui-page-shell{% endif %}">
     {% set invoice_lines = extraction_metadata.invoice_lines or extraction_metadata.lines or [] %}
     {% set document_display_title = "Fatura / Nota de crédito" if document.document_type == "workshop_supplier_invoice" else (document.title or document.original_name or ("Documento #" ~ document.id)) %}
     {% set document_file_label = document.title or document.original_name or document.file_name or ("Documento #" ~ document.id) %}
-    <header class="clean-page-hero clean-card-wide clean-doc-detail-hero">
+    <header class="clean-page-hero clean-card-wide clean-doc-detail-hero{% if foundation_ui_enabled %} ui-page-header ui-surface{% endif %}">
       <div>
         <p class="eyebrow">Documentação / detalhe v2</p>
         <h1>{{ document_display_title }}</h1>

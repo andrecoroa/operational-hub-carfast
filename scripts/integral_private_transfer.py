@@ -394,7 +394,63 @@ def send_storage_tcp(root: Path) -> int:
     return 0
 
 
-def serve_tcp(stream_type: str, staging_root: Path | None) -> int:
+def _receive_tcp_stream(
+    connection: socket.socket,
+    *,
+    stream_type: str,
+    staging_root: Path | None,
+    key: bytes,
+    source: str,
+    destination: str,
+    release: str,
+    cutoff: str,
+    used_nonces: set[str],
+) -> None:
+    handle, session = server_handshake(
+        connection,
+        key,
+        source=source,
+        destination=destination,
+        release=release,
+        cutoff=cutoff,
+        stream_type=stream_type,
+        used_nonces=used_nonces,
+    )
+    connection.settimeout(20 * 60)
+    framed = FramedReader(handle, key, session)
+    if stream_type == "database":
+        database_url = os.environ.get("DATABASE_URL", "")
+        environment = libpq_environment(database_url)
+        database = environment["PGDATABASE"]
+        command = database_restore_command(
+            required("INTEGRAL_DATABASE_DESTINATION_PHASE"),
+            database,
+            target_prepared=(
+                os.environ.get("INTEGRAL_TARGET_PREPARED") == "true"
+                and valid_target_marker(TARGET_MARKER, database)
+            ),
+        )
+        process = subprocess.Popen(
+            command, stdin=subprocess.PIPE, stderr=subprocess.PIPE, env=environment
+        )
+        assert process.stdin is not None
+        while chunk := framed.read(CHUNK_BYTES):
+            process.stdin.write(chunk)
+        process.stdin.close()
+        stderr = process.stderr.read() if process.stderr else b""
+        if process.wait():
+            diagnostic = stderr.decode("utf-8", errors="replace")[-2_000:].strip()
+            raise RuntimeError(f"pg_restore failed ({len(stderr)} stderr bytes): {diagnostic}")
+    elif stream_type == "storage":
+        if staging_root is None:
+            raise TcpTransferRejected("missing storage staging root")
+        unpack_storage(framed, staging_root)
+    else:
+        raise TcpTransferRejected("unknown stream type")
+    ensure_no_trailing(handle)
+
+
+def serve_tcp_streams(stream_types: tuple[str, ...], staging_root: Path | None) -> int:
     key = transfer_key()
     source, destination = (
         required("INTEGRAL_SOURCE_SERVICE"),
@@ -403,13 +459,13 @@ def serve_tcp(stream_type: str, staging_root: Path | None) -> int:
     release, cutoff = required("INTEGRAL_RELEASE_SHA"), required("INTEGRAL_CUTOFF_ID")
     _host, port = _tcp_endpoint()
     used_nonces: set[str] = set()
-    deadline, accepted = time.monotonic() + 15 * 60, False
+    deadline, accepted = time.monotonic() + 15 * 60, 0
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
         listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         listener.bind(("0.0.0.0", port))
         listener.listen(8)
         listener.settimeout(2)
-        while not accepted and time.monotonic() < deadline:
+        while accepted < len(stream_types) and time.monotonic() < deadline:
             try:
                 connection, _address = listener.accept()
             except TimeoutError:
@@ -417,50 +473,20 @@ def serve_tcp(stream_type: str, staging_root: Path | None) -> int:
             with connection:
                 connection.settimeout(3)
                 try:
-                    handle, session = server_handshake(
+                    _receive_tcp_stream(
                         connection,
-                        key,
+                        stream_type=stream_types[accepted],
+                        staging_root=staging_root,
+                        key=key,
                         source=source,
                         destination=destination,
                         release=release,
                         cutoff=cutoff,
-                        stream_type=stream_type,
                         used_nonces=used_nonces,
                     )
-                    connection.settimeout(20 * 60)
-                    framed = FramedReader(handle, key, session)
-                    if stream_type == "database":
-                        database_url = os.environ.get("DATABASE_URL", "")
-                        environment = libpq_environment(database_url)
-                        database = environment["PGDATABASE"]
-                        command = database_restore_command(
-                            required("INTEGRAL_DATABASE_DESTINATION_PHASE"),
-                            database,
-                            target_prepared=(
-                                os.environ.get("INTEGRAL_TARGET_PREPARED") == "true"
-                                and valid_target_marker(TARGET_MARKER, database)
-                            ),
-                        )
-                        process = subprocess.Popen(
-                            command, stdin=subprocess.PIPE, stderr=subprocess.PIPE, env=environment
-                        )
-                        assert process.stdin is not None
-                        while chunk := framed.read(CHUNK_BYTES):
-                            process.stdin.write(chunk)
-                        process.stdin.close()
-                        stderr = process.stderr.read() if process.stderr else b""
-                        if process.wait():
-                            diagnostic = stderr.decode("utf-8", errors="replace")[-2_000:].strip()
-                            raise RuntimeError(
-                                f"pg_restore failed ({len(stderr)} stderr bytes): {diagnostic}"
-                            )
-                    else:
-                        if staging_root is None:
-                            raise TcpTransferRejected("missing storage staging root")
-                        unpack_storage(framed, staging_root)
-                    ensure_no_trailing(handle)
                     connection.sendall(b"\x01")
-                    accepted = True
+                    accepted += 1
+                    deadline = time.monotonic() + 15 * 60
                 except Exception as exc:
                     if staging_root is not None:
                         shutil.rmtree(staging_root, ignore_errors=True)
@@ -470,9 +496,13 @@ def serve_tcp(stream_type: str, staging_root: Path | None) -> int:
                         connection.sendall(b"\x00")
                     except OSError:
                         pass
-    if not accepted:
-        raise SystemExit("integral TCP receiver closed without an accepted transfer")
+    if accepted != len(stream_types):
+        raise SystemExit(f"integral TCP receiver accepted {accepted}/{len(stream_types)} streams")
     return 0
+
+
+def serve_tcp(stream_type: str, staging_root: Path | None) -> int:
+    return serve_tcp_streams((stream_type,), staging_root)
 
 
 def main() -> int:
@@ -490,6 +520,8 @@ def main() -> int:
     subparsers.add_parser("receive-database-tcp")
     receive_storage_tcp_parser = subparsers.add_parser("receive-storage-tcp")
     receive_storage_tcp_parser.add_argument("--staging-root", type=Path, required=True)
+    receive_bundle_tcp_parser = subparsers.add_parser("receive-bundle-tcp")
+    receive_bundle_tcp_parser.add_argument("--staging-root", type=Path, required=True)
     args = parser.parse_args()
     if args.command == "send-database":
         return send_database()
@@ -505,6 +537,8 @@ def main() -> int:
         return send_storage_tcp(args.root)
     if args.command == "receive-database-tcp":
         return serve_tcp("database", None)
+    if args.command == "receive-bundle-tcp":
+        return serve_tcp_streams(("database", "storage"), args.staging_root)
     return serve_tcp("storage", args.staging_root)
 
 

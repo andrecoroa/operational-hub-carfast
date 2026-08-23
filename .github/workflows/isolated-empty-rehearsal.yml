@@ -123,9 +123,9 @@ jobs:
               exit 1
             fi
             if docker exec carfast-anonymized-destination \
-              sh -ec '[ -z "$(psql -h /var/run/postgresql -d carfast_anonymized_test \
+              sh -ec '[ -z "$(psql -U postgres -h /var/run/postgresql -d carfast_anonymized_test \
                 -Atc "SHOW listen_addresses")" ] && \
-                [ "$(psql -h /var/run/postgresql -d carfast_anonymized_test \
+                [ "$(psql -U postgres -h /var/run/postgresql -d carfast_anonymized_test \
                 -Atc "SHOW unix_socket_directories")" = /var/run/postgresql ]'; then
               exit 0
             fi

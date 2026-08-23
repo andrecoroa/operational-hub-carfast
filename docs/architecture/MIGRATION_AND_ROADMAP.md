@@ -239,6 +239,35 @@ Work only after separate authorization: restore isolated DB/storage, run idempot
 
 No production execution is implied.
 
+### Approved final transition — blue-green
+
+The final transition must use a dedicated blue-green release, independently of
+the temporary pilot in Phase 10:
+
+- **Blue** is the current production service and remains operational and intact
+  throughout construction and validation.
+- **Green** is a permanent, independent Render Web Service/environment with its
+  own URL, PostgreSQL and storage. A PR Preview is not Green.
+- Green receives data only through a separately approved controlled rehearsal;
+  integrations, email, jobs, webhooks, portals and all external effects remain
+  disabled until cutover.
+- Cutover requires integral reconciliation of IDs/FKs, document and attachment
+  hashes, active and historical processes, permissions and audit, plus a proven
+  rollback. Blue becomes read-only before a common database/storage delta
+  cut-off; tolerance for unexplained reconciliation differences is zero.
+- Green is activated and the primary domain is changed only inside an approved
+  short window. Concurrent writes to independent Blue and Green databases are
+  prohibited.
+- Blue remains read-only and available for rollback for an approved stabilization
+  period. Archive/deletion follows acceptance and a separately approved retention
+  gate.
+- The reusable empty installation is produced from the same Green release using
+  migrations and explicit seeds, never by cleaning production.
+
+Costs, permanent resources, domains, database/storage creation, real copying,
+cutover and later destruction each remain separate approval gates. This decision
+does not authorize any current production or Render change.
+
 ## 5. Migration mechanics
 
 For each slice:

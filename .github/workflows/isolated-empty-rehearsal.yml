@@ -53,11 +53,18 @@ jobs:
         run: |
           python -m scripts.validate_isolated_environment
           python -m pytest -q tests/test_isolated_environment.py tests/test_phase10_rehearsal.py
-          python -m pytest -q tests/test_anonymized_stream.py tests/test_anonymized_receive.py
+          python -m pytest -q tests/test_capture_authorization.py \
+            tests/test_anonymized_stream.py tests/test_anonymized_receive.py
           python -m scripts.prepare_anonymized_stream \
             --fixture tests/fixtures/anonymization_input.jsonl >/tmp/anonymized-fixture.jsonl
           test "$(wc -l </tmp/anonymized-fixture.jsonl)" -eq 8
           rm -f /tmp/anonymized-fixture.jsonl
+          docker run --rm --network none \
+            -e REAL_DATA_ALLOWED=false -e EXTERNAL_INTEGRATIONS_ENABLED=false \
+            carfast-empty-rehearsal \
+              python -m scripts.prepare_anonymized_stream \
+                --fixture tests/fixtures/anonymization_input.jsonl \
+          | python -c "import sys; from app.platform.anonymized_receive import validated_envelopes; assert len(list(validated_envelopes(sys.stdin.buffer))) == 8"
       - name: Create internal-only application network
         run: |
           docker network create --internal carfast-rehearsal-internal

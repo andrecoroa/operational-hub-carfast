@@ -14,6 +14,7 @@ from psycopg import sql
 from psycopg.rows import dict_row
 
 from app.platform.anonymized_stream import FIELD_MAP, EphemeralSynthesizer, stream_jsonl
+from app.platform.capture_authorization import AuthorizationRejected, verify_and_consume
 
 SCHEMA_CONTRACT_VERSION = 1
 TEXT_TYPES = frozenset({"character varying", "character", "text"})
@@ -145,8 +146,19 @@ def main() -> int:
     args = parser.parse_args()
     if not 1 <= args.batch_size <= 1000:
         raise SystemExit("batch size must be between 1 and 1000")
-    if not os.environ.get("CAPTURE_AUTHORIZATION_ID"):
-        raise SystemExit("explicit CAPTURE_AUTHORIZATION_ID is required")
+    token = os.environ.get("CAPTURE_AUTHORIZATION_ID", "")
+    authorization_key = os.environ.get("CAPTURE_AUTHORIZATION_KEY", "").encode()
+    source = os.environ.get("CAPTURE_SOURCE_SERVICE", "")
+    destination = os.environ.get("CAPTURE_DESTINATION_SERVICE", "")
+    try:
+        verify_and_consume(
+            token,
+            authorization_key,
+            expected_source=source,
+            expected_destination=destination,
+        )
+    except AuthorizationRejected as exc:
+        raise SystemExit(str(exc)) from None
     database_url = os.environ.get("DATABASE_URL", "")
     if not database_url:
         raise SystemExit("runtime DATABASE_URL is required")

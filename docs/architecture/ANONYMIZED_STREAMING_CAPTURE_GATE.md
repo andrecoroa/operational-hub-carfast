@@ -60,16 +60,62 @@ Rollback antes da captura: remover branch/serviço Docker proposto. Durante futu
 interromper o pipe reverte a transação de ingestão e não deixa staging parcial; eliminar a base local descarta o
 dataset anonimizado. O PostgreSQL gerido não é tocado.
 
-## Comando final — NÃO executar sem nova autorização
+## Autorização verificável e replay
+
+O exportador já não aceita um identificador meramente não vazio. Exige um token HMAC assinado
+com payload fechado: versão, scope `pilot-eight-table`, origem, destino, `issued_at`, `expires_at`
+e nonce. Rejeita assinatura inválida, endpoint/escopo errado, emissão futura, expiração, duração
+superior a 15 minutos e reutilização do nonce durante a vida do processo. Token e chave nunca
+são impressos.
+
+A cache em memória impede replay no processo que detém o cursor, mas não consegue garantir uso
+único absoluto entre processos/restarts. Essa garantia requer um ledger partilhado com operação
+atómica `consume-if-unused`. O mecanismo mínimo recomendado é um registo de autorização separado
+dos dados operacionais, com hash do nonce, expiração e estado consumido, consultado/consumido antes
+do cursor. Criar esse ledger ou permitir uma escrita técnica na origem é um gate futuro específico;
+não foi criado neste PR. Sem esse gate, a garantia é: token de 15 minutos, ligado a endpoints e
+one-off único sem restart, mais replay bloqueado dentro do processo.
+
+## Execução real na origem — gate obrigatório
+
+Produção está em `58a150c7`; esse artefacto não contém o exportador deste PR. Por isso, o comando
+antigo que invocava diretamente `python -m scripts.export_anonymized_dataset` no serviço produtivo
+não é executável nem está aprovado.
+
+O percurso recomendado é um **one-off source-side efémero construído exatamente do commit revisto**:
+
+1. imagem/one-off imutável no mesmo ambiente/região da origem, sem URL e sem volume;
+2. ligação PostgreSQL exclusivamente read-only disponibilizada no runtime de origem, sem exportar a
+   credencial para operador ou destino;
+3. token e chave de autorização injetados apenas nesse processo; integrações/jobs totalmente off;
+4. `stdout` JSONL ligado diretamente ao receptor e `stderr` operacional sem dados;
+5. processo termina após um uso, sem restart, filesystem efémero eliminado.
+
+O CI prova este desenho apenas com fixtures: constrói a imagem do commit, executa autorização,
+transformação antes do pipe, staging relacional e rollback. Não prova acesso à produção. Para o
+ensaio real é necessária autorização separada para **criar/executar o one-off no Render ligado
+read-only à BD produtiva e injetar os dois segredos efémeros**. Isso implica execução de código no
+ambiente de produção, configuração/segredo temporário e possivelmente custo; é o gate exato onde
+este trabalho para.
+
+Uma alternativa sem novo serviço seria enviar um bundle revisto por stdin para uma sessão shell do
+serviço produtivo e executá-lo em memória. Não é recomendada: tem menor auditabilidade e continua a
+ser execução one-off de código em produção, exigindo a mesma autorização explícita. Nenhum destes
+percursos foi executado.
+
+## Comando conceptual — NÃO executável/não executar sem nova autorização
 
 Após auditoria do SELECT e criação de um `CAPTURE_AUTHORIZATION_ID` explícito, o operador usará
 um pipe equivalente a:
 
 ```text
-render ssh <SERVICO_PRODUCAO_CONFIRMADO> -- \
-  env CAPTURE_AUTHORIZATION_ID=<ID_APROVADO> \
+render one-off <IMAGEM_EXATA_DO_COMMIT_REVISTO> -- \
+  env CAPTURE_AUTHORIZATION_ID=<TOKEN_ASSINADO_EFEMERO> \
+      CAPTURE_AUTHORIZATION_KEY=<CHAVE_EFEMERA> \
+      CAPTURE_SOURCE_SERVICE=<ORIGEM_APROVADA> \
+      CAPTURE_DESTINATION_SERVICE=<DESTINO_APROVADO> \
   python -m scripts.export_anonymized_dataset --read-only --batch-size 250 \
-| render ssh srv-da56eogu01pc73e5nnh0 -- \
+| render ssh <DESTINO_TEMPORARIO_APROVADO> -- \
   python -m scripts.receive_anonymized_stream \
     --dsn 'postgresql://postgres@/carfast_anonymized_test?host=/var/run/postgresql'
 ```
@@ -78,8 +124,6 @@ Antes desse comando faltam autorização de captura, revisão das queries/coluna
 real, mecanismo para impedir outbound do processo que contém dados anonimizados e restrição da
 regra externa herdada pela BD gerida. Nenhum destes gates é implicitamente aprovado aqui.
 
-O `CAPTURE_AUTHORIZATION_ID` será emitido pelo responsável no momento autorizado, com valor
-único, validade operacional máxima de 15 minutos e consumo único. Não será colocado na linha de
-comandos histórica, impresso, incluído em `stdout`/`stderr` ou persistido. O procedimento futuro
-deverá injetá-lo de forma efémera no runtime e rejeitar reutilização/expiração antes de qualquer
-cursor; esta preparação não cria nem valida esse identificador contra produção.
+O texto acima é uma topologia, não sintaxe Render confirmada nem autorização operacional. O token
+será emitido no momento e não colocado numa linha de comandos histórica; a representação `env` é
+apenas conceptual. Esta preparação não criou token, chave, ledger, serviço ou ligação real.

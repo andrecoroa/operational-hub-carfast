@@ -1,0 +1,100 @@
+name: Isolated empty rehearsal
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - codex/isolated-empty-rehearsal
+
+permissions:
+  contents: read
+
+concurrency:
+  group: isolated-empty-rehearsal-v2
+  cancel-in-progress: true
+
+jobs:
+  empty-environment:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      APP_ENV: test
+      APP_SECRET_KEY: ephemeral-ci-only
+      DATABASE_URL: postgresql+psycopg://carfast:carfast@rehearsal-postgres:5432/carfast_rehearsal_test
+      DOCUMENT_ARCHIVE_ROOT: /tmp/carfast-rehearsal/documents
+      DOCUMENT_INVOICE_INBOX_PATH: /tmp/carfast-rehearsal/inbox
+      EMAIL_STORAGE_ROOT: /tmp/carfast-rehearsal/email
+      EMAIL_INBOUND_ENABLED: "false"
+      EMAIL_OUTBOUND_ENABLED: "false"
+      WEBHOOKS_ENABLED: "false"
+      SCHEDULED_JOBS_ENABLED: "false"
+      PORTALS_ENABLED: "false"
+      EXTERNAL_INTEGRATIONS_ENABLED: "false"
+      DOCUMENT_FIXTURES_ONLY: "true"
+      REAL_DATA_ALLOWED: "false"
+      POSTMARK_SERVER_TOKEN: ""
+      INTEGRATION_API_KEY: ""
+      WEBHOOK_SIGNING_SECRET: ""
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+      - name: Install and build before network isolation
+        run: |
+          python -m pip install -r requirements-dev.txt
+          docker pull postgres:17-bookworm
+          docker build -f .github/rehearsal.Dockerfile -t carfast-empty-rehearsal .
+      - name: Verify fail-closed configuration
+        run: |
+          python -m scripts.validate_isolated_environment
+          python -m pytest -q tests/test_isolated_environment.py tests/test_phase10_rehearsal.py
+      - name: Create internal-only application network
+        run: |
+          docker network create --internal carfast-rehearsal-internal
+          docker run -d --rm \
+            --name rehearsal-postgres \
+            --network carfast-rehearsal-internal \
+            -e POSTGRES_DB=carfast_rehearsal_test \
+            -e POSTGRES_USER=carfast \
+            -e POSTGRES_PASSWORD=carfast \
+            postgres:17-bookworm
+          for attempt in $(seq 1 30); do
+            if docker exec rehearsal-postgres pg_isready -U carfast -d carfast_rehearsal_test; then
+              exit 0
+            fi
+            sleep 2
+          done
+          exit 1
+      - name: Prove egress denial, bootstrap and reconcile
+        run: |
+          if docker run --rm --network carfast-rehearsal-internal carfast-empty-rehearsal \
+            python -c "import urllib.request; urllib.request.urlopen('https://carfast-stock.onrender.com', timeout=5)"; then
+            echo "Outbound production endpoint unexpectedly reachable"
+            exit 1
+          else
+            echo "Outbound network denied inside the application network as required"
+          fi
+          docker run --rm --network carfast-rehearsal-internal \
+            -e APP_ENV -e APP_SECRET_KEY -e DATABASE_URL \
+            -e DOCUMENT_ARCHIVE_ROOT -e DOCUMENT_INVOICE_INBOX_PATH -e EMAIL_STORAGE_ROOT \
+            -e EMAIL_INBOUND_ENABLED -e EMAIL_OUTBOUND_ENABLED -e WEBHOOKS_ENABLED \
+            -e SCHEDULED_JOBS_ENABLED -e PORTALS_ENABLED -e EXTERNAL_INTEGRATIONS_ENABLED \
+            -e DOCUMENT_FIXTURES_ONLY -e REAL_DATA_ALLOWED -e POSTMARK_SERVER_TOKEN \
+            -e INTEGRATION_API_KEY -e WEBHOOK_SIGNING_SECRET \
+            carfast-empty-rehearsal sh -ec '
+              python -m scripts.validate_isolated_environment
+              python -m alembic upgrade head
+              python -m scripts.bootstrap_installation
+              python -m scripts.check_clean_install
+              python -m scripts.run_phase10_rehearsal
+              python -m pytest -q tests/test_modular_foundation.py tests/test_legacy_consolidation.py
+            '
+      - name: Destroy isolated resources
+        if: always()
+        run: |
+          docker rm -f rehearsal-postgres 2>/dev/null || true
+          docker network rm carfast-rehearsal-internal 2>/dev/null || true

@@ -24,12 +24,16 @@ cleanup() {
     kill "$receiver_pid" 2>/dev/null || true
     wait "$receiver_pid" 2>/dev/null || true
   fi
+  PGPASSWORD="$admin_password" psql -h "$host" -U "$admin_role" -d postgres \
+    -v ON_ERROR_STOP=1 -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname IN ('$source_db', '$staging_db') AND pid <> pg_backend_pid()" \
+    >/dev/null 2>&1 || true
   if [ "$exit_status" -ne 0 ] && [ -f "/tmp/integral-receiver-$run_id.log" ]; then
     echo "synthetic_receiver_diagnostic_begin" >&2
     tail -n 80 "/tmp/integral-receiver-$run_id.log" >&2
     echo "synthetic_receiver_diagnostic_end" >&2
   fi
   rm -f "/tmp/integral-receiver-$run_id.log" "/tmp/integral-preflight-$run_id.json"
+  rm -f /tmp/carfast-integral-*.spool
   rm -rf "$storage_root" "$staging_root"
   PGPASSWORD="$admin_password" dropdb -h "$host" -U "$admin_role" --if-exists "$source_db" || true
   PGPASSWORD="$admin_password" dropdb -h "$host" -U "$admin_role" --if-exists "$staging_db" || true

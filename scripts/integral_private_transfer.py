@@ -577,7 +577,7 @@ def send_bundle_tcp(root: Path, on_bundle_accepted: object | None = None) -> int
         event.set()
     for thread in threads:
         remaining = max(0.0, deadline - time.monotonic())
-        thread.join(timeout=min(30.0, remaining))
+        thread.join(timeout=remaining)
     alive = [thread.name for thread in threads if thread.is_alive()]
     if alive:
         fail(RuntimeError("bundle cancellation deadline exceeded"))

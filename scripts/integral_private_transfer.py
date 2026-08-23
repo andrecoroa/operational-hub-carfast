@@ -250,7 +250,10 @@ def serve(kind: str, staging_root: Path | None) -> int:
                     stderr = process.stderr.read() if process.stderr else b""
                     returncode = process.wait()
                     if returncode:
-                        raise RuntimeError(f"pg_restore failed ({len(stderr)} stderr bytes)")
+                        diagnostic = stderr.decode("utf-8", errors="replace")[-2_000:].strip()
+                        raise RuntimeError(
+                            f"pg_restore failed ({len(stderr)} stderr bytes): {diagnostic}"
+                        )
                     if destination_phase == "prepared-target":
                         TARGET_MARKER.unlink(missing_ok=True)
                     result = {"accepted": True, "kind": kind, "bytes": total}
@@ -261,7 +264,9 @@ def serve(kind: str, staging_root: Path | None) -> int:
                 self.end_headers()
                 self.wfile.write(payload)
                 state["accepted"] = True
-            except Exception:
+            except Exception as exc:
+                if isinstance(exc, RuntimeError):
+                    print(f"integral database restore rejected: {exc}", flush=True)
                 payload = b'{"accepted":false}'
                 self.send_response(400)
                 self.send_header("Content-Type", "application/json")

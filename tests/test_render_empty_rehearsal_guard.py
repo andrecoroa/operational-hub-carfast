@@ -1,10 +1,17 @@
 from __future__ import annotations
 
 import socket
+import time
 
 import pytest
 
 from app.core.egress_guard import EgressDenied, install_process_egress_guard
+from app.platform.capture_authorization import (
+    AuthorizationRejected,
+    issue_fixture_token,
+    reset_fixture_replay_cache,
+    verify_and_consume,
+)
 from scripts.validate_isolated_environment import validate_environment
 
 
@@ -88,3 +95,38 @@ def test_local_postgres_unix_socket_is_accepted_only_when_explicit() -> None:
     assert validate_environment(environment) == []
     environment["LOCAL_POSTGRES_SOCKET"] = "/tmp/unapproved"
     assert validate_environment(environment)
+
+
+def test_private_ingest_token_is_bound_to_exact_endpoints(monkeypatch) -> None:
+    key = b"k" * 32
+    monkeypatch.setenv("CAPTURE_AUTHORIZATION_KEY", key.decode())
+    monkeypatch.setenv("CAPTURE_SOURCE_SERVICE", "srv-source")
+    monkeypatch.setenv("CAPTURE_DESTINATION_SERVICE", "srv-destination")
+    reset_fixture_replay_cache()
+    now = int(time.time())
+    token = issue_fixture_token(
+        key,
+        source="srv-source",
+        destination="srv-destination",
+        nonce="n" * 22,
+        issued_at=now,
+        expires_at=now + 300,
+    )
+    # A token for another exact endpoint must fail closed before any receiver starts.
+    bad = issue_fixture_token(
+        key,
+        source="srv-other",
+        destination="srv-destination",
+        nonce="o" * 22,
+        issued_at=now,
+        expires_at=now + 300,
+    )
+    assert token != bad
+    with pytest.raises(AuthorizationRejected, match="endpoint mismatch"):
+        verify_and_consume(
+            bad,
+            key,
+            expected_source="srv-source",
+            expected_destination="srv-destination",
+            now=now,
+        )

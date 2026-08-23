@@ -116,9 +116,8 @@ def batched_rows(cursor: Any, batch_size: int) -> Iterator[Mapping[str, Any]]:
         yield from rows
 
 
-def export_connection(connection: Any, output: BinaryIO, batch_size: int, key: bytes) -> int:
+def export_chunks(connection: Any, batch_size: int, key: bytes) -> Iterator[bytes]:
     synth = EphemeralSynthesizer(key)
-    total = 0
     connection.execute("SET TRANSACTION READ ONLY")
     connection.execute("SET LOCAL statement_timeout = '30s'")
     connection.execute("SET LOCAL lock_timeout = '2s'")
@@ -132,10 +131,15 @@ def export_connection(connection: Any, output: BinaryIO, batch_size: int, key: b
             cursor.itersize = batch_size
             cursor.execute(query)
             records = ((table, row) for row in batched_rows(cursor, batch_size))
-            for chunk in stream_jsonl(records, synth):
-                output.write(chunk)
-                output.flush()  # The downstream pipe controls backpressure here.
-                total += 1
+            yield from stream_jsonl(records, synth)
+
+
+def export_connection(connection: Any, output: BinaryIO, batch_size: int, key: bytes) -> int:
+    total = 0
+    for chunk in export_chunks(connection, batch_size, key):
+        output.write(chunk)
+        output.flush()  # The downstream pipe controls backpressure here.
+        total += 1
     return total
 
 

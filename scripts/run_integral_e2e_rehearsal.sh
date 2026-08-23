@@ -14,8 +14,9 @@ source_role="integral_source_ro_${run_id}"
 staging_role="integral_stage_${run_id}"
 source_password="synthetic-source-${run_id}"
 staging_password="synthetic-stage-${run_id}"
-storage_root="/tmp/integral-e2e-${run_id}-source"
-staging_root="/tmp/integral-e2e-${run_id}-staging"
+work_root="${INTEGRAL_REHEARSAL_WORK_ROOT:-/tmp}"
+storage_root="$work_root/integral-e2e-${run_id}-source"
+staging_root="$work_root/integral-e2e-${run_id}-staging"
 receiver_pid=""
 
 cleanup() {
@@ -33,14 +34,14 @@ cleanup() {
     echo "synthetic_receiver_diagnostic_end" >&2
   fi
   rm -f "/tmp/integral-receiver-$run_id.log" "/tmp/integral-preflight-$run_id.json"
-  rm -f /tmp/carfast-integral-*.spool
+  rm -f "$work_root"/carfast-integral-*.spool
   rm -rf "$storage_root" "$staging_root"
   PGPASSWORD="$admin_password" dropdb -h "$host" -U "$admin_role" --if-exists "$source_db" || true
   PGPASSWORD="$admin_password" dropdb -h "$host" -U "$admin_role" --if-exists "$staging_db" || true
   PGPASSWORD="$admin_password" psql -h "$host" -U "$admin_role" -d postgres \
     -v ON_ERROR_STOP=1 -c "DROP ROLE IF EXISTS $source_role; DROP ROLE IF EXISTS $staging_role" \
     >/dev/null || true
-  if find /tmp -maxdepth 1 -name 'carfast-integral-*.spool' -print -quit | grep -q .; then
+  if find "$work_root" -maxdepth 1 -name 'carfast-integral-*.spool' -print -quit | grep -q .; then
     echo "rehearsal cleanup found residual spool" >&2
     exit 1
   fi
@@ -79,11 +80,11 @@ dd if=/dev/zero of="$storage_root/root-manifest.bin" bs=4096 count=1 status=none
 hmac_key="synthetic-integral-hmac-material-${run_id}-32bytes"
 hmac_snapshot="$(printf %s "$hmac_key" | sha256sum | cut -d ' ' -f 1)"
 destination_host="${INTEGRAL_REHEARSAL_DESTINATION_HOST:-carfast-integral-fixture}"
-common_env="INTEGRAL_DATABASE_DUMP_PHASE=source-staging INTEGRAL_TRANSFER_KEY=$hmac_key INTEGRAL_HMAC_SNAPSHOT_SHA256=$hmac_snapshot INTEGRAL_EXPECTED_HMAC_SNAPSHOT_SHA256=$hmac_snapshot INTEGRAL_SOURCE_SERVICE=srv-synthetic-source INTEGRAL_DESTINATION_SERVICE=srv-synthetic-destination INTEGRAL_RELEASE_SHA=${GITHUB_SHA:-0000000000000000000000000000000000000000} INTEGRAL_CUTOFF_ID=cut-synthetic-$run_id INTEGRAL_BUNDLE_ID=bundle-synthetic-$run_id INTEGRAL_DESTINATION_HOST=$destination_host INTEGRAL_EXPECTED_DESTINATION_HOST=$destination_host INTEGRAL_DESTINATION_PORT=10001 INTEGRAL_EXPECTED_DESTINATION_PORT=10001 INTEGRAL_DATABASE_DESTINATION_PHASE=staging INTEGRAL_SOURCE_REVISION=ffae1f2a3b4c INTEGRAL_EXPECTED_DATABASE_HOST=$host INTEGRAL_ISOLATED_REHEARSAL=true INTEGRAL_MAX_STREAM_BYTES=2147483648 INTEGRAL_CLIENT_TIMEOUT_SECONDS=1200 INTEGRAL_BUNDLE_TIMEOUT_SECONDS=900"
+common_env="INTEGRAL_DATABASE_DUMP_PHASE=source-staging INTEGRAL_TRANSFER_KEY=$hmac_key INTEGRAL_HMAC_SNAPSHOT_SHA256=$hmac_snapshot INTEGRAL_EXPECTED_HMAC_SNAPSHOT_SHA256=$hmac_snapshot INTEGRAL_SOURCE_SERVICE=srv-synthetic-source INTEGRAL_DESTINATION_SERVICE=srv-synthetic-destination INTEGRAL_RELEASE_SHA=${GITHUB_SHA:-0000000000000000000000000000000000000000} INTEGRAL_CUTOFF_ID=cut-synthetic-$run_id INTEGRAL_BUNDLE_ID=bundle-synthetic-$run_id INTEGRAL_DESTINATION_HOST=$destination_host INTEGRAL_EXPECTED_DESTINATION_HOST=$destination_host INTEGRAL_DESTINATION_PORT=10001 INTEGRAL_EXPECTED_DESTINATION_PORT=10001 INTEGRAL_DATABASE_DESTINATION_PHASE=staging INTEGRAL_SOURCE_REVISION=ffae1f2a3b4c INTEGRAL_EXPECTED_DATABASE_HOST=$host INTEGRAL_ISOLATED_REHEARSAL=true INTEGRAL_MAX_STREAM_BYTES=2147483648 INTEGRAL_CLIENT_TIMEOUT_SECONDS=1200 INTEGRAL_BUNDLE_TIMEOUT_SECONDS=900 INTEGRAL_SPOOL_ROOT=$work_root"
 
 env $common_env \
   STAGING_DATABASE_URL="postgresql://$staging_role:$staging_password@$host:5432/$staging_db" \
-  INTEGRAL_EXPECTED_DATABASE_NAME="$staging_db" INTEGRAL_SPOOL_ROOT=/tmp \
+  INTEGRAL_EXPECTED_DATABASE_NAME="$staging_db" INTEGRAL_SPOOL_ROOT="$work_root" \
   INTEGRAL_DECLARED_BUNDLE_BYTES="$((storage_bytes + 64 * 1024 * 1024))" \
   python -m scripts.preflight_integral_runtime >/tmp/integral-preflight-$run_id.json
 

@@ -629,7 +629,11 @@ def _receive_tcp_spool(
     connection.settimeout(20 * 60)
     framed = FramedReader(handle, key, session)
     spool_key = bytearray(os.urandom(32))
-    spool_path = Path(f"/tmp/carfast-integral-{stream_type}-{os.urandom(8).hex()}.spool")
+    spool_root = Path(os.environ.get("INTEGRAL_SPOOL_ROOT", "/tmp"))
+    spool_root.mkdir(parents=True, exist_ok=True)
+    spool_path = spool_root / (
+        f"carfast-integral-{stream_type}-{os.urandom(8).hex()}.spool"
+    )
     max_bytes = int(os.environ.get("INTEGRAL_MAX_STREAM_BYTES", MAX_SPOOL_BYTES))
     evidence = encrypt_verified_stream(framed, spool_path, spool_key, max_bytes=max_bytes)
     if not framed.finished:

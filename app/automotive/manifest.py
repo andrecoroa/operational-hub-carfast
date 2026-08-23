@@ -4,7 +4,7 @@ AUTOMOTIVE_MANIFEST = ModuleManifest(
     code="automotive",
     version="1",
     capabilities=("vehicles", "fleet", "workshop", "sales", "configuration"),
-    dependencies=("core", "documents", "partners", "service-desk"),
+    dependencies=("core", "documents", "partners", "service_desk"),
     navigation=(
         Contribution("automotive.fleet", "automotive.fleet.read", "fleet"),
         Contribution("automotive.workshop", "automotive.workshop.read", "workshop"),

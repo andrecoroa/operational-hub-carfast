@@ -32,3 +32,19 @@ def test_process_guard_denies_external_connection(monkeypatch: pytest.MonkeyPatc
             socket.create_connection(("example.com", 443), timeout=0.01)
     finally:
         socket.create_connection = original
+
+
+def test_render_managed_hostname_suffix_is_accepted() -> None:
+    environment = {
+        "APP_ENV": "test",
+        "DATABASE_URL": (
+            "postgresql+psycopg://u:p@dpg-synthetic-a.frankfurt-postgres.render.com/"
+            "rehearsal_test"
+        ),
+        "RENDER": "true",
+        "RENDER_EMPTY_REHEARSAL": "true",
+        "REHEARSAL_DATABASE_HOST": "dpg-synthetic-a",
+        "DOCUMENT_FIXTURES_ONLY": "true",
+        "REAL_DATA_ALLOWED": "false",
+    }
+    assert validate_environment(environment) == []

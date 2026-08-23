@@ -32,7 +32,10 @@ def _database_host_is_isolated(hostname: str | None, environment: dict[str, str]
         and environment.get("RENDER_EMPTY_REHEARSAL", "").strip().lower() == "true"
         and bool(hostname)
         and bool(expected_render_host)
-        and hostname.lower() == expected_render_host
+        and (
+            hostname.lower() == expected_render_host
+            or hostname.lower().startswith(expected_render_host + ".")
+        )
         and expected_render_host.startswith("dpg-")
     )
 

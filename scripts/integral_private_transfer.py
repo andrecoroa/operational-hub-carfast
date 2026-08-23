@@ -127,7 +127,10 @@ def libpq_environment(database_url: str) -> dict[str, str]:
     expected_database = required("INTEGRAL_EXPECTED_DATABASE_NAME")
     if parsed.hostname != expected_host or parsed.path.lstrip("/") != expected_database:
         raise SystemExit("integral transfer database target mismatch")
-    if not expected_host.startswith("dpg-"):
+    isolated = os.environ.get("INTEGRAL_ISOLATED_REHEARSAL") == "true"
+    if not expected_host.startswith("dpg-") and not (
+        isolated and expected_host == "rehearsal-postgres"
+    ):
         raise SystemExit("integral transfer requires a private Render PostgreSQL host")
     environment = dict(os.environ)
     environment.update(
@@ -136,7 +139,7 @@ def libpq_environment(database_url: str) -> dict[str, str]:
         PGDATABASE=expected_database,
         PGUSER=unquote(parsed.username or ""),
         PGPASSWORD=unquote(parsed.password or ""),
-        PGSSLMODE="require",
+        PGSSLMODE="disable" if isolated else "require",
     )
     return environment
 
@@ -679,6 +682,7 @@ def _consume_tcp_spool(pending: PendingTcpSpool, staging_root: Path | None) -> N
 
 
 def _run_bundle_gate(command: list[str], environment: dict[str, str]) -> None:
+    started = time.monotonic()
     result = subprocess.run(
         command,
         env=environment,
@@ -690,7 +694,9 @@ def _run_bundle_gate(command: list[str], environment: dict[str, str]) -> None:
     if result.returncode:
         raise RuntimeError(
             f"bundle gate failed command={command[2] if len(command) > 2 else command[0]} "
-            f"stderr_bytes={len(result.stderr.encode())}"
+            f"rc={result.returncode} duration_ms={int((time.monotonic() - started) * 1000)} "
+            f"stderr_bytes={len(result.stderr.encode())} "
+            f"stderr_sha256={hashlib.sha256(result.stderr.encode()).hexdigest()}"
         )
     if result.stdout.strip():
         print(result.stdout.strip(), flush=True)
@@ -701,16 +707,19 @@ def _reconcile_bundle(staging_root: Path | None) -> None:
         raise TcpTransferRejected("bundle reconciliation requires storage staging")
     source_manifest = Path("/tmp/carfast-integral-source-manifest.json")
     target_manifest = Path("/tmp/carfast-integral-target-manifest.json")
+    gated_remote = os.environ.get("INTEGRAL_ISOLATED_REHEARSAL") != "true"
     environment = dict(os.environ)
-    environment.update(APP_ENV="rehearsal", INTEGRAL_GREEN_REHEARSAL="true")
+    environment.update(
+        APP_ENV="rehearsal" if gated_remote else "test",
+        INTEGRAL_GREEN_REHEARSAL="true",
+    )
     release = required("INTEGRAL_RELEASE_SHA")
     try:
         _run_bundle_gate(
             ["python", "-m", "scripts.validate_integral_migration_contract", "staging"],
             environment,
         )
-        _run_bundle_gate(
-            [
+        source_command = [
                 "python",
                 "-m",
                 "scripts.build_integral_reconciliation_manifest",
@@ -724,18 +733,17 @@ def _reconcile_bundle(staging_root: Path | None) -> None:
                 "source",
                 "--inventory-phase",
                 "staging",
-                "--gated-remote",
-            ],
-            environment,
-        )
+            ]
+        if gated_remote:
+            source_command.append("--gated-remote")
+        _run_bundle_gate(source_command, environment)
         _run_bundle_gate(["alembic", "upgrade", "fff37f8a9b0d"], environment)
         _run_bundle_gate(["python", "-m", "scripts.reset_integral_target_sequences"], environment)
         _run_bundle_gate(
             ["python", "-m", "scripts.validate_integral_migration_contract", "target"],
             environment,
         )
-        _run_bundle_gate(
-            [
+        target_command = [
                 "python",
                 "-m",
                 "scripts.build_integral_reconciliation_manifest",
@@ -749,10 +757,10 @@ def _reconcile_bundle(staging_root: Path | None) -> None:
                 "target",
                 "--inventory-phase",
                 "target",
-                "--gated-remote",
-            ],
-            environment,
-        )
+            ]
+        if gated_remote:
+            target_command.append("--gated-remote")
+        _run_bundle_gate(target_command, environment)
         _run_bundle_gate(
             [
                 "python",

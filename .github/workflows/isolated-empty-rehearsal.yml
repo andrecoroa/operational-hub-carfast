@@ -18,7 +18,7 @@ concurrency:
 jobs:
   empty-environment:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 45
     env:
       APP_ENV: test
       APP_SECRET_KEY: ephemeral-ci-only
@@ -56,6 +56,9 @@ jobs:
           python -m pytest -q tests/test_isolated_environment.py tests/test_phase10_rehearsal.py \
             tests/test_integral_reconciliation.py tests/test_integral_storage_stream.py \
             tests/test_integral_transfer.py tests/test_integral_migration_contract.py
+          python -m pytest -q tests/test_preflight_integral_runtime.py \
+            tests/test_encrypted_spool.py tests/test_integral_tcp.py \
+            tests/test_integral_bundle_tcp.py
           python -m pytest -q tests/test_capture_authorization.py \
             tests/test_anonymized_stream.py tests/test_anonymized_receive.py \
             tests/test_render_empty_rehearsal_guard.py \
@@ -215,6 +218,14 @@ jobs:
               python -m scripts.compare_integral_reconciliation_manifests \
                 /tmp/integral/migrated.json /tmp/integral/target.json
             '
+      - name: Prove three consecutive end-to-end TCP bundle rehearsals
+        run: |
+          docker exec -e GITHUB_SHA carfast-integral-fixture \
+            sh scripts/run_integral_e2e_rehearsal.sh 1 16777216
+          docker exec -e GITHUB_SHA carfast-integral-fixture \
+            sh scripts/run_integral_e2e_rehearsal.sh 2 16777216
+          docker exec -e GITHUB_SHA carfast-integral-fixture \
+            sh scripts/run_integral_e2e_rehearsal.sh 3 1256277934
       - name: Destroy isolated resources
         if: always()
         run: |

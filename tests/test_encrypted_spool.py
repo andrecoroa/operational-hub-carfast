@@ -8,9 +8,9 @@ from pathlib import Path
 import pytest
 
 from app.platform.encrypted_spool import (
-    ConsumerProcessRejected,
     HEADER,
     MAGIC,
+    ConsumerProcessRejected,
     SpoolRejected,
     destroy_spool,
     encrypt_to_spool,

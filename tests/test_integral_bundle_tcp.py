@@ -194,7 +194,7 @@ def test_send_bundle_negative_consumer_cancels_without_hang(
     receiver.start()
     time.sleep(0.05)
     started = time.monotonic()
-    with pytest.raises(BaseException):
+    with pytest.raises((RuntimeError, OSError, transfer.TcpTransferRejected)):
         transfer.send_bundle_tcp(tmp_path)
     elapsed = time.monotonic() - started
     receiver.join(timeout=3)

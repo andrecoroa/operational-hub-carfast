@@ -16,5 +16,5 @@ gosu postgres createdb carfast_anonymized_test 2>/dev/null || true
 
 export PATH="/opt/carfast-venv/bin:$PATH"
 export LOCAL_POSTGRES_SOCKET=/var/run/postgresql
-export DATABASE_URL="postgresql+psycopg:///carfast_anonymized_test?host=/var/run/postgresql"
+export DATABASE_URL="postgresql+psycopg://postgres@/carfast_anonymized_test?host=/var/run/postgresql"
 exec python -m scripts.render_empty_rehearsal

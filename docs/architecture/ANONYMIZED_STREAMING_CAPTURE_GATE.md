@@ -58,7 +58,7 @@ render ssh <SERVICO_PRODUCAO_CONFIRMADO> -- \
   python -m scripts.export_anonymized_dataset --read-only --batch-size 250 \
 | render ssh srv-da56eogu01pc73e5nnh0 -- \
   python -m scripts.receive_anonymized_stream \
-    --dsn 'postgresql:///carfast_anonymized_test?host=/var/run/postgresql'
+    --dsn 'postgresql://postgres@/carfast_anonymized_test?host=/var/run/postgresql'
 ```
 
 Antes desse comando faltam autorização de captura, revisão das queries/colunas contra o schema

@@ -111,13 +111,17 @@ jobs:
       - name: Validate PostgreSQL uses only its Unix socket
         run: |
           docker volume create carfast-anonymized-fixture
-          docker run -d --rm --name carfast-anonymized-destination \
+          docker run -d --name carfast-anonymized-destination \
             -v carfast-anonymized-fixture:/var/data \
             -e APP_ENV=test -e APP_SECRET_KEY=fixture-only \
             -e REAL_DATA_ALLOWED=false -e DOCUMENT_FIXTURES_ONLY=true \
             -e EXTERNAL_INTEGRATIONS_ENABLED=false \
             carfast-anonymized-destination
           for attempt in $(seq 1 60); do
+            if [ "$(docker inspect -f '{{.State.Running}}' carfast-anonymized-destination)" != true ]; then
+              docker logs carfast-anonymized-destination
+              exit 1
+            fi
             if docker exec carfast-anonymized-destination \
               psql -h /var/run/postgresql -d carfast_anonymized_test \
               -Atc "SELECT current_setting('listen_addresses'), current_setting('unix_socket_directories')" \

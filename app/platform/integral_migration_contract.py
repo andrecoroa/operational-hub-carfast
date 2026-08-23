@@ -188,10 +188,17 @@ def validate_additive_contract(connection: Connection) -> None:
             raise IntegralMigrationContractError(
                 f"additive index contract mismatch for {relation}: {sorted(indexes)}"
             )
-    checks = {item["name"] for item in inspector.get_check_constraints("installation_modules")}
-    if checks != {"ck_installation_modules_installation_module_state"}:
+    checks = inspector.get_check_constraints("installation_modules")
+    expected_states = {"available", "active", "disabled", "retiring"}
+    if (
+        len(checks) != 1
+        or not checks[0]["name"].startswith("ck_installation_modules_")
+        or not expected_states.issubset(set(checks[0].get("sqltext", "").lower().split("'")))
+        or "state" not in checks[0].get("sqltext", "").lower()
+    ):
         raise IntegralMigrationContractError(
-            f"installation_modules check contract mismatch: {sorted(checks)}"
+            "installation_modules check contract mismatch: "
+            f"{[(item.get('name'), item.get('sqltext')) for item in checks]}"
         )
     core = connection.execute(
         text("SELECT code, version, name, required FROM module_definitions")

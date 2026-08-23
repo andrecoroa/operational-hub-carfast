@@ -248,6 +248,11 @@ def test_versioned_schema_contract_covers_every_selected_column() -> None:
         "character",
         "text",
     }
+    assert SOURCE_SCHEMA_CONTRACT["stock_suppliers"]["tax_id"].types == {
+        "character varying",
+        "character",
+        "text",
+    }
 
 
 @pytest.mark.parametrize("value", ["customer.joao", "phase_912345678", "invoice.maria"])

@@ -61,7 +61,9 @@ INTEGER_SOURCE = {
     (table, field)
     for table, rules in FIELD_MAP.items()
     for field, rule in rules.items()
-    if (field == "id" or field.endswith("_id") or field == "file_size")
+    # Infer technical identifiers from the explicit transformation contract,
+    # never from a name suffix: tax_id is identifying text, not a foreign key.
+    if (rule.action == "surrogate" or field == "file_size")
     and (table, field) != ("audit_log", "entity_id")
 }
 

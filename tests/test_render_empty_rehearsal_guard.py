@@ -48,3 +48,15 @@ def test_render_managed_hostname_suffix_is_accepted() -> None:
         "REAL_DATA_ALLOWED": "false",
     }
     assert validate_environment(environment) == []
+
+
+def test_pinned_render_host_does_not_depend_on_platform_marker() -> None:
+    environment = {
+        "APP_ENV": "test",
+        "DATABASE_URL": "postgresql://u:p@dpg-synthetic-a/rehearsal_test",
+        "RENDER_EMPTY_REHEARSAL": "true",
+        "REHEARSAL_DATABASE_HOST": "dpg-synthetic-a",
+        "DOCUMENT_FIXTURES_ONLY": "true",
+        "REAL_DATA_ALLOWED": "false",
+    }
+    assert validate_environment(environment) == []

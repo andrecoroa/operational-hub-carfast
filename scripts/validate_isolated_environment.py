@@ -28,8 +28,7 @@ def _database_host_is_isolated(hostname: str | None, environment: dict[str, str]
     # They are accepted only for the explicitly gated empty rehearsal runtime.
     expected_render_host = environment.get("REHEARSAL_DATABASE_HOST", "").strip().lower()
     return (
-        environment.get("RENDER", "").strip().lower() == "true"
-        and environment.get("RENDER_EMPTY_REHEARSAL", "").strip().lower() == "true"
+        environment.get("RENDER_EMPTY_REHEARSAL", "").strip().lower() == "true"
         and bool(hostname)
         and bool(expected_render_host)
         and (

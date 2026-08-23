@@ -17,7 +17,15 @@ from app.platform.encrypted_spool import (
     encrypt_verified_stream,
     iter_decrypted_spool,
 )
-from app.platform.integral_tcp import FramedReader, write_framed
+from app.platform.integral_tcp import (
+    CONTROL_CONSUMER_RESULT,
+    CONTROL_SPOOL_ACCEPTED,
+    FramedReader,
+    ensure_no_trailing,
+    read_control,
+    write_control,
+    write_framed,
+)
 
 MINIMUM_BYTES = 1_256_277_934  # 1.17 GiB
 
@@ -71,39 +79,65 @@ def main() -> None:
         expected = synthetic_digest(total)
         transfer_key = b"synthetic-transfer-key-material-32b"
         session = "synthetic-session-abcdefghijklmnop"
-        sender, receiver = socket.socketpair()
+        listener = socket.socket()
+        listener.bind(("127.0.0.1", 0))
+        listener.listen(1)
         outcome: dict[str, tuple[int, int, str]] = {}
 
         def send() -> None:
-            with sender:
-                outcome["result"] = write_framed(
-                    SyntheticReader(total),
-                    sender.makefile("wb", buffering=0),
-                    transfer_key,
-                    session,
+            with socket.create_connection(listener.getsockname(), timeout=30) as sender:
+                handle = sender.makefile("rwb", buffering=0)
+                result = write_framed(
+                    SyntheticReader(total), handle, transfer_key, session
+                )
+                frames, sent, digest_hex = result
+                digest = bytes.fromhex(digest_hex)
+                read_control(
+                    handle, transfer_key, session,
+                    expected_phase=CONTROL_SPOOL_ACCEPTED,
+                    frames=frames, total=sent, digest=digest,
                 )
                 sender.shutdown(socket.SHUT_WR)
+                read_control(
+                    handle, transfer_key, session,
+                    expected_phase=CONTROL_CONSUMER_RESULT,
+                    frames=frames, total=sent, digest=digest,
+                )
+                outcome["result"] = result
 
         sending = threading.Thread(target=send)
         sending.start()
+        receiver, _ = listener.accept()
+        listener.close()
         with receiver:
-            framed = FramedReader(
-                receiver.makefile("rb", buffering=0), transfer_key, session
-            )
+            handle = receiver.makefile("rwb", buffering=0)
+            framed = FramedReader(handle, transfer_key, session)
             evidence = encrypt_verified_stream(
                 framed, spool, key, max_bytes=total
+            )
+            digest = bytes.fromhex(evidence.sha256)
+            write_control(
+                handle, transfer_key, session,
+                phase=CONTROL_SPOOL_ACCEPTED, ok=True,
+                frames=framed.expected_sequence, total=evidence.bytes, digest=digest,
+            )
+            ensure_no_trailing(handle)
+            observed = hashlib.sha256()
+            observed_bytes = 0
+            for chunk in iter_decrypted_spool(spool, key, evidence):
+                observed.update(chunk)
+                observed_bytes += len(chunk)
+            if observed_bytes != total or observed.hexdigest() != expected:
+                raise SystemExit("synthetic decrypted evidence mismatch")
+            write_control(
+                handle, transfer_key, session,
+                phase=CONTROL_CONSUMER_RESULT, ok=True,
+                frames=framed.expected_sequence, total=evidence.bytes, digest=digest,
             )
         sending.join(timeout=120)
         if sending.is_alive() or outcome["result"][1:] != (total, expected):
             raise SystemExit("synthetic framed sender evidence mismatch")
         encrypted_size = spool.stat().st_size
-        observed = hashlib.sha256()
-        observed_bytes = 0
-        for chunk in iter_decrypted_spool(spool, key, evidence):
-            observed.update(chunk)
-            observed_bytes += len(chunk)
-        if observed_bytes != total or observed.hexdigest() != expected:
-            raise SystemExit("synthetic decrypted evidence mismatch")
         elapsed = time.monotonic() - started
         print(f"synthetic_spool_bytes={total}", flush=True)
         print(f"synthetic_encrypted_bytes={encrypted_size}", flush=True)

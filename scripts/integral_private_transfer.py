@@ -617,6 +617,96 @@ def _consume_tcp_spool(pending: PendingTcpSpool, staging_root: Path | None) -> N
         raise TcpTransferRejected("unknown stream type")
 
 
+def _run_bundle_gate(command: list[str], environment: dict[str, str]) -> None:
+    result = subprocess.run(
+        command,
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=20 * 60,
+    )
+    if result.returncode:
+        raise RuntimeError(
+            f"bundle gate failed command={command[2] if len(command) > 2 else command[0]} "
+            f"stderr_bytes={len(result.stderr.encode())}"
+        )
+    if result.stdout.strip():
+        print(result.stdout.strip(), flush=True)
+
+
+def _reconcile_bundle(staging_root: Path | None) -> None:
+    if staging_root is None:
+        raise TcpTransferRejected("bundle reconciliation requires storage staging")
+    source_manifest = Path("/tmp/carfast-integral-source-manifest.json")
+    target_manifest = Path("/tmp/carfast-integral-target-manifest.json")
+    environment = dict(os.environ)
+    environment.update(APP_ENV="rehearsal", INTEGRAL_GREEN_REHEARSAL="true")
+    release = required("INTEGRAL_RELEASE_SHA")
+    try:
+        _run_bundle_gate(
+            ["python", "-m", "scripts.validate_integral_migration_contract", "staging"],
+            environment,
+        )
+        _run_bundle_gate(
+            [
+                "python",
+                "-m",
+                "scripts.build_integral_reconciliation_manifest",
+                "--output",
+                str(source_manifest),
+                "--storage-root",
+                str(staging_root),
+                "--release-sha",
+                release,
+                "--database-label",
+                "source",
+                "--inventory-phase",
+                "staging",
+                "--gated-remote",
+            ],
+            environment,
+        )
+        _run_bundle_gate(["alembic", "upgrade", "fff37f8a9b0d"], environment)
+        _run_bundle_gate(["python", "-m", "scripts.reset_integral_target_sequences"], environment)
+        _run_bundle_gate(
+            ["python", "-m", "scripts.validate_integral_migration_contract", "target"],
+            environment,
+        )
+        _run_bundle_gate(
+            [
+                "python",
+                "-m",
+                "scripts.build_integral_reconciliation_manifest",
+                "--output",
+                str(target_manifest),
+                "--storage-root",
+                str(staging_root),
+                "--release-sha",
+                release,
+                "--database-label",
+                "target",
+                "--inventory-phase",
+                "target",
+                "--gated-remote",
+            ],
+            environment,
+        )
+        _run_bundle_gate(
+            [
+                "python",
+                "-m",
+                "scripts.compare_integral_migration_manifests",
+                str(source_manifest),
+                str(target_manifest),
+            ],
+            environment,
+        )
+    finally:
+        source_manifest.unlink(missing_ok=True)
+        target_manifest.unlink(missing_ok=True)
+
+
 def serve_tcp_streams(stream_types: tuple[str, ...], staging_root: Path | None) -> int:
     key = transfer_key()
     source, destination = (
@@ -699,6 +789,8 @@ def serve_tcp_streams(stream_types: tuple[str, ...], staging_root: Path | None) 
             for name in ("database", "storage"):
                 if name in pending:
                     _consume_tcp_spool(pending[name], staging_root)
+            if expected == {"database", "storage"}:
+                _reconcile_bundle(staging_root)
         except BaseException as exc:
             failure = exc
         try:

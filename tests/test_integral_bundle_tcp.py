@@ -55,6 +55,7 @@ def test_bundle_accepts_inverse_order_then_consumes_database_first(
         "_consume_tcp_spool",
         lambda pending, _root: (time.sleep(0.05), consumed.append(pending.stream_type)),
     )
+    monkeypatch.setattr(transfer, "_reconcile_bundle", lambda _root: consumed.append("reconciled"))
     server_failures: list[BaseException] = []
 
     def server() -> None:
@@ -77,8 +78,27 @@ def test_bundle_accepts_inverse_order_then_consumes_database_first(
     receiver.join(timeout=5)
     assert not client_failures
     assert not server_failures
-    assert consumed == ["database", "storage"]
+    assert consumed == ["database", "storage", "reconciled"]
     assert not storage.is_alive() and not database.is_alive() and not receiver.is_alive()
+
+
+def test_bundle_reconciliation_orders_phase_a_upgrade_and_target(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("INTEGRAL_RELEASE_SHA", "b" * 40)
+    commands: list[list[str]] = []
+    monkeypatch.setattr(
+        transfer, "_run_bundle_gate", lambda command, _environment: commands.append(command)
+    )
+    transfer._reconcile_bundle(tmp_path)
+    flattened = [" ".join(command) for command in commands]
+    assert "validate_integral_migration_contract staging" in flattened[0]
+    assert "--database-label source" in flattened[1]
+    assert flattened[2].endswith("alembic upgrade fff37f8a9b0d")
+    assert "reset_integral_target_sequences" in flattened[3]
+    assert "validate_integral_migration_contract target" in flattened[4]
+    assert "--database-label target" in flattened[5]
+    assert "compare_integral_migration_manifests" in flattened[6]
 
 
 @pytest.mark.parametrize("scenario", ["missing", "duplicate", "consumer-fail"])
@@ -95,6 +115,7 @@ def test_bundle_failures_are_closed_and_cleaned(
         )
     else:
         monkeypatch.setattr(transfer, "_consume_tcp_spool", lambda _pending, _root: None)
+    monkeypatch.setattr(transfer, "_reconcile_bundle", lambda _root: None)
     before = set(Path("/tmp").glob("carfast-integral-*.spool"))
     server_failures: list[BaseException] = []
 
@@ -123,4 +144,3 @@ def test_bundle_failures_are_closed_and_cleaned(
     assert client_failures
     assert set(Path("/tmp").glob("carfast-integral-*.spool")) == before
     assert list(tmp_path.iterdir()) == []
-

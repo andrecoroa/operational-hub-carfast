@@ -7,7 +7,11 @@ import pytest
 
 from app.platform.anonymized_receive import validated_envelopes
 from app.platform.anonymized_stream import UnsafePayload
-from scripts.receive_anonymized_stream import install_ip_socket_blocker, require_local_socket
+from scripts.receive_anonymized_stream import (
+    install_ip_socket_blocker,
+    require_approved_destination,
+    require_local_socket,
+)
 
 
 def test_destination_accepts_only_safe_envelope() -> None:
@@ -59,6 +63,28 @@ def test_destination_requires_loopback_or_unix_socket() -> None:
         require_local_socket("postgresql://localhost/carfast_anonymized_test")
     with pytest.raises(ValueError):
         require_local_socket("postgresql://remote.example/carfast_anonymized_test")
+
+
+def test_destination_accepts_only_exact_pinned_private_host() -> None:
+    dsn = "postgresql://pilot:secret@dpg-temporary-a/carfast_anonymized_test"
+    assert require_approved_destination(dsn, "dpg-temporary-a") is True
+    with pytest.raises(ValueError):
+        require_approved_destination(dsn, "dpg-blue-a")
+    with pytest.raises(ValueError):
+        require_approved_destination(
+            "postgresql://pilot:secret@dpg-temporary-a:6432/carfast_anonymized_test",
+            "dpg-temporary-a",
+        )
+    with pytest.raises(ValueError):
+        require_approved_destination(
+            "postgresql://pilot:secret@dpg-temporary-a/carfast_anonymized",
+            "dpg-temporary-a",
+        )
+    with pytest.raises(ValueError):
+        require_approved_destination(
+            "postgresql://pilot:secret@dpg-temporary-a/carfast_anonymized_test?sslmode=disable",
+            "dpg-temporary-a",
+        )
 
 
 def test_destination_rejects_nested_unicode_and_raw_id() -> None:

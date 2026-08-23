@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import socket
 import sys
 from urllib.parse import parse_qs, urlsplit
@@ -75,13 +76,31 @@ def reconcile_relations(connection: object, counts: dict[str, int]) -> dict[str,
     return {"counts": persisted, "orphans": orphans, "reconciled": True}
 
 
-def require_local_socket(dsn: str) -> None:
+def require_approved_destination(dsn: str, approved_private_host: str = "") -> bool:
+    """Validate a Unix socket or the exact pinned private Render PostgreSQL host."""
     parsed = urlsplit(dsn)
-    socket_dir = parse_qs(parsed.query).get("host", [""])[0]
-    if parsed.hostname not in {None, ""} or not socket_dir.startswith("/"):
-        raise ValueError("destination PostgreSQL must use an absolute Unix socket directory")
+    query = parse_qs(parsed.query)
+    socket_dir = query.get("host", [""])[0]
     if not parsed.path.lstrip("/").endswith("_test"):
         raise ValueError("destination database name must end in _test")
+    if parsed.hostname in {None, ""} and socket_dir.startswith("/"):
+        return False
+    if (
+        not approved_private_host
+        or parsed.hostname != approved_private_host
+        or parsed.port not in {None, 5432}
+        or socket_dir
+        or parsed.scheme not in {"postgresql", "postgres"}
+        or query.get("sslmode", [""])[0] == "disable"
+    ):
+        raise ValueError("destination PostgreSQL must use the exact approved private host")
+    return True
+
+
+def require_local_socket(dsn: str) -> None:
+    """Backward-compatible strict validator for the socket-only topology."""
+    if require_approved_destination(dsn):
+        raise ValueError("destination PostgreSQL must use an absolute Unix socket directory")
 
 
 def install_ip_socket_blocker() -> None:
@@ -101,9 +120,18 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--dsn", required=True)
     args = parser.parse_args()
-    require_local_socket(args.dsn)
-    install_ip_socket_blocker()
+    managed_private = require_approved_destination(
+        args.dsn,
+        os.environ.get("REHEARSAL_DATABASE_HOST", ""),
+    )
+    if not managed_private:
+        install_ip_socket_blocker()
     with psycopg.connect(args.dsn) as connection:
+        if managed_private:
+            # Only the pinned private DB connection exists. From this point the
+            # process cannot open DNS, proxy, redirect, or any other IP socket
+            # while it validates and ingests already-anonymized stdin.
+            install_ip_socket_blocker()
         with connection.transaction():
             connection.execute("SET LOCAL statement_timeout = '30s'")
             connection.execute("SET LOCAL lock_timeout = '3s'")

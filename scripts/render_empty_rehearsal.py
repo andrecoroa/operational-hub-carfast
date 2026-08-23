@@ -50,7 +50,7 @@ class HealthHandler(BaseHTTPRequestHandler):
             "-m",
             "scripts.receive_anonymized_stream",
             "--dsn",
-            os.environ["LOCAL_POSTGRES_DSN"],
+            os.environ.get("LOCAL_POSTGRES_DSN", os.environ["DATABASE_URL"]),
         ]
         process = subprocess.Popen(
             command,

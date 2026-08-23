@@ -239,6 +239,21 @@ Work only after separate authorization: restore isolated DB/storage, run idempot
 
 No production execution is implied.
 
+#### Accepted eight-table pilot and integral preparation (2026-08-23)
+
+PR #24 was accepted and merged only into `integration/modular-architecture` at
+`657b5dfbaa3aece57fbda394b11e376fc611a5ef`. The real pilot reconciled all eight
+approved tables, returned zero measured orphans, proved the temporary read-only role and
+write denials, and completed full resource/credential cleanup. Blue and permanent Green
+remained intact.
+
+The release now declares 166 relations, superseding the earlier inventory of 163. The
+integral fixture path covers the complete declared inventory plus storage with exact
+schema/PK/FK/count/full-row/object hashes and zero-tolerance comparison. The reusable clean
+installation classifies every declared table and requires all non-reference relations to be
+empty. See `INTEGRAL_BLUE_GREEN_REHEARSAL.md` for the executable synthetic controls and the
+separate authorization gate for the first real Green rehearsal.
+
 ### Approved final transition — blue-green
 
 The final transition must use a dedicated blue-green release, independently of

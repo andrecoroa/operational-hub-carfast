@@ -11,12 +11,12 @@ from app.platform.anonymized_stream import (
     transform_row,
     validate_payload,
 )
-from scripts.export_anonymized_dataset import batched_rows
+from scripts.export_anonymized_dataset import batched_rows, schema_preflight
 
 KEY = b"fixture-only-key-material-32-bytes!!"
 
 
-def test_stable_synthetic_values_and_fk_preservation() -> None:
+def test_stable_synthetic_values_without_raw_ids() -> None:
     synth = EphemeralSynthesizer(KEY)
     first = transform_row(
         "users",
@@ -29,7 +29,7 @@ def test_stable_synthetic_values_and_fk_preservation() -> None:
         synth,
     )
     assert first == second
-    assert first["id"] == 1
+    assert first["id"].startswith("R-user-") and first["id"] != "1"
     assert first["email"].endswith("@invalid.example")
     assert "password_hash" not in first
 
@@ -90,8 +90,15 @@ def test_unclassified_free_text_is_rejected() -> None:
 
 
 def test_formal_synthetic_token_is_not_rejected_by_numeric_heuristics() -> None:
-    validate_payload("probe", {"safe": "Company-123456789abc"})
-    validate_payload("probe", {"safe": "user-123456789abc@invalid.example"})
+    validate_payload(
+        "users",
+        {
+            "id": "R-user-0123456789abcdef",
+            "active": True,
+            "name": "Person-123456789abc",
+            "email": "user-123456789abc@invalid.example",
+        },
+    )
 
 
 def test_stream_is_incremental_jsonl() -> None:
@@ -110,8 +117,71 @@ def test_stream_is_incremental_jsonl() -> None:
     )
     chunks = stream_jsonl(records, EphemeralSynthesizer(KEY))
     first = json.loads(next(chunks))
-    assert first["data"]["id"] == 0
-    assert [json.loads(chunk)["data"]["id"] for chunk in chunks] == [1, 2]
+    assert first["schema"] == 2 and first["pilot"] == "eight-table"
+    assert first["data"]["id"].startswith("R-user-")
+    assert all(json.loads(chunk)["data"]["id"].startswith("R-user-") for chunk in chunks)
+
+
+def test_references_share_namespace_and_preserve_relationships() -> None:
+    synth = EphemeralSynthesizer(KEY)
+    user = transform_row(
+        "users", {"id": 7, "active": True, "email": None, "name": None, "password_hash": "x"}, synth
+    )
+    task = transform_row(
+        "tasks",
+        {
+            "id": 9,
+            "status": "open",
+            "assigned_to_id": 7,
+            "parent_task_id": None,
+            "team_id": None,
+            "created_by_id": 7,
+            "title": None,
+            "description": None,
+            "customer_name": None,
+            "customer_contact": None,
+            "customer_email": None,
+            "customer_phone": None,
+            "plate": None,
+        },
+        synth,
+    )
+    audit = transform_row(
+        "audit_log",
+        {
+            "id": 11,
+            "user_id": 7,
+            "action": "task.updated",
+            "entity_type": "task",
+            "entity_id": "9",
+            "detail": None,
+            "before_json": None,
+            "after_json": None,
+        },
+        synth,
+    )
+    assert task["assigned_to_id"] == user["id"] == task["created_by_id"]
+    assert audit["user_id"] == user["id"]
+    assert audit["entity_id"] == task["id"]
+    assert task["id"] != "9" and audit["entity_id"] != "9"
+
+
+@pytest.mark.parametrize("field,value", [("status", "hacked"), ("status", "OPEN NOW")])
+def test_noncanonical_values_fail_closed(field: str, value: str) -> None:
+    with pytest.raises(UnsafePayload):
+        validate_payload("tasks", {"id": "R-task-0123456789abcdef", field: value})
+
+
+def test_document_fixture_exists_only_for_logical_object() -> None:
+    base = {
+        field: None
+        for field in __import__("app.platform.anonymized_stream", fromlist=["FIELD_MAP"]).FIELD_MAP[
+            "documents"
+        ]
+    }
+    base.update(id=1, status="received")
+    without_object = transform_row("documents", base, EphemeralSynthesizer(KEY))
+    assert without_object["fixture_object_count"] == 0 and without_object["fixture_sha256"] is None
 
 
 def test_source_cursor_fetches_in_bounded_batches() -> None:
@@ -123,3 +193,35 @@ def test_source_cursor_fetches_in_bounded_batches() -> None:
             return self.batches.pop(0)
 
     assert list(batched_rows(Cursor(), 250)) == [{"id": 1}, {"id": 2}]
+
+
+def test_schema_preflight_aborts_on_drift_without_row_reads() -> None:
+    class Result:
+        def fetchall(self):
+            return [("id", "jsonb")]
+
+    class Connection:
+        calls = 0
+
+        def execute(self, query: str, params: tuple[str]):
+            assert "information_schema.columns" in query and params
+            self.calls += 1
+            return Result()
+
+    connection = Connection()
+    with pytest.raises(RuntimeError, match="schema preflight failed"):
+        schema_preflight(connection)
+    assert connection.calls == 1
+
+
+def test_broken_pipe_propagates_and_does_not_continue() -> None:
+    class BrokenOutput:
+        def write(self, _: bytes) -> None:
+            raise BrokenPipeError
+
+    chunks = stream_jsonl(
+        [("users", {"id": 1, "active": True, "email": None, "name": None, "password_hash": "x"})],
+        EphemeralSynthesizer(KEY),
+    )
+    with pytest.raises(BrokenPipeError):
+        BrokenOutput().write(next(chunks))

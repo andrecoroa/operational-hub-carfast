@@ -14,6 +14,28 @@ from psycopg.rows import dict_row
 
 from app.platform.anonymized_stream import FIELD_MAP, EphemeralSynthesizer, stream_jsonl
 
+EXPECTED_TYPE_FAMILIES = {
+    "id": {"integer", "bigint", "smallint", "character varying", "text", "uuid"},
+    "active": {"boolean"},
+}
+
+
+def schema_preflight(connection: Any) -> None:
+    """Inspect metadata only and abort before any row cursor when the pilot schema drifts."""
+    for table, rules in FIELD_MAP.items():
+        rows = connection.execute(
+            "SELECT column_name, data_type FROM information_schema.columns "
+            "WHERE table_schema = current_schema() AND table_name = %s",
+            (table,),
+        ).fetchall()
+        actual = {row[0]: row[1] for row in rows}
+        missing = set(rules) - set(actual)
+        if missing:
+            raise RuntimeError(f"schema preflight failed for {table}: missing {sorted(missing)}")
+        for field, allowed in EXPECTED_TYPE_FAMILIES.items():
+            if field in rules and actual[field] not in allowed:
+                raise RuntimeError(f"schema preflight failed for {table}.{field}: {actual[field]}")
+
 
 def batched_rows(cursor: Any, batch_size: int) -> Iterator[Mapping[str, Any]]:
     while rows := cursor.fetchmany(batch_size):
@@ -26,6 +48,7 @@ def export_connection(connection: Any, output: BinaryIO, batch_size: int, key: b
     connection.execute("SET TRANSACTION READ ONLY")
     connection.execute("SET LOCAL statement_timeout = '30s'")
     connection.execute("SET LOCAL lock_timeout = '2s'")
+    schema_preflight(connection)
     for table, rules in FIELD_MAP.items():
         columns = tuple(rules)
         query = sql.SQL("SELECT {} FROM {} ORDER BY id").format(

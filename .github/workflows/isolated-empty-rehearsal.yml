@@ -134,6 +134,27 @@ jobs:
           docker logs carfast-anonymized-destination
           exit 1
 
+      - name: Stream fixtures into typed relational staging
+        run: |
+          python -m scripts.prepare_anonymized_stream \
+            --fixture tests/fixtures/anonymization_input.jsonl \
+          | docker exec -i carfast-anonymized-destination \
+              python -m scripts.receive_anonymized_stream \
+                --dsn 'postgresql://postgres@/carfast_anonymized_test?host=/var/run/postgresql'
+          test "$(docker exec carfast-anonymized-destination \
+            psql -U postgres -h /var/run/postgresql -d carfast_anonymized_test \
+              -Atc 'SELECT COUNT(*) FROM rehearsal_documents d JOIN rehearsal_tasks t ON t.id=d.task_id JOIN rehearsal_vehicles v ON v.id=d.vehicle_id')" -eq 1
+          if printf '%s\n' '{"schema":2,"pilot":"eight-table","table":"users","data":{"id":1,"active":true}}' \
+            | docker exec -i carfast-anonymized-destination \
+                python -m scripts.receive_anonymized_stream \
+                  --dsn 'postgresql://postgres@/carfast_anonymized_test?host=/var/run/postgresql'; then
+            echo "Adversarial raw ID was unexpectedly accepted"
+            exit 1
+          fi
+          test "$(docker exec carfast-anonymized-destination \
+            psql -U postgres -h /var/run/postgresql -d carfast_anonymized_test \
+              -Atc 'SELECT COUNT(*) FROM rehearsal_documents')" -eq 1
+
       - name: Destroy local-socket fixture destination
         if: always()
         run: |

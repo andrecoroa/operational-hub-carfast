@@ -22,7 +22,11 @@ def validated_envelopes(lines: Iterable[bytes]) -> Iterator[dict[str, Any]]:
             envelope = json.loads(raw)
         except (UnicodeDecodeError, json.JSONDecodeError) as exc:
             raise UnsafePayload(f"invalid JSONL at line {number}") from exc
-        if set(envelope) != {"schema", "table", "data"} or envelope["schema"] != 1:
+        if (
+            set(envelope) != {"schema", "pilot", "table", "data"}
+            or envelope["schema"] != 2
+            or envelope["pilot"] != "eight-table"
+        ):
             raise UnsafePayload(f"invalid envelope at line {number}")
         table = envelope["table"]
         if table not in FIELD_MAP or not isinstance(envelope["data"], dict):

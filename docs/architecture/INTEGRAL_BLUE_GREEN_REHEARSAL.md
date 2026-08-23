@@ -94,6 +94,9 @@ The gate must explicitly authorize all of the following together:
 1. Pin source, destination and evidence tooling to the same approved release SHA.
 2. Reconfirm Blue/Green resource IDs, private database hosts and empty Green target.
 3. Prove source SELECT succeeds and INSERT/UPDATE/DELETE/DDL/sequence access fail.
+   After restore, reconstruct Green-owned integer primary-key sequences only from
+   target table maxima; source sequence state is never read, and the next generated
+   key must be collision-free before reconciliation is accepted.
 4. Enter Blue read-only; acquire PostgreSQL repeatable source cut and storage manifest;
    no concurrent source object mutation is allowed during this cut.
 5. Stream PostgreSQL with PostgreSQL 17 custom format and transactional restore. Stream

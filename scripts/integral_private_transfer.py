@@ -137,6 +137,8 @@ def serve(kind: str, staging_root: Path | None) -> int:
     key = transfer_key()
     database_url = os.environ.get("DATABASE_URL", "")
 
+    state = {"accepted": False}
+
     class Handler(BaseHTTPRequestHandler):
         server_version = "CarFastIntegral/1"
 
@@ -198,6 +200,7 @@ def serve(kind: str, staging_root: Path | None) -> int:
                 self.send_header("Content-Length", str(len(payload)))
                 self.end_headers()
                 self.wfile.write(payload)
+                state["accepted"] = True
             except Exception:
                 payload = b'{"accepted":false}'
                 self.send_response(400)
@@ -211,6 +214,8 @@ def serve(kind: str, staging_root: Path | None) -> int:
     server.timeout = 15 * 60
     server.handle_request()
     server.server_close()
+    if not state["accepted"]:
+        raise SystemExit("integral receiver closed without an accepted transfer")
     return 0
 
 

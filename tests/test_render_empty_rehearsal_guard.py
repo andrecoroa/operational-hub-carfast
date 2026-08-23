@@ -20,7 +20,10 @@ def test_render_internal_database_is_accepted_only_for_explicit_empty_rehearsal(
     }
     assert validate_environment(environment) == []
     environment["RENDER_EMPTY_REHEARSAL"] = "false"
-    assert "database must be isolated on the runner" in validate_environment(environment)
+    assert any(
+        error.startswith("database must be isolated on the runner")
+        for error in validate_environment(environment)
+    )
 
 
 def test_process_guard_denies_external_connection(monkeypatch: pytest.MonkeyPatch) -> None:

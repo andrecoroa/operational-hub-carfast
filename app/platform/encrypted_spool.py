@@ -34,6 +34,22 @@ class SpoolEvidence:
     sha256: str
 
 
+class DecryptedSpoolReader:
+    def __init__(self, path: Path, key: bytearray, evidence: SpoolEvidence) -> None:
+        self._chunks = iter(iter_decrypted_spool(path, key, evidence))
+        self._pending = b""
+
+    def read(self, size: int = -1) -> bytes:
+        requested = CHUNK_BYTES if size < 0 else size
+        while len(self._pending) < requested:
+            try:
+                self._pending += next(self._chunks)
+            except StopIteration:
+                break
+        result, self._pending = self._pending[:requested], self._pending[requested:]
+        return result
+
+
 def _aad(sequence: int, size: int) -> bytes:
     return MAGIC + struct.pack(">QI", sequence, size)
 
@@ -83,6 +99,52 @@ def encrypt_to_spool(
         if total != declared_size or observed != declared_sha256:
             raise SpoolRejected("stream size or digest mismatch")
         return SpoolEvidence(total, chunks, observed)
+    except BaseException:
+        path.unlink(missing_ok=True)
+        raise
+
+
+def encrypt_verified_stream(
+    source: BinaryIO,
+    path: Path,
+    key: bytearray,
+    *,
+    max_bytes: int,
+) -> SpoolEvidence:
+    """Spool a frame-verified reader, then freeze its final evidence."""
+    if len(key) != 32 or not 0 < max_bytes <= MAX_SPOOL_BYTES:
+        raise SpoolRejected("invalid verified stream contract")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    preflight_space(path, max_bytes)
+    aes = AESGCM(bytes(key))
+    digest = hashlib.sha256()
+    total = chunks = 0
+    try:
+        with path.open("xb") as target:
+            target.write(MAGIC)
+            while chunk := source.read(CHUNK_BYTES):
+                total += len(chunk)
+                if total > max_bytes:
+                    raise SpoolRejected("verified stream exceeds total limit")
+                nonce = os.urandom(12)
+                ciphertext = aes.encrypt(nonce, chunk, _aad(chunks, len(chunk)))
+                target.write(HEADER.pack(chunks, len(chunk), len(ciphertext), nonce))
+                target.write(ciphertext)
+                digest.update(chunk)
+                chunks += 1
+            target.flush()
+            os.fsync(target.fileno())
+        if not getattr(source, "finished", False):
+            raise SpoolRejected("verified stream missing final frame")
+        source_total = getattr(source, "total", None)
+        source_digest = getattr(source, "final_digest", None)
+        if (
+            source_total != total
+            or source_digest is None
+            or source_digest.hexdigest() != digest.hexdigest()
+        ):
+            raise SpoolRejected("verified stream evidence mismatch")
+        return SpoolEvidence(total, chunks, digest.hexdigest())
     except BaseException:
         path.unlink(missing_ok=True)
         raise
@@ -147,12 +209,14 @@ def restore_verified_spool(
     command: list[str],
     *,
     timeout: float,
+    environment: dict[str, str] | None = None,
 ) -> None:
     process = subprocess.Popen(
         command,
         stdin=subprocess.PIPE,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.PIPE,
+        env=environment,
     )
     assert process.stdin is not None
     try:

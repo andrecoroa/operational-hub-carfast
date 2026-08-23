@@ -6,6 +6,7 @@ import hashlib
 import http.server
 import os
 import shutil
+import socket
 import threading
 import time
 from pathlib import Path
@@ -13,9 +14,10 @@ from pathlib import Path
 from app.platform.encrypted_spool import (
     CHUNK_BYTES,
     destroy_spool,
-    encrypt_to_spool,
+    encrypt_verified_stream,
     iter_decrypted_spool,
 )
+from app.platform.integral_tcp import FramedReader, write_framed
 
 MINIMUM_BYTES = 1_256_277_934  # 1.17 GiB
 
@@ -67,13 +69,33 @@ def main() -> None:
     thread.start()
     try:
         expected = synthetic_digest(total)
-        evidence = encrypt_to_spool(
-            SyntheticReader(total),
-            spool,
-            key,
-            declared_size=total,
-            declared_sha256=expected,
-        )
+        transfer_key = b"synthetic-transfer-key-material-32b"
+        session = "synthetic-session-abcdefghijklmnop"
+        sender, receiver = socket.socketpair()
+        outcome: dict[str, tuple[int, int, str]] = {}
+
+        def send() -> None:
+            with sender:
+                outcome["result"] = write_framed(
+                    SyntheticReader(total),
+                    sender.makefile("wb", buffering=0),
+                    transfer_key,
+                    session,
+                )
+                sender.shutdown(socket.SHUT_WR)
+
+        sending = threading.Thread(target=send)
+        sending.start()
+        with receiver:
+            framed = FramedReader(
+                receiver.makefile("rb", buffering=0), transfer_key, session
+            )
+            evidence = encrypt_verified_stream(
+                framed, spool, key, max_bytes=total
+            )
+        sending.join(timeout=120)
+        if sending.is_alive() or outcome["result"][1:] != (total, expected):
+            raise SystemExit("synthetic framed sender evidence mismatch")
         encrypted_size = spool.stat().st_size
         observed = hashlib.sha256()
         observed_bytes = 0

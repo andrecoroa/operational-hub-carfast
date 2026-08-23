@@ -13,6 +13,7 @@ from app.platform.encrypted_spool import (
     SpoolRejected,
     destroy_spool,
     encrypt_to_spool,
+    encrypt_verified_stream,
     iter_decrypted_spool,
     preflight_space,
     restore_verified_spool,
@@ -110,3 +111,12 @@ def test_restore_timeout_is_fail_closed(tmp_path: Path) -> None:
             timeout=0.01,
         )
     destroy_spool(path, key)
+
+
+def test_verified_stream_requires_final_evidence(tmp_path: Path) -> None:
+    source = io.BytesIO(b"not-a-finalized-framed-reader")
+    key = bytearray(b"v" * 32)
+    path = tmp_path / "unverified.spool"
+    with pytest.raises(SpoolRejected, match="missing final"):
+        encrypt_verified_stream(source, path, key, max_bytes=1024)
+    assert not path.exists()

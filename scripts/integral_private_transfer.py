@@ -17,6 +17,13 @@ from pathlib import Path
 from typing import BinaryIO
 from urllib.parse import unquote, urlsplit
 
+from app.platform.encrypted_spool import (
+    MAX_SPOOL_BYTES,
+    DecryptedSpoolReader,
+    destroy_spool,
+    encrypt_verified_stream,
+    restore_verified_spool,
+)
 from app.platform.integral_storage_stream import pack_storage, unpack_storage
 from app.platform.integral_tcp import (
     FramedReader,
@@ -421,50 +428,59 @@ def _receive_tcp_stream(
     )
     connection.settimeout(20 * 60)
     framed = FramedReader(handle, key, session)
-    if stream_type == "database":
-        database_url = os.environ.get("DATABASE_URL", "")
-        environment = libpq_environment(database_url)
-        database = environment["PGDATABASE"]
-        command = database_restore_command(
-            required("INTEGRAL_DATABASE_DESTINATION_PHASE"),
-            database,
-            target_prepared=(
-                os.environ.get("INTEGRAL_TARGET_PREPARED") == "true"
-                and valid_target_marker(TARGET_MARKER, database)
-            ),
+    spool_key = bytearray(os.urandom(32))
+    spool_path = Path(f"/tmp/carfast-integral-{stream_type}-{os.urandom(8).hex()}.spool")
+    max_bytes = int(os.environ.get("INTEGRAL_MAX_STREAM_BYTES", MAX_SPOOL_BYTES))
+    try:
+        evidence = encrypt_verified_stream(
+            framed, spool_path, spool_key, max_bytes=max_bytes
         )
-        process = subprocess.Popen(
-            command, stdin=subprocess.PIPE, stderr=subprocess.PIPE, env=environment
-        )
-        assert process.stdin is not None
-        while chunk := framed.read(CHUNK_BYTES):
-            process.stdin.write(chunk)
-        process.stdin.close()
-        stderr = process.stderr.read() if process.stderr else b""
-        if process.wait():
-            diagnostic = stderr.decode("utf-8", errors="replace")[-2_000:].strip()
-            raise RuntimeError(f"pg_restore failed ({len(stderr)} stderr bytes): {diagnostic}")
-        if os.environ["INTEGRAL_DATABASE_DESTINATION_PHASE"] == "staging":
-            revision = required("INTEGRAL_SOURCE_REVISION")
-            if revision != "ffae1f2a3b4c":
-                raise RuntimeError("unexpected source revision for staging stamp")
-            stamped = subprocess.run(
-                ["alembic", "stamp", revision],
-                env=os.environ,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.PIPE,
-                check=False,
+        ensure_no_trailing(handle)
+        if stream_type == "database":
+            database_url = os.environ.get("DATABASE_URL", "")
+            environment = libpq_environment(database_url)
+            database = environment["PGDATABASE"]
+            command = database_restore_command(
+                required("INTEGRAL_DATABASE_DESTINATION_PHASE"),
+                database,
+                target_prepared=(
+                    os.environ.get("INTEGRAL_TARGET_PREPARED") == "true"
+                    and valid_target_marker(TARGET_MARKER, database)
+                ),
             )
-            if stamped.returncode:
-                diagnostic = stamped.stderr.decode("utf-8", errors="replace")[-2_000:].strip()
-                raise RuntimeError(f"alembic stamp failed: {diagnostic}")
-    elif stream_type == "storage":
-        if staging_root is None:
-            raise TcpTransferRejected("missing storage staging root")
-        unpack_storage(framed, staging_root)
-    else:
-        raise TcpTransferRejected("unknown stream type")
-    ensure_no_trailing(handle)
+            restore_verified_spool(
+                spool_path,
+                spool_key,
+                evidence,
+                command,
+                timeout=15 * 60,
+                environment=environment,
+            )
+            if os.environ["INTEGRAL_DATABASE_DESTINATION_PHASE"] == "staging":
+                revision = required("INTEGRAL_SOURCE_REVISION")
+                if revision != "ffae1f2a3b4c":
+                    raise RuntimeError("unexpected source revision for staging stamp")
+                stamped = subprocess.run(
+                    ["alembic", "stamp", revision],
+                    env=os.environ,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.PIPE,
+                    check=False,
+                )
+                if stamped.returncode:
+                    raise RuntimeError(
+                        f"alembic stamp failed stderr_bytes={len(stamped.stderr)}"
+                    )
+        elif stream_type == "storage":
+            if staging_root is None:
+                raise TcpTransferRejected("missing storage staging root")
+            unpack_storage(
+                DecryptedSpoolReader(spool_path, spool_key, evidence), staging_root
+            )
+        else:
+            raise TcpTransferRejected("unknown stream type")
+    finally:
+        destroy_spool(spool_path, spool_key)
 
 
 def serve_tcp_streams(stream_types: tuple[str, ...], staging_root: Path | None) -> int:

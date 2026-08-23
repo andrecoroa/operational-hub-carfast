@@ -491,7 +491,11 @@ def serve_tcp_streams(stream_types: tuple[str, ...], staging_root: Path | None) 
                     if staging_root is not None:
                         shutil.rmtree(staging_root, ignore_errors=True)
                         staging_root.mkdir(parents=True, exist_ok=True)
-                    reason = str(exc) if isinstance(exc, TcpTransferRejected) else type(exc).__name__
+                    reason = (
+                        str(exc)
+                        if isinstance(exc, TcpTransferRejected)
+                        else type(exc).__name__
+                    )
                     print(
                         f"integral TCP receiver rejected: {type(exc).__name__}: {reason}",
                         flush=True,

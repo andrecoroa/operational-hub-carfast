@@ -52,6 +52,8 @@ jobs:
           docker build -f .github/rehearsal.Dockerfile -t carfast-empty-rehearsal .
       - name: Verify fail-closed configuration
         run: |
+          sh -n scripts/run_integral_e2e_rehearsal.sh
+          sh -n scripts/run_integral_render_rehearsal.sh
           python -m scripts.validate_isolated_environment
           python -m pytest -q tests/test_isolated_environment.py tests/test_phase10_rehearsal.py \
             tests/test_integral_reconciliation.py tests/test_integral_storage_stream.py \

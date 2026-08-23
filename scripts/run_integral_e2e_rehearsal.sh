@@ -5,9 +5,9 @@ run_id="${1:?run id required}"
 storage_bytes="${2:?storage bytes required}"
 case "$run_id" in *[!0-9]*) exit 2;; esac
 
-host=rehearsal-postgres
-admin_role=carfast
-admin_password=carfast
+host="${INTEGRAL_REHEARSAL_PGHOST:-rehearsal-postgres}"
+admin_role="${INTEGRAL_REHEARSAL_ADMIN_ROLE:-carfast}"
+admin_password="${INTEGRAL_REHEARSAL_ADMIN_PASSWORD:-carfast}"
 source_db="carfast_integral_source_${run_id}_test"
 staging_db="carfast_integral_staging_${run_id}_test"
 source_role="integral_source_ro_${run_id}"

@@ -129,7 +129,7 @@ def libpq_environment(database_url: str) -> dict[str, str]:
         raise SystemExit("integral transfer database target mismatch")
     isolated = os.environ.get("INTEGRAL_ISOLATED_REHEARSAL") == "true"
     if not expected_host.startswith("dpg-") and not (
-        isolated and expected_host == "rehearsal-postgres"
+        isolated and expected_host in {"localhost", "127.0.0.1", "rehearsal-postgres"}
     ):
         raise SystemExit("integral transfer requires a private Render PostgreSQL host")
     environment = dict(os.environ)

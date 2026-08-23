@@ -63,7 +63,7 @@ FIELD_MAP: dict[str, dict[str, FieldRule]] = {
         "active": FieldRule("scalar", "bool", False),
         "lifecycle_status": _canon(r"^(?:active|inactive|sold|disposed|archived|draft)$"),
         "operational_status": _canon(
-            r"^(?:available|in_use|workshop|maintenance|immobilized|sold|inactive)$"
+            r"^(?:available|free|in_use|in_contract|in_impro|workshop|maintenance|immobilized|sold|inactive)$"
         ),
         "plate": FieldRule("synthetic", "plate", max_length=32),
         "vin": FieldRule("synthetic", "vin", max_length=32),

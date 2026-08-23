@@ -185,6 +185,30 @@ def test_noncanonical_values_fail_closed(field: str, value: str) -> None:
         validate_payload("tasks", {"id": "R-task-0123456789abcdef", field: value})
 
 
+@pytest.mark.parametrize("value", ["free", "in_contract", "in_impro", "sold"])
+def test_vehicle_operational_status_accepts_production_vocabulary(value: str) -> None:
+    validate_payload(
+        "vehicles",
+        {
+            "id": "R-vehicle-0123456789abcdef",
+            "active": True,
+            "operational_status": value,
+        },
+    )
+
+
+def test_vehicle_operational_status_still_fails_closed_on_unknown_value() -> None:
+    with pytest.raises(UnsafePayload, match="non-canonical value"):
+        validate_payload(
+            "vehicles",
+            {
+                "id": "R-vehicle-0123456789abcdef",
+                "active": True,
+                "operational_status": "unexpected",
+            },
+        )
+
+
 def test_document_fixture_exists_only_for_logical_object() -> None:
     base = {
         field: None

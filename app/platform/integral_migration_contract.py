@@ -179,7 +179,11 @@ def validate_additive_contract(connection: Connection) -> None:
             raise IntegralMigrationContractError(
                 f"additive seed count mismatch for {relation}: {count}"
             )
-        indexes = {item["name"] for item in inspector.get_indexes(relation, schema="public")}
+        indexes = {
+            item["name"]
+            for item in inspector.get_indexes(relation, schema="public")
+            if not item.get("duplicates_constraint")
+        }
         if indexes != EXPECTED_INDEXES[relation]:
             raise IntegralMigrationContractError(
                 f"additive index contract mismatch for {relation}: {sorted(indexes)}"

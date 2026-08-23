@@ -20,6 +20,7 @@ from sqlalchemy import func, or_, select
 
 from app.core.config import settings
 from app.core.database import SessionLocal
+from app.service_desk import EmailOriginCommand, ServiceDeskFacade
 from app.models.admin import User, UserRole
 from app.models.email import (
     EmailAttachment,
@@ -36,7 +37,7 @@ from app.models.email import (
 )
 from app.models.organization import Team, TeamMember
 from app.models.suppliers import SupplierTypeAssignment
-from app.models.tasks import Task, TaskEmailOrigin
+from app.models.tasks import Task
 from app.models.work_hierarchy import WorkCategory, WorkDepartment, WorkQueue, WorkSubcategory
 from app.partners.compat import StockSupplier
 from app.services.authorization import get_user_permission_codes
@@ -59,7 +60,6 @@ from app.services.service_desk import (
     email_eligible_teams,
     email_eligible_users,
     initialize_email_operations,
-    initialize_task_service_desk,
     local_datetime,
     mark_email_first_response,
     mark_email_resolved,
@@ -1092,6 +1092,7 @@ def email_inbox(
                 "compose_module_code": module_code.strip().lower(),
                 "compose_context_code": context_code.strip().lower(),
                 "compose_open": compose == "1" and compose_supplier is not None,
+                "foundation_ui_enabled": settings.visual_foundation_enabled,
             },
         )
 
@@ -2857,8 +2858,8 @@ def email_create_task(request: Request, thread_id: int):
                 due_on=thread.due_at.date() if thread.due_at else None,
                 created_by_id=user_id,
             )
-            db.add(task)
-            db.flush()
+            service_desk = ServiceDeskFacade(db)
+            service_desk.persist_task(task)
             if proposal_selection and (
                 proposal_selection.category or proposal_selection.subcategory
             ):
@@ -2871,15 +2872,14 @@ def email_create_task(request: Request, thread_id: int):
                     origin_url=f"/v2-clean/email/{thread.id}",
                 )
             try:
-                initialize_task_service_desk(
-                    db,
+                service_desk.initialize_task(
                     task,
                     actor_user_id=user_id,
                     requested_user_id=thread.assigned_to_id,
                     requested_team_id=thread.executor_team_id,
                 )
             except ValueError:
-                initialize_task_service_desk(db, task, actor_user_id=user_id)
+                service_desk.initialize_task(task, actor_user_id=user_id)
                 db.add(
                     EmailAuditEvent(
                         thread_id=thread.id,
@@ -2896,12 +2896,12 @@ def email_create_task(request: Request, thread_id: int):
                 .where(EmailMessage.thread_id == thread.id)
                 .order_by(EmailMessage.id)
             )
-            db.add(
-                TaskEmailOrigin(
-                    task_id=task.id,
+            service_desk.link_email_origin(
+                task.id,
+                EmailOriginCommand(
                     message_id=first.external_message_id if first else f"email-thread:{thread.id}",
                     sender=first.sender if first else thread.sender_email,
-                    recipients_json=first.recipients_json if first else None,
+                    recipients=first.recipients_json if first else None,
                     subject=first.subject if first else thread.subject,
                     received_at=first.received_at if first else thread.created_at,
                     mailbox=(
@@ -2911,7 +2911,7 @@ def email_create_task(request: Request, thread_id: int):
                         or db.get(EmailChannel, thread.channel_id).name
                     ),
                     source_url=f"/v2-clean/email/{thread.id}",
-                )
+                ),
             )
             thread.task_id, thread.status = task.id, "task_created"
             db.add(

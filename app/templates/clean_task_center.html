@@ -3,8 +3,8 @@
 <div class="app-shell clean-shell">
   {% set active_menu = "clean_tasks" %}
   {% include "_sidebar.html" %}
-  <main class="content clean-content">
-    <header class="clean-module-hero clean-task-hero">
+  <main class="content clean-content{% if foundation_ui_enabled %} ui-foundation ui-page-shell{% endif %}">
+    <header class="clean-module-hero clean-task-hero{% if foundation_ui_enabled %} ui-page-header{% endif %}">
       <div>
         <p class="eyebrow">Operação</p>
         <h2>Service Desk</h2>

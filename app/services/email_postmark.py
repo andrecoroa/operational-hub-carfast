@@ -15,6 +15,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.service_desk import EmailOriginCommand, ServiceDeskFacade
 from app.models.email import (
     EmailAttachment,
     EmailAuditEvent,
@@ -26,7 +27,7 @@ from app.models.email import (
     EmailThread,
     EmailWebhookEvent,
 )
-from app.models.tasks import Task, TaskEmailOrigin
+from app.models.tasks import Task
 from app.models.work_hierarchy import WorkQueue
 from app.services.bootstrap import (
     POSTMARK_INBOUND_DOMAIN,
@@ -35,7 +36,6 @@ from app.services.bootstrap import (
 )
 from app.services.service_desk import (
     initialize_email_operations,
-    initialize_task_service_desk,
     mark_task_resolved,
     transition_email_waiting,
 )
@@ -721,17 +721,16 @@ def ingest_inbound(db: Session, payload: dict) -> tuple[EmailThread, bool]:
             resolved_at=now if auto_task_mode == "complete" else None,
             closed_at=now if auto_task_mode == "complete" else None,
         )
-        db.add(task)
-        db.flush()
-        initialize_task_service_desk(db, task, now=now)
+        service_desk = ServiceDeskFacade(db)
+        service_desk.create_task(task, now=now)
         if auto_task_mode == "complete":
             mark_task_resolved(db, task, actor_user_id=None, now=now)
-        db.add(
-            TaskEmailOrigin(
-                task_id=task.id,
+        service_desk.link_email_origin(
+            task.id,
+            EmailOriginCommand(
                 message_id=external_id,
                 sender=sender,
-                recipients_json=payload.get("ToFull") or [],
+                recipients=payload.get("ToFull") or [],
                 subject=subject,
                 received_at=message.received_at,
                 mailbox=(
@@ -742,7 +741,7 @@ def ingest_inbound(db: Session, payload: dict) -> tuple[EmailThread, bool]:
                 ),
                 source_url=f"/v2-clean/email/{thread.id}",
                 rule_code=f"email_channel:{channel.code}:{channel.auto_task_mode}",
-            )
+            ),
         )
         thread.task_id = task.id
         thread.status = "resolved" if auto_task_mode == "complete" else "task_created"

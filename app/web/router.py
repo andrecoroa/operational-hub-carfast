@@ -3981,6 +3981,7 @@ def clean_process_center(request: Request):
                 "recent_audits": recent_audits,
                 "recent_management": recent_management,
                 "process_metrics": process_metrics,
+                "foundation_ui_enabled": settings.visual_foundation_enabled,
             },
         )
 
@@ -4844,6 +4845,7 @@ def clean_tasks_center(
                 in classification_permissions,
                 "can_use_provisional_classification": "classification.provisional.use"
                 in classification_permissions,
+                "foundation_ui_enabled": settings.visual_foundation_enabled,
                 "filters": {
                     "workspace": active_workspace,
                     "mine_kind": active_mine_kind,

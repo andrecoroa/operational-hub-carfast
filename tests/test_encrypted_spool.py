@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 from app.platform.encrypted_spool import (
+    ConsumerProcessRejected,
     HEADER,
     MAGIC,
     SpoolRejected,
@@ -83,7 +84,8 @@ def test_disk_preflight_rejects_impossible_contract(tmp_path: Path) -> None:
 def test_restore_failure_is_deterministic_and_payload_free(tmp_path: Path) -> None:
     path, key, evidence = _write(tmp_path, b"secret-synthetic-payload")
     with pytest.raises(
-        SpoolRejected, match=r"verified consumer failed rc=17 stderr_bytes=4"
+        ConsumerProcessRejected,
+        match=r"stage=pg_restore rc=17 duration_ms=\d+ stderr_bytes=4 stderr_sha256="
     ) as failure:
         restore_verified_spool(
             path,
@@ -97,12 +99,14 @@ def test_restore_failure_is_deterministic_and_payload_free(tmp_path: Path) -> No
             timeout=5,
         )
     assert "secret-synthetic-payload" not in str(failure.value)
+    assert "safe" not in str(failure.value)
+    assert failure.value.diagnostic.stderr_sha256 == hashlib.sha256(b"safe").hexdigest()
     destroy_spool(path, key)
 
 
 def test_restore_timeout_is_fail_closed(tmp_path: Path) -> None:
     path, key, evidence = _write(tmp_path, b"x")
-    with pytest.raises(SpoolRejected, match="timeout"):
+    with pytest.raises(ConsumerProcessRejected, match=r"stage=pg_restore rc=-?\d+"):
         restore_verified_spool(
             path,
             key,

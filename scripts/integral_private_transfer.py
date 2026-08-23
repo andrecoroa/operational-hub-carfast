@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import http.client
 import json
 import os
@@ -281,9 +282,10 @@ def serve(kind: str, staging_root: Path | None) -> int:
                     stderr = process.stderr.read() if process.stderr else b""
                     returncode = process.wait()
                     if returncode:
-                        diagnostic = stderr.decode("utf-8", errors="replace")[-2_000:].strip()
                         raise RuntimeError(
-                            f"pg_restore failed ({len(stderr)} stderr bytes): {diagnostic}"
+                            "pg_restore failed "
+                            f"rc={returncode} stderr_bytes={len(stderr)} "
+                            f"stderr_sha256={hashlib.sha256(stderr).hexdigest()}"
                         )
                     if destination_phase == "prepared-target":
                         TARGET_MARKER.unlink(missing_ok=True)
@@ -358,36 +360,52 @@ def _send_tcp(
     *,
     accepted: threading.Event | None = None,
     release: threading.Event | None = None,
+    cancel: threading.Event | None = None,
+    sockets: list[socket.socket] | None = None,
+    sockets_lock: threading.Lock | None = None,
 ) -> dict[str, object]:
     host, port = _tcp_endpoint()
     with socket.create_connection((host, port), timeout=30) as connection:
+        if sockets is not None and sockets_lock is not None:
+            with sockets_lock:
+                sockets.append(connection)
         connection.settimeout(20 * 60)
-        handle, session = client_handshake(connection, _tcp_token(stream_type), stream_type)
-        frames, total, digest = write_framed(source, handle, transfer_key(), session)
-        digest_bytes = bytes.fromhex(digest)
-        read_control(
-            handle,
-            transfer_key(),
-            session,
-            expected_phase=CONTROL_BUNDLE_SPOOL_ACCEPTED,
-            frames=frames,
-            total=total,
-            digest=digest_bytes,
-        )
-        if accepted is not None:
-            accepted.set()
-        if release is not None and not release.wait(timeout=20 * 60):
-            raise SystemExit("bundle acceptance release timeout")
-        connection.shutdown(socket.SHUT_WR)
-        read_control(
-            handle,
-            transfer_key(),
-            session,
-            expected_phase=CONTROL_CONSUMER_RESULT,
-            frames=frames,
-            total=total,
-            digest=digest_bytes,
-        )
+        try:
+            if cancel is not None and cancel.is_set():
+                raise RuntimeError("bundle transfer cancelled")
+            handle, session = client_handshake(connection, _tcp_token(stream_type), stream_type)
+            frames, total, digest = write_framed(source, handle, transfer_key(), session)
+            digest_bytes = bytes.fromhex(digest)
+            read_control(
+                handle,
+                transfer_key(),
+                session,
+                expected_phase=CONTROL_BUNDLE_SPOOL_ACCEPTED,
+                frames=frames,
+                total=total,
+                digest=digest_bytes,
+            )
+            if accepted is not None:
+                accepted.set()
+            if release is not None:
+                while not release.wait(timeout=0.1):
+                    if cancel is not None and cancel.is_set():
+                        raise RuntimeError("bundle transfer cancelled")
+            connection.shutdown(socket.SHUT_WR)
+            read_control(
+                handle,
+                transfer_key(),
+                session,
+                expected_phase=CONTROL_CONSUMER_RESULT,
+                frames=frames,
+                total=total,
+                digest=digest_bytes,
+            )
+        finally:
+            if sockets is not None and sockets_lock is not None:
+                with sockets_lock:
+                    if connection in sockets:
+                        sockets.remove(connection)
     return {
         "accepted": True,
         "stream_type": stream_type,
@@ -446,6 +464,27 @@ def send_bundle_tcp(root: Path, on_bundle_accepted: object | None = None) -> int
     accepted = {name: threading.Event() for name in ("database", "storage")}
     release = {name: threading.Event() for name in accepted}
     failures: list[BaseException] = []
+    failures_lock = threading.Lock()
+    cancel = threading.Event()
+    active_sockets: list[socket.socket] = []
+    sockets_lock = threading.Lock()
+    processes: list[subprocess.Popen[bytes]] = []
+    processes_lock = threading.Lock()
+
+    def fail(exc: BaseException) -> None:
+        with failures_lock:
+            failures.append(exc)
+        cancel.set()
+        for event in release.values():
+            event.set()
+        with sockets_lock:
+            current = list(active_sockets)
+        for connection in current:
+            try:
+                connection.shutdown(socket.SHUT_RDWR)
+            except OSError:
+                pass
+            connection.close()
 
     def database() -> None:
         try:
@@ -456,20 +495,31 @@ def send_bundle_tcp(root: Path, on_bundle_accepted: object | None = None) -> int
                 stderr=subprocess.DEVNULL,
                 env=environment,
             )
+            with processes_lock:
+                processes.append(process)
             assert process.stdout is not None
             _send_tcp(
                 "database",
                 process.stdout,
                 accepted=accepted["database"],
                 release=release["database"],
+                cancel=cancel,
+                sockets=active_sockets,
+                sockets_lock=sockets_lock,
             )
-            process.wait()
+            process.wait(timeout=30)
             if process.returncode:
                 raise RuntimeError("pg_dump failed without bundle acceptance")
         except BaseException as exc:
-            failures.append(exc)
-            for event in release.values():
-                event.set()
+            fail(exc)
+        finally:
+            if "process" in locals() and process.poll() is None:
+                process.terminate()
+                try:
+                    process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.wait(timeout=5)
 
     def storage() -> None:
         read_fd, write_fd = os.pipe()
@@ -479,7 +529,7 @@ def send_bundle_tcp(root: Path, on_bundle_accepted: object | None = None) -> int
             try:
                 pack_storage(root, writer)
             except BaseException as exc:
-                failures.append(exc)
+                fail(exc)
             finally:
                 writer.close()
 
@@ -491,21 +541,25 @@ def send_bundle_tcp(root: Path, on_bundle_accepted: object | None = None) -> int
                 reader,
                 accepted=accepted["storage"],
                 release=release["storage"],
+                cancel=cancel,
+                sockets=active_sockets,
+                sockets_lock=sockets_lock,
             )
         except BaseException as exc:
-            failures.append(exc)
+            fail(exc)
         finally:
             reader.close()
-            producer.join()
+            producer.join(timeout=10)
+            if producer.is_alive():
+                fail(RuntimeError("storage producer cancellation deadline exceeded"))
 
     threads = [threading.Thread(target=database), threading.Thread(target=storage)]
     for thread in threads:
         thread.start()
-    deadline = time.monotonic() + 20 * 60
+    deadline = time.monotonic() + float(os.environ.get("INTEGRAL_CLIENT_TIMEOUT_SECONDS", 20 * 60))
     while not all(event.is_set() for event in accepted.values()):
         if failures or time.monotonic() >= deadline:
-            for event in release.values():
-                event.set()
+            fail(RuntimeError("bundle acceptance failed or timed out"))
             break
         time.sleep(0.05)
     if all(event.is_set() for event in accepted.values()) and not failures:
@@ -515,7 +569,14 @@ def send_bundle_tcp(root: Path, on_bundle_accepted: object | None = None) -> int
     for event in release.values():
         event.set()
     for thread in threads:
-        thread.join()
+        remaining = max(0.0, deadline - time.monotonic())
+        thread.join(timeout=min(30.0, remaining))
+    alive = [thread.name for thread in threads if thread.is_alive()]
+    if alive:
+        fail(RuntimeError("bundle cancellation deadline exceeded"))
+        for thread in threads:
+            thread.join(timeout=2)
+        raise RuntimeError("bundle sender failed closed before thread deadline")
     if failures:
         raise failures[0]
     print("bundle_consumer_result=accepted", flush=True)

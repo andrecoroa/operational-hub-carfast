@@ -144,3 +144,61 @@ def test_bundle_failures_are_closed_and_cleaned(
     assert client_failures
     assert set(Path("/tmp").glob("carfast-integral-*.spool")) == before
     assert list(tmp_path.iterdir()) == []
+
+
+def test_send_bundle_negative_consumer_cancels_without_hang(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    port = _port()
+    _environment(monkeypatch, port, timeout=2)
+    monkeypatch.setenv("INTEGRAL_CLIENT_TIMEOUT_SECONDS", "4")
+    monkeypatch.setenv("INTEGRAL_DATABASE_DUMP_PHASE", "source-staging")
+    monkeypatch.setenv(
+        "DATABASE_URL", "postgresql://role:password@dpg-test/private_staging"
+    )
+    monkeypatch.setenv("INTEGRAL_EXPECTED_DATABASE_HOST", "dpg-test")
+    monkeypatch.setenv("INTEGRAL_EXPECTED_DATABASE_NAME", "private_staging")
+    monkeypatch.setattr(
+        transfer, "_consume_tcp_spool", lambda *_args: (_ for _ in ()).throw(RuntimeError("no"))
+    )
+    monkeypatch.setattr(transfer, "_reconcile_bundle", lambda _root: None)
+
+    class FakeProcess:
+        def __init__(self, *_args, **_kwargs) -> None:
+            self.stdout = io.BytesIO(b"synthetic-database" * 10_000)
+            self.returncode = 0
+
+        def wait(self, timeout=None):
+            return self.returncode
+
+        def poll(self):
+            return self.returncode
+
+        def terminate(self):
+            self.returncode = -15
+
+        def kill(self):
+            self.returncode = -9
+
+    monkeypatch.setattr(transfer.subprocess, "Popen", FakeProcess)
+    (tmp_path / "object.bin").write_bytes(b"synthetic-storage" * 10_000)
+    server_failures: list[BaseException] = []
+
+    def server() -> None:
+        try:
+            transfer.serve_tcp_streams(("database", "storage"), tmp_path / "staging")
+        except BaseException as exc:
+            server_failures.append(exc)
+
+    receiver = threading.Thread(target=server)
+    receiver.start()
+    time.sleep(0.05)
+    started = time.monotonic()
+    with pytest.raises(BaseException):
+        transfer.send_bundle_tcp(tmp_path)
+    elapsed = time.monotonic() - started
+    receiver.join(timeout=3)
+    assert elapsed < 3
+    assert not receiver.is_alive()
+    assert server_failures
+    assert not list(Path("/tmp").glob("carfast-integral-*.spool"))

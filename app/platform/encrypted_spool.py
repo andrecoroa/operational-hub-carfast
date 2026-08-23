@@ -7,6 +7,7 @@ import os
 import shutil
 import struct
 import subprocess
+import time
 from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
@@ -25,6 +26,29 @@ MIN_FREE_MARGIN = 128 * 1024 * 1024
 
 class SpoolRejected(RuntimeError):
     """The encrypted spool failed a fail-closed contract check."""
+
+
+@dataclass(frozen=True, slots=True)
+class ConsumerDiagnostic:
+    stage: str
+    returncode: int
+    duration_ms: int
+    stderr_bytes: int
+    stderr_sha256: str
+
+
+class ConsumerProcessRejected(SpoolRejected):
+    """A consumer failed; exposes only non-payload process evidence."""
+
+    def __init__(self, diagnostic: ConsumerDiagnostic) -> None:
+        self.diagnostic = diagnostic
+        super().__init__(
+            "consumer rejected "
+            f"stage={diagnostic.stage} rc={diagnostic.returncode} "
+            f"duration_ms={diagnostic.duration_ms} "
+            f"stderr_bytes={diagnostic.stderr_bytes} "
+            f"stderr_sha256={diagnostic.stderr_sha256}"
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -210,7 +234,9 @@ def restore_verified_spool(
     *,
     timeout: float,
     environment: dict[str, str] | None = None,
-) -> None:
+    stage: str = "pg_restore",
+) -> ConsumerDiagnostic:
+    started = time.monotonic()
     process = subprocess.Popen(
         command,
         stdin=subprocess.PIPE,
@@ -229,8 +255,15 @@ def restore_verified_spool(
             returncode = process.returncode
         except subprocess.TimeoutExpired as exc:
             process.kill()
-            process.communicate()
-            raise SpoolRejected("verified consumer timeout") from exc
+            _stdout, stderr = process.communicate()
+            diagnostic = ConsumerDiagnostic(
+                stage=stage,
+                returncode=process.returncode if process.returncode is not None else -9,
+                duration_ms=int((time.monotonic() - started) * 1000),
+                stderr_bytes=len(stderr),
+                stderr_sha256=hashlib.sha256(stderr).hexdigest(),
+            )
+            raise ConsumerProcessRejected(diagnostic) from exc
     except BrokenPipeError:
         process.stdin = None
         _stdout, stderr = process.communicate()
@@ -239,7 +272,13 @@ def restore_verified_spool(
         if process.poll() is None:
             process.kill()
             process.wait()
+    diagnostic = ConsumerDiagnostic(
+        stage=stage,
+        returncode=returncode,
+        duration_ms=int((time.monotonic() - started) * 1000),
+        stderr_bytes=len(stderr),
+        stderr_sha256=hashlib.sha256(stderr).hexdigest(),
+    )
     if returncode:
-        raise SpoolRejected(
-            f"verified consumer failed rc={returncode} stderr_bytes={len(stderr)}"
-        )
+        raise ConsumerProcessRejected(diagnostic)
+    return diagnostic

@@ -72,7 +72,8 @@ FIELD_MAP: dict[str, dict[str, FieldRule]] = {
     "tasks": {
         "id": _id("task"),
         "status": _canon(
-            r"^(?:open|pending|in_progress|blocked|completed|cancelled|closed|done)$", False
+            r"^(?:open|pending|in_progress|blocked|completed|cancelled|closed|done|new|no_action_needed)$",
+            False,
         ),
         "assigned_to_id": _id("user", True),
         "parent_task_id": _id("task", True),
@@ -89,7 +90,8 @@ FIELD_MAP: dict[str, dict[str, FieldRule]] = {
     "management_processes": {
         "id": _id("management_process"),
         "status": _canon(
-            r"^(?:draft|open|pending|in_progress|blocked|completed|cancelled|closed)$", False
+            r"^(?:draft|open|pending|in_progress|blocked|completed|cancelled|closed|analysis|waiting)$",
+            False,
         ),
         "process_type_id": _id("process_type", True),
         "phase": FieldRule("synthetic", "category", max_length=32),
@@ -118,7 +120,7 @@ FIELD_MAP: dict[str, dict[str, FieldRule]] = {
     "documents": {
         "id": _id("document"),
         "status": _canon(
-            r"^(?:received|pending|processing|classified|approved|rejected|archived|active|inactive)$",
+            r"^(?:received|pending|processing|classified|approved|rejected|archived|active|inactive|associated|extracted|ocr_empty|ocr_issue|pending_triage|pending_validation|removed|unable_to_read|unclassified)$",
             False,
         ),
         "document_type": FieldRule("synthetic", "category", max_length=32),
@@ -147,7 +149,7 @@ FIELD_MAP: dict[str, dict[str, FieldRule]] = {
         "user_id": _id("user", True),
         "action": FieldRule("synthetic", "category", False, max_length=32),
         "entity_type": _canon(
-            r"^(?:user|supplier|vehicle|task|management_process|email_message|document)$"
+            r"^(?:classification_proposal|document|email_access_batch|email_channel_role|evolution_record|experience|import_batch|incident|management_center|organizational_unit|pilot_feedback|portal_invitation|portal_organization|portal_user|quick_record|role|service_desk_ticket_type|stock_category|stock_inventory_session|stock_invoice_import|stock_movement|stock_purchase_order|stock_receipt|task|task_recurrence_template|team|user|vehicle|vehicle_document_record|vehicle_image|vehicle_sale_lead|vehicle_sale_proposal|vehicle_sale_publication|work_category|workshop_diagnostic_suggestion|workshop_material_need|workshop_phased_process|workshop_phased_technical_report|workshop_process|workshop_process_service|workshop_technical_reading|workshop_template)$"
         ),
         "entity_id": FieldRule("surrogate", namespace="typed_entity", max_length=48),
         "detail": FieldRule("omit"),

@@ -209,6 +209,29 @@ def test_vehicle_operational_status_still_fails_closed_on_unknown_value() -> Non
         )
 
 
+@pytest.mark.parametrize(
+    "table,field,value",
+    [
+        ("tasks", "status", "new"),
+        ("tasks", "status", "no_action_needed"),
+        ("management_processes", "status", "analysis"),
+        ("management_processes", "status", "waiting"),
+        ("documents", "status", "pending_validation"),
+        ("documents", "status", "unable_to_read"),
+        ("audit_log", "entity_type", "workshop_phased_process"),
+        ("audit_log", "entity_type", "vehicle_sale_proposal"),
+    ],
+)
+def test_canonical_fields_accept_measured_production_vocabulary(
+    table: str, field: str, value: str
+) -> None:
+    identifier = "R-audit-0123456789abcdef" if table == "audit_log" else "R-task-0123456789abcdef"
+    payload = {"id": identifier, field: value}
+    if table == "audit_log":
+        payload["action"] = "Category-0123456789ab"
+    validate_payload(table, payload)
+
+
 def test_document_fixture_exists_only_for_logical_object() -> None:
     base = {
         field: None

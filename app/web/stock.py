@@ -16,6 +16,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.api.deps import DbSession
+from app.core.config import settings
 from app.models.admin import User
 from app.models.documents import Document, DocumentEvent
 from app.models.stock import (
@@ -38,8 +39,6 @@ from app.models.stock import (
     StockReceiptLine,
 )
 from app.models.suppliers import SupplierType, SupplierTypeAssignment
-from app.models.vehicles import Vehicle
-from app.models.workshop_phased import WorkshopMaterialNeed, WorkshopPhasedProcess
 from app.partners.compat import StockSupplier
 from app.schemas.stock import (
     StockArticleVehicleCompatibilityCreate,
@@ -80,6 +79,11 @@ from app.services.stock import (
     review_and_validate_invoice,
     save_inventory_counts,
     stock_balances,
+)
+from app.stock_domain.workshop_adapter import (
+    lock_material_needs,
+    material_request_rows,
+    record_fulfilment,
 )
 from app.web.router import document_archive_root, sanitize_archive_component, templates
 
@@ -125,6 +129,7 @@ def _denied(request: Request, db: DbSession, *codes: str) -> RedirectResponse | 
 def _page_context(request: Request, db: DbSession) -> dict:
     permissions = _permission_codes(request, db)
     return {
+        "foundation_ui_enabled": settings.visual_foundation_enabled,
         "can_operate_stock": bool(permissions & {"stock.operate", "stock.manage", "admin.manage"}),
         "can_manage_stock": bool(permissions & {"stock.manage", "admin.manage"}),
         "can_manage_orders": bool(permissions & {"stock.orders.manage", "admin.manage"}),
@@ -1995,21 +2000,7 @@ def stock_workshop_requests(request: Request, db: DbSession, scope: str = "pendi
         request, db, "stock.read", "stock.operate", "stock.manage", "admin.manage"
     ):
         return denied
-    statement = (
-        select(WorkshopMaterialNeed, WorkshopPhasedProcess, Vehicle)
-        .join(WorkshopPhasedProcess, WorkshopPhasedProcess.id == WorkshopMaterialNeed.process_id)
-        .outerjoin(Vehicle, Vehicle.id == WorkshopMaterialNeed.vehicle_id)
-        .where(WorkshopMaterialNeed.stock_request_reference.is_not(None))
-    )
-    if scope == "pending":
-        statement = statement.where(
-            WorkshopMaterialNeed.stock_status.in_(("requested", "usage_reported"))
-        )
-    elif scope == "completed":
-        statement = statement.where(WorkshopMaterialNeed.stock_status.in_(("delivered", "applied")))
-    rows = db.execute(
-        statement.order_by(WorkshopMaterialNeed.created_at, WorkshopMaterialNeed.id)
-    ).all()
+    rows = material_request_rows(db, scope)
     grouped: dict[str, dict] = {}
     for need, process, vehicle in rows:
         reference = need.stock_request_reference or f"NEED-{need.id}"
@@ -2047,11 +2038,7 @@ async def deliver_stock_workshop_request(
         return denied
     form = await request.form()
     location_id = int(str(form.get("location_id") or "0"))
-    needs = db.scalars(
-        select(WorkshopMaterialNeed)
-        .where(WorkshopMaterialNeed.stock_request_reference == request_reference)
-        .with_for_update()
-    ).all()
+    needs = lock_material_needs(db, request_reference)
     if not needs:
         return RedirectResponse("/v2-clean/stock/workshop-requests?error=missing", status_code=303)
     try:
@@ -2085,22 +2072,15 @@ async def deliver_stock_workshop_request(
                 ),
                 user_id=_user_id(request),
             )
-            direct_usage = (need.detail_json or {}).get("request_mode") == "direct_usage"
-            need.stock_status = "applied" if direct_usage else "delivered"
-            if direct_usage:
-                need.applied_confirmed_by_id = _user_id(request)
-                need.applied_confirmed_at = datetime.now(UTC)
-            detail = dict(need.detail_json or {})
-            detail.update(
-                {
-                    "article_id": article.id,
-                    "movement_id": movement.id,
-                    "stock_location_id": location_id,
-                    "unit_cost": str(article.average_cost or article.last_cost),
-                    "total_cost": str((article.average_cost or article.last_cost) * quantity),
-                }
+            record_fulfilment(
+                need,
+                article_id=article.id,
+                movement_id=movement.id,
+                location_id=location_id,
+                unit_cost=str(article.average_cost or article.last_cost),
+                total_cost=str((article.average_cost or article.last_cost) * quantity),
+                user_id=_user_id(request),
             )
-            need.detail_json = detail
         db.commit()
     except (ValueError, StockDomainError) as exc:
         db.rollback()

@@ -14,8 +14,9 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.documents import DocumentManagementFacade
 from app.models.admin import User
-from app.models.documents import Document, DocumentEvent
+from app.models.documents import Document
 from app.models.stock import (
     StockArticle,
     StockArticleSupplierRef,
@@ -37,6 +38,7 @@ from app.models.stock import (
     StockReceiptLine,
 )
 from app.partners.compat import StockSupplier
+from app.partners.facade import PartnersFacade
 from app.schemas.stock import (
     StockArticleVehicleCompatibilityCreate,
     StockConferenceAction,
@@ -115,27 +117,16 @@ def _line_amounts(line: StockInvoiceLineReview) -> tuple[Decimal, Decimal, Decim
 
 
 def _find_or_create_supplier(db: Session, review: StockInvoiceReview) -> StockSupplier:
-    supplier = db.get(StockSupplier, review.supplier_id) if review.supplier_id else None
     clean_tax_id = (review.supplier_tax_id or "").strip() or None
-    if not supplier and clean_tax_id:
-        supplier = db.scalar(select(StockSupplier).where(StockSupplier.tax_id == clean_tax_id))
-    if not supplier:
-        supplier = db.scalar(
-            select(StockSupplier).where(
-                func.lower(StockSupplier.name) == review.supplier_name.strip().lower()
-            )
-        )
-    if not supplier:
-        supplier = StockSupplier(name=review.supplier_name.strip(), tax_id=clean_tax_id)
-        db.add(supplier)
-        db.flush()
-    supplier.name = review.supplier_name.strip()
-    supplier.tax_id = clean_tax_id or supplier.tax_id
-    supplier.email = (review.supplier_email or "").strip() or supplier.email
-    supplier.phone = (review.supplier_phone or "").strip() or supplier.phone
-    supplier.address = (review.supplier_address or "").strip() or supplier.address
-    supplier.payment_terms = (review.payment_terms or "").strip() or supplier.payment_terms
-    return supplier
+    return PartnersFacade(db).resolve_supplier(
+        partner_id=review.supplier_id,
+        name=review.supplier_name.strip(),
+        tax_id=clean_tax_id,
+        email=(review.supplier_email or "").strip() or None,
+        phone=(review.supplier_phone or "").strip() or None,
+        address=(review.supplier_address or "").strip() or None,
+        payment_terms=(review.payment_terms or "").strip() or None,
+    )
 
 
 def ensure_invoice_import(
@@ -186,14 +177,11 @@ def ensure_invoice_import(
     )
     db.add(invoice_import)
     db.flush()
-    db.add(
-        DocumentEvent(
-            document_id=document.id,
-            action="stock.invoice_import.created",
-            old_value=None,
-            new_value=f"stock_invoice_import:{invoice_import.id}",
-            user_id=user_id,
-        )
+    DocumentManagementFacade(db).record_event(
+        document.id,
+        action="stock.invoice_import.created",
+        detail=f"stock_invoice_import:{invoice_import.id}",
+        user_id=user_id,
     )
     record_audit(
         db,
@@ -333,14 +321,12 @@ def review_and_validate_invoice(
     db.flush()
     document = db.get(Document, invoice_import.document_id)
     if document:
-        db.add(
-            DocumentEvent(
-                document_id=document.id,
-                action="stock.invoice_import.validated",
-                old_value=document.status,
-                new_value=document.status,
-                user_id=user_id,
-            )
+        DocumentManagementFacade(db).record_event(
+            document.id,
+            action="stock.invoice_import.validated",
+            detail=document.status,
+            old_value=document.status,
+            user_id=user_id,
         )
     record_audit(
         db,

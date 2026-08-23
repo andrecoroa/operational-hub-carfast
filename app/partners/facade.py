@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.partners.compat import PartnerRecord
@@ -44,6 +44,38 @@ class PartnersFacade:
                 )
             )
         return list(self.db.scalars(statement))
+
+    def resolve_supplier(
+        self,
+        *,
+        partner_id: int | None,
+        name: str,
+        tax_id: str | None,
+        email: str | None = None,
+        phone: str | None = None,
+        address: str | None = None,
+        payment_terms: str | None = None,
+    ) -> PartnerRecord:
+        """Resolve compatibility storage while keeping partner identity outside Stock."""
+
+        record = self.get_record(partner_id) if partner_id else None
+        if record is None and tax_id:
+            record = self.db.scalar(select(PartnerRecord).where(PartnerRecord.tax_id == tax_id))
+        if record is None:
+            record = self.db.scalar(
+                select(PartnerRecord).where(func.lower(PartnerRecord.name) == name.lower())
+            )
+        if record is None:
+            record = PartnerRecord(name=name, tax_id=tax_id)
+            self.db.add(record)
+            self.db.flush()
+        record.name = name
+        record.tax_id = tax_id or record.tax_id
+        record.email = email or record.email
+        record.phone = phone or record.phone
+        record.address = address or record.address
+        record.payment_terms = payment_terms or record.payment_terms
+        return record
 
     def summaries(self, partner_ids: Iterable[int]) -> dict[int, PartnerSummary]:
         ids = {int(item) for item in partner_ids if int(item) > 0}

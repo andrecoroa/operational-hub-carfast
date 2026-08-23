@@ -18,6 +18,7 @@ This specification translates the approved structural diagnosis into an incremen
 - [PHASE4_PARTNERS_BOUNDARY.md](PHASE4_PARTNERS_BOUNDARY.md): Partners ownership facade, stable references, compatibility adapters and reconciliation.
 - [PHASE5_DOCUMENT_MANAGEMENT_BOUNDARY.md](PHASE5_DOCUMENT_MANAGEMENT_BOUNDARY.md): document ownership facade, ingestion/link contracts, object reconciliation and standalone composition.
 - [PHASE6_SERVICE_DESK_BOUNDARY.md](PHASE6_SERVICE_DESK_BOUNDARY.md): Tasks/Processes/Email capability boundary, internal contracts, permission mapping and reconciliation.
+- [PHASE7_STOCK_PURCHASING_BOUNDARY.md](PHASE7_STOCK_PURCHASING_BOUNDARY.md): ledger/purchasing boundary, optional Workshop adapter and balance reconciliation.
 
 ## Statement labels
 

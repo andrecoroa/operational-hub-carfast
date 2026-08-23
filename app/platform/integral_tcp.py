@@ -23,8 +23,14 @@ STREAM_TYPES = {"database", "storage", "manifest"}
 SERVICE_ID_PREFIX = "srv-"
 FRAME_DATA = 1
 FRAME_FINAL = 2
+FRAME_CONTROL = 3
+CONTROL_SPOOL_ACCEPTED = 1
+CONTROL_CONSUMER_RESULT = 2
+CONTROL_OK = 1
+CONTROL_FAILED = 0
 DATA_HEADER = struct.Struct(">BQI32s32s")
 FINAL_HEADER = struct.Struct(">BQQQ32s32s")
+CONTROL_HEADER = struct.Struct(">BBBQQ32s32s")
 
 
 class TcpTransferRejected(RuntimeError):
@@ -143,6 +149,52 @@ def ensure_no_trailing(source: BinaryIO) -> None:
 
 def _frame_mac(key: bytes, session: str, fields: bytes) -> bytes:
     return hmac.new(key, session.encode() + fields, hashlib.sha256).digest()
+
+
+def write_control(
+    target: BinaryIO,
+    key: bytes,
+    session: str,
+    *,
+    phase: int,
+    ok: bool,
+    frames: int,
+    total: int,
+    digest: bytes,
+) -> None:
+    """Write an authenticated two-phase acknowledgement without payload details."""
+    if phase not in {CONTROL_SPOOL_ACCEPTED, CONTROL_CONSUMER_RESULT} or len(digest) != 32:
+        raise TcpTransferRejected("invalid control frame")
+    fields = struct.pack(">BBBQQ32s", FRAME_CONTROL, phase, int(ok), frames, total, digest)
+    _write_all(target, fields + _frame_mac(key, session, fields))
+    target.flush()
+
+
+def read_control(
+    source: BinaryIO,
+    key: bytes,
+    session: str,
+    *,
+    expected_phase: int,
+    frames: int,
+    total: int,
+    digest: bytes,
+) -> None:
+    raw = _read_exact(source, CONTROL_HEADER.size)
+    kind, phase, ok, observed_frames, observed_total, observed_digest, supplied_mac = (
+        CONTROL_HEADER.unpack(raw)
+    )
+    fields = raw[:-32]
+    if (
+        kind != FRAME_CONTROL
+        or phase != expected_phase
+        or ok != CONTROL_OK
+        or observed_frames != frames
+        or observed_total != total
+        or observed_digest != digest
+        or not hmac.compare_digest(supplied_mac, _frame_mac(key, session, fields))
+    ):
+        raise TcpTransferRejected("invalid or failed control acknowledgement")
 
 
 def _write_all(target: BinaryIO, payload: bytes) -> None:

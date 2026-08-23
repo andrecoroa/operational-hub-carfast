@@ -26,12 +26,16 @@ from app.platform.encrypted_spool import (
 )
 from app.platform.integral_storage_stream import pack_storage, unpack_storage
 from app.platform.integral_tcp import (
+    CONTROL_CONSUMER_RESULT,
+    CONTROL_SPOOL_ACCEPTED,
     FramedReader,
     TcpTransferRejected,
     client_handshake,
     ensure_no_trailing,
     issue_tcp_token,
+    read_control,
     server_handshake,
+    write_control,
     write_framed,
 )
 from app.platform.integral_transfer import ChunkedReader, issue_token, verify_token
@@ -348,9 +352,18 @@ def _send_tcp(stream_type: str, source: BinaryIO) -> dict[str, object]:
         connection.settimeout(20 * 60)
         handle, session = client_handshake(connection, _tcp_token(stream_type), stream_type)
         frames, total, digest = write_framed(source, handle, transfer_key(), session)
+        digest_bytes = bytes.fromhex(digest)
+        read_control(
+            handle, transfer_key(), session,
+            expected_phase=CONTROL_SPOOL_ACCEPTED,
+            frames=frames, total=total, digest=digest_bytes,
+        )
         connection.shutdown(socket.SHUT_WR)
-        if connection.recv(1) != b"\x01":
-            raise SystemExit("private TCP transfer rejected")
+        read_control(
+            handle, transfer_key(), session,
+            expected_phase=CONTROL_CONSUMER_RESULT,
+            frames=frames, total=total, digest=digest_bytes,
+        )
     return {
         "accepted": True,
         "stream_type": stream_type,
@@ -435,6 +448,16 @@ def _receive_tcp_stream(
         evidence = encrypt_verified_stream(
             framed, spool_path, spool_key, max_bytes=max_bytes
         )
+        if not framed.finished:
+            raise TcpTransferRejected("missing authenticated final frame")
+        digest = bytes.fromhex(evidence.sha256)
+        write_control(
+            handle, key, session,
+            phase=CONTROL_SPOOL_ACCEPTED, ok=True,
+            frames=framed.expected_sequence, total=evidence.bytes,
+            digest=digest,
+        )
+        # Only after the authenticated acceptance may the sender half-close.
         ensure_no_trailing(handle)
         if stream_type == "database":
             database_url = os.environ.get("DATABASE_URL", "")
@@ -479,6 +502,12 @@ def _receive_tcp_stream(
             )
         else:
             raise TcpTransferRejected("unknown stream type")
+        write_control(
+            handle, key, session,
+            phase=CONTROL_CONSUMER_RESULT, ok=True,
+            frames=framed.expected_sequence, total=evidence.bytes,
+            digest=digest,
+        )
     finally:
         destroy_spool(spool_path, spool_key)
 
@@ -517,7 +546,6 @@ def serve_tcp_streams(stream_types: tuple[str, ...], staging_root: Path | None) 
                         cutoff=cutoff,
                         used_nonces=used_nonces,
                     )
-                    connection.sendall(b"\x01")
                     accepted += 1
                     deadline = time.monotonic() + 15 * 60
                 except Exception as exc:

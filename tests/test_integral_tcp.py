@@ -8,13 +8,17 @@ import threading
 import pytest
 
 from app.platform.integral_tcp import (
+    CONTROL_CONSUMER_RESULT,
+    CONTROL_SPOOL_ACCEPTED,
     DATA_HEADER,
     MAX_FRAME,
     FramedReader,
     TcpTransferRejected,
     ensure_no_trailing,
     issue_tcp_token,
+    read_control,
     verify_tcp_token,
+    write_control,
     write_framed,
 )
 
@@ -165,3 +169,76 @@ def test_framed_writer_handles_partial_socket_writes() -> None:
         io.BytesIO(target.getvalue()), KEY, "session-abcdefghijklmnopqrstuv"
     )
     assert b"".join(iter(lambda: reader.read(64 * 1024), b"")) == payload
+
+
+def test_authenticated_two_phase_control_roundtrip() -> None:
+    session = "session-abcdefghijklmnopqrstuv"
+    digest = hashlib.sha256(b"payload").digest()
+    wire = _PartialWriter()
+    write_control(wire, KEY, session, phase=CONTROL_SPOOL_ACCEPTED, ok=True,
+                  frames=7, total=1234, digest=digest)
+    write_control(wire, KEY, session, phase=CONTROL_CONSUMER_RESULT, ok=True,
+                  frames=7, total=1234, digest=digest)
+    source = io.BytesIO(wire.getvalue())
+    read_control(source, KEY, session, expected_phase=CONTROL_SPOOL_ACCEPTED,
+                 frames=7, total=1234, digest=digest)
+    read_control(source, KEY, session, expected_phase=CONTROL_CONSUMER_RESULT,
+                 frames=7, total=1234, digest=digest)
+
+
+def test_two_phase_real_tcp_ack_precedes_delayed_consumer() -> None:
+    session = "session-abcdefghijklmnopqrstuv"
+    digest = hashlib.sha256(b"payload").digest()
+    listener = socket.socket()
+    listener.bind(("127.0.0.1", 0))
+    listener.listen(1)
+    accepted = threading.Event()
+    finished = threading.Event()
+
+    def server() -> None:
+        connection, _ = listener.accept()
+        with connection:
+            handle = connection.makefile("rwb", buffering=0)
+            write_control(handle, KEY, session, phase=CONTROL_SPOOL_ACCEPTED, ok=True,
+                          frames=1, total=7, digest=digest)
+            accepted.set()
+            assert handle.read(1) == b""
+            threading.Event().wait(0.15)
+            write_control(handle, KEY, session, phase=CONTROL_CONSUMER_RESULT, ok=True,
+                          frames=1, total=7, digest=digest)
+            finished.set()
+
+    thread = threading.Thread(target=server)
+    thread.start()
+    with socket.create_connection(listener.getsockname()) as client:
+        handle = client.makefile("rwb", buffering=0)
+        read_control(handle, KEY, session, expected_phase=CONTROL_SPOOL_ACCEPTED,
+                     frames=1, total=7, digest=digest)
+        assert not finished.is_set()
+        assert accepted.wait(timeout=1)
+        client.shutdown(socket.SHUT_WR)
+        read_control(handle, KEY, session, expected_phase=CONTROL_CONSUMER_RESULT,
+                     frames=1, total=7, digest=digest)
+    thread.join(timeout=2)
+    listener.close()
+    assert finished.is_set() and not thread.is_alive()
+
+
+@pytest.mark.parametrize("mutation", ["phase", "digest", "mac", "failed"])
+def test_two_phase_control_rejects_adversarial_ack(mutation: str) -> None:
+    session = "session-abcdefghijklmnopqrstuv"
+    digest = hashlib.sha256(b"payload").digest()
+    wire = io.BytesIO()
+    write_control(wire, KEY, session, phase=CONTROL_SPOOL_ACCEPTED,
+                  ok=mutation != "failed", frames=1, total=7, digest=digest)
+    raw = bytearray(wire.getvalue())
+    if mutation == "phase":
+        raw[1] = CONTROL_CONSUMER_RESULT
+    elif mutation == "digest":
+        raw[20] ^= 1
+    elif mutation == "mac":
+        raw[-1] ^= 1
+    with pytest.raises(TcpTransferRejected):
+        read_control(io.BytesIO(raw), KEY, session,
+                     expected_phase=CONTROL_SPOOL_ACCEPTED,
+                     frames=1, total=7, digest=digest)

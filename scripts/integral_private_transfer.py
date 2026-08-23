@@ -8,6 +8,7 @@ import json
 import os
 import subprocess
 import threading
+import time
 from datetime import UTC, datetime
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
@@ -270,8 +271,10 @@ def serve(kind: str, staging_root: Path | None) -> int:
 
     port = int(os.environ.get("INTEGRAL_DESTINATION_PORT", "10001"))
     server = HTTPServer(("0.0.0.0", port), Handler)
-    server.timeout = 15 * 60
-    server.handle_request()
+    deadline = time.monotonic() + 15 * 60
+    server.timeout = 2
+    while not state["accepted"] and time.monotonic() < deadline:
+        server.handle_request()
     server.server_close()
     if not state["accepted"]:
         raise SystemExit("integral receiver closed without an accepted transfer")

@@ -30,6 +30,9 @@ class HealthHandler(BaseHTTPRequestHandler):
 
 
 def main() -> int:
+    # Values pasted through a dashboard can retain harmless wrapping quotes.
+    # Normalize only that outer transport formatting before any validation.
+    os.environ["DATABASE_URL"] = os.environ.get("DATABASE_URL", "").strip().strip("\"'")
     validate_environment()
     parsed = urlsplit(os.environ["DATABASE_URL"].replace("postgresql+psycopg", "postgresql", 1))
     os.environ["REHEARSAL_DATABASE_HOST"] = parsed.hostname or ""

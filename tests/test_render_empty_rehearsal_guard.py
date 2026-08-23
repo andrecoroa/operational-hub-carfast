@@ -8,6 +8,20 @@ from app.core.egress_guard import EgressDenied, install_process_egress_guard
 from scripts.validate_isolated_environment import validate_environment
 
 
+def test_dashboard_wrapping_quotes_can_be_removed_without_relaxing_host_gate() -> None:
+    wrapped = "'postgresql://u:p@dpg-synthetic-a/rehearsal_test'"
+    normalized = wrapped.strip().strip("\"'")
+    environment = {
+        "APP_ENV": "test",
+        "DATABASE_URL": normalized,
+        "RENDER_EMPTY_REHEARSAL": "true",
+        "REHEARSAL_DATABASE_HOST": "dpg-synthetic-a",
+        "DOCUMENT_FIXTURES_ONLY": "true",
+        "REAL_DATA_ALLOWED": "false",
+    }
+    assert validate_environment(environment) == []
+
+
 def test_render_internal_database_is_accepted_only_for_explicit_empty_rehearsal() -> None:
     environment = {
         "APP_ENV": "test",

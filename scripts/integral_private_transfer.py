@@ -493,7 +493,7 @@ def serve_tcp_streams(stream_types: tuple[str, ...], staging_root: Path | None) 
                         staging_root.mkdir(parents=True, exist_ok=True)
                     reason = (
                         str(exc)
-                        if isinstance(exc, TcpTransferRejected)
+                        if isinstance(exc, (TcpTransferRejected, RuntimeError))
                         else type(exc).__name__
                     )
                     print(

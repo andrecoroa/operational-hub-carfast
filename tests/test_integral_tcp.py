@@ -27,6 +27,7 @@ SOURCE = "srv-blue123"
 DESTINATION = "srv-green456"
 RELEASE = "a" * 40
 CUTOFF = "cut-20260823T200000Z"
+BUNDLE = "bundle-20260823T200000Z"
 
 
 def _token(stream_type: str = "database") -> str:
@@ -36,6 +37,7 @@ def _token(stream_type: str = "database") -> str:
         destination=DESTINATION,
         release=RELEASE,
         cutoff=CUTOFF,
+        bundle_id=BUNDLE,
         stream_type=stream_type,
     )
 
@@ -50,6 +52,7 @@ def test_tcp_token_is_scoped_and_one_use() -> None:
         destination=DESTINATION,
         release=RELEASE,
         cutoff=CUTOFF,
+        bundle_id=BUNDLE,
         stream_type="database",
         used_nonces=used,
     )
@@ -61,6 +64,7 @@ def test_tcp_token_is_scoped_and_one_use() -> None:
             destination=DESTINATION,
             release=RELEASE,
             cutoff=CUTOFF,
+            bundle_id=BUNDLE,
             stream_type="database",
             used_nonces=used,
         )
@@ -72,6 +76,19 @@ def test_tcp_token_is_scoped_and_one_use() -> None:
             destination=DESTINATION,
             release="b" * 40,
             cutoff=CUTOFF,
+            bundle_id=BUNDLE,
+            stream_type="database",
+            used_nonces=set(),
+        )
+    with pytest.raises(TcpTransferRejected, match="endpoint"):
+        verify_tcp_token(
+            _token(),
+            KEY,
+            source=SOURCE,
+            destination=DESTINATION,
+            release=RELEASE,
+            cutoff=CUTOFF,
+            bundle_id="bundle-divergent",
             stream_type="database",
             used_nonces=set(),
         )
@@ -165,9 +182,7 @@ def test_framed_writer_handles_partial_socket_writes() -> None:
     payload = b"partial-socket-write" * 100_000
     target = _PartialWriter()
     write_framed(io.BytesIO(payload), target, KEY, "session-abcdefghijklmnopqrstuv")
-    reader = FramedReader(
-        io.BytesIO(target.getvalue()), KEY, "session-abcdefghijklmnopqrstuv"
-    )
+    reader = FramedReader(io.BytesIO(target.getvalue()), KEY, "session-abcdefghijklmnopqrstuv")
     assert b"".join(iter(lambda: reader.read(64 * 1024), b"")) == payload
 
 
@@ -175,15 +190,45 @@ def test_authenticated_two_phase_control_roundtrip() -> None:
     session = "session-abcdefghijklmnopqrstuv"
     digest = hashlib.sha256(b"payload").digest()
     wire = _PartialWriter()
-    write_control(wire, KEY, session, phase=CONTROL_SPOOL_ACCEPTED, ok=True,
-                  frames=7, total=1234, digest=digest)
-    write_control(wire, KEY, session, phase=CONTROL_CONSUMER_RESULT, ok=True,
-                  frames=7, total=1234, digest=digest)
+    write_control(
+        wire,
+        KEY,
+        session,
+        phase=CONTROL_SPOOL_ACCEPTED,
+        ok=True,
+        frames=7,
+        total=1234,
+        digest=digest,
+    )
+    write_control(
+        wire,
+        KEY,
+        session,
+        phase=CONTROL_CONSUMER_RESULT,
+        ok=True,
+        frames=7,
+        total=1234,
+        digest=digest,
+    )
     source = io.BytesIO(wire.getvalue())
-    read_control(source, KEY, session, expected_phase=CONTROL_SPOOL_ACCEPTED,
-                 frames=7, total=1234, digest=digest)
-    read_control(source, KEY, session, expected_phase=CONTROL_CONSUMER_RESULT,
-                 frames=7, total=1234, digest=digest)
+    read_control(
+        source,
+        KEY,
+        session,
+        expected_phase=CONTROL_SPOOL_ACCEPTED,
+        frames=7,
+        total=1234,
+        digest=digest,
+    )
+    read_control(
+        source,
+        KEY,
+        session,
+        expected_phase=CONTROL_CONSUMER_RESULT,
+        frames=7,
+        total=1234,
+        digest=digest,
+    )
 
 
 def test_two_phase_real_tcp_ack_precedes_delayed_consumer() -> None:
@@ -199,26 +244,56 @@ def test_two_phase_real_tcp_ack_precedes_delayed_consumer() -> None:
         connection, _ = listener.accept()
         with connection:
             handle = connection.makefile("rwb", buffering=0)
-            write_control(handle, KEY, session, phase=CONTROL_SPOOL_ACCEPTED, ok=True,
-                          frames=1, total=7, digest=digest)
+            write_control(
+                handle,
+                KEY,
+                session,
+                phase=CONTROL_SPOOL_ACCEPTED,
+                ok=True,
+                frames=1,
+                total=7,
+                digest=digest,
+            )
             accepted.set()
             assert handle.read(1) == b""
             threading.Event().wait(0.15)
-            write_control(handle, KEY, session, phase=CONTROL_CONSUMER_RESULT, ok=True,
-                          frames=1, total=7, digest=digest)
+            write_control(
+                handle,
+                KEY,
+                session,
+                phase=CONTROL_CONSUMER_RESULT,
+                ok=True,
+                frames=1,
+                total=7,
+                digest=digest,
+            )
             finished.set()
 
     thread = threading.Thread(target=server)
     thread.start()
     with socket.create_connection(listener.getsockname()) as client:
         handle = client.makefile("rwb", buffering=0)
-        read_control(handle, KEY, session, expected_phase=CONTROL_SPOOL_ACCEPTED,
-                     frames=1, total=7, digest=digest)
+        read_control(
+            handle,
+            KEY,
+            session,
+            expected_phase=CONTROL_SPOOL_ACCEPTED,
+            frames=1,
+            total=7,
+            digest=digest,
+        )
         assert not finished.is_set()
         assert accepted.wait(timeout=1)
         client.shutdown(socket.SHUT_WR)
-        read_control(handle, KEY, session, expected_phase=CONTROL_CONSUMER_RESULT,
-                     frames=1, total=7, digest=digest)
+        read_control(
+            handle,
+            KEY,
+            session,
+            expected_phase=CONTROL_CONSUMER_RESULT,
+            frames=1,
+            total=7,
+            digest=digest,
+        )
     thread.join(timeout=2)
     listener.close()
     assert finished.is_set() and not thread.is_alive()
@@ -229,8 +304,16 @@ def test_two_phase_control_rejects_adversarial_ack(mutation: str) -> None:
     session = "session-abcdefghijklmnopqrstuv"
     digest = hashlib.sha256(b"payload").digest()
     wire = io.BytesIO()
-    write_control(wire, KEY, session, phase=CONTROL_SPOOL_ACCEPTED,
-                  ok=mutation != "failed", frames=1, total=7, digest=digest)
+    write_control(
+        wire,
+        KEY,
+        session,
+        phase=CONTROL_SPOOL_ACCEPTED,
+        ok=mutation != "failed",
+        frames=1,
+        total=7,
+        digest=digest,
+    )
     raw = bytearray(wire.getvalue())
     if mutation == "phase":
         raw[1] = CONTROL_CONSUMER_RESULT
@@ -239,6 +322,12 @@ def test_two_phase_control_rejects_adversarial_ack(mutation: str) -> None:
     elif mutation == "mac":
         raw[-1] ^= 1
     with pytest.raises(TcpTransferRejected):
-        read_control(io.BytesIO(raw), KEY, session,
-                     expected_phase=CONTROL_SPOOL_ACCEPTED,
-                     frames=1, total=7, digest=digest)
+        read_control(
+            io.BytesIO(raw),
+            KEY,
+            session,
+            expected_phase=CONTROL_SPOOL_ACCEPTED,
+            frames=1,
+            total=7,
+            digest=digest,
+        )

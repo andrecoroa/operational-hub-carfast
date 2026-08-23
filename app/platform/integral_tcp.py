@@ -24,7 +24,8 @@ SERVICE_ID_PREFIX = "srv-"
 FRAME_DATA = 1
 FRAME_FINAL = 2
 FRAME_CONTROL = 3
-CONTROL_SPOOL_ACCEPTED = 1
+CONTROL_BUNDLE_SPOOL_ACCEPTED = 1
+CONTROL_SPOOL_ACCEPTED = CONTROL_BUNDLE_SPOOL_ACCEPTED
 CONTROL_CONSUMER_RESULT = 2
 CONTROL_OK = 1
 CONTROL_FAILED = 0
@@ -52,6 +53,7 @@ def issue_tcp_token(
     destination: str,
     release: str,
     cutoff: str,
+    bundle_id: str,
     stream_type: str,
     lifetime: int = 10 * 60,
 ) -> str:
@@ -60,6 +62,7 @@ def issue_tcp_token(
     now = int(time.time())
     payload = {
         "cutoff": cutoff,
+        "bundle_id": bundle_id,
         "destination": destination,
         "expires_at": now + lifetime,
         "issued_at": now,
@@ -82,6 +85,7 @@ def verify_tcp_token(
     destination: str,
     release: str,
     cutoff: str,
+    bundle_id: str,
     stream_type: str,
     used_nonces: set[str],
 ) -> str:
@@ -97,6 +101,7 @@ def verify_tcp_token(
         raise TcpTransferRejected("invalid authorization") from exc
     required = {
         "cutoff",
+        "bundle_id",
         "destination",
         "expires_at",
         "issued_at",
@@ -115,6 +120,7 @@ def verify_tcp_token(
         or payload["destination"] != destination
         or payload["release"] != release
         or payload["cutoff"] != cutoff
+        or payload["bundle_id"] != bundle_id
         or payload["stream_type"] != stream_type
         or stream_type not in STREAM_TYPES
         or not source.startswith(SERVICE_ID_PREFIX)
@@ -163,7 +169,7 @@ def write_control(
     digest: bytes,
 ) -> None:
     """Write an authenticated two-phase acknowledgement without payload details."""
-    if phase not in {CONTROL_SPOOL_ACCEPTED, CONTROL_CONSUMER_RESULT} or len(digest) != 32:
+    if phase not in {CONTROL_BUNDLE_SPOOL_ACCEPTED, CONTROL_CONSUMER_RESULT} or len(digest) != 32:
         raise TcpTransferRejected("invalid control frame")
     fields = struct.pack(">BBBQQ32s", FRAME_CONTROL, phase, int(ok), frames, total, digest)
     _write_all(target, fields + _frame_mac(key, session, fields))
@@ -316,9 +322,10 @@ def server_handshake(
     destination: str,
     release: str,
     cutoff: str,
-    stream_type: str,
+    bundle_id: str,
+    stream_type: str | None,
     used_nonces: set[str],
-) -> tuple[BinaryIO, str]:
+) -> tuple[BinaryIO, str, str]:
     handle = sock.makefile("rwb", buffering=0)
     if _read_exact(handle, len(MAGIC)) != MAGIC:
         raise TcpTransferRejected("invalid protocol magic")
@@ -328,7 +335,12 @@ def server_handshake(
     payload = json.loads(_read_exact(handle, size))
     if set(payload) != {"session", "stream_type", "token", "v"}:
         raise TcpTransferRejected("invalid handshake contract")
-    if payload["v"] != PROTOCOL_VERSION or payload["stream_type"] != stream_type:
+    actual_stream_type = payload["stream_type"]
+    if (
+        payload["v"] != PROTOCOL_VERSION
+        or actual_stream_type not in STREAM_TYPES
+        or (stream_type is not None and actual_stream_type != stream_type)
+    ):
         raise TcpTransferRejected("invalid handshake endpoint")
     verify_tcp_token(
         payload["token"],
@@ -337,7 +349,8 @@ def server_handshake(
         destination=destination,
         release=release,
         cutoff=cutoff,
-        stream_type=stream_type,
+        bundle_id=bundle_id,
+        stream_type=actual_stream_type,
         used_nonces=used_nonces,
     )
     session = payload["session"]
@@ -345,4 +358,4 @@ def server_handshake(
         raise TcpTransferRejected("invalid session")
     handle.write(b"\x01")
     handle.flush()
-    return handle, session
+    return handle, session, actual_stream_type

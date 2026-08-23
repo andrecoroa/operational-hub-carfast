@@ -46,7 +46,13 @@ def validate_environment(environment: dict[str, str]) -> list[str]:
     database_url = environment.get("DATABASE_URL", "")
     parsed = urlsplit(database_url.replace("postgresql+psycopg", "postgresql", 1))
     if not _database_host_is_isolated(parsed.hostname, environment):
-        errors.append("database must be isolated on the runner")
+        expected_host = environment.get("REHEARSAL_DATABASE_HOST", "").strip().lower()
+        rehearsal_gate = environment.get("RENDER_EMPTY_REHEARSAL", "").strip().lower()
+        errors.append(
+            "database must be isolated on the runner "
+            f"(technical_host={parsed.hostname!r}, expected_host={expected_host!r}, "
+            f"empty_rehearsal_gate={rehearsal_gate!r})"
+        )
     if not parsed.path.lstrip("/").endswith("_test"):
         errors.append("database name must end in _test")
     for name in DISABLED_FLAGS:

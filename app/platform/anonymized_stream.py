@@ -92,7 +92,7 @@ FIELD_MAP: dict[str, dict[str, FieldRule]] = {
             r"^(?:draft|open|pending|in_progress|blocked|completed|cancelled|closed)$", False
         ),
         "process_type_id": _id("process_type", True),
-        "phase": _canon(r"^[a-z][a-z0-9_]{0,31}$"),
+        "phase": FieldRule("synthetic", "category", max_length=32),
         "priority": _canon(r"^(?:low|normal|medium|high|urgent|critical)$"),
         "internal_reference": FieldRule("synthetic", max_length=32),
         "plate": FieldRule("synthetic", "plate", max_length=32),
@@ -121,8 +121,8 @@ FIELD_MAP: dict[str, dict[str, FieldRule]] = {
             r"^(?:received|pending|processing|classified|approved|rejected|archived|active|inactive)$",
             False,
         ),
-        "document_type": _canon(r"^[a-z][a-z0-9_.-]{0,47}$"),
-        "classification": _canon(r"^[a-z][a-z0-9_.-]{0,47}$"),
+        "document_type": FieldRule("synthetic", "category", max_length=32),
+        "classification": FieldRule("synthetic", "category", max_length=32),
         "vehicle_id": _id("vehicle", True),
         "task_id": _id("task", True),
         "workshop_process_id": _id("workshop_process", True),
@@ -145,7 +145,7 @@ FIELD_MAP: dict[str, dict[str, FieldRule]] = {
     "audit_log": {
         "id": _id("audit"),
         "user_id": _id("user", True),
-        "action": _canon(r"^[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*){1,3}$", False),
+        "action": FieldRule("synthetic", "category", False, max_length=32),
         "entity_type": _canon(
             r"^(?:user|supplier|vehicle|task|management_process|email_message|document)$"
         ),
@@ -171,7 +171,7 @@ NIF = re.compile(r"(?<!\d)[1235689]\d{8}(?!\d)")
 PLATE = re.compile(
     r"\b(?:[A-Z]{2}-\d{2}-[A-Z]{2}|\d{2}-[A-Z]{2}-\d{2}|[A-Z]{2}-\d{2}-\d{2})\b", re.I
 )
-SYNTHETIC_TOKEN = re.compile(r"^(?:Person-|Company-|S-|X|T|P-|V-)[0-9a-f]{12}$")
+SYNTHETIC_TOKEN = re.compile(r"^(?:Person-|Company-|Category-|S-|X|T|P-|V-)[0-9a-f]{12}$")
 SYNTHETIC_EMAIL = re.compile(r"^user-[0-9a-f]{12}@invalid\.example$")
 SURROGATE = re.compile(r"^R-[a-z_]{2,24}-[0-9a-f]{16}$")
 
@@ -202,6 +202,7 @@ class EphemeralSynthesizer:
             "phone": f"T{s}",
             "plate": f"P-{s}",
             "vin": f"V-{s}",
+            "category": f"Category-{s}",
         }.get(kind, f"S-{s}")
 
 

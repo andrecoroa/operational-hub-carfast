@@ -27,10 +27,10 @@ vazio e não existe porta PostgreSQL pública. O PostgreSQL gerido temporário p
 | `stock_suppliers` | `active` | `id`→`R-supplier-*`; nome/legal/NIF/registo/contactos | moradas, postal/cidade, website, notas |
 | `vehicles` | estados canónicos, `active` | `id`→`R-vehicle-*`; `plate`, `vin` | notas e projeções pessoais/cliente/localização |
 | `tasks` | estado canónico | `id`→`R-task-*`; FKs por namespace (`user`, `team`, `task`); cliente/contactos/plate | título, descrição e restantes textos livres |
-| `management_processes` | estado/fase/prioridade canónicos | `id`→`R-management_process-*`; `process_type_id`→namespace; referência/plate/pessoas | título, detalhe pendente, JSON bruto |
+| `management_processes` | estado/prioridade de allowlist fechada | `id`→`R-management_process-*`; `process_type_id`→namespace; fase→`Category-*`; referência/plate/pessoas | título, detalhe pendente, JSON bruto |
 | `email_messages` | — | `id`→`R-email_message-*`; `thread_id`→`R-email_thread-*`; sender | recipients/cc/bcc, assunto, corpos, headers, snapshots |
-| `documents` | estado/tipo/classificação canónicos | `id` e FKs por namespace; sender/plate/pessoas | nomes/paths/keys/URL/hash/tamanho reais; fixture apenas se havia objeto lógico, com métricas/hash exclusivamente sintéticos |
-| `audit_log` | ação e tipo canónicos | `id`, `user_id`; `entity_id` usa namespace derivado de `entity_type`, ou `null` se não mapeável | detalhe e before/after JSON |
+| `documents` | estado de allowlist fechada | `id` e FKs por namespace; tipo/classificação→`Category-*`; sender/plate/pessoas | nomes/paths/keys/URL/hash/tamanho reais; fixture apenas se havia objeto lógico, com métricas/hash exclusivamente sintéticos |
+| `audit_log` | `entity_type` de allowlist fechada | `id`, `user_id`; ação→`Category-*`; `entity_id` usa namespace derivado de `entity_type`, ou `null` se não mapeável | detalhe e before/after JSON |
 
 Nenhum ID produtivo cru é exportado. A igualdade e as FKs são preservadas por HMAC efémero
 namespaced, sem tabela de correspondência. Qualquer tabela ou campo não classificado falha fechado. O destino rejeita campos com nomes de
@@ -46,6 +46,7 @@ estado de reconciliação.
 - rejeição de tabelas/campos desconhecidos e identificadores reconhecíveis;
 - iteração JSONL incremental, limite de 1 MB por linha e validação dupla;
 - preflight apenas de schema (`information_schema`) antes de abrir qualquer cursor de linhas;
+  o contrato versionado v1 valida família PostgreSQL e nullability de todas as colunas do SELECT;
 - contratos por campo para tipo, nullability, comprimento, intervalos e valores canónicos;
 - staging tipado por tabela com PK/FK, contagens, joins e órfãos reconciliados;
 - bloqueio process-level de sockets IP instalado antes de ler `stdin`;
@@ -76,3 +77,9 @@ render ssh <SERVICO_PRODUCAO_CONFIRMADO> -- \
 Antes desse comando faltam autorização de captura, revisão das queries/colunas contra o schema
 real, mecanismo para impedir outbound do processo que contém dados anonimizados e restrição da
 regra externa herdada pela BD gerida. Nenhum destes gates é implicitamente aprovado aqui.
+
+O `CAPTURE_AUTHORIZATION_ID` será emitido pelo responsável no momento autorizado, com valor
+único, validade operacional máxima de 15 minutos e consumo único. Não será colocado na linha de
+comandos histórica, impresso, incluído em `stdout`/`stderr` ou persistido. O procedimento futuro
+deverá injetá-lo de forma efémera no runtime e rejeitar reutilização/expiração antes de qualquer
+cursor; esta preparação não cria nem valida esse identificador contra produção.

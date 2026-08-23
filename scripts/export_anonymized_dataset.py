@@ -6,6 +6,7 @@ import argparse
 import os
 import sys
 from collections.abc import Iterator, Mapping
+from dataclasses import dataclass
 from typing import Any, BinaryIO
 
 import psycopg
@@ -14,27 +15,99 @@ from psycopg.rows import dict_row
 
 from app.platform.anonymized_stream import FIELD_MAP, EphemeralSynthesizer, stream_jsonl
 
-EXPECTED_TYPE_FAMILIES = {
-    "id": {"integer", "bigint", "smallint", "character varying", "text", "uuid"},
-    "active": {"boolean"},
+SCHEMA_CONTRACT_VERSION = 1
+TEXT_TYPES = frozenset({"character varying", "character", "text"})
+INTEGER_TYPES = frozenset({"integer", "bigint", "smallint"})
+JSON_TYPES = frozenset({"json", "jsonb"})
+
+
+@dataclass(frozen=True)
+class SourceColumn:
+    types: frozenset[str]
+    nullable: bool
+
+
+NON_NULL_SOURCE = {
+    "users": {"id", "active", "email", "name", "password_hash"},
+    "stock_suppliers": {"id", "active", "name"},
+    "vehicles": {"id", "active"},
+    "tasks": {"id", "status", "title"},
+    "management_processes": {
+        "id",
+        "process_type_id",
+        "internal_reference",
+        "title",
+        "status",
+        "phase",
+        "priority",
+    },
+    "email_messages": {"id", "thread_id", "sender", "subject"},
+    "documents": {"id", "original_name", "file_name", "storage_path", "status"},
+    "audit_log": {"id", "action"},
 }
+BOOLEAN_SOURCE = {("users", "active"), ("stock_suppliers", "active"), ("vehicles", "active")}
+JSON_SOURCE = {
+    ("management_processes", "raw_summary_json"),
+    ("email_messages", "recipients_json"),
+    ("email_messages", "cc_json"),
+    ("email_messages", "bcc_json"),
+    ("email_messages", "headers_json"),
+    ("email_messages", "template_snapshot_json"),
+    ("audit_log", "before_json"),
+    ("audit_log", "after_json"),
+}
+INTEGER_SOURCE = {
+    (table, field)
+    for table, rules in FIELD_MAP.items()
+    for field, rule in rules.items()
+    if (field == "id" or field.endswith("_id") or field == "file_size")
+    and (table, field) != ("audit_log", "entity_id")
+}
+
+
+def _source_contract() -> dict[str, dict[str, SourceColumn]]:
+    contract: dict[str, dict[str, SourceColumn]] = {}
+    for table, rules in FIELD_MAP.items():
+        contract[table] = {}
+        for field in rules:
+            key = (table, field)
+            types = (
+                {"boolean"}
+                if key in BOOLEAN_SOURCE
+                else JSON_TYPES
+                if key in JSON_SOURCE
+                else INTEGER_TYPES
+                if key in INTEGER_SOURCE
+                else TEXT_TYPES
+            )
+            contract[table][field] = SourceColumn(
+                frozenset(types), field not in NON_NULL_SOURCE[table]
+            )
+    return contract
+
+
+SOURCE_SCHEMA_CONTRACT = _source_contract()
 
 
 def schema_preflight(connection: Any) -> None:
     """Inspect metadata only and abort before any row cursor when the pilot schema drifts."""
-    for table, rules in FIELD_MAP.items():
+    for table, columns in SOURCE_SCHEMA_CONTRACT.items():
         rows = connection.execute(
-            "SELECT column_name, data_type FROM information_schema.columns "
+            "SELECT column_name, data_type, is_nullable FROM information_schema.columns "
             "WHERE table_schema = current_schema() AND table_name = %s",
             (table,),
         ).fetchall()
-        actual = {row[0]: row[1] for row in rows}
-        missing = set(rules) - set(actual)
+        actual = {row[0]: (row[1], row[2] == "YES") for row in rows}
+        missing = set(columns) - set(actual)
         if missing:
             raise RuntimeError(f"schema preflight failed for {table}: missing {sorted(missing)}")
-        for field, allowed in EXPECTED_TYPE_FAMILIES.items():
-            if field in rules and actual[field] not in allowed:
-                raise RuntimeError(f"schema preflight failed for {table}.{field}: {actual[field]}")
+        for field, expected in columns.items():
+            actual_type, actual_nullable = actual[field]
+            if actual_type not in expected.types or actual_nullable != expected.nullable:
+                raise RuntimeError(
+                    f"schema preflight v{SCHEMA_CONTRACT_VERSION} failed for "
+                    f"{table}.{field}: type/nullability drift"
+                )
 
 
 def batched_rows(cursor: Any, batch_size: int) -> Iterator[Mapping[str, Any]]:

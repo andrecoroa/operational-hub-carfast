@@ -14,7 +14,6 @@ from app.platform.integral_transfer import (
 )
 from scripts.integral_private_transfer import (
     database_dump_command,
-    database_dump_command,
     database_restore_command,
     valid_target_marker,
 )

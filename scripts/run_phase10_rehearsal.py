@@ -22,7 +22,12 @@ def validate_isolated_target(app_env: str, database_url: str) -> str:
         raise ValueError("Phase 10 rehearsal requires APP_ENV=test")
     parsed = urlsplit(database_url.replace("postgresql+psycopg", "postgresql", 1))
     database = parsed.path.lstrip("/")
-    if parsed.hostname not in {"localhost", "127.0.0.1", "postgres"}:
+    if parsed.hostname not in {
+        "localhost",
+        "127.0.0.1",
+        "postgres",
+        "rehearsal-postgres",
+    }:
         raise ValueError("Phase 10 rehearsal requires isolated local PostgreSQL")
     if not database.endswith("_test"):
         raise ValueError("Phase 10 rehearsal database name must end in _test")

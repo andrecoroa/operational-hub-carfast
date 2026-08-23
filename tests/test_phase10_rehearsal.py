@@ -17,6 +17,13 @@ def test_rehearsal_guard_accepts_only_local_test_postgresql() -> None:
         )
         == "carfast_test"
     )
+    assert (
+        validate_isolated_target(
+            "test",
+            "postgresql+psycopg://carfast:carfast@rehearsal-postgres/carfast_test",
+        )
+        == "carfast_test"
+    )
     with pytest.raises(ValueError):
         validate_isolated_target(
             "production", "postgresql+psycopg://carfast:secret@localhost/carfast_test"

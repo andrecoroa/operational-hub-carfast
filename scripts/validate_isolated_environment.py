@@ -21,14 +21,43 @@ FORBIDDEN_SECRET_NAMES = (
 )
 
 
+def _database_host_is_isolated(hostname: str | None, environment: dict[str, str]) -> bool:
+    if hostname in {"localhost", "127.0.0.1", "postgres", "rehearsal-postgres"}:
+        return True
+    if hostname is None and environment.get("LOCAL_POSTGRES_SOCKET") == "/var/run/postgresql":
+        return True
+    # Render internal PostgreSQL hostnames are technical, private-network names.
+    # They are accepted only for the explicitly gated empty rehearsal runtime.
+    expected_render_host = environment.get("REHEARSAL_DATABASE_HOST", "").strip().lower()
+    return (
+        environment.get("RENDER_EMPTY_REHEARSAL", "").strip().lower() == "true"
+        and bool(hostname)
+        and bool(expected_render_host)
+        and (
+            hostname.lower() == expected_render_host
+            or hostname.lower().startswith(expected_render_host + ".")
+        )
+        and expected_render_host.startswith("dpg-")
+    )
+
+
 def validate_environment(environment: dict[str, str]) -> list[str]:
     errors: list[str] = []
     if environment.get("APP_ENV") != "test":
         errors.append("APP_ENV must be test")
     database_url = environment.get("DATABASE_URL", "")
     parsed = urlsplit(database_url.replace("postgresql+psycopg", "postgresql", 1))
-    if parsed.hostname not in {"localhost", "127.0.0.1", "postgres", "rehearsal-postgres"}:
-        errors.append("database must be isolated on the runner")
+    if not _database_host_is_isolated(parsed.hostname, environment):
+        expected_host = environment.get("REHEARSAL_DATABASE_HOST", "").strip().lower()
+        rehearsal_gate = environment.get("RENDER_EMPTY_REHEARSAL", "").strip().lower()
+        errors.append(
+            "database must be isolated on the runner "
+            f"(technical_host={parsed.hostname!r}, expected_host={expected_host!r}, "
+            f"empty_rehearsal_gate={rehearsal_gate!r}, url_length={len(database_url)}, "
+            "postgres_scheme="
+            f"{database_url.startswith(('postgresql://', 'postgresql+psycopg://'))}, "
+            f"has_scheme_separator={'://' in database_url})"
+        )
     if not parsed.path.lstrip("/").endswith("_test"):
         errors.append("database name must end in _test")
     for name in DISABLED_FLAGS:

@@ -21,13 +21,26 @@ FORBIDDEN_SECRET_NAMES = (
 )
 
 
+def _database_host_is_isolated(hostname: str | None, environment: dict[str, str]) -> bool:
+    if hostname in {"localhost", "127.0.0.1", "postgres", "rehearsal-postgres"}:
+        return True
+    # Render internal PostgreSQL hostnames are technical, private-network names.
+    # They are accepted only for the explicitly gated empty rehearsal runtime.
+    return (
+        environment.get("RENDER", "").strip().lower() == "true"
+        and environment.get("RENDER_EMPTY_REHEARSAL", "").strip().lower() == "true"
+        and bool(hostname)
+        and hostname.startswith("dpg-")
+    )
+
+
 def validate_environment(environment: dict[str, str]) -> list[str]:
     errors: list[str] = []
     if environment.get("APP_ENV") != "test":
         errors.append("APP_ENV must be test")
     database_url = environment.get("DATABASE_URL", "")
     parsed = urlsplit(database_url.replace("postgresql+psycopg", "postgresql", 1))
-    if parsed.hostname not in {"localhost", "127.0.0.1", "postgres", "rehearsal-postgres"}:
+    if not _database_host_is_isolated(parsed.hostname, environment):
         errors.append("database must be isolated on the runner")
     if not parsed.path.lstrip("/").endswith("_test"):
         errors.append("database name must end in _test")

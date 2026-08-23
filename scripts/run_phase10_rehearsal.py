@@ -15,6 +15,7 @@ from sqlalchemy import text
 from app.core.database import engine
 from app.platform.reconciliation import ReconciliationMetric, RehearsalReport
 from scripts.check_clean_install import OPERATIONAL_TABLES
+from scripts.validate_isolated_environment import _database_host_is_isolated
 
 
 def validate_isolated_target(app_env: str, database_url: str) -> str:
@@ -22,12 +23,7 @@ def validate_isolated_target(app_env: str, database_url: str) -> str:
         raise ValueError("Phase 10 rehearsal requires APP_ENV=test")
     parsed = urlsplit(database_url.replace("postgresql+psycopg", "postgresql", 1))
     database = parsed.path.lstrip("/")
-    if parsed.hostname not in {
-        "localhost",
-        "127.0.0.1",
-        "postgres",
-        "rehearsal-postgres",
-    }:
+    if not _database_host_is_isolated(parsed.hostname, dict(os.environ)):
         raise ValueError("Phase 10 rehearsal requires isolated local PostgreSQL")
     if not database.endswith("_test"):
         raise ValueError("Phase 10 rehearsal database name must end in _test")

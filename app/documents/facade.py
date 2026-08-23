@@ -102,12 +102,13 @@ class DocumentManagementFacade:
         detail: str | None,
         *,
         user_id: int | None = None,
+        old_value: str | None = None,
     ) -> None:
         self.db.add(
             DocumentAuditEvent(
                 document_id=document_id,
                 action=action,
-                old_value=None,
+                old_value=old_value,
                 new_value=detail,
                 user_id=user_id,
             )

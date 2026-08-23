@@ -51,7 +51,9 @@ def validate_environment(environment: dict[str, str]) -> list[str]:
         errors.append(
             "database must be isolated on the runner "
             f"(technical_host={parsed.hostname!r}, expected_host={expected_host!r}, "
-            f"empty_rehearsal_gate={rehearsal_gate!r})"
+            f"empty_rehearsal_gate={rehearsal_gate!r}, url_length={len(database_url)}, "
+            f"postgres_scheme={database_url.startswith(('postgresql://', 'postgresql+psycopg://'))}, "
+            f"has_scheme_separator={'://' in database_url})"
         )
     if not parsed.path.lstrip("/").endswith("_test"):
         errors.append("database name must end in _test")

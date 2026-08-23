@@ -14,6 +14,7 @@ from app.platform.integral_transfer import (
 )
 from scripts.integral_private_transfer import (
     database_dump_command,
+    database_dump_command,
     database_restore_command,
     valid_target_marker,
 )
@@ -66,6 +67,7 @@ def test_chunked_reader_fails_closed_on_bad_framing(raw: bytes) -> None:
 
 
 def test_clean_restore_is_allowed_only_for_isolated_staging() -> None:
+    assert "--exclude-table=alembic_version" in database_dump_command("source-staging")
     staging = database_restore_command(
         "staging", "carfast_integral_staging_fixture", target_prepared=False
     )

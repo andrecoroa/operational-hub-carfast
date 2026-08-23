@@ -44,7 +44,9 @@ def database_dump_command(phase: str) -> list[str]:
     ]
     if phase == "migrated-target":
         command.extend(("--data-only", "--exclude-table-data=alembic_version"))
-    elif phase != "source-staging":
+    elif phase == "source-staging":
+        command.append("--exclude-table=alembic_version")
+    else:
         raise ValueError("invalid database dump phase")
     return command
 
@@ -442,6 +444,20 @@ def _receive_tcp_stream(
         if process.wait():
             diagnostic = stderr.decode("utf-8", errors="replace")[-2_000:].strip()
             raise RuntimeError(f"pg_restore failed ({len(stderr)} stderr bytes): {diagnostic}")
+        if os.environ["INTEGRAL_DATABASE_DESTINATION_PHASE"] == "staging":
+            revision = required("INTEGRAL_SOURCE_REVISION")
+            if revision != "ffae1f2a3b4c":
+                raise RuntimeError("unexpected source revision for staging stamp")
+            stamped = subprocess.run(
+                ["alembic", "stamp", revision],
+                env=os.environ,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
+                check=False,
+            )
+            if stamped.returncode:
+                diagnostic = stamped.stderr.decode("utf-8", errors="replace")[-2_000:].strip()
+                raise RuntimeError(f"alembic stamp failed: {diagnostic}")
     elif stream_type == "storage":
         if staging_root is None:
             raise TcpTransferRejected("missing storage staging root")

@@ -10,6 +10,7 @@ import app.models  # noqa: F401
 from app.models.base import Base
 from app.platform.integral_sequences import reset_target_sequences
 from scripts.build_integral_reconciliation_manifest import validate_gated_remote
+from scripts.run_phase10_rehearsal import validate_isolated_target
 
 
 class TargetArgs:
@@ -19,7 +20,10 @@ class TargetArgs:
 
 def main() -> int:
     database_url = os.environ.get("DATABASE_URL", "")
-    validate_gated_remote(TargetArgs(), database_url)  # type: ignore[arg-type]
+    if os.environ.get("INTEGRAL_ISOLATED_REHEARSAL") == "true":
+        validate_isolated_target(os.environ.get("APP_ENV", ""), database_url)
+    else:
+        validate_gated_remote(TargetArgs(), database_url)  # type: ignore[arg-type]
     engine = create_engine(database_url)
     with engine.begin() as connection:
         reset = reset_target_sequences(connection, Base.metadata)

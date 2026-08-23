@@ -19,10 +19,17 @@ staging_root="/tmp/integral-e2e-${run_id}-staging"
 receiver_pid=""
 
 cleanup() {
+  exit_status=$?
   if [ -n "$receiver_pid" ] && kill -0 "$receiver_pid" 2>/dev/null; then
     kill "$receiver_pid" 2>/dev/null || true
     wait "$receiver_pid" 2>/dev/null || true
   fi
+  if [ "$exit_status" -ne 0 ] && [ -f "/tmp/integral-receiver-$run_id.log" ]; then
+    echo "synthetic_receiver_diagnostic_begin" >&2
+    tail -n 80 "/tmp/integral-receiver-$run_id.log" >&2
+    echo "synthetic_receiver_diagnostic_end" >&2
+  fi
+  rm -f "/tmp/integral-receiver-$run_id.log" "/tmp/integral-preflight-$run_id.json"
   rm -rf "$storage_root" "$staging_root"
   PGPASSWORD="$admin_password" dropdb -h "$host" -U "$admin_role" --if-exists "$source_db" || true
   PGPASSWORD="$admin_password" dropdb -h "$host" -U "$admin_role" --if-exists "$staging_db" || true
@@ -33,6 +40,7 @@ cleanup() {
     echo "rehearsal cleanup found residual spool" >&2
     exit 1
   fi
+  return "$exit_status"
 }
 trap cleanup EXIT INT TERM
 

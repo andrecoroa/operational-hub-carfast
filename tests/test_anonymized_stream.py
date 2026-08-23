@@ -89,6 +89,11 @@ def test_unclassified_free_text_is_rejected() -> None:
         validate_payload("probe", {"safe": "this is unrestricted prose"})
 
 
+def test_formal_synthetic_token_is_not_rejected_by_numeric_heuristics() -> None:
+    validate_payload("probe", {"safe": "Company-123456789abc"})
+    validate_payload("probe", {"safe": "user-123456789abc@invalid.example"})
+
+
 def test_stream_is_incremental_jsonl() -> None:
     records = (
         (

@@ -142,6 +142,8 @@ PLATE = re.compile(
     re.I,
 )
 SAFE_TECHNICAL = re.compile(r"^[A-Z0-9_.:/@+-]{1,200}$", re.I)
+SYNTHETIC_TOKEN = re.compile(r"^(?:Person-|Company-|S-|X|T|P-|V-)[0-9a-f]{12}$")
+SYNTHETIC_EMAIL = re.compile(r"^user-[0-9a-f]{12}@invalid\.example$")
 
 
 class UnsafePayload(ValueError):
@@ -201,7 +203,13 @@ def validate_payload(table: str, payload: Mapping[str, Any]) -> None:
         lower = field.lower()
         if any(part in lower for part in FORBIDDEN_FIELD_PARTS):
             raise UnsafePayload(f"forbidden field escaped transformation: {table}.{field}")
-        if isinstance(value, str) and any(pattern.search(value) for pattern in (PHONE, NIF, PLATE)):
+        if isinstance(value, str) and (
+            SYNTHETIC_TOKEN.fullmatch(value) or SYNTHETIC_EMAIL.fullmatch(value)
+        ):
+            continue
+        if isinstance(value, str) and any(
+            pattern.search(value) for pattern in (PHONE, NIF, PLATE)
+        ):
             raise UnsafePayload(f"recognizable identifier in {table}.{field}")
         if (
             isinstance(value, str)

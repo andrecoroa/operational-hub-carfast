@@ -14,6 +14,7 @@ def test_render_internal_database_is_accepted_only_for_explicit_empty_rehearsal(
         "DATABASE_URL": "postgresql+psycopg://u:p@dpg-synthetic-a/rehearsal_test",
         "RENDER": "true",
         "RENDER_EMPTY_REHEARSAL": "true",
+        "REHEARSAL_DATABASE_HOST": "dpg-synthetic-a",
         "DOCUMENT_FIXTURES_ONLY": "true",
         "REAL_DATA_ALLOWED": "false",
     }

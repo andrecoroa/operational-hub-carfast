@@ -3,8 +3,8 @@
 <div class="app-shell clean-shell">
   {% set active_menu = "clean_processes" %}
   {% include "_sidebar.html" %}
-  <main class="content clean-content">
-    <header class="clean-process-topbar">
+  <main class="content clean-content{% if foundation_ui_enabled %} ui-foundation ui-page-shell{% endif %}">
+    <header class="clean-process-topbar{% if foundation_ui_enabled %} ui-page-header{% endif %}">
         <div>
           <p class="eyebrow">Nova experiencia / processos</p>
           <h2>Centro de Processos</h2>

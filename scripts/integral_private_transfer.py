@@ -52,6 +52,7 @@ def database_dump_command(phase: str) -> list[str]:
 def database_restore_command(phase: str, database: str, *, target_prepared: bool) -> list[str]:
     command = [
         "pg_restore",
+        f"--dbname={database}",
         "--single-transaction",
         "--exit-on-error",
         "--no-owner",

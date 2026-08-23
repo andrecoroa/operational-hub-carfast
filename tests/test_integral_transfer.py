@@ -70,6 +70,7 @@ def test_clean_restore_is_allowed_only_for_isolated_staging() -> None:
         "staging", "carfast_integral_staging_fixture", target_prepared=False
     )
     assert "--clean" in staging
+    assert "--dbname=carfast_integral_staging_fixture" in staging
     with pytest.raises(ValueError, match="not isolated"):
         database_restore_command("staging", "carfast_green", target_prepared=False)
 
@@ -77,6 +78,7 @@ def test_clean_restore_is_allowed_only_for_isolated_staging() -> None:
 def test_prepared_green_restore_is_data_only_and_never_clean() -> None:
     target = database_restore_command("prepared-target", "carfast_green", target_prepared=True)
     assert "--data-only" in target
+    assert "--dbname=carfast_green" in target
     assert "--clean" not in target
     assert "--data-only" in database_dump_command("migrated-target")
     with pytest.raises(ValueError, match="not explicitly prepared"):

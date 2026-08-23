@@ -267,6 +267,11 @@ def serve(kind: str, staging_root: Path | None) -> int:
             except Exception as exc:
                 if isinstance(exc, RuntimeError):
                     print(f"integral database restore rejected: {exc}", flush=True)
+                else:
+                    print(
+                        f"integral receiver rejected before restore: {type(exc).__name__}",
+                        flush=True,
+                    )
                 payload = b'{"accepted":false}'
                 self.send_response(400)
                 self.send_header("Content-Type", "application/json")

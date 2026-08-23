@@ -22,6 +22,7 @@ from app.platform.integral_reconciliation import (
     build_database_evidence,
     build_storage_evidence,
     compare_manifests,
+    compare_migrated_manifests,
 )
 from scripts.check_clean_install import (
     CLEAN_INSTALL_REFERENCE_TABLES,
@@ -96,6 +97,25 @@ def test_release_mismatch_blocks_reconciliation(tmp_path: Path) -> None:
     source = manifest(tmp_path)
     target = replace(source, release_sha="other", database_label="target:test")
     assert compare_manifests(source, target) == ("release_sha",)
+
+
+def test_additive_migration_preserves_source_and_accepts_only_declared_relations(
+    tmp_path: Path,
+) -> None:
+    source = manifest(tmp_path)
+    target = replace(
+        source,
+        release_sha="target-release",
+        database_label="target:test",
+        relations=(relation(), relation("module_definitions")),
+    )
+    assert compare_migrated_manifests(
+        source, target, frozenset({"module_definitions"})
+    ) == ()
+    unexpected = replace(target, relations=target.relations + (relation("unexpected"),))
+    assert compare_migrated_manifests(
+        source, unexpected, frozenset({"module_definitions"})
+    ) == ("relation.additive_inventory",)
 
 
 def test_database_evidence_hashes_rows_and_counts_orphans() -> None:

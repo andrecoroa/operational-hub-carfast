@@ -14,6 +14,11 @@ from sqlalchemy import create_engine, inspect, text
 
 import app.models  # noqa: F401
 from app.models.base import Base
+from app.platform.integral_migration_contract import (
+    contracted_inventories,
+    source_metadata,
+    validate_database_phase,
+)
 from app.platform.integral_reconciliation import (
     IntegralManifest,
     build_database_evidence,
@@ -31,6 +36,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--database-label", choices=("source", "target"), required=True)
     parser.add_argument("--batch-size", type=int, default=500)
     parser.add_argument("--gated-remote", action="store_true")
+    parser.add_argument("--inventory-phase", choices=("source", "staging", "target"))
+    parser.add_argument("--validate-source-role", action="store_true")
     return parser.parse_args()
 
 
@@ -62,7 +69,14 @@ def validate_source_role(connection: object) -> None:
     current_role = connection.execute(text("SELECT current_user")).scalar_one()
     if not expected_role or current_role != expected_role:
         raise SystemExit("integral source database role mismatch")
-    for table in sorted(Base.metadata.tables):
+    source_tables, _target_tables = contracted_inventories(Base.metadata)
+    for table in sorted(source_tables):
+        readable = connection.execute(
+            text("SELECT has_table_privilege(current_user, :relation, 'SELECT')"),
+            {"relation": f"public.{table}"},
+        ).scalar_one()
+        if not readable:
+            raise SystemExit(f"integral source role lacks SELECT on {table}")
         writable = connection.execute(
             text(
                 "SELECT has_table_privilege(current_user, :relation, "
@@ -98,9 +112,19 @@ def main() -> int:
     engine = create_engine(database_url)
     with engine.connect() as connection, connection.begin():
         connection.exec_driver_sql("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
-        if args.gated_remote and args.database_label == "source":
+        phase = args.inventory_phase or args.database_label
+        validate_database_phase(connection, Base.metadata, phase)
+        if (args.gated_remote or args.validate_source_role) and args.database_label == "source":
             validate_source_role(connection)
-        relations = build_database_evidence(connection, Base.metadata, batch_size=args.batch_size)
+        declared_metadata = (
+            source_metadata(Base.metadata) if phase in {"source", "staging"} else Base.metadata
+        )
+        relations = build_database_evidence(
+            connection,
+            declared_metadata,
+            batch_size=args.batch_size,
+            minimum_relations=len(declared_metadata.tables),
+        )
     storage = build_storage_evidence(args.storage_root)
     manifest = IntegralManifest(
         release_sha=args.release_sha,

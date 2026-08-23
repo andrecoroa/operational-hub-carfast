@@ -8,6 +8,7 @@ import json
 import os
 import subprocess
 import threading
+from datetime import UTC, datetime
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from urllib.parse import unquote, urlsplit
@@ -16,6 +17,64 @@ from app.platform.integral_storage_stream import pack_storage, unpack_storage
 from app.platform.integral_transfer import ChunkedReader, issue_token, verify_token
 
 CHUNK_BYTES = 1024 * 1024
+TARGET_MARKER = Path("/tmp/carfast-integral-target-prepared.json")
+
+
+def database_dump_command(phase: str) -> list[str]:
+    command = [
+        "pg_dump",
+        "-Fc",
+        "--no-owner",
+        "--no-privileges",
+        "--serializable-deferrable",
+        "--exclude-table-data=*seq",
+    ]
+    if phase == "migrated-target":
+        command.extend(("--data-only", "--exclude-table-data=alembic_version"))
+    elif phase != "source-staging":
+        raise ValueError("invalid database dump phase")
+    return command
+
+
+def database_restore_command(phase: str, database: str, *, target_prepared: bool) -> list[str]:
+    command = [
+        "pg_restore",
+        "--single-transaction",
+        "--exit-on-error",
+        "--no-owner",
+        "--no-privileges",
+    ]
+    if phase == "staging":
+        if not database.startswith("carfast_integral_staging_"):
+            raise ValueError("staging database name is not isolated")
+        command[1:1] = ["--clean", "--if-exists"]
+    elif phase == "prepared-target":
+        if not target_prepared:
+            raise ValueError("Green target was not explicitly prepared")
+        command.append("--data-only")
+    else:
+        raise ValueError("invalid database destination phase")
+    return command
+
+
+def valid_target_marker(path: Path, database: str, *, now: datetime | None = None) -> bool:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        timestamp = datetime.fromisoformat(payload["timestamp"])
+    except (OSError, KeyError, ValueError, json.JSONDecodeError):
+        return False
+    current = now or datetime.now(UTC)
+    return (
+        set(payload)
+        == {"database", "release_sha", "relations", "service", "source_relations", "timestamp"}
+        and payload["database"] == database == "carfast_green"
+        and payload["release_sha"] == "9c691d332c80dff4a1d529d7f0d4ef16a71add46"
+        and payload["service"] == "srv-da5dk9bm8hqs73camds0"
+        and payload["relations"] == 166
+        and payload["source_relations"] == 162
+        and timestamp.tzinfo is not None
+        and 0 <= (current - timestamp).total_seconds() <= 20 * 60
+    )
 
 
 def required(name: str) -> str:
@@ -84,14 +143,11 @@ def post(kind: str, body: object) -> dict[str, object]:
 
 def send_database() -> int:
     environment = libpq_environment(required("DATABASE_URL"))
-    command = [
-        "pg_dump",
-        "-Fc",
-        "--no-owner",
-        "--no-privileges",
-        "--serializable-deferrable",
-        "--exclude-table-data=*seq",
-    ]
+    dump_phase = required("INTEGRAL_DATABASE_DUMP_PHASE")
+    try:
+        command = database_dump_command(dump_phase)
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from exc
     process = subprocess.Popen(
         command, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, env=environment
     )
@@ -170,15 +226,16 @@ def serve(kind: str, staging_root: Path | None) -> int:
                     result = {"accepted": True, "kind": kind, "objects": count, "bytes": size}
                 else:
                     environment = libpq_environment(database_url)
-                    command = [
-                        "pg_restore",
-                        "--clean",
-                        "--if-exists",
-                        "--single-transaction",
-                        "--exit-on-error",
-                        "--no-owner",
-                        "--no-privileges",
-                    ]
+                    destination_phase = required("INTEGRAL_DATABASE_DESTINATION_PHASE")
+                    expected_database = required("INTEGRAL_EXPECTED_DATABASE_NAME")
+                    command = database_restore_command(
+                        destination_phase,
+                        expected_database,
+                        target_prepared=(
+                            os.environ.get("INTEGRAL_TARGET_PREPARED") == "true"
+                            and valid_target_marker(TARGET_MARKER, expected_database)
+                        ),
+                    )
                     process = subprocess.Popen(
                         command, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL,
                         stderr=subprocess.PIPE, env=environment
@@ -193,6 +250,8 @@ def serve(kind: str, staging_root: Path | None) -> int:
                     returncode = process.wait()
                     if returncode:
                         raise RuntimeError(f"pg_restore failed ({len(stderr)} stderr bytes)")
+                    if destination_phase == "prepared-target":
+                        TARGET_MARKER.unlink(missing_ok=True)
                     result = {"accepted": True, "kind": kind, "bytes": total}
                 payload = json.dumps(result, sort_keys=True).encode()
                 self.send_response(200)

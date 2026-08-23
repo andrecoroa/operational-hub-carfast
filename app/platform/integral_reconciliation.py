@@ -252,6 +252,32 @@ def compare_manifests(source: IntegralManifest, target: IntegralManifest) -> tup
     return tuple(differences)
 
 
+def compare_migrated_manifests(
+    source: IntegralManifest,
+    target: IntegralManifest,
+    additive_relations: frozenset[str],
+) -> tuple[str, ...]:
+    """Compare 162 preserved relations plus storage across an additive migration."""
+    differences: list[str] = []
+    if source.version != target.version:
+        differences.append("manifest.version")
+    source_relations = {item.name: item for item in source.relations}
+    target_relations = {item.name: item for item in target.relations}
+    if set(target_relations) - set(source_relations) != additive_relations:
+        differences.append("relation.additive_inventory")
+    if set(source_relations) - set(target_relations):
+        differences.append("relation.preserved_inventory")
+    for name in sorted(source_relations):
+        if source_relations[name] != target_relations.get(name):
+            differences.append(f"relation.{name}")
+    source_storage = {item.path: item for item in source.storage}
+    target_storage = {item.path: item for item in target.storage}
+    for path in sorted(set(source_storage) | set(target_storage)):
+        if source_storage.get(path) != target_storage.get(path):
+            differences.append(f"storage.{path}")
+    return tuple(differences)
+
+
 def load_manifest(path: Path) -> IntegralManifest:
     payload = json.loads(path.read_text(encoding="utf-8"))
     if set(payload) != {"version", "release_sha", "database_label", "relations", "storage"}:

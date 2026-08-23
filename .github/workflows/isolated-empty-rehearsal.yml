@@ -55,7 +55,7 @@ jobs:
           python -m scripts.validate_isolated_environment
           python -m pytest -q tests/test_isolated_environment.py tests/test_phase10_rehearsal.py \
             tests/test_integral_reconciliation.py tests/test_integral_storage_stream.py \
-            tests/test_integral_transfer.py
+            tests/test_integral_transfer.py tests/test_integral_migration_contract.py
           python -m pytest -q tests/test_capture_authorization.py \
             tests/test_anonymized_stream.py tests/test_anonymized_receive.py \
             tests/test_render_empty_rehearsal_guard.py \
@@ -119,20 +119,46 @@ jobs:
             --network carfast-rehearsal-internal \
             -e APP_ENV -e APP_SECRET_KEY -e DATABASE_URL -e GITHUB_SHA \
             carfast-empty-rehearsal sleep infinity
-          docker exec carfast-integral-fixture sh -ec '
+          docker run --rm --network carfast-rehearsal-internal \
+            -e PGPASSWORD=carfast postgres:17-bookworm sh -ec '
+              createdb -h rehearsal-postgres -U carfast carfast_integral_source_test
+              createdb -h rehearsal-postgres -U carfast carfast_integral_staging_test
+              createdb -h rehearsal-postgres -U carfast carfast_integral_target_test
+            '
+          docker exec \
+            -e DATABASE_URL=postgresql+psycopg://carfast:carfast@rehearsal-postgres:5432/carfast_integral_source_test \
+            carfast-integral-fixture sh -ec '
+              python -m alembic upgrade ffae1f2a3b4c
+              python -m scripts.validate_integral_migration_contract source
+            '
+          docker run --rm --network carfast-rehearsal-internal \
+            -e PGPASSWORD=carfast postgres:17-bookworm psql \
+              -h rehearsal-postgres -U carfast -d carfast_integral_source_test \
+              -v ON_ERROR_STOP=1 -c \
+              "INSERT INTO permissions (id, code, name, description) VALUES (999999, 'integral.fixture', 'Integral fixture', NULL)"
+          docker run --rm --network carfast-rehearsal-internal \
+            -e PGPASSWORD=carfast postgres:17-bookworm psql \
+              -h rehearsal-postgres -U carfast -d carfast_integral_source_test \
+              -v ON_ERROR_STOP=1 -c \
+              "CREATE ROLE integral_source_ro LOGIN PASSWORD 'fixture-only' NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS; GRANT CONNECT ON DATABASE carfast_integral_source_test TO integral_source_ro; GRANT USAGE ON SCHEMA public TO integral_source_ro; GRANT SELECT ON ALL TABLES IN SCHEMA public TO integral_source_ro; REVOKE ALL ON ALL SEQUENCES IN SCHEMA public FROM integral_source_ro"
+          docker exec \
+            -e DATABASE_URL=postgresql+psycopg://integral_source_ro:fixture-only@rehearsal-postgres:5432/carfast_integral_source_test \
+            -e INTEGRAL_EXPECTED_DATABASE_ROLE=integral_source_ro \
+            carfast-integral-fixture sh -ec '
             mkdir -p /tmp/integral/source-storage
             printf synthetic-integral-fixture >/tmp/integral/source-storage/object.bin
             python -m scripts.build_integral_reconciliation_manifest \
               --output /tmp/integral/source.json \
               --storage-root /tmp/integral/source-storage \
-              --release-sha "$GITHUB_SHA" --database-label source
+              --release-sha 58a150c701221b64c43bd14fcb671683f3722ebe \
+              --database-label source --inventory-phase source --validate-source-role
           '
           docker run --rm --network carfast-rehearsal-internal \
-            -e PGPASSWORD=carfast postgres:17-bookworm sh -ec '
-              createdb -h rehearsal-postgres -U carfast carfast_integral_target_test
-              pg_dump -Fc -h rehearsal-postgres -U carfast carfast_rehearsal_test \
-              | pg_restore --exit-on-error --single-transaction --no-owner --no-privileges \
-                  -h rehearsal-postgres -U carfast -d carfast_integral_target_test
+            -e PGPASSWORD=fixture-only postgres:17-bookworm sh -ec '
+              pg_dump -Fc --no-owner --no-privileges --exclude-table-data="*seq" \
+                -h rehearsal-postgres -U integral_source_ro carfast_integral_source_test \
+              | PGPASSWORD=carfast pg_restore --exit-on-error --single-transaction --no-owner --no-privileges \
+                  -h rehearsal-postgres -U carfast -d carfast_integral_staging_test
             '
           docker exec carfast-integral-fixture sh -ec '
             python -m scripts.export_integral_storage --root /tmp/integral/source-storage \
@@ -140,15 +166,54 @@ jobs:
                 --staging-root /tmp/integral/target-storage
           '
           docker exec \
+            -e DATABASE_URL=postgresql+psycopg://carfast:carfast@rehearsal-postgres:5432/carfast_integral_staging_test \
+            carfast-integral-fixture sh -ec '
+              python -m scripts.build_integral_reconciliation_manifest \
+                --output /tmp/integral/staging.json \
+                --storage-root /tmp/integral/target-storage \
+                --release-sha 58a150c701221b64c43bd14fcb671683f3722ebe \
+                --database-label target --inventory-phase staging
+              python -m scripts.compare_integral_reconciliation_manifests \
+                /tmp/integral/source.json /tmp/integral/staging.json
+              python -m alembic upgrade fff37f8a9b0d
+              python -m scripts.validate_integral_migration_contract target
+              python -m scripts.build_integral_reconciliation_manifest \
+                --output /tmp/integral/migrated.json \
+                --storage-root /tmp/integral/target-storage \
+                --release-sha "$GITHUB_SHA" --database-label target --inventory-phase target
+              python -m scripts.compare_integral_migration_manifests \
+                /tmp/integral/source.json /tmp/integral/migrated.json
+            '
+          docker exec \
+            -e DATABASE_URL=postgresql+psycopg://carfast:carfast@rehearsal-postgres:5432/carfast_integral_target_test \
+            carfast-integral-fixture python -m alembic upgrade fff37f8a9b0d
+          TABLES="$(docker run --rm --network carfast-rehearsal-internal \
+            -e PGPASSWORD=carfast postgres:17-bookworm psql \
+              -h rehearsal-postgres -U carfast -d carfast_integral_target_test -Atqc \
+              "SELECT string_agg(format('%I', tablename), ', ' ORDER BY tablename) FROM pg_tables WHERE schemaname='public' AND tablename<>'alembic_version'")"
+          docker run --rm --network carfast-rehearsal-internal \
+            -e PGPASSWORD=carfast postgres:17-bookworm psql \
+              -h rehearsal-postgres -U carfast -d carfast_integral_target_test \
+              -v ON_ERROR_STOP=1 -c "TRUNCATE TABLE $TABLES RESTART IDENTITY CASCADE"
+          docker run --rm --network carfast-rehearsal-internal \
+            -e PGPASSWORD=carfast postgres:17-bookworm sh -ec '
+              pg_dump -Fc --data-only --exclude-table-data=alembic_version \
+                --exclude-table-data="*seq" -h rehearsal-postgres -U carfast \
+                carfast_integral_staging_test \
+              | pg_restore --data-only --exit-on-error --single-transaction \
+                  --no-owner --no-privileges -h rehearsal-postgres -U carfast \
+                  -d carfast_integral_target_test
+            '
+          docker exec \
             -e DATABASE_URL=postgresql+psycopg://carfast:carfast@rehearsal-postgres:5432/carfast_integral_target_test \
             carfast-integral-fixture sh -ec '
+              python -m scripts.validate_integral_migration_contract target
               python -m scripts.build_integral_reconciliation_manifest \
                 --output /tmp/integral/target.json \
                 --storage-root /tmp/integral/target-storage \
-                --release-sha "$GITHUB_SHA" --database-label target
+                --release-sha "$GITHUB_SHA" --database-label target --inventory-phase target
               python -m scripts.compare_integral_reconciliation_manifests \
-                /tmp/integral/source.json /tmp/integral/target.json
-              python -m scripts.check_clean_install
+                /tmp/integral/migrated.json /tmp/integral/target.json
             '
       - name: Destroy isolated resources
         if: always()

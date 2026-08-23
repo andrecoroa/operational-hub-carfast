@@ -78,8 +78,8 @@ The gate must explicitly authorize all of the following together:
 
 1. manual deploy of one green integration release to permanent Green, Auto-Deploy still off;
 2. a temporary Blue database login with `CONNECT`, schema `USAGE` and `SELECT` only across
-   the complete, frozen 166-relation manifest; no writes, DDL, sequences, default privileges
-   or role-management capability;
+   the frozen 162-relation source manifest (plus `alembic_version` metadata); no writes, DDL,
+   sequences, default privileges or role-management capability;
 3. the short Blue application read-only interval needed for one consistent database and
    storage cut;
 4. private, authenticated, single-use streaming of the full PostgreSQL archive and storage
@@ -99,11 +99,17 @@ The gate must explicitly authorize all of the following together:
    key must be collision-free before reconciliation is accepted.
 4. Enter Blue read-only; acquire PostgreSQL repeatable source cut and storage manifest;
    no concurrent source object mutation is allowed during this cut.
-5. Stream PostgreSQL with PostgreSQL 17 custom format and transactional restore. Stream
-   storage through the validated framed protocol into an empty staging root.
-6. Run Alembic to the pinned release head only if the copied source precedes that head.
-7. Build independent source/target manifests and require all 166 relations, every FK orphan
-   count, every PK/row/schema digest and every object path/size/hash to match exactly.
+5. Stream PostgreSQL 17 custom format into a separately named database on the Green cluster;
+   `--clean` is permitted only there. Require zero-tolerance 162-to-162 reconciliation before
+   migration. Stream storage through the framed protocol into an empty staging root.
+6. Upgrade staging exactly from `ffae1f2a3b4c` to `fff37f8a9b0d`. Preserve all 162 relation
+   manifests exactly and create only `module_definitions`, `module_capabilities`,
+   `module_dependencies` and `installation_modules`, including the versioned `core/default`
+   seeds and exact column/PK/FK/index/unique/check contracts.
+7. Prepare the known-empty permanent Green target by an exact-ID, short-lived marker and
+   transactional truncate. Promote migrated staging with a data-only restore that excludes
+   `alembic_version` and never uses `--clean`; then require 166-to-166 equality plus exact
+   storage paths, sizes and SHA-256 values.
 8. Run focused workflow, authorization, document-readability, clean-install and effects-off
    regressions. Keep Green inaccessible through the primary domain.
 
@@ -119,5 +125,6 @@ unexpected cost or unexplained timing difference. Tolerance is zero.
 - After a reconciled rehearsal: keep Green isolated for validation; Blue remains the production
   system. No DNS, production merge or cutover follows without a separate gate.
 
-No real database row, document, attachment or storage object may be copied under the current
-authorization.
+The first real integral rehearsal is authorized under the time, cost, isolation, read-only and
+cleanup limits recorded in the execution handoff. This document does not authorize production
+deploy, DNS, cutover, Blue mutation beyond the timed read-only gate, or semantic data repair.

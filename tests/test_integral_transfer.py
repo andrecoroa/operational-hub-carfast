@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import io
+import json
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -9,6 +11,11 @@ from app.platform.integral_transfer import (
     IntegralTransferRejected,
     issue_token,
     verify_token,
+)
+from scripts.integral_private_transfer import (
+    database_dump_command,
+    database_restore_command,
+    valid_target_marker,
 )
 
 KEY = b"integral-fixture-key-material-32-bytes-minimum"
@@ -56,3 +63,41 @@ def test_chunked_reader_decodes_incrementally() -> None:
 def test_chunked_reader_fails_closed_on_bad_framing(raw: bytes) -> None:
     with pytest.raises(IntegralTransferRejected):
         ChunkedReader(io.BytesIO(raw)).read(8)
+
+
+def test_clean_restore_is_allowed_only_for_isolated_staging() -> None:
+    staging = database_restore_command(
+        "staging", "carfast_integral_staging_fixture", target_prepared=False
+    )
+    assert "--clean" in staging
+    with pytest.raises(ValueError, match="not isolated"):
+        database_restore_command("staging", "carfast_green", target_prepared=False)
+
+
+def test_prepared_green_restore_is_data_only_and_never_clean() -> None:
+    target = database_restore_command("prepared-target", "carfast_green", target_prepared=True)
+    assert "--data-only" in target
+    assert "--clean" not in target
+    assert "--data-only" in database_dump_command("migrated-target")
+    with pytest.raises(ValueError, match="not explicitly prepared"):
+        database_restore_command("prepared-target", "carfast_green", target_prepared=False)
+
+
+def test_target_marker_is_exact_and_short_lived(tmp_path) -> None:
+    now = datetime.now(UTC)
+    marker = tmp_path / "marker.json"
+    marker.write_text(
+        json.dumps(
+            {
+                "database": "carfast_green",
+                "release_sha": "9c691d332c80dff4a1d529d7f0d4ef16a71add46",
+                "relations": 166,
+                "service": "srv-da5dk9bm8hqs73camds0",
+                "source_relations": 162,
+                "timestamp": now.isoformat(),
+            }
+        ),
+        encoding="utf-8",
+    )
+    assert valid_target_marker(marker, "carfast_green", now=now)
+    assert not valid_target_marker(marker, "carfast_green", now=now + timedelta(minutes=21))

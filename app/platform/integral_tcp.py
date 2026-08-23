@@ -145,6 +145,17 @@ def _frame_mac(key: bytes, session: str, fields: bytes) -> bytes:
     return hmac.new(key, session.encode() + fields, hashlib.sha256).digest()
 
 
+def _write_all(target: BinaryIO, payload: bytes) -> None:
+    view = memoryview(payload)
+    while view:
+        written = target.write(view)
+        if written is None:
+            written = len(view)
+        if written <= 0:
+            raise TcpTransferRejected("premature stream write close")
+        view = view[written:]
+
+
 @dataclass(slots=True)
 class FramedReader:
     source: BinaryIO
@@ -216,7 +227,7 @@ def write_framed(
     while chunk := source.read(MAX_FRAME):
         digest = hashlib.sha256(chunk).digest()
         fields = struct.pack(">BQI32s", FRAME_DATA, sequence, len(chunk), digest)
-        target.write(fields + _frame_mac(key, session, fields) + chunk)
+        _write_all(target, fields + _frame_mac(key, session, fields) + chunk)
         target.flush()
         final.update(chunk)
         total += len(chunk)
@@ -225,7 +236,7 @@ def write_framed(
         sequence += 1
     digest = final.digest()
     fields = struct.pack(">BQQQ32s", FRAME_FINAL, sequence, sequence, total, digest)
-    target.write(fields + _frame_mac(key, session, fields))
+    _write_all(target, fields + _frame_mac(key, session, fields))
     target.flush()
     return sequence, total, digest.hex()
 

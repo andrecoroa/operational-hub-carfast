@@ -150,3 +150,18 @@ def test_stream_above_http_proxy_equivalent_with_backpressure() -> None:
     assert frames == 101
     assert observed == total == reader.total
     assert final == digest.hexdigest()
+
+
+class _PartialWriter(io.BytesIO):
+    def write(self, value: bytes) -> int:
+        return super().write(value[: max(1, min(4093, len(value)))])
+
+
+def test_framed_writer_handles_partial_socket_writes() -> None:
+    payload = b"partial-socket-write" * 100_000
+    target = _PartialWriter()
+    write_framed(io.BytesIO(payload), target, KEY, "session-abcdefghijklmnopqrstuv")
+    reader = FramedReader(
+        io.BytesIO(target.getvalue()), KEY, "session-abcdefghijklmnopqrstuv"
+    )
+    assert b"".join(iter(lambda: reader.read(64 * 1024), b"")) == payload

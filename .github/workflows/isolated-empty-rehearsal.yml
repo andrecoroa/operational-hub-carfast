@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - codex/isolated-empty-rehearsal
+      - codex/anonymized-streaming-rehearsal
 
 permissions:
   contents: read
@@ -52,6 +53,11 @@ jobs:
         run: |
           python -m scripts.validate_isolated_environment
           python -m pytest -q tests/test_isolated_environment.py tests/test_phase10_rehearsal.py
+          python -m pytest -q tests/test_anonymized_stream.py tests/test_anonymized_receive.py
+          python -m scripts.prepare_anonymized_stream \
+            --fixture tests/fixtures/anonymization_input.jsonl >/tmp/anonymized-fixture.jsonl
+          test "$(wc -l </tmp/anonymized-fixture.jsonl)" -eq 8
+          rm -f /tmp/anonymized-fixture.jsonl
       - name: Create internal-only application network
         run: |
           docker network create --internal carfast-rehearsal-internal
@@ -98,3 +104,33 @@ jobs:
         run: |
           docker rm -f rehearsal-postgres 2>/dev/null || true
           docker network rm carfast-rehearsal-internal 2>/dev/null || true
+
+      - name: Build local-socket PostgreSQL destination image
+        run: docker build -f deploy/rehearsal/Dockerfile -t carfast-anonymized-destination .
+
+      - name: Validate PostgreSQL uses only its Unix socket
+        run: |
+          docker volume create carfast-anonymized-fixture
+          docker run -d --rm --name carfast-anonymized-destination \
+            -v carfast-anonymized-fixture:/var/data \
+            -e APP_ENV=test -e APP_SECRET_KEY=fixture-only \
+            -e REAL_DATA_ALLOWED=false -e DOCUMENT_FIXTURES_ONLY=true \
+            -e EXTERNAL_INTEGRATIONS_ENABLED=false \
+            carfast-anonymized-destination
+          for attempt in $(seq 1 60); do
+            if docker exec carfast-anonymized-destination \
+              psql -h /var/run/postgresql -d carfast_anonymized_test \
+              -Atc "SELECT current_setting('listen_addresses'), current_setting('unix_socket_directories')" \
+              | grep -Fx '|/var/run/postgresql'; then
+              exit 0
+            fi
+            sleep 2
+          done
+          docker logs carfast-anonymized-destination
+          exit 1
+
+      - name: Destroy local-socket fixture destination
+        if: always()
+        run: |
+          docker rm -f carfast-anonymized-destination 2>/dev/null || true
+          docker volume rm carfast-anonymized-fixture 2>/dev/null || true

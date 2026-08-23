@@ -77,3 +77,14 @@ def test_pinned_render_host_does_not_depend_on_platform_marker() -> None:
         "REAL_DATA_ALLOWED": "false",
     }
     assert validate_environment(environment) == []
+def test_local_postgres_unix_socket_is_accepted_only_when_explicit() -> None:
+    environment = {
+        "APP_ENV": "test",
+        "DATABASE_URL": "postgresql+psycopg:///carfast_anonymized_test?host=/var/run/postgresql",
+        "LOCAL_POSTGRES_SOCKET": "/var/run/postgresql",
+        "DOCUMENT_FIXTURES_ONLY": "true",
+        "REAL_DATA_ALLOWED": "false",
+    }
+    assert validate_environment(environment) == []
+    environment["LOCAL_POSTGRES_SOCKET"] = "/tmp/unapproved"
+    assert validate_environment(environment)

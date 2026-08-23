@@ -24,6 +24,8 @@ FORBIDDEN_SECRET_NAMES = (
 def _database_host_is_isolated(hostname: str | None, environment: dict[str, str]) -> bool:
     if hostname in {"localhost", "127.0.0.1", "postgres", "rehearsal-postgres"}:
         return True
+    if hostname is None and environment.get("LOCAL_POSTGRES_SOCKET") == "/var/run/postgresql":
+        return True
     # Render internal PostgreSQL hostnames are technical, private-network names.
     # They are accepted only for the explicitly gated empty rehearsal runtime.
     expected_render_host = environment.get("REHEARSAL_DATABASE_HOST", "").strip().lower()

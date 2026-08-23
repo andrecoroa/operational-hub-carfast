@@ -19,6 +19,7 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 export INTEGRAL_REHEARSAL_PGHOST=localhost
+export INTEGRAL_REHEARSAL_DESTINATION_HOST=localhost
 export INTEGRAL_REHEARSAL_ADMIN_ROLE=carfast
 export INTEGRAL_REHEARSAL_ADMIN_PASSWORD=synthetic-only
 sh scripts/run_integral_e2e_rehearsal.sh 4 1256277934

@@ -44,6 +44,17 @@ def _run_client(name: str, failures: list[BaseException]) -> None:
         failures.append(exc)
 
 
+def test_isolated_rehearsal_allows_only_explicit_loopback_endpoint(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("INTEGRAL_ISOLATED_REHEARSAL", "true")
+    monkeypatch.setenv("INTEGRAL_DESTINATION_HOST", "localhost")
+    monkeypatch.setenv("INTEGRAL_EXPECTED_DESTINATION_HOST", "localhost")
+    monkeypatch.setenv("INTEGRAL_DESTINATION_PORT", "10001")
+    monkeypatch.setenv("INTEGRAL_EXPECTED_DESTINATION_PORT", "10001")
+    assert transfer._tcp_endpoint() == ("localhost", 10001)
+
+
 def test_bundle_accepts_inverse_order_then_consumes_database_first(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

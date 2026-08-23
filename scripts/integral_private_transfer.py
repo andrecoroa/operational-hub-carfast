@@ -333,12 +333,16 @@ def serve(kind: str, staging_root: Path | None) -> int:
 def _tcp_endpoint() -> tuple[str, int]:
     host = required("INTEGRAL_DESTINATION_HOST")
     port = int(required("INTEGRAL_DESTINATION_PORT"))
+    isolated_loopback = (
+        os.environ.get("INTEGRAL_ISOLATED_REHEARSAL") == "true"
+        and host in {"localhost", "127.0.0.1"}
+    )
     if (
         host != required("INTEGRAL_EXPECTED_DESTINATION_HOST")
         or port != int(required("INTEGRAL_EXPECTED_DESTINATION_PORT"))
         or "://" in host
         or "/" in host
-        or not host.startswith("carfast-")
+        or (not host.startswith("carfast-") and not isolated_loopback)
         or not 1 <= port <= 65535
     ):
         raise SystemExit("invalid private TCP destination allowlist")

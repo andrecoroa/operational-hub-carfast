@@ -123,9 +123,10 @@ jobs:
               exit 1
             fi
             if docker exec carfast-anonymized-destination \
-              psql -h /var/run/postgresql -d carfast_anonymized_test \
-              -Atc "SELECT current_setting('listen_addresses'), current_setting('unix_socket_directories')" \
-              | grep -Fx '|/var/run/postgresql'; then
+              sh -ec '[ -z "$(psql -h /var/run/postgresql -d carfast_anonymized_test \
+                -Atc "SHOW listen_addresses")" ] && \
+                [ "$(psql -h /var/run/postgresql -d carfast_anonymized_test \
+                -Atc "SHOW unix_socket_directories")" = /var/run/postgresql ]'; then
               exit 0
             fi
             sleep 2

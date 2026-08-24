@@ -141,12 +141,13 @@ jobs:
       - name: Configure isolated loopback SSH
         run: |
           mkdir -p /dev/shm/carfast-ssh ~/.ssh
+          sudo passwd -d "$USER"
           ssh-keygen -q -t ed25519 -N '' -f /dev/shm/carfast-ssh/client
           ssh-keygen -q -t ed25519 -N '' -f /dev/shm/carfast-ssh/host
           cat /dev/shm/carfast-ssh/client.pub > ~/.ssh/authorized_keys
           chmod 700 ~/.ssh
           chmod 600 ~/.ssh/authorized_keys /dev/shm/carfast-ssh/client
-          printf 'Port 22222\nListenAddress 127.0.0.1\nHostKey /dev/shm/carfast-ssh/host\nPasswordAuthentication no\nKbdInteractiveAuthentication no\nPubkeyAuthentication yes\nAuthorizedKeysFile .ssh/authorized_keys\nAllowUsers %s\nPidFile /dev/shm/carfast-ssh/sshd.pid\n' "$USER" > /dev/shm/carfast-ssh/sshd_config
+          printf 'Port 22222\nListenAddress 127.0.0.1\nHostKey /dev/shm/carfast-ssh/host\nUsePAM no\nPasswordAuthentication no\nKbdInteractiveAuthentication no\nPubkeyAuthentication yes\nAuthorizedKeysFile .ssh/authorized_keys\nAllowUsers %s\nPidFile /dev/shm/carfast-ssh/sshd.pid\n' "$USER" > /dev/shm/carfast-ssh/sshd_config
           sudo mkdir -p /run/sshd
           sudo /usr/sbin/sshd -f /dev/shm/carfast-ssh/sshd_config
           ssh-keyscan -p 22222 127.0.0.1 > /dev/shm/carfast-ssh/known_hosts 2>/dev/null

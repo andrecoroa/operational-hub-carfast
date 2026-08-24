@@ -18,6 +18,7 @@ docker run --rm "${CARFAST_POSTGRES_IMAGE}" pg_dump --version | grep -E ' 17([. 
 docker image inspect "${CARFAST_POSTGRES_IMAGE}" --format 'postgres_image={{index .RepoDigests 0}}'
 
 work="$(mktemp -d /dev/shm/carfast-standard-XXXXXX)"
+[[ "${work}" == /dev/shm/carfast-standard-* ]] || { echo "unsafe_work_path" >&2; exit 23; }
 cleanup() {
   find "${work}" -type f -exec shred -u -n 1 {} + 2>/dev/null || true
   rm -rf -- "${work}"
@@ -224,6 +225,11 @@ PY
   durations+=("${duration}")
   printf 'run=%s preseed_bytes=%s delta_bytes=%s final_phase_seconds=%s result=PASS\n' \
     "${run}" "${CARFAST_REHEARSAL_BYTES}" "${delta_bytes}" "${duration}"
+  docker run --rm --network host -e PGPASSWORD=carfast "${CARFAST_POSTGRES_IMAGE}" \
+    psql -h 127.0.0.1 -U carfast -d carfast_test -v ON_ERROR_STOP=1 \
+    -c "DROP DATABASE ${database}" -c "DROP DATABASE ${restored}" >/dev/null
+  rm -rf -- "${work}/fixture-${run}" "${work}/received-${run}"
+  find "${work}" -maxdepth 1 -type f -name "*-${run}.*" -exec shred -u -n 1 {} +
 done
 
 python - "${CARFAST_FINAL_BUDGET_SECONDS}" "${durations[@]}" <<'PY'

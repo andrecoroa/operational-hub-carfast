@@ -122,7 +122,16 @@ def _copy_managed_envelope_once(source: Path, private_root: Path) -> Path:
     private_path = Path(name)
     try:
         os.fchmod(descriptor, 0o600)
-        with source.open("rb") as managed, os.fdopen(descriptor, "wb", closefd=True) as private:
+        flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+        source_descriptor = os.open(source, flags)
+        opened_info = os.fstat(source_descriptor)
+        if (opened_info.st_dev, opened_info.st_ino) != (source_info.st_dev, source_info.st_ino):
+            os.close(source_descriptor)
+            raise RuntimeError("integral managed secret changed before copy")
+        with (
+            os.fdopen(source_descriptor, "rb") as managed,
+            os.fdopen(descriptor, "wb", closefd=True) as private,
+        ):
             descriptor = -1
             remaining = MAX_ENVELOPE_BYTES + 1
             while remaining:

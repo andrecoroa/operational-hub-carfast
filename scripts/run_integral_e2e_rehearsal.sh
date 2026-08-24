@@ -138,20 +138,27 @@ restore_duration=$((restore_finished - restore_started))
 echo "negative_restore_stage=pg_restore rc=$negative_rc duration_seconds=$restore_duration stderr_bytes=$negative_bytes stderr_sha256=$negative_sha"
 
 env $common_env $receiver_secret_env APP_ENV=test \
+  INTEGRAL_RUNTIME_ROLE=receiver INTEGRAL_MODE=synthetic PORT=10000 \
+  INTEGRAL_TOMBSTONE_PATH="$work_root/tombstone-$run_id-receiver.json" \
+  INTEGRAL_ENTRYPOINT_DEADLINE_SECONDS=1800 \
   INTEGRAL_DATABASE_DESTINATION_PHASE=staging INTEGRAL_DECLARED_BUNDLE_BYTES="$((storage_bytes + 64 * 1024 * 1024))" \
   INTEGRAL_SOURCE_REVISION=ffae1f2a3b4c INTEGRAL_SPOOL_ROOT="$work_root" \
   INTEGRAL_EXPECTED_DATABASE_HOST="$host" \
   DATABASE_URL="postgresql+psycopg://$staging_role:$staging_password@$host:5432/$staging_db" \
   INTEGRAL_EXPECTED_DATABASE_NAME="$staging_db" \
-  python -m scripts.integral_private_transfer receive-bundle-tcp \
-    --staging-root "$staging_root" >/tmp/integral-receiver-$run_id.log 2>&1 &
+  INTEGRAL_STORAGE_STAGING_ROOT="$staging_root" \
+  python -m scripts.integral_render_entrypoint >/tmp/integral-receiver-$run_id.log 2>&1 &
 receiver_pid=$!
 sleep 2
 env $common_env $sender_secret_env \
+  INTEGRAL_RUNTIME_ROLE=sender INTEGRAL_MODE=synthetic PORT=10002 \
+  INTEGRAL_TOMBSTONE_PATH="$work_root/tombstone-$run_id-sender.json" \
+  INTEGRAL_ENTRYPOINT_DEADLINE_SECONDS=1800 \
   INTEGRAL_DATABASE_DUMP_PHASE=source-staging INTEGRAL_EXPECTED_DATABASE_HOST="$host" \
   DATABASE_URL="postgresql+psycopg://$source_role:$source_password@$host:5432/$source_db" \
   INTEGRAL_EXPECTED_DATABASE_NAME="$source_db" \
-  python -m scripts.integral_private_transfer send-bundle-tcp --root "$storage_root"
+  INTEGRAL_STORAGE_SOURCE_ROOT="$storage_root" \
+  python -m scripts.integral_render_entrypoint
 wait "$receiver_pid"
 receiver_pid=""
 

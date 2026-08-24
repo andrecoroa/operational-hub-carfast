@@ -1,12 +1,13 @@
 services:
   - type: pserv
     name: carfast-integral-worker-action-time
-    runtime: python
+    runtime: docker
     region: frankfurt
     plan: starter
     autoDeployTrigger: "off"
-    buildCommand: pip install -r requirements.txt
-    startCommand: python -m scripts.integral_render_entrypoint
+    dockerfilePath: ./deploy/integral/Dockerfile
+    dockerCommand: /bin/sh -c 'umask 077 && exec /opt/carfast-venv/bin/python -m scripts.integral_render_entrypoint'
+    healthCheckPath: /health
     disk:
       name: carfast-integral-spool
       mountPath: /var/data

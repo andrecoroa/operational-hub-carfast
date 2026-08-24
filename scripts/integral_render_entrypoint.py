@@ -71,9 +71,31 @@ def health_server() -> ThreadingHTTPServer:
     return server
 
 
+def reserve_tombstone(path: Path) -> bool:
+    """Atomically claim the one-shot before health, preflight, or network effects."""
+    path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    try:
+        descriptor = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+    except FileExistsError:
+        return False
+    with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
+        json.dump(
+            {
+                "version": ENTRYPOINT_VERSION,
+                "release": need("INTEGRAL_RELEASE_SHA"),
+                "result": "started",
+            },
+            stream,
+            sort_keys=True,
+        )
+        stream.flush()
+        os.fsync(stream.fileno())
+    return True
+
+
 def write_tombstone(path: Path, result: str) -> None:
     path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-    temporary = path.with_suffix(".tmp")
+    temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
     descriptor = os.open(temporary, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
     with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
         json.dump(
@@ -102,7 +124,14 @@ def runtime_preflight(role: str) -> dict[str, object]:
     margin = int(os.environ.get("INTEGRAL_DISK_MARGIN_BYTES", str(128 * 1024 * 1024)))
     if not spool_root.is_dir() or shutil.disk_usage(spool_root).free < declared + margin:
         raise RuntimeError("spool_capacity_rejected")
-    memory_limit = int(need("INTEGRAL_MEMORY_LIMIT_BYTES"))
+    cgroup_limit = Path("/sys/fs/cgroup/memory.max")
+    raw_limit = cgroup_limit.read_text().strip() if cgroup_limit.is_file() else ""
+    if raw_limit and raw_limit != "max":
+        memory_limit = int(raw_limit)
+    elif os.environ.get("INTEGRAL_ISOLATED_REHEARSAL") == "true":
+        memory_limit = int(need("INTEGRAL_MEMORY_LIMIT_BYTES"))
+    else:
+        raise RuntimeError("cgroup_memory_limit_unavailable")
     minimum_memory = int(os.environ.get("INTEGRAL_MIN_MEMORY_BYTES", str(256 * 1024 * 1024)))
     if memory_limit < minimum_memory:
         raise RuntimeError("memory_capacity_rejected")
@@ -113,6 +142,9 @@ def runtime_preflight(role: str) -> dict[str, object]:
         "python": list(sys.version_info[:3]),
         "secret_sha256": secret_sha,
         "uid": os.geteuid() if hasattr(os, "geteuid") else -1,
+        "gid": os.getegid() if hasattr(os, "getegid") else -1,
+        "memory_limit_bytes": memory_limit,
+        "entrypoint_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
     }
 
 
@@ -151,13 +183,21 @@ def main() -> int:
     if role == "synthetic_orchestrator" and mode != "synthetic":
         raise RuntimeError("synthetic_orchestrator_mode_rejected")
     tombstone = Path(need("INTEGRAL_TOMBSTONE_PATH"))
-    server = health_server()
-    if tombstone.exists():
+    if not reserve_tombstone(tombstone):
         print("integral_entrypoint_restart_blocked=true", flush=True)
-        signal.pause()
         return 0
+    server = health_server()
     result = "no-go"
     child: subprocess.Popen[bytes] | None = None
+    previous_handlers: dict[int, object] = {}
+    def terminate(_signum: int, _frame: object) -> None:
+        nonlocal result
+        result = "terminated"
+        if child is not None and child.poll() is None:
+            os.killpg(child.pid, signal.SIGTERM)
+        raise RuntimeError("external_termination")
+    for signum in (signal.SIGINT, signal.SIGTERM):
+        previous_handlers[signum] = signal.signal(signum, terminate)
     try:
         evidence = runtime_preflight(role)
         print(json.dumps({"integral_entrypoint_preflight": evidence}, sort_keys=True), flush=True)
@@ -179,12 +219,28 @@ def main() -> int:
                 os.killpg(child.pid, signal.SIGKILL)
         raise RuntimeError("child_deadline_exceeded") from exc
     finally:
+        if child is not None and child.poll() is None:
+            os.killpg(child.pid, signal.SIGTERM)
+            try:
+                child.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                os.killpg(child.pid, signal.SIGKILL)
         write_tombstone(tombstone, result)
         server.shutdown()
         for pattern in ("carfast-integral-*.spool", "integral-private-secrets-*/*"):
             for item in Path(need("INTEGRAL_SPOOL_ROOT")).glob(pattern):
                 if item.is_file():
                     item.unlink(missing_ok=True)
+        for name in ("DATABASE_URL", "STAGING_DATABASE_URL", "INTEGRAL_TRANSFER_KEY"):
+            value = os.environ.pop(name, None)
+            if value:
+                value = "\0" * len(value)
+        private_root = Path(
+            os.environ.get("INTEGRAL_PRIVATE_SECRET_ROOT", "/dev/shm/carfast-integral")
+        )
+        shutil.rmtree(private_root, ignore_errors=True)
+        for signum, handler in previous_handlers.items():
+            signal.signal(signum, handler)
 
 
 if __name__ == "__main__":

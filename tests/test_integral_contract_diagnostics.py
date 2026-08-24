@@ -34,6 +34,7 @@ def test_render_rehearsal_has_persistent_one_shot_guard() -> None:
     legacy = open("scripts/run_integral_render_rehearsal.sh", encoding="utf-8").read()
     entrypoint = open("scripts/integral_render_entrypoint.py", encoding="utf-8").read()
     assert "legacy_render_entrypoint_rejected=true" in legacy
-    assert 'if tombstone.exists()' in entrypoint
+    assert "if not reserve_tombstone(tombstone)" in entrypoint
+    assert "os.O_CREAT | os.O_EXCL | os.O_WRONLY" in entrypoint
     assert 'integral_entrypoint_restart_blocked=true' in entrypoint
     assert 'write_tombstone(tombstone, result)' in entrypoint

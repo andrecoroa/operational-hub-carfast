@@ -68,6 +68,8 @@ class Health(http.server.BaseHTTPRequestHandler):
 
 
 def main() -> None:
+    if os.environ.get("INTEGRAL_ENTRYPOINT_DELEGATED") != "1":
+        raise SystemExit("synthetic_spool_direct_execution_rejected")
     total = int(os.environ.get("SYNTHETIC_SPOOL_BYTES", MINIMUM_BYTES))
     if total < MINIMUM_BYTES:
         raise SystemExit("synthetic payload below 1.17 GiB gate")

@@ -8,7 +8,10 @@ import yaml
 from scripts import integral_render_entrypoint as entrypoint
 
 ROOT = Path(__file__).parents[1]
-CANONICAL = "python -m scripts.integral_render_entrypoint"
+CANONICAL = (
+    "/bin/sh -c 'umask 077 && exec /opt/carfast-venv/bin/python "
+    "-m scripts.integral_render_entrypoint'"
+)
 
 
 def test_render_contract_has_one_exact_entrypoint_and_external_postgres() -> None:
@@ -20,7 +23,10 @@ def test_render_contract_has_one_exact_entrypoint_and_external_postgres() -> Non
     assert service["region"] == "frankfurt"
     assert service["plan"] == "starter"
     assert service["autoDeployTrigger"] == "off"
-    assert service["startCommand"] == CANONICAL
+    assert service["runtime"] == "docker"
+    assert service["dockerfilePath"] == "./deploy/integral/Dockerfile"
+    assert service["dockerCommand"] == CANONICAL
+    assert service["healthCheckPath"] == "/health"
     assert service["disk"] == {
         "name": "carfast-integral-spool", "mountPath": "/var/data", "sizeGB": 5
     }
@@ -36,7 +42,15 @@ def test_no_competing_render_entrypoint_or_local_postgres() -> None:
     assert "INTEGRAL_ENTRYPOINT_DELEGATED" in internal
     assert "external_postgres_required=true" in internal
     assert "build_integral_secret_envelope" not in internal
-    assert CANONICAL in fixture
+    assert "scripts.integral_render_entrypoint" in fixture
+
+
+def test_docker_runtime_pins_pg17_user_and_canonical_entrypoint() -> None:
+    dockerfile = (ROOT / "deploy/integral/Dockerfile").read_text()
+    assert dockerfile.startswith("FROM postgres:17-bookworm")
+    assert "USER 10001:10001" in dockerfile
+    assert 'ENTRYPOINT ["/usr/bin/tini", "--"]' in dockerfile
+    assert "scripts.integral_render_entrypoint" in dockerfile
 
 
 @pytest.mark.parametrize("host", ["localhost", "127.0.0.1", "::1", "rehearsal-postgres"])
@@ -70,19 +84,29 @@ def test_tombstone_blocks_before_preflight_or_child(
     monkeypatch.setenv("INTEGRAL_MODE", "synthetic")
     monkeypatch.setenv("INTEGRAL_TOMBSTONE_PATH", str(tombstone))
 
-    class Server:
-        def shutdown(self) -> None:
-            return
-
-    monkeypatch.setattr(entrypoint, "health_server", lambda: Server())
+    monkeypatch.setattr(entrypoint, "health_server", lambda: pytest.fail("health opened"))
     monkeypatch.setattr(
         entrypoint, "runtime_preflight", lambda _role: pytest.fail("preflight ran")
     )
-    monkeypatch.setattr(
-        entrypoint.signal,
-        "pause",
-        lambda: (_ for _ in ()).throw(SystemExit(0)),
-        raising=False,
-    )
-    with pytest.raises(SystemExit):
-        entrypoint.main()
+    assert entrypoint.main() == 0
+
+
+def test_tombstone_claim_is_atomic(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("INTEGRAL_RELEASE_SHA", "a" * 40)
+    path = tmp_path / "one-shot.json"
+    assert entrypoint.reserve_tombstone(path) is True
+    assert entrypoint.reserve_tombstone(path) is False
+    assert __import__("json").loads(path.read_text())["result"] == "started"
+
+
+def test_private_transfer_rejects_direct_execution(monkeypatch: pytest.MonkeyPatch) -> None:
+    from scripts import integral_private_transfer
+    monkeypatch.delenv("INTEGRAL_ENTRYPOINT_DELEGATED", raising=False)
+    assert integral_private_transfer.main() == 64
+
+
+def test_synthetic_spool_rejects_direct_execution(monkeypatch: pytest.MonkeyPatch) -> None:
+    from scripts import synthetic_spool_rehearsal
+    monkeypatch.delenv("INTEGRAL_ENTRYPOINT_DELEGATED", raising=False)
+    with pytest.raises(SystemExit, match="direct_execution_rejected"):
+        synthetic_spool_rehearsal.main()

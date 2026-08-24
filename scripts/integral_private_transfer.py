@@ -11,6 +11,7 @@ import re
 import shutil
 import socket
 import subprocess
+import sys
 import threading
 import time
 from dataclasses import dataclass
@@ -931,6 +932,9 @@ def serve_tcp(stream_type: str, staging_root: Path | None) -> int:
 
 
 def main() -> int:
+    if os.environ.get("INTEGRAL_ENTRYPOINT_DELEGATED") != "1":
+        print("integral_private_transfer_direct_execution_rejected=true", file=sys.stderr)
+        return 64
     parser = argparse.ArgumentParser()
     subparsers = parser.add_subparsers(dest="command", required=True)
     subparsers.add_parser("send-database")

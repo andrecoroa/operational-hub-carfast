@@ -1,5 +1,9 @@
 # CarFast — runbook convencional de migração por VM UE
 
+> **SUPERSEDED (2026-08-24):** o bundle integral numa única janela foi abandonado.
+> O único percurso vigente é `STORAGE_PRESEED_DELTA_MIGRATION_RUNBOOK.md`. Este
+> documento permanece apenas como histórico de topologia e preços; não é executável.
+
 Estado: **desenho offline; não autoriza provisionamento, acesso a dados reais nem
 alterações Blue/Green**. O transporte customizado Render está encerrado e não faz
 parte deste percurso.

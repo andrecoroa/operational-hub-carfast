@@ -2,7 +2,7 @@
 
 Status: **histórico — percurso encerrado em 2026-08-24**. Não usar este transporte
 customizado em novas provas ou na migração. O percurso ativo é o runbook convencional
-`CONVENTIONAL_EU_VM_MIGRATION_RUNBOOK.md`. Este documento conserva apenas causas e
+`STORAGE_PRESEED_DELTA_MIGRATION_RUNBOOK.md`. Este documento conserva apenas causas e
 evidência; não autoriza qualquer ação.
 
 Canonical container command: `umask 077 && exec /opt/carfast-venv/bin/python -m

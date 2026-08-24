@@ -42,7 +42,7 @@ def test_no_competing_render_entrypoint_or_local_postgres() -> None:
     assert "INTEGRAL_ENTRYPOINT_DELEGATED" in internal
     assert "external_postgres_required=true" in internal
     assert "build_integral_secret_envelope" not in internal
-    assert "run_integral_e2e_rehearsal.sh" in fixture
+    assert "python -m scripts.integral_render_entrypoint" in fixture
     assert internal.count("python -m scripts.integral_render_entrypoint") == 2
 
 

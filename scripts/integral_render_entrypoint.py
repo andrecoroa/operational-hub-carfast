@@ -22,7 +22,7 @@ from app.platform.integral_secrets import bootstrap_integral_secrets
 
 ENTRYPOINT_VERSION = 1
 PG_MAJOR = 17
-ALLOWED_ROLES = {"receiver", "sender"}
+ALLOWED_ROLES = {"receiver", "sender", "synthetic_orchestrator"}
 LOCAL_HOSTS = {"127.0.0.1", "::1", "localhost", "rehearsal-postgres"}
 FAILURE_PREFIX = "integral_entrypoint_failure"
 
@@ -54,6 +54,21 @@ def tool_fingerprint(name: str) -> dict[str, str | int]:
     if result.returncode or not match or int(match.group(1)) != PG_MAJOR:
         raise RuntimeError(f"runtime_tool_major_mismatch_{name}")
     return {"major": PG_MAJOR, "sha256": hashlib.sha256(evidence).hexdigest()}
+
+
+def mount_type(path: Path) -> str:
+    mountinfo = Path("/proc/self/mountinfo")
+    if not mountinfo.is_file():
+        return "unavailable"
+    resolved = str(path.resolve())
+    matches: list[tuple[int, str]] = []
+    for line in mountinfo.read_text().splitlines():
+        fields = line.split()
+        separator = fields.index("-")
+        mountpoint = fields[4].replace("\\040", " ")
+        if resolved == mountpoint or resolved.startswith(mountpoint.rstrip("/") + "/"):
+            matches.append((len(mountpoint), fields[separator + 1]))
+    return max(matches, default=(0, "unknown"))[1]
 
 
 class Health(BaseHTTPRequestHandler):
@@ -120,6 +135,19 @@ def write_tombstone(path: Path, result: str) -> None:
 
 def runtime_preflight(role: str) -> dict[str, object]:
     previous_umask = os.umask(0o077)
+    if role == "synthetic_orchestrator":
+        spool_root = Path(need("INTEGRAL_SPOOL_ROOT"))
+        memory_peak = Path("/sys/fs/cgroup/memory.peak")
+        return {
+            "entrypoint_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
+            "memory_peak_bytes": int(memory_peak.read_text()) if memory_peak.is_file() else -1,
+            "spool_free_bytes": shutil.disk_usage(spool_root).free,
+            "spool_mount_type": mount_type(spool_root),
+            "secret_mount_type": mount_type(
+                Path(os.environ.get("INTEGRAL_PRIVATE_SECRET_ROOT", "/dev/shm/carfast-integral"))
+            ),
+            "synthetic_role_pair": True,
+        }
     secret_sha = bootstrap_integral_secrets()
     config_sha = validate_integral_config(role)
     database_url = need("DATABASE_URL")
@@ -158,10 +186,24 @@ def runtime_preflight(role: str) -> dict[str, object]:
         "umask": "077",
         "previous_umask": f"{previous_umask:03o}",
         "entrypoint_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
+        "memory_peak_bytes": int(Path("/sys/fs/cgroup/memory.peak").read_text())
+        if Path("/sys/fs/cgroup/memory.peak").is_file()
+        else -1,
+        "spool_mount_type": mount_type(spool_root),
+        "secret_mount_type": mount_type(
+            Path(os.environ.get("INTEGRAL_PRIVATE_SECRET_ROOT", "/dev/shm/carfast-integral"))
+        ),
     }
 
 
 def child_command(role: str) -> list[str]:
+    if role == "synthetic_orchestrator":
+        return [
+            "sh",
+            "scripts/run_integral_e2e_rehearsal.sh",
+            need("INTEGRAL_RUN_ID"),
+            need("INTEGRAL_STORAGE_BYTES"),
+        ]
     if role == "receiver":
         return [
             sys.executable,
@@ -186,6 +228,8 @@ def main() -> int:
     mode = need("INTEGRAL_MODE")
     if role not in ALLOWED_ROLES or mode not in {"synthetic", "real_rehearsal"}:
         raise RuntimeError("runtime_role_or_mode_rejected")
+    if role == "synthetic_orchestrator" and mode != "synthetic":
+        raise RuntimeError("synthetic_orchestrator_mode_rejected")
     tombstone = Path(need("INTEGRAL_TOMBSTONE_PATH"))
     if not reserve_tombstone(tombstone):
         print("integral_entrypoint_restart_blocked=true", flush=True)
@@ -263,7 +307,12 @@ def main() -> int:
         for signum, handler in previous_handlers.items():
             signal.signal(signum, handler)
         if cleanup_errors:
+            try:
+                write_tombstone(tombstone, "cleanup-failed")
+            except Exception:
+                pass
             print(f"integral_cleanup_failures={len(cleanup_errors)}", file=sys.stderr)
+            raise RuntimeError("cleanup_failed")
 
 
 if __name__ == "__main__":

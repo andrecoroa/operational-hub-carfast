@@ -648,6 +648,9 @@ def _receive_tcp_spool(
         f"carfast-integral-{stream_type}-{os.urandom(8).hex()}.spool"
     )
     max_bytes = int(os.environ.get("INTEGRAL_MAX_STREAM_BYTES", MAX_SPOOL_BYTES))
+    margin = int(os.environ.get("INTEGRAL_DISK_MARGIN_BYTES", str(128 * 1024 * 1024)))
+    if shutil.disk_usage(spool_root).free < max_bytes + margin:
+        raise TcpTransferRejected("insufficient spool capacity before stream")
     evidence = encrypt_verified_stream(framed, spool_path, spool_key, max_bytes=max_bytes)
     if not framed.finished:
         destroy_spool(spool_path, spool_key)

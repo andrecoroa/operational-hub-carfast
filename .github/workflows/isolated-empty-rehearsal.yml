@@ -6,7 +6,6 @@ on:
     branches:
       - codex/isolated-empty-rehearsal
       - codex/anonymized-streaming-rehearsal
-      - codex/integral-migration-rehearsal
 
 permissions:
   contents: read

@@ -1,4 +1,8 @@
-# Integral migration: final readiness and real-rehearsal gate
+# Integral migration: historical custom-transport readiness evidence
+
+> **Encerrado em 2026-08-24.** Não usar este transporte customizado para novas
+> provas ou migração. Ver `CONVENTIONAL_EU_VM_MIGRATION_RUNBOOK.md` para o percurso
+> convencional ativo.
 
 ## Secret-envelope correction after Web Shell paste NO-GO
 

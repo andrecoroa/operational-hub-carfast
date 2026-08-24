@@ -126,6 +126,7 @@ jobs:
       - name: Rehearse integral PostgreSQL and storage copy with synthetic data
         run: |
           docker run -d --rm --name carfast-integral-fixture \
+            --memory=512m --memory-swap=512m \
             --network carfast-rehearsal-internal \
             -e APP_ENV -e APP_SECRET_KEY -e DATABASE_URL -e GITHUB_SHA \
             carfast-empty-rehearsal sleep infinity

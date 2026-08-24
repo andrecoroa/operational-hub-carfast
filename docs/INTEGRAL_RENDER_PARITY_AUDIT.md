@@ -3,7 +3,8 @@
 Status: **no real-data attempt is permitted by this document**.  Immutable code,
 API payloads and evidence must be reviewed again at the action-time gate.
 
-Canonical executable entrypoint: `python -m scripts.integral_render_entrypoint`.
+Canonical container command: `umask 077 && exec /opt/carfast-venv/bin/python -m
+scripts.integral_render_entrypoint`, with the base image pinned by digest.
 Canonical topology file: `render.integral.yaml`. Direct execution of the historical
 Render shell script or the internal E2E worker is rejected with exit code 64.
 
@@ -24,7 +25,7 @@ sizes, hashes, authorization, bundle ID, cutoff and release agree.
 | PostgreSQL exposure | Docker private network | Per-resource API field returned `ipAllowList: null` after requesting `[]`; external libpq refused | Representation differs | Require request `ipAllowList: []`, read back no entries, external connection must fail, internal must pass; abort+delete otherwise | API response, failed external probe class, successful internal `select 1` |
 | Private DNS | Docker alias | Internal hostname `dpg-…-a` resolves only privately | DNS implementation differs | Bind exact read-back internal host in manifest/authorization and reject every alternative | Receiver DNS/host fingerprint and connection result |
 | Region/network | Local bridge | Frankfurt private network | Different routing/egress | Both temporary resources Frankfurt; receiver never receives Blue URL; destination host/port closed claims | API read-back and config fingerprint |
-| Image/release | CI-built checkout | Render native Python build | Image and package resolution may differ | Pin commit; record Python, package-lock/requirements hash, executable paths and version fingerprints before listener | Runtime preflight JSON |
+| Image/release | CI-built checkout | Digest-pinned PG17/Python Docker image | Render builds the same Dockerfile | Pin commit and base digest; record Python, requirements, entrypoint and executable version fingerprints before listener | Runtime preflight JSON |
 | PG tools/driver | PostgreSQL 17 container | Native image toolchain was not fully evidenced in the failed real preflight | Known parity gap | Require `pg_dump`, `pg_restore`, `psql`, server all major 17; psycopg v3 URL; exact command/flag hash | `--version` hashes and command fingerprint |
 | User/umask | CI container user | Render process user; managed secret mount not mode 0600 | Confirmed mismatch | Start with `umask 077`; record uid/gid; managed source is read once, never consumed directly | uid/gid/umask and private-file stat evidence |
 | Managed secret | CI creates mode 0600 file | Render mount permissions triggered `permissions are too broad` | Confirmed cause | Accept only allowlisted regular, non-symlink source owned by root/process and not group/other-writable; copy once to process-owned 0700 tmpfs directory and 0600 file; validate fingerprint/closed claims there; unlink in `finally` | Adversarial tests plus sanitized source/private stat classes and absence proof |
@@ -41,7 +42,7 @@ sizes, hashes, authorization, bundle ID, cutoff and release agree.
 | TCP/bundle | Real TCP adversarials locally | Render private TCP/proxy lifecycle | Reset/ACK behavior historically differed | Two independent framed spools; authenticated `BUNDLE_SPOOL_ACCEPTED` only after both finals; half-close; timeouts; final result separate | reset/truncation/replay/reorder/ACK-loss tests |
 | Deadlines/cancel | Unit/integration deadlines | Render scheduling/network may delay | Timing differs | Fixed connect/read/bundle/consumer/join deadlines; cancellation closes sockets/pipes and kills child process group | duration evidence and no-live-child proof |
 | Memory | Local host | Starter memory | Different limit | Streaming bounded frames; no plaintext bundle in memory; record cgroup limit/peak; abort before stream if below fixed minimum | cgroup limit and peak RSS |
-| Cleanup | pytest/temp cleanup | API deletion and persistent disk | Cloud deletion is separate | On any outcome: close streams, kill children, zero keys, remove private copy/spools/staging, revoke auth/key, delete worker+disk+DB, verify 404/absence | cleanup checklist and API/UI read-back |
+| Cleanup | pytest/temp cleanup | API deletion and persistent disk | Cloud deletion is separate | On any outcome: close streams, kill children, remove secret environment references and cryptographic key objects, remove private copy/spools/staging, revoke auth/key, delete worker+disk+DB, verify 404/absence | cleanup checklist and API/UI read-back |
 
 ## Historical causes and preventive proof
 

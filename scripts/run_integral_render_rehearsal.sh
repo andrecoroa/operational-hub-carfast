@@ -30,8 +30,8 @@ export INTEGRAL_REHEARSAL_DESTINATION_HOST=localhost
 export INTEGRAL_REHEARSAL_WORK_ROOT=/var/data
 export INTEGRAL_REHEARSAL_ADMIN_ROLE=carfast
 export INTEGRAL_REHEARSAL_ADMIN_PASSWORD=synthetic-only
-python -m pytest -q tests/test_integral_config.py
-echo "render_config_adversarial_missing_and_drift=true before_window=true"
+python -m pytest -q tests/test_integral_config.py tests/test_integral_secrets.py
+echo "render_config_and_secret_adversarials=true before_window=true"
 sh scripts/run_integral_e2e_rehearsal.sh 4 1256277934
 echo "render_integral_full_scale=true bytes=1256277934 cleanup=verified"
 

@@ -227,7 +227,7 @@ jobs:
             '
       - name: Prove three consecutive end-to-end TCP bundle rehearsals
         run: |
-          docker exec -e GITHUB_SHA \
+          docker exec -e GITHUB_SHA -e CI=true -e GITHUB_ACTIONS=true \
             -e INTEGRAL_REHEARSAL_PGHOST=dpg-render-managed-a \
             -e INTEGRAL_REHEARSAL_DESTINATION_HOST=carfast-integral-fixture \
             -e INTEGRAL_REHEARSAL_WORK_ROOT=/tmp/integral-render \
@@ -236,7 +236,7 @@ jobs:
             -e INTEGRAL_MANAGED_SECRET_ROOT=/etc/secrets \
             -e INTEGRAL_PRIVATE_DATABASE_SUFFIX=-a \
             carfast-integral-fixture sh scripts/run_integral_external_fixture.sh 1 16777216
-          docker exec -e GITHUB_SHA \
+          docker exec -e GITHUB_SHA -e CI=true -e GITHUB_ACTIONS=true \
             -e INTEGRAL_REHEARSAL_PGHOST=dpg-render-managed-a \
             -e INTEGRAL_REHEARSAL_DESTINATION_HOST=carfast-integral-fixture \
             -e INTEGRAL_REHEARSAL_WORK_ROOT=/tmp/integral-render \
@@ -245,7 +245,7 @@ jobs:
             -e INTEGRAL_MANAGED_SECRET_ROOT=/etc/secrets \
             -e INTEGRAL_PRIVATE_DATABASE_SUFFIX=-a \
             carfast-integral-fixture sh scripts/run_integral_external_fixture.sh 2 16777216
-          docker exec -e GITHUB_SHA \
+          docker exec -e GITHUB_SHA -e CI=true -e GITHUB_ACTIONS=true \
             -e INTEGRAL_REHEARSAL_PGHOST=dpg-render-managed-a \
             -e INTEGRAL_REHEARSAL_DESTINATION_HOST=carfast-integral-fixture \
             -e INTEGRAL_REHEARSAL_WORK_ROOT=/tmp/integral-render \

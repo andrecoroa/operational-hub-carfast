@@ -84,6 +84,19 @@ def test_mount_contract_is_fail_closed(monkeypatch: pytest.MonkeyPatch, tmp_path
         entrypoint.validate_mounts(tmp_path)
 
 
+def test_render_synthetic_cannot_use_isolated_mount_bypass(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("INTEGRAL_ISOLATED_REHEARSAL", "true")
+    monkeypatch.delenv("CI", raising=False)
+    monkeypatch.delenv("GITHUB_ACTIONS", raising=False)
+    monkeypatch.setenv("INTEGRAL_EXPECTED_SECRET_MOUNT_TYPE", "tmpfs")
+    monkeypatch.setenv("INTEGRAL_EXPECTED_SPOOL_MOUNTPOINT", "/var/data")
+    monkeypatch.setattr(entrypoint, "mount_record", lambda _path: ("overlay", "/"))
+    with pytest.raises(RuntimeError, match="secret_mount_type_rejected"):
+        entrypoint.validate_mounts(tmp_path)
+
+
 def test_failure_output_contract_never_contains_exception_text() -> None:
     source = (ROOT / "scripts/integral_render_entrypoint.py").read_text()
     assert "hashlib.sha256(str(exc).encode())" in source

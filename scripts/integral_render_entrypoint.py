@@ -86,7 +86,12 @@ def validate_mounts(spool_root: Path) -> dict[str, str]:
     )
     spool_type, spool_mountpoint = mount_record(spool_root)
     secret_type, secret_mountpoint = mount_record(private_root)
-    if os.environ.get("INTEGRAL_ISOLATED_REHEARSAL") != "true":
+    ci_fixture = (
+        os.environ.get("INTEGRAL_ISOLATED_REHEARSAL") == "true"
+        and os.environ.get("CI") == "true"
+        and os.environ.get("GITHUB_ACTIONS") == "true"
+    )
+    if not ci_fixture:
         if secret_type != need("INTEGRAL_EXPECTED_SECRET_MOUNT_TYPE"):
             raise RuntimeError("secret_mount_type_rejected")
         if spool_mountpoint != need("INTEGRAL_EXPECTED_SPOOL_MOUNTPOINT"):
@@ -166,9 +171,11 @@ def runtime_preflight(role: str) -> dict[str, object]:
     if role == "synthetic_orchestrator":
         spool_root = Path(need("INTEGRAL_SPOOL_ROOT"))
         memory_peak = Path("/sys/fs/cgroup/memory.peak")
+        if not memory_peak.is_file():
+            raise RuntimeError("cgroup_memory_peak_unavailable")
         return {
             "entrypoint_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
-            "memory_peak_bytes": int(memory_peak.read_text()) if memory_peak.is_file() else -1,
+            "memory_peak_bytes": int(memory_peak.read_text()),
             "spool_free_bytes": shutil.disk_usage(spool_root).free,
             "synthetic_role_pair": True,
             **validate_mounts(spool_root),
@@ -296,19 +303,26 @@ def main() -> int:
     finally:
         peak_path = Path("/sys/fs/cgroup/memory.peak")
         limit_path = Path("/sys/fs/cgroup/memory.max")
+        cgroup_required = not (
+            os.environ.get("CI") == "true" and os.environ.get("GITHUB_ACTIONS") == "true"
+        )
         if peak_path.is_file() and limit_path.is_file():
             peak = int(peak_path.read_text())
             raw_limit = limit_path.read_text().strip()
             print(f"integral_memory_peak_bytes={peak}", flush=True)
             if raw_limit != "max" and peak >= int(raw_limit):
                 result = "memory-limit-reached"
+            elif raw_limit == "max" and cgroup_required:
+                result = "memory-limit-unbounded"
+        elif cgroup_required:
+            result = "memory-metrics-unavailable"
         if child is not None and child.poll() is None:
             os.killpg(child.pid, signal.SIGTERM)
             try:
                 child.wait(timeout=10)
             except subprocess.TimeoutExpired:
                 os.killpg(child.pid, signal.SIGKILL)
-        cleanup_errors = ["memory-limit-reached"] if result == "memory-limit-reached" else []
+        cleanup_errors = [result] if result.startswith("memory-") else []
         try:
             write_tombstone(tombstone, result)
         except Exception as exc:

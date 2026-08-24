@@ -86,16 +86,10 @@ def validate_mounts(spool_root: Path) -> dict[str, str]:
     )
     spool_type, spool_mountpoint = mount_record(spool_root)
     secret_type, secret_mountpoint = mount_record(private_root)
-    ci_fixture = (
-        os.environ.get("INTEGRAL_ISOLATED_REHEARSAL") == "true"
-        and os.environ.get("CI") == "true"
-        and os.environ.get("GITHUB_ACTIONS") == "true"
-    )
-    if not ci_fixture:
-        if secret_type != need("INTEGRAL_EXPECTED_SECRET_MOUNT_TYPE"):
-            raise RuntimeError("secret_mount_type_rejected")
-        if spool_mountpoint != need("INTEGRAL_EXPECTED_SPOOL_MOUNTPOINT"):
-            raise RuntimeError("spool_mountpoint_rejected")
+    if secret_type != need("INTEGRAL_EXPECTED_SECRET_MOUNT_TYPE"):
+        raise RuntimeError("secret_mount_type_rejected")
+    if spool_mountpoint != need("INTEGRAL_EXPECTED_SPOOL_MOUNTPOINT"):
+        raise RuntimeError("spool_mountpoint_rejected")
     return {
         "spool_mount_type": spool_type,
         "spool_mountpoint": spool_mountpoint,
@@ -171,11 +165,18 @@ def runtime_preflight(role: str) -> dict[str, object]:
     if role == "synthetic_orchestrator":
         spool_root = Path(need("INTEGRAL_SPOOL_ROOT"))
         memory_peak = Path("/sys/fs/cgroup/memory.peak")
-        if not memory_peak.is_file():
-            raise RuntimeError("cgroup_memory_peak_unavailable")
+        memory_limit = Path("/sys/fs/cgroup/memory.max")
+        if not memory_peak.is_file() or not memory_limit.is_file():
+            raise RuntimeError("cgroup_memory_metrics_unavailable")
+        raw_limit = memory_limit.read_text().strip()
+        if raw_limit == "max" or int(raw_limit) < int(
+            os.environ.get("INTEGRAL_MIN_MEMORY_BYTES", str(256 * 1024 * 1024))
+        ):
+            raise RuntimeError("cgroup_memory_limit_rejected")
         return {
             "entrypoint_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
             "memory_peak_bytes": int(memory_peak.read_text()),
+            "memory_limit_bytes": int(raw_limit),
             "spool_free_bytes": shutil.disk_usage(spool_root).free,
             "synthetic_role_pair": True,
             **validate_mounts(spool_root),

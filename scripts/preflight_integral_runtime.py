@@ -45,8 +45,8 @@ def tool_major(name: str) -> tuple[int, str]:
 
 def main() -> int:
     config_fingerprint = validate_integral_config("receiver")
-    if required("INTEGRAL_DATABASE_DUMP_PHASE") != "source-staging":
-        raise RuntimeError("database dump phase must be source-staging")
+    if required("INTEGRAL_DATABASE_DESTINATION_PHASE") != "staging":
+        raise RuntimeError("database destination phase must be staging")
     snapshot = required("INTEGRAL_HMAC_SNAPSHOT_SHA256")
     expected_snapshot = required("INTEGRAL_EXPECTED_HMAC_SNAPSHOT_SHA256")
     if len(snapshot) != 64 or snapshot != expected_snapshot:

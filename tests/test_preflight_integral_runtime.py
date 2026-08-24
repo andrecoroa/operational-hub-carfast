@@ -28,3 +28,12 @@ def test_missing_tool_fails_before_database(monkeypatch: pytest.MonkeyPatch) -> 
     monkeypatch.setattr(preflight.shutil, "which", lambda _name: None)
     with pytest.raises(RuntimeError, match="missing runtime tool"):
         preflight.tool_major("pg_restore")
+
+
+def test_receiver_runtime_requires_staging_destination_phase(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(preflight, "validate_integral_config", lambda _role: "sha")
+    monkeypatch.setenv("INTEGRAL_DATABASE_DESTINATION_PHASE", "source-staging")
+    with pytest.raises(RuntimeError, match="destination phase must be staging"):
+        preflight.main()

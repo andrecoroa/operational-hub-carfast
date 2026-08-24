@@ -48,6 +48,8 @@ def test_restricted_envelope_loads_and_bootstraps(tmp_path: Path) -> None:
         "INTEGRAL_SECRET_ENVELOPE_SHA256": hashlib.sha256(raw).hexdigest(),
         "INTEGRAL_EXPECTED_DATABASE_HOST": "dpg-private",
         "INTEGRAL_EXPECTED_DATABASE_NAME": "carfast_integral_staging_final",
+        "INTEGRAL_MANAGED_SECRET_ROOT": str(tmp_path),
+        "INTEGRAL_PRIVATE_SECRET_ROOT": str(tmp_path / "private"),
     }
     assert bootstrap_integral_secrets(env) == hashlib.sha256(raw).hexdigest()
     assert env["STAGING_DATABASE_URL"].startswith("postgresql://")
@@ -143,7 +145,52 @@ def test_unknown_claim_role_fingerprint_and_quoting_fail_closed(tmp_path: Path) 
         "INTEGRAL_SECRET_ENVELOPE_SHA256": "0" * 64,
         "INTEGRAL_EXPECTED_DATABASE_HOST": "dpg-private",
         "INTEGRAL_EXPECTED_DATABASE_NAME": "carfast_integral_staging_final",
+        "INTEGRAL_MANAGED_SECRET_ROOT": str(tmp_path),
+        "INTEGRAL_PRIVATE_SECRET_ROOT": str(tmp_path / "private"),
     }
     assert raw_bytes
     with pytest.raises(RuntimeError, match="fingerprint mismatch"):
+        bootstrap_integral_secrets(env)
+
+
+@pytest.mark.skipif(__import__("os").name == "nt", reason="POSIX mount permissions")
+def test_managed_mount_is_copied_to_private_file_and_removed(tmp_path: Path) -> None:
+    managed = tmp_path / "managed"
+    managed.mkdir()
+    source = managed / "envelope.json"
+    raw = envelope(source)
+    source.chmod(0o444)  # Render-managed mounts need not themselves be mode 0600.
+    private = tmp_path / "private"
+    env = {
+        "INTEGRAL_SECRET_ENVELOPE_FILE": str(source),
+        "INTEGRAL_SECRET_ENVELOPE_ROLE": "receiver",
+        "INTEGRAL_SECRET_ENVELOPE_SHA256": hashlib.sha256(raw).hexdigest(),
+        "INTEGRAL_EXPECTED_DATABASE_HOST": "dpg-private",
+        "INTEGRAL_EXPECTED_DATABASE_NAME": "carfast_integral_staging_final",
+        "INTEGRAL_MANAGED_SECRET_ROOT": str(managed),
+        "INTEGRAL_PRIVATE_SECRET_ROOT": str(private),
+    }
+    assert bootstrap_integral_secrets(env) == hashlib.sha256(raw).hexdigest()
+    assert private.stat().st_mode & 0o777 == 0o700
+    assert list(private.iterdir()) == []
+
+
+@pytest.mark.skipif(__import__("os").name == "nt", reason="POSIX symlink contract")
+def test_managed_secret_symlink_fails_before_copy(tmp_path: Path) -> None:
+    managed = tmp_path / "managed"
+    managed.mkdir()
+    target = managed / "target.json"
+    raw = envelope(target)
+    source = managed / "envelope.json"
+    source.symlink_to(target)
+    env = {
+        "INTEGRAL_SECRET_ENVELOPE_FILE": str(source),
+        "INTEGRAL_SECRET_ENVELOPE_ROLE": "receiver",
+        "INTEGRAL_SECRET_ENVELOPE_SHA256": hashlib.sha256(raw).hexdigest(),
+        "INTEGRAL_EXPECTED_DATABASE_HOST": "dpg-private",
+        "INTEGRAL_EXPECTED_DATABASE_NAME": "carfast_integral_staging_final",
+        "INTEGRAL_MANAGED_SECRET_ROOT": str(managed),
+        "INTEGRAL_PRIVATE_SECRET_ROOT": str(tmp_path / "private"),
+    }
+    with pytest.raises(RuntimeError, match="regular file"):
         bootstrap_integral_secrets(env)

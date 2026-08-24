@@ -20,6 +20,8 @@ staging_root="$work_root/integral-e2e-${run_id}-staging"
 receiver_pid=""
 sender_envelope="$work_root/integral-secrets-sender-$run_id.json"
 receiver_envelope="$work_root/integral-secrets-receiver-$run_id.json"
+export INTEGRAL_MANAGED_SECRET_ROOT="$work_root"
+export INTEGRAL_PRIVATE_SECRET_ROOT="$work_root/integral-private-secrets-$run_id"
 
 cleanup() {
   exit_status=$?
@@ -38,6 +40,7 @@ cleanup() {
   rm -f "/tmp/integral-receiver-$run_id.log" "/tmp/integral-preflight-$run_id.json"
   rm -f "$sender_envelope" "$receiver_envelope"
   rm -f "$work_root"/carfast-integral-*.spool
+  rm -rf "$INTEGRAL_PRIVATE_SECRET_ROOT"
   rm -rf "$storage_root" "$staging_root"
   PGPASSWORD="$admin_password" dropdb -h "$host" -U "$admin_role" --if-exists "$source_db" || true
   PGPASSWORD="$admin_password" dropdb -h "$host" -U "$admin_role" --if-exists "$staging_db" || true

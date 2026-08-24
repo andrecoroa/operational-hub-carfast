@@ -85,6 +85,8 @@ def _objects(value: object, error: str) -> tuple[StorageEvidence, ...]:
 
 
 def _safe_member(name: str) -> str:
+    if name in {".", "./"}:
+        return "."
     normalized = name.removeprefix("./")
     path = PurePosixPath(normalized)
     if (

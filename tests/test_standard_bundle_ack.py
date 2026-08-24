@@ -74,6 +74,11 @@ def test_storage_contract_accepts_leading_dash_but_rejects_control_characters():
         validate_storage_manifest((StorageEvidence("line\nbreak.bin", 1, "1" * 64),))
 
 
+def test_tar_root_member_is_canonical():
+    assert _safe_member("./") == "."
+    assert _safe_member(".") == "."
+
+
 @pytest.mark.parametrize("name", ("../escape", "/absolute", "line\nbreak", "a/../../b"))
 def test_tar_member_paths_fail_closed(name: str):
     with pytest.raises(SystemExit, match="unsafe_tar_member"):

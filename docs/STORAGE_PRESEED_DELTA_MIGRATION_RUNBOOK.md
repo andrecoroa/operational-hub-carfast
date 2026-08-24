@@ -20,7 +20,7 @@ Regras invariantes:
 
 - Só ficheiros regulares sob a raiz de storage e no mesmo filesystem são aceites.
   Symlinks, hardlinks com contagem inesperada, sockets, devices, FIFOs, paths
-  absolutos, `..`, nomes duplicados/case-collisions e cruzamento de mount causam
+  absolutos, `..`, control characters, nomes duplicados/case-collisions e cruzamento de mount causam
   NO-GO antes de transmitir.
 - Um ficheiro é estável apenas se `(device,inode,size,mtime_ns)` for igual antes e
   depois do hash/cópia e o byte count igualar `size`. Durante preseed há três
@@ -175,10 +175,15 @@ RepoDigest e a versão age é incluída na evidência. O p95 soma scan/aplicaç�
 storage ao tempo cronometrado de `pg_dump + DB cifrada + delta cifrado + ACK`.
 Os artefactos transmitidos são os tarballs construídos das árvores produzidas pelas
 primitives, não payloads paralelos: preseed completo, delta contendo apenas copies e
-deletion list ligada ao manifesto. O receiver valida tamanho/SHA-256 de ciphertext e
-plaintext, aplica o delta recebido e reconcilia o manifesto final. O ACK é emitido
+deletion list completa ligada ao manifesto por digest canónico. Listas tar usam NUL +
+`--verbatim-files-from`, logo um path iniciado por `-` nunca é interpretado como opção;
+control characters são recusados. O receiver exige exatamente os roles
+`preseed/db/delta`, valida claims/release/cutoff e, antes de extrair, percorre cada tar
+decrypted em streaming, recusando membros desconhecidos, duplicados, links/specials,
+traversal, tamanho ou hash divergente. Depois aplica o delta recebido e reconcilia o
+manifesto final. O ACK é emitido
 pelo receiver, HMAC-SHA256, curto, e liga bundle/cutoff/releases, digests dos dois
-manifests, deletion count e todos os artefactos; o sender verifica-o antes de fechar
+manifests, deletion paths/digest e todos os artefactos; o sender verifica-o antes de fechar
 a fase cronometrada.
 
 ## 7. FMEA e stopping conditions
@@ -201,6 +206,11 @@ a fase cronometrada.
 | Cleanup incompleto | inventário/read-back final | NO-GO e escalamento |
 | Leak de descriptor em falha | testes `/proc/self/fd` em target/temp inválidos | NO-GO |
 | Host key ou age identity errada | negativos antes de full-volume | NO-GO |
+| Tar interpreta path como opção/linha | lista NUL + `--verbatim-files-from`; control chars proibidos | NO-GO antes de ACK |
+| Bundle omite/troca artefacto | roles e nomes exatos `preseed/db/delta` | NO-GO antes de consumo |
+| Delete list adulterada | paths completos + count + digest + delta recalculado | NO-GO antes de apply |
+| Tar contém membro inesperado | streaming preflight de type/path/size/SHA | NO-GO antes de extract |
+| Claim desconhecida/expirada | shape fechado, SHA/release/cutoff semântico | NO-GO antes de ACK |
 
 Stopping conditions adicionais: release/config drift, role demasiado amplo, efeito
 externo, credencial em log/argv, host key diferente, custo/TTL excedido, relógio

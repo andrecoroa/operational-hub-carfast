@@ -21,6 +21,7 @@ def digest_stream(handle) -> tuple[int, str]:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--artifact", type=Path, required=True)
+    parser.add_argument("--role", choices=("preseed", "db", "delta"), required=True)
     parser.add_argument("--identity", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
@@ -39,6 +40,7 @@ def main() -> None:
         raise SystemExit("age_decrypt_failed")
     payload = {
         "name": args.artifact.name,
+        "role": args.role,
         "ciphertext_sha256": ciphertext_sha,
         "ciphertext_size": ciphertext_size,
         "plaintext_sha256": plaintext_sha,

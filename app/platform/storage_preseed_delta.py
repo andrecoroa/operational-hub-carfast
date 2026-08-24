@@ -36,7 +36,13 @@ class CopyResult:
 
 def _safe_relative(value: str) -> PurePosixPath:
     path = PurePosixPath(value)
-    if not value or path.is_absolute() or ".." in path.parts or value != path.as_posix():
+    if (
+        not value
+        or path.is_absolute()
+        or ".." in path.parts
+        or value != path.as_posix()
+        or any(ord(character) < 32 or ord(character) == 127 for character in value)
+    ):
         raise IntegralReconciliationError(f"unsafe storage path: {value!r}")
     return path
 

@@ -7,28 +7,36 @@ import hashlib
 import hmac
 import json
 import os
+import re
 import stat
 import subprocess
+import tarfile
 import time
-from pathlib import Path
+from datetime import UTC, datetime
+from pathlib import Path, PurePosixPath
+
+from app.platform.integral_reconciliation import IntegralReconciliationError, StorageEvidence
+from app.platform.storage_preseed_delta import (
+    calculate_delta,
+    storage_manifest_digest,
+    validate_storage_manifest,
+)
 
 SHAPE = {
-    "bundle_id",
-    "cutoff_utc",
-    "source_release",
-    "target_release",
-    "preseed_manifest_sha256",
-    "final_manifest_sha256",
-    "deletion_count",
-    "artifacts",
+    "bundle_id", "cutoff_utc", "source_release", "target_release",
+    "preseed_manifest_sha256", "final_manifest_sha256", "preseed_objects",
+    "final_objects", "deletion_paths", "deletion_manifest_sha256",
+    "deletion_count", "artifacts",
 }
 ARTIFACT_SHAPE = {
-    "name",
-    "ciphertext_sha256",
-    "ciphertext_size",
-    "plaintext_sha256",
-    "plaintext_size",
+    "name", "role", "ciphertext_sha256", "ciphertext_size",
+    "plaintext_sha256", "plaintext_size",
 }
+OBJECT_SHAPE = {"path", "size", "sha256"}
+ROLES = {"preseed", "db", "delta"}
+HEX64 = re.compile(r"[0-9a-f]{64}\Z")
+RELEASE = re.compile(r"[0-9a-f]{40}\Z")
+BUNDLE = re.compile(r"synthetic-([1-9][0-9]*)\Z")
 
 
 def canonical(value: object) -> bytes:
@@ -57,29 +65,156 @@ def secret(path: Path) -> bytes:
     return value
 
 
+def _sha(value: object, error: str) -> str:
+    if not isinstance(value, str) or HEX64.fullmatch(value) is None:
+        raise SystemExit(error)
+    return value
+
+
+def _objects(value: object, error: str) -> tuple[StorageEvidence, ...]:
+    if not isinstance(value, list) or any(not isinstance(item, dict) for item in value):
+        raise SystemExit(error)
+    if any(set(item) != OBJECT_SHAPE for item in value):
+        raise SystemExit(error)
+    try:
+        result = tuple(StorageEvidence(**item) for item in value)
+        validate_storage_manifest(result)
+    except (IntegralReconciliationError, TypeError):
+        raise SystemExit(error) from None
+    return result
+
+
+def _safe_member(name: str) -> str:
+    normalized = name.removeprefix("./")
+    path = PurePosixPath(normalized)
+    if (
+        not normalized or path.is_absolute() or ".." in path.parts
+        or normalized != path.as_posix()
+        or any(ord(character) < 32 or ord(character) == 127 for character in normalized)
+    ):
+        raise SystemExit("unsafe_tar_member")
+    return normalized
+
+
+def _validate_tar(path: Path, identity: Path, expected: tuple[StorageEvidence, ...]) -> None:
+    expected_by_path = {item.path: item for item in expected}
+    expected_directories = {"."}
+    for item in expected:
+        parent = PurePosixPath(item.path).parent
+        while parent.as_posix() != ".":
+            expected_directories.add(parent.as_posix())
+            parent = parent.parent
+    observed: set[str] = set()
+    process = subprocess.Popen(
+        ["age", "-d", "-i", str(identity), str(path)],
+        stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+    )
+    assert process.stdout is not None
+    failure: SystemExit | None = None
+    try:
+        with tarfile.open(fileobj=process.stdout, mode="r|*") as archive:
+            for member in archive:
+                name = _safe_member(member.name)
+                if member.isdir():
+                    if name not in expected_directories:
+                        raise SystemExit("invalid_tar_members")
+                    continue
+                if not member.isfile() or name in observed or name not in expected_by_path:
+                    raise SystemExit("invalid_tar_members")
+                source = archive.extractfile(member)
+                if source is None:
+                    raise SystemExit("invalid_tar_member_content")
+                digest = hashlib.sha256()
+                size = 0
+                while chunk := source.read(1024 * 1024):
+                    size += len(chunk)
+                    digest.update(chunk)
+                item = expected_by_path[name]
+                if (size, digest.hexdigest()) != (item.size, item.sha256):
+                    raise SystemExit("tar_member_evidence_mismatch")
+                observed.add(name)
+    except SystemExit as error:
+        failure = error
+    except (OSError, tarfile.TarError):
+        failure = SystemExit("invalid_tar_stream")
+    finally:
+        process.stdout.close()
+        return_code = process.wait(timeout=900)
+    if failure is not None:
+        raise failure
+    if return_code != 0 or observed != set(expected_by_path):
+        raise SystemExit("tar_manifest_mismatch")
+
+
 def validate_manifest(manifest: dict, artifact_root: Path, identity: Path) -> None:
     if set(manifest) != SHAPE or not isinstance(manifest["artifacts"], list):
         raise SystemExit("invalid_bundle_manifest_shape")
-    names: set[str] = set()
+    bundle_match = BUNDLE.fullmatch(manifest["bundle_id"])
+    if bundle_match is None:
+        raise SystemExit("invalid_bundle_id")
+    if RELEASE.fullmatch(manifest["source_release"]) is None or RELEASE.fullmatch(
+        manifest["target_release"]
+    ) is None:
+        raise SystemExit("invalid_bundle_release")
+    try:
+        cutoff = datetime.fromisoformat(manifest["cutoff_utc"])
+    except (TypeError, ValueError):
+        raise SystemExit("invalid_bundle_cutoff") from None
+    if cutoff.tzinfo is None or abs((datetime.now(UTC) - cutoff).total_seconds()) > 300:
+        raise SystemExit("invalid_bundle_cutoff")
+
+    preseed = _objects(manifest["preseed_objects"], "invalid_preseed_manifest")
+    final = _objects(manifest["final_objects"], "invalid_final_manifest")
+    if storage_manifest_digest(preseed) != _sha(
+        manifest["preseed_manifest_sha256"], "invalid_preseed_digest"
+    ) or storage_manifest_digest(final) != _sha(
+        manifest["final_manifest_sha256"], "invalid_final_digest"
+    ):
+        raise SystemExit("storage_manifest_digest_mismatch")
+    delta = calculate_delta(preseed, final)
+    deletions = manifest["deletion_paths"]
+    if (
+        not isinstance(deletions, list)
+        or any(not isinstance(path, str) for path in deletions)
+        or deletions != list(delta.remove)
+        or manifest["deletion_count"] != len(deletions)
+        or hashlib.sha256(canonical(deletions)).hexdigest()
+        != _sha(manifest["deletion_manifest_sha256"], "invalid_deletion_digest")
+    ):
+        raise SystemExit("deletion_manifest_mismatch")
+
+    if len(manifest["artifacts"]) != len(ROLES):
+        raise SystemExit("incomplete_bundle_artifacts")
+    artifacts: dict[str, dict] = {}
+    suffix = bundle_match.group(1)
     for artifact in manifest["artifacts"]:
-        if set(artifact) != ARTIFACT_SHAPE:
+        if not isinstance(artifact, dict) or set(artifact) != ARTIFACT_SHAPE:
             raise SystemExit("invalid_bundle_artifact_shape")
+        role = artifact["role"]
+        if role not in ROLES or role in artifacts:
+            raise SystemExit("invalid_bundle_artifact_role")
         name = artifact["name"]
-        if not isinstance(name, str) or Path(name).name != name or not name.endswith(".age"):
+        if name != f"{role}-{suffix}.age" or Path(name).name != name:
             raise SystemExit("invalid_bundle_artifact_name")
-        if name in names:
-            raise SystemExit("duplicate_bundle_artifact")
-        names.add(name)
-        path = artifact_root / name
-        if path.is_symlink() or digest_file(path) != (
-            artifact["ciphertext_size"],
-            artifact["ciphertext_sha256"],
+        if type(artifact["ciphertext_size"]) is not int or artifact["ciphertext_size"] < 1:
+            raise SystemExit("invalid_ciphertext_size")
+        if type(artifact["plaintext_size"]) is not int or artifact["plaintext_size"] < 1:
+            raise SystemExit("invalid_plaintext_size")
+        _sha(artifact["ciphertext_sha256"], "invalid_ciphertext_digest")
+        _sha(artifact["plaintext_sha256"], "invalid_plaintext_digest")
+        artifacts[role] = artifact
+    if set(artifacts) != ROLES:
+        raise SystemExit("incomplete_bundle_artifacts")
+
+    for role, artifact in artifacts.items():
+        path = artifact_root / artifact["name"]
+        if not path.is_file() or path.is_symlink() or digest_file(path) != (
+            artifact["ciphertext_size"], artifact["ciphertext_sha256"],
         ):
             raise SystemExit("ciphertext_evidence_mismatch")
         process = subprocess.Popen(
             ["age", "-d", "-i", str(identity), str(path)],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
+            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
         )
         assert process.stdout is not None
         digest = hashlib.sha256()
@@ -88,10 +223,13 @@ def validate_manifest(manifest: dict, artifact_root: Path, identity: Path) -> No
             size += len(chunk)
             digest.update(chunk)
         if process.wait(timeout=900) != 0 or (size, digest.hexdigest()) != (
-            artifact["plaintext_size"],
-            artifact["plaintext_sha256"],
+            artifact["plaintext_size"], artifact["plaintext_sha256"],
         ):
             raise SystemExit("plaintext_evidence_mismatch")
+        if role == "preseed":
+            _validate_tar(path, identity, preseed)
+        elif role == "delta":
+            _validate_tar(path, identity, delta.copy)
 
 
 def main() -> None:
@@ -111,12 +249,9 @@ def main() -> None:
             raise SystemExit("receiver_inputs_missing")
         validate_manifest(manifest, args.artifact_root, args.identity)
         payload = {
-            "ack": "BUNDLE_CAPTURED",
-            "bundle_id": manifest["bundle_id"],
-            "cutoff_utc": manifest["cutoff_utc"],
-            "source_release": manifest["source_release"],
-            "target_release": manifest["target_release"],
-            "manifest_sha256": manifest_sha,
+            "ack": "BUNDLE_CAPTURED", "bundle_id": manifest["bundle_id"],
+            "cutoff_utc": manifest["cutoff_utc"], "source_release": manifest["source_release"],
+            "target_release": manifest["target_release"], "manifest_sha256": manifest_sha,
             "issued_at": int(time.time()),
         }
         output = {
@@ -130,17 +265,15 @@ def main() -> None:
     expected = hmac.new(key, canonical(ack), hashlib.sha256).hexdigest()
     if not hmac.compare_digest(signature, expected):
         raise SystemExit("ack_hmac_mismatch")
+    expected_ack = {
+        "ack": "BUNDLE_CAPTURED", "bundle_id": manifest["bundle_id"],
+        "cutoff_utc": manifest["cutoff_utc"], "source_release": manifest["source_release"],
+        "target_release": manifest["target_release"], "manifest_sha256": manifest_sha,
+        "issued_at": ack.get("issued_at"),
+    }
     if (
-        ack
-        != {
-            "ack": "BUNDLE_CAPTURED",
-            "bundle_id": manifest["bundle_id"],
-            "cutoff_utc": manifest["cutoff_utc"],
-            "source_release": manifest["source_release"],
-            "target_release": manifest["target_release"],
-            "manifest_sha256": manifest_sha,
-            "issued_at": ack["issued_at"],
-        }
+        ack != expected_ack
+        or type(ack["issued_at"]) is not int
         or abs(int(time.time()) - ack["issued_at"]) > 300
     ):
         raise SystemExit("ack_claim_mismatch")

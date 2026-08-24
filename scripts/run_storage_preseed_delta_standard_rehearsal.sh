@@ -74,21 +74,22 @@ transfer_generated() {
 }
 
 record_artifact() {
-  local label="$1"
+  local label="$1" role="$2"
   python -m scripts.hash_age_artifact --artifact "${work}/${label}.age" \
-    --identity "${work}/age.identity" --output "${work}/${label}.evidence.json"
+    --identity "${work}/age.identity" --role "${role}" \
+    --output "${work}/${label}.evidence.json"
 }
 
 transfer_tar() {
   local label="$1" root="$2" list="${3:-}"
   if [[ -n "${list}" ]]; then
-    tar -C "${root}" -cf - -T "${list}"
+    tar -C "${root}" -cf - --null --verbatim-files-from --files-from="${list}"
   else
     tar -C "${root}" -cf - .
   fi | age -r "${recipient}" |
     ssh "${ssh_options[@]}" "${USER}@127.0.0.1" \
       "cat > '${work}/${label}.age.partial' && sync '${work}/${label}.age.partial' && mv '${work}/${label}.age.partial' '${work}/${label}.age' && sync '${work}'"
-  record_artifact "${label}"
+  record_artifact "${label}" "${label%%-*}"
 }
 
 # Closed adversarials before consuming any full-volume run.
@@ -129,9 +130,9 @@ for run in $(seq 1 "${CARFAST_REHEARSAL_RUNS}"); do
 import json
 import sys
 payload = json.load(open(sys.argv[1], encoding="utf-8"))
-with open(sys.argv[2], "w", encoding="utf-8") as handle:
+with open(sys.argv[2], "wb") as handle:
     for path in payload["delta_copy_paths"]:
-        handle.write(path + "\n")
+        handle.write(path.encode("utf-8") + b"\0")
 PY
 
   database="carfast_standard_${run}"
@@ -152,7 +153,7 @@ PY
     age -r "${recipient}" |
     ssh "${ssh_options[@]}" "${USER}@127.0.0.1" \
       "cat > '${work}/db-${run}.age.partial' && sync '${work}/db-${run}.age.partial' && mv '${work}/db-${run}.age.partial' '${work}/db-${run}.age'"
-  record_artifact "db-${run}"
+  record_artifact "db-${run}" db
   age -d -i "${work}/age.identity" <"${work}/db-${run}.age" >"${work}/db-${run}.dump"
   delta_bytes="$(python -c "import json; print(json.load(open('${work}/storage-${run}.json'))['delta_bytes'])")"
   transfer_tar "delta-${run}" "${work}/fixture-${run}/source" "${work}/delta-${run}.list"
@@ -166,12 +167,20 @@ import sys
 from datetime import datetime, timezone
 root, run, release = sys.argv[1:]
 storage = json.load(open(f"{root}/storage-{run}.json", encoding="utf-8"))
+preseed_objects = json.load(open(f"{root}/fixture-{run}/preseed-manifest.json", encoding="utf-8"))
+final_objects = json.load(open(f"{root}/fixture-{run}/final-manifest.json", encoding="utf-8"))
+deletion_paths = storage["delta_remove_paths"]
 artifacts = [json.load(open(f"{root}/{name}-{run}.evidence.json", encoding="utf-8"))
              for name in ("preseed", "db", "delta")]
 payload = {"bundle_id": f"synthetic-{run}", "cutoff_utc": datetime.now(timezone.utc).isoformat(),
            "source_release": release, "target_release": release,
            "preseed_manifest_sha256": storage["preseed_manifest_sha256"],
            "final_manifest_sha256": storage["final_manifest_sha256"],
+           "preseed_objects": preseed_objects, "final_objects": final_objects,
+           "deletion_paths": deletion_paths,
+           "deletion_manifest_sha256": __import__("hashlib").sha256(
+               json.dumps(deletion_paths, sort_keys=True, separators=(",", ":")).encode()
+           ).hexdigest(),
            "deletion_count": storage["delta_remove_objects"], "artifacts": artifacts}
 with open(f"{root}/bundle-{run}.json", "w", encoding="utf-8") as handle:
     json.dump(payload, handle, sort_keys=True)

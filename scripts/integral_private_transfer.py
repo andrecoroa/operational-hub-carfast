@@ -28,6 +28,7 @@ from app.platform.encrypted_spool import (
     restore_verified_spool,
 )
 from app.platform.integral_config import validate_integral_config
+from app.platform.integral_secrets import bootstrap_integral_secrets
 from app.platform.integral_storage_stream import pack_storage, unpack_storage
 from app.platform.integral_tcp import (
     CONTROL_BUNDLE_SPOOL_ACCEPTED,
@@ -469,6 +470,7 @@ def send_storage_tcp(root: Path) -> int:
 
 def send_bundle_tcp(root: Path, on_bundle_accepted: object | None = None) -> int:
     """Send DB and storage concurrently; callback runs after their common bundle ACK."""
+    bootstrap_integral_secrets()
     validate_integral_config(
         "sender", consume_authorization=os.environ.get("INTEGRAL_MODE") == "real_rehearsal"
     )
@@ -789,6 +791,7 @@ def _reconcile_bundle(staging_root: Path | None) -> None:
 
 
 def serve_tcp_streams(stream_types: tuple[str, ...], staging_root: Path | None) -> int:
+    bootstrap_integral_secrets()
     validate_integral_config(
         "receiver", consume_authorization=os.environ.get("INTEGRAL_MODE") == "real_rehearsal"
     )

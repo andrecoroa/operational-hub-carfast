@@ -18,6 +18,8 @@ work_root="${INTEGRAL_REHEARSAL_WORK_ROOT:-/tmp}"
 storage_root="$work_root/integral-e2e-${run_id}-source"
 staging_root="$work_root/integral-e2e-${run_id}-staging"
 receiver_pid=""
+sender_envelope="$work_root/integral-secrets-sender-$run_id.json"
+receiver_envelope="$work_root/integral-secrets-receiver-$run_id.json"
 
 cleanup() {
   exit_status=$?
@@ -34,6 +36,7 @@ cleanup() {
     echo "synthetic_receiver_diagnostic_end" >&2
   fi
   rm -f "/tmp/integral-receiver-$run_id.log" "/tmp/integral-preflight-$run_id.json"
+  rm -f "$sender_envelope" "$receiver_envelope"
   rm -f "$work_root"/carfast-integral-*.spool
   rm -rf "$storage_root" "$staging_root"
   PGPASSWORD="$admin_password" dropdb -h "$host" -U "$admin_role" --if-exists "$source_db" || true
@@ -97,20 +100,38 @@ export INTEGRAL_MANIFEST_RECEIVER_DATABASE_DESTINATION_PHASE=staging
 export INTEGRAL_MANIFEST_RECEIVER_EXPECTED_DATABASE_HOST="$host" INTEGRAL_MANIFEST_RECEIVER_EXPECTED_DATABASE_NAME="$staging_db"
 export INTEGRAL_MANIFEST_RECEIVER_DECLARED_BUNDLE_BYTES="$((storage_bytes + 64 * 1024 * 1024))"
 export INTEGRAL_MANIFEST_RECEIVER_SOURCE_REVISION=ffae1f2a3b4c INTEGRAL_MANIFEST_RECEIVER_SPOOL_ROOT="$work_root"
-config_manifest="$(python -m scripts.build_integral_config_manifest)"
+sender_url="postgresql://$source_role:$source_password@$host:5432/$source_db"
+receiver_url="postgresql://$staging_role:$staging_password@$host:5432/$staging_db"
+sender_envelope_sha="$(
+  INTEGRAL_ENVELOPE_DATABASE_URL_INPUT="$sender_url" INTEGRAL_ENVELOPE_TRANSFER_KEY_INPUT="$hmac_key" \
+    python -m scripts.build_integral_secret_envelope --role sender --output "$sender_envelope"
+)"
+receiver_envelope_sha="$(
+  INTEGRAL_ENVELOPE_DATABASE_URL_INPUT="$receiver_url" INTEGRAL_ENVELOPE_TRANSFER_KEY_INPUT="$hmac_key" \
+    python -m scripts.build_integral_secret_envelope --role receiver --output "$receiver_envelope"
+)"
+config_manifest="$(
+  INTEGRAL_SECRET_ENVELOPE_FILE="$receiver_envelope" INTEGRAL_SECRET_ENVELOPE_ROLE=receiver \
+  INTEGRAL_SECRET_ENVELOPE_SHA256="$receiver_envelope_sha" \
+  INTEGRAL_EXPECTED_DATABASE_HOST="$host" INTEGRAL_EXPECTED_DATABASE_NAME="$staging_db" \
+    python -m scripts.build_integral_config_manifest
+)"
 config_sha="$(printf %s "$config_manifest" | sha256sum | cut -d ' ' -f 1)"
-common_env="INTEGRAL_TRANSFER_KEY=$hmac_key INTEGRAL_HMAC_SNAPSHOT_SHA256=$hmac_snapshot INTEGRAL_EXPECTED_HMAC_SNAPSHOT_SHA256=$hmac_snapshot INTEGRAL_SOURCE_SERVICE=srv-synthetic-source INTEGRAL_DESTINATION_SERVICE=srv-synthetic-destination INTEGRAL_RELEASE_SHA=${GITHUB_SHA:-0000000000000000000000000000000000000000} INTEGRAL_CUTOFF_ID=cut-synthetic-$run_id INTEGRAL_BUNDLE_ID=bundle-synthetic-$run_id INTEGRAL_DESTINATION_HOST=$destination_host INTEGRAL_EXPECTED_DESTINATION_HOST=$destination_host INTEGRAL_DESTINATION_PORT=10001 INTEGRAL_EXPECTED_DESTINATION_PORT=10001 INTEGRAL_ISOLATED_REHEARSAL=true INTEGRAL_MAX_STREAM_BYTES=2147483648 INTEGRAL_CLIENT_TIMEOUT_SECONDS=1200 INTEGRAL_BUNDLE_TIMEOUT_SECONDS=900 INTEGRAL_MODE=synthetic INTEGRAL_AUTHORIZATION_STATE_ROOT=$work_root/auth INTEGRAL_AUTHORIZATION_ID=none INTEGRAL_AUTHORIZATION_ISSUED_AT=none INTEGRAL_AUTHORIZATION_EXPIRES_AT=none REAL_DATA_ALLOWED=false EXTERNAL_INTEGRATIONS_ENABLED=false EMAIL_ENABLED=false JOBS_ENABLED=false WEBHOOKS_ENABLED=false PORTALS_ENABLED=false INTEGRAL_CUTOVER_REQUESTED=false INTEGRAL_PRODUCTION_DEPLOY_REQUESTED=false INTEGRAL_CONFIG_MANIFEST=$config_manifest INTEGRAL_CONFIG_SHA256=$config_sha"
+common_env="INTEGRAL_HMAC_SNAPSHOT_SHA256=$hmac_snapshot INTEGRAL_EXPECTED_HMAC_SNAPSHOT_SHA256=$hmac_snapshot INTEGRAL_SOURCE_SERVICE=srv-synthetic-source INTEGRAL_DESTINATION_SERVICE=srv-synthetic-destination INTEGRAL_RELEASE_SHA=${GITHUB_SHA:-0000000000000000000000000000000000000000} INTEGRAL_CUTOFF_ID=cut-synthetic-$run_id INTEGRAL_BUNDLE_ID=bundle-synthetic-$run_id INTEGRAL_DESTINATION_HOST=$destination_host INTEGRAL_EXPECTED_DESTINATION_HOST=$destination_host INTEGRAL_DESTINATION_PORT=10001 INTEGRAL_EXPECTED_DESTINATION_PORT=10001 INTEGRAL_ISOLATED_REHEARSAL=true INTEGRAL_MAX_STREAM_BYTES=2147483648 INTEGRAL_CLIENT_TIMEOUT_SECONDS=1200 INTEGRAL_BUNDLE_TIMEOUT_SECONDS=900 INTEGRAL_MODE=synthetic INTEGRAL_AUTHORIZATION_STATE_ROOT=$work_root/auth INTEGRAL_AUTHORIZATION_ID=none INTEGRAL_AUTHORIZATION_ISSUED_AT=none INTEGRAL_AUTHORIZATION_EXPIRES_AT=none REAL_DATA_ALLOWED=false EXTERNAL_INTEGRATIONS_ENABLED=false EMAIL_ENABLED=false JOBS_ENABLED=false WEBHOOKS_ENABLED=false PORTALS_ENABLED=false INTEGRAL_CUTOVER_REQUESTED=false INTEGRAL_PRODUCTION_DEPLOY_REQUESTED=false INTEGRAL_CONFIG_MANIFEST=$config_manifest INTEGRAL_CONFIG_SHA256=$config_sha"
 
-env $common_env INTEGRAL_DATABASE_DUMP_PHASE=source-staging \
+sender_secret_env="INTEGRAL_SECRET_ENVELOPE_FILE=$sender_envelope INTEGRAL_SECRET_ENVELOPE_ROLE=sender INTEGRAL_SECRET_ENVELOPE_SHA256=$sender_envelope_sha"
+receiver_secret_env="INTEGRAL_SECRET_ENVELOPE_FILE=$receiver_envelope INTEGRAL_SECRET_ENVELOPE_ROLE=receiver INTEGRAL_SECRET_ENVELOPE_SHA256=$receiver_envelope_sha"
+
+env $common_env $sender_secret_env INTEGRAL_DATABASE_DUMP_PHASE=source-staging \
   INTEGRAL_EXPECTED_DATABASE_HOST="$host" INTEGRAL_EXPECTED_DATABASE_NAME="$source_db" \
   python -m scripts.preflight_integral_config --role sender
-env $common_env INTEGRAL_DATABASE_DESTINATION_PHASE=staging \
+env $common_env $receiver_secret_env INTEGRAL_DATABASE_DESTINATION_PHASE=staging \
   INTEGRAL_DECLARED_BUNDLE_BYTES="$((storage_bytes + 64 * 1024 * 1024))" \
   INTEGRAL_EXPECTED_DATABASE_HOST="$host" INTEGRAL_EXPECTED_DATABASE_NAME="$staging_db" \
   INTEGRAL_SOURCE_REVISION=ffae1f2a3b4c INTEGRAL_SPOOL_ROOT="$work_root" \
   python -m scripts.preflight_integral_config --role receiver
 
-env $common_env \
+env $common_env $receiver_secret_env \
   INTEGRAL_DATABASE_DESTINATION_PHASE=staging INTEGRAL_SOURCE_REVISION=ffae1f2a3b4c \
   INTEGRAL_EXPECTED_DATABASE_HOST="$host" \
   STAGING_DATABASE_URL="postgresql://$staging_role:$staging_password@$host:5432/$staging_db" \
@@ -140,7 +161,7 @@ restore_finished="$(date +%s)"
 restore_duration=$((restore_finished - restore_started))
 echo "negative_restore_stage=pg_restore rc=$negative_rc duration_seconds=$restore_duration stderr_bytes=$negative_bytes stderr_sha256=$negative_sha"
 
-env $common_env APP_ENV=test \
+env $common_env $receiver_secret_env APP_ENV=test \
   INTEGRAL_DATABASE_DESTINATION_PHASE=staging INTEGRAL_DECLARED_BUNDLE_BYTES="$((storage_bytes + 64 * 1024 * 1024))" \
   INTEGRAL_SOURCE_REVISION=ffae1f2a3b4c INTEGRAL_SPOOL_ROOT="$work_root" \
   INTEGRAL_EXPECTED_DATABASE_HOST="$host" \
@@ -150,7 +171,7 @@ env $common_env APP_ENV=test \
     --staging-root "$staging_root" >/tmp/integral-receiver-$run_id.log 2>&1 &
 receiver_pid=$!
 sleep 2
-env $common_env \
+env $common_env $sender_secret_env \
   INTEGRAL_DATABASE_DUMP_PHASE=source-staging INTEGRAL_EXPECTED_DATABASE_HOST="$host" \
   DATABASE_URL="postgresql+psycopg://$source_role:$source_password@$host:5432/$source_db" \
   INTEGRAL_EXPECTED_DATABASE_NAME="$source_db" \

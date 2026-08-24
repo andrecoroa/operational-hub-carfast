@@ -15,6 +15,7 @@ from urllib.parse import urlsplit
 import psycopg
 
 from app.platform.integral_config import validate_integral_config
+from app.platform.integral_secrets import bootstrap_integral_secrets
 
 EXPECTED_PG_MAJOR = 17
 MIN_FREE_MARGIN = 128 * 1024 * 1024
@@ -44,6 +45,7 @@ def tool_major(name: str) -> tuple[int, str]:
 
 
 def main() -> int:
+    secret_fingerprint = bootstrap_integral_secrets()
     config_fingerprint = validate_integral_config("receiver")
     if required("INTEGRAL_DATABASE_DESTINATION_PHASE") != "staging":
         raise RuntimeError("database destination phase must be staging")
@@ -109,6 +111,7 @@ def main() -> int:
         json.dumps(
             {
                 "database": database,
+                "secret_envelope_fingerprint": secret_fingerprint,
                 "config_fingerprint": config_fingerprint,
                 "python": sys.version_info[:3],
                 "postgres_server_major": EXPECTED_PG_MAJOR,

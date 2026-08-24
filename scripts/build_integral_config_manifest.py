@@ -12,6 +12,7 @@ from app.platform.integral_config import (
     canonical_manifest,
     sign_authorization,
 )
+from app.platform.integral_secrets import bootstrap_integral_secrets
 
 
 def need(name: str) -> str:
@@ -22,6 +23,7 @@ def need(name: str) -> str:
 
 
 def main() -> int:
+    bootstrap_integral_secrets()
     shared = {claim: need(env_name) for claim, env_name in SHARED_ENV.items()}
     sender = {
         claim: need(f"INTEGRAL_MANIFEST_SENDER_{env_name.removeprefix('INTEGRAL_')}")

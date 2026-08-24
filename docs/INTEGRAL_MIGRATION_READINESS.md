@@ -1,5 +1,22 @@
 # Integral migration: final readiness and real-rehearsal gate
 
+## Secret-envelope correction after Web Shell paste NO-GO
+
+The `b9825f82` attempt stopped before a Blue role, read-only window, listener or
+stream because interactive Web Shell input delivered the bracketed-paste marker
+`[200~` instead of the private staging URL. The corrected path has no TTY or
+manual-paste dependency: secrets are base64url fields in a closed, mode-0600,
+size-bounded JSON envelope mounted only on the disposable runtime. The process
+validates the envelope fingerprint, role, encoding, control characters, paste
+markers, whitespace, quoting, scheme, private host, port and database allowlist
+before placing values in process memory or building the signed manifest.
+
+Missing, empty, truncated, malformed, drifted or over-broad envelopes fail before
+authorization consumption, processes, sockets, listeners or staging writes. The
+same envelope loader is invoked by manifest construction, both config preflights,
+runtime preflight and the sender/receiver entrypoints. Cleanup deletes the envelope
+with the disposable service; logs retain only its SHA-256 fingerprint.
+
 ## Contract v2 correction after the pre-Blue NO-GO
 
 The immutable `3a5aa61f` attempt stopped before any Blue role, read-only window or

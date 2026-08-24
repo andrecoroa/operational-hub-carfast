@@ -51,26 +51,58 @@ def canonical(value: object) -> bytes:
     return json.dumps(value, sort_keys=True, separators=(",", ":")).encode()
 
 
-def digest_file(path: Path) -> tuple[int, str]:
+def _open_regular(path: Path) -> int:
+    parent = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        descriptor = os.open(path.name, os.O_RDONLY | os.O_NOFOLLOW, dir_fd=parent)
+    finally:
+        os.close(parent)
+    metadata = os.fstat(descriptor)
+    if (
+        not stat.S_ISREG(metadata.st_mode)
+        or metadata.st_uid != os.getuid()
+        or metadata.st_nlink != 1
+        or stat.S_IMODE(metadata.st_mode) & 0o077
+    ):
+        os.close(descriptor)
+        raise SystemExit("invalid_regular_input")
+    return descriptor
+
+
+def _digest_fd(descriptor: int) -> tuple[int, str]:
+    os.lseek(descriptor, 0, os.SEEK_SET)
     digest = hashlib.sha256()
     size = 0
-    with path.open("rb") as handle:
-        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
-            size += len(chunk)
-            digest.update(chunk)
+    while chunk := os.read(descriptor, 1024 * 1024):
+        size += len(chunk)
+        digest.update(chunk)
+    os.lseek(descriptor, 0, os.SEEK_SET)
     return size, digest.hexdigest()
 
 
 def secret(path: Path) -> bytes:
-    metadata = path.lstat()
-    if not stat.S_ISREG(metadata.st_mode) or metadata.st_uid != os.getuid():
-        raise SystemExit("invalid_ack_secret")
-    if stat.S_IMODE(metadata.st_mode) != 0o600:
-        raise SystemExit("invalid_ack_secret_mode")
-    value = path.read_bytes()
+    descriptor = _open_regular(path)
+    try:
+        metadata = os.fstat(descriptor)
+        if stat.S_IMODE(metadata.st_mode) != 0o600:
+            raise SystemExit("invalid_ack_secret_mode")
+        value = os.read(descriptor, 4097)
+    finally:
+        os.close(descriptor)
     if len(value) < 32:
         raise SystemExit("invalid_ack_secret_length")
     return value
+
+
+def _age_process(artifact: int, identity: int) -> subprocess.Popen[bytes]:
+    os.lseek(artifact, 0, os.SEEK_SET)
+    return subprocess.Popen(
+        ["age", "-d", "-i", f"/proc/self/fd/{identity}"],
+        stdin=artifact,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        pass_fds=(identity,),
+    )
 
 
 def _sha(value: object, error: str) -> str:
@@ -149,7 +181,54 @@ def _safe_member(name: str) -> str:
     return normalized
 
 
-def _validate_tar(path: Path, identity: Path, expected: tuple[StorageEvidence, ...]) -> None:
+def _write_member(root: int, name: str, source) -> tuple[int, str]:
+    parts = PurePosixPath(name).parts
+    parent = os.dup(root)
+    try:
+        for component in parts[:-1]:
+            try:
+                os.mkdir(component, mode=0o700, dir_fd=parent)
+            except FileExistsError:
+                pass
+            child = os.open(
+                component,
+                os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+                dir_fd=parent,
+            )
+            os.close(parent)
+            parent = child
+        target = os.open(
+            parts[-1],
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+            0o600,
+            dir_fd=parent,
+        )
+        try:
+            digest = hashlib.sha256()
+            size = 0
+            while chunk := source.read(1024 * 1024):
+                view = memoryview(chunk)
+                while view:
+                    written = os.write(target, view)
+                    if written <= 0:
+                        raise SystemExit("short_materialized_write")
+                    view = view[written:]
+                size += len(chunk)
+                digest.update(chunk)
+            os.fsync(target)
+            return size, digest.hexdigest()
+        finally:
+            os.close(target)
+    finally:
+        os.close(parent)
+
+
+def _validate_tar(
+    artifact: int,
+    identity: int,
+    expected: tuple[StorageEvidence, ...],
+    destination: Path,
+) -> None:
     expected_by_path = {item.path: item for item in expected}
     expected_directories = {"."}
     for item in expected:
@@ -158,10 +237,9 @@ def _validate_tar(path: Path, identity: Path, expected: tuple[StorageEvidence, .
             expected_directories.add(parent.as_posix())
             parent = parent.parent
     observed: set[str] = set()
-    process = subprocess.Popen(
-        ["age", "-d", "-i", str(identity), str(path)],
-        stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
-    )
+    destination.mkdir(mode=0o700)
+    destination_fd = os.open(destination, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    process = _age_process(artifact, identity)
     assert process.stdout is not None
     failure: SystemExit | None = None
     try:
@@ -177,13 +255,9 @@ def _validate_tar(path: Path, identity: Path, expected: tuple[StorageEvidence, .
                 source = archive.extractfile(member)
                 if source is None:
                     raise SystemExit("invalid_tar_member_content")
-                digest = hashlib.sha256()
-                size = 0
-                while chunk := source.read(1024 * 1024):
-                    size += len(chunk)
-                    digest.update(chunk)
+                size, digest = _write_member(destination_fd, name, source)
                 item = expected_by_path[name]
-                if (size, digest.hexdigest()) != (item.size, item.sha256):
+                if (size, digest) != (item.size, item.sha256):
                     raise SystemExit("tar_member_evidence_mismatch")
                 observed.add(name)
     except SystemExit as error:
@@ -193,18 +267,55 @@ def _validate_tar(path: Path, identity: Path, expected: tuple[StorageEvidence, .
     finally:
         process.stdout.close()
         return_code = process.wait(timeout=900)
+        os.fsync(destination_fd)
+        os.close(destination_fd)
     if failure is not None:
         raise failure
     if return_code != 0 or observed != set(expected_by_path):
         raise SystemExit("tar_manifest_mismatch")
 
 
-def validate_manifest(manifest: dict, artifact_root: Path, identity: Path) -> None:
+def _materialize_plaintext(
+    artifact: int,
+    identity: int,
+    target: Path,
+    expected: tuple[int, str],
+) -> None:
+    process = _age_process(artifact, identity)
+    assert process.stdout is not None
+    parent = os.open(target.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        size, digest = _write_member(parent, target.name, process.stdout)
+        if process.wait(timeout=900) != 0 or (size, digest) != expected:
+            os.unlink(target.name, dir_fd=parent)
+            raise SystemExit("plaintext_materialization_mismatch")
+    finally:
+        os.close(parent)
+
+
+def validate_manifest(
+    manifest: dict,
+    artifact_root: Path,
+    identity: Path,
+    plaintext_root: Path,
+    *,
+    expected_bundle_id: str,
+    expected_cutoff_utc: str,
+    expected_source_release: str,
+    expected_target_release: str,
+) -> None:
     if set(manifest) != SHAPE or not isinstance(manifest["artifacts"], list):
         raise SystemExit("invalid_bundle_manifest_shape")
     bundle_match = BUNDLE.fullmatch(manifest["bundle_id"])
     if bundle_match is None:
         raise SystemExit("invalid_bundle_id")
+    if (
+        manifest["bundle_id"] != expected_bundle_id
+        or manifest["cutoff_utc"] != expected_cutoff_utc
+        or manifest["source_release"] != expected_source_release
+        or manifest["target_release"] != expected_target_release
+    ):
+        raise SystemExit("bundle_expected_claim_mismatch")
     if RELEASE.fullmatch(manifest["source_release"]) is None or RELEASE.fullmatch(
         manifest["target_release"]
     ) is None:
@@ -259,30 +370,39 @@ def validate_manifest(manifest: dict, artifact_root: Path, identity: Path) -> No
     if set(artifacts) != ROLES:
         raise SystemExit("incomplete_bundle_artifacts")
 
-    for role, artifact in artifacts.items():
-        path = artifact_root / artifact["name"]
-        if not path.is_file() or path.is_symlink() or digest_file(path) != (
-            artifact["ciphertext_size"], artifact["ciphertext_sha256"],
-        ):
-            raise SystemExit("ciphertext_evidence_mismatch")
-        process = subprocess.Popen(
-            ["age", "-d", "-i", str(identity), str(path)],
-            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+    plaintext_root.mkdir(mode=0o700)
+    identity_fd = _open_regular(identity)
+    descriptors: dict[str, int] = {}
+    try:
+        for role, artifact in artifacts.items():
+            descriptor = _open_regular(artifact_root / artifact["name"])
+            descriptors[role] = descriptor
+            if _digest_fd(descriptor) != (
+                artifact["ciphertext_size"], artifact["ciphertext_sha256"],
+            ):
+                raise SystemExit("ciphertext_evidence_mismatch")
+            process = _age_process(descriptor, identity_fd)
+            assert process.stdout is not None
+            digest = hashlib.sha256()
+            size = 0
+            while chunk := process.stdout.read(1024 * 1024):
+                size += len(chunk)
+                digest.update(chunk)
+            if process.wait(timeout=900) != 0 or (size, digest.hexdigest()) != (
+                artifact["plaintext_size"], artifact["plaintext_sha256"],
+            ):
+                raise SystemExit("plaintext_evidence_mismatch")
+        _validate_tar(descriptors["preseed"], identity_fd, preseed, plaintext_root / "preseed")
+        _validate_tar(descriptors["delta"], identity_fd, delta.copy, plaintext_root / "delta")
+        db_artifact = artifacts["db"]
+        _materialize_plaintext(
+            descriptors["db"], identity_fd, plaintext_root / "db.dump",
+            (db_artifact["plaintext_size"], db_artifact["plaintext_sha256"]),
         )
-        assert process.stdout is not None
-        digest = hashlib.sha256()
-        size = 0
-        while chunk := process.stdout.read(1024 * 1024):
-            size += len(chunk)
-            digest.update(chunk)
-        if process.wait(timeout=900) != 0 or (size, digest.hexdigest()) != (
-            artifact["plaintext_size"], artifact["plaintext_sha256"],
-        ):
-            raise SystemExit("plaintext_evidence_mismatch")
-        if role == "preseed":
-            _validate_tar(path, identity, preseed)
-        elif role == "delta":
-            _validate_tar(path, identity, delta.copy)
+    finally:
+        for descriptor in descriptors.values():
+            os.close(descriptor)
+        os.close(identity_fd)
 
 
 def main() -> None:
@@ -293,14 +413,32 @@ def main() -> None:
     parser.add_argument("--ack", type=Path, required=True)
     parser.add_argument("--artifact-root", type=Path)
     parser.add_argument("--identity", type=Path)
+    parser.add_argument("--plaintext-root", type=Path)
+    parser.add_argument("--expected-bundle-id")
+    parser.add_argument("--expected-cutoff-utc")
+    parser.add_argument("--expected-source-release")
+    parser.add_argument("--expected-target-release")
     args = parser.parse_args()
     manifest = json.loads(args.manifest.read_text(encoding="utf-8"))
     key = secret(args.secret)
     manifest_sha = hashlib.sha256(canonical(manifest)).hexdigest()
     if args.mode == "emit":
-        if args.artifact_root is None or args.identity is None:
+        if any(
+            value is None
+            for value in (
+                args.artifact_root, args.identity, args.plaintext_root,
+                args.expected_bundle_id, args.expected_cutoff_utc,
+                args.expected_source_release, args.expected_target_release,
+            )
+        ):
             raise SystemExit("receiver_inputs_missing")
-        validate_manifest(manifest, args.artifact_root, args.identity)
+        validate_manifest(
+            manifest, args.artifact_root, args.identity, args.plaintext_root,
+            expected_bundle_id=args.expected_bundle_id,
+            expected_cutoff_utc=args.expected_cutoff_utc,
+            expected_source_release=args.expected_source_release,
+            expected_target_release=args.expected_target_release,
+        )
         payload = {
             "ack": "BUNDLE_CAPTURED", "bundle_id": manifest["bundle_id"],
             "cutoff_utc": manifest["cutoff_utc"], "source_release": manifest["source_release"],

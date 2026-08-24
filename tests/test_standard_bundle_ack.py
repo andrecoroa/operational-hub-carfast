@@ -67,13 +67,37 @@ def test_bundle_contract_fails_closed_before_artifact_consumption(mutation, erro
     manifest = _manifest()
     mutation(manifest)
     with pytest.raises(SystemExit, match=error):
-        validate_manifest(manifest, tmp_path, tmp_path / "identity")
+        validate_manifest(
+            manifest,
+            tmp_path,
+            tmp_path / "identity",
+            tmp_path / "plaintext",
+            expected_bundle_id=manifest["bundle_id"],
+            expected_cutoff_utc=manifest["cutoff_utc"],
+            expected_source_release=manifest["source_release"],
+            expected_target_release=manifest["target_release"],
+        )
 
 
 def test_storage_contract_accepts_leading_dash_but_rejects_control_characters():
     validate_storage_manifest((StorageEvidence("-leading.bin", 1, "1" * 64),))
     with pytest.raises(IntegralReconciliationError, match="unsafe storage path"):
         validate_storage_manifest((StorageEvidence("line\nbreak.bin", 1, "1" * 64),))
+
+
+def test_receiver_expected_claims_fail_before_opening_artifacts(tmp_path: Path):
+    manifest = _manifest()
+    with pytest.raises(SystemExit, match="bundle_expected_claim_mismatch"):
+        validate_manifest(
+            manifest,
+            tmp_path,
+            tmp_path / "identity",
+            tmp_path / "plaintext",
+            expected_bundle_id="synthetic-2",
+            expected_cutoff_utc=manifest["cutoff_utc"],
+            expected_source_release=manifest["source_release"],
+            expected_target_release=manifest["target_release"],
+        )
 
 
 def test_tar_root_member_is_canonical():

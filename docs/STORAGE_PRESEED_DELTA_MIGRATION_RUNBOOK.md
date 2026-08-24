@@ -211,6 +211,9 @@ a fase cronometrada.
 | Delete list adulterada | paths completos + count + digest + delta recalculado | NO-GO antes de apply |
 | Tar contém membro inesperado | streaming preflight de type/path/size/SHA | NO-GO antes de extract |
 | Claim desconhecida/expirada | shape fechado, SHA/release/cutoff semântico | NO-GO antes de ACK |
+| Ciphertext/secret trocado entre check/use | `dirfd` + `O_NOFOLLOW` + `fstat`; FD único mantido até decrypt/materialização | NO-GO antes de ACK |
+| Bytes pós-ACK diferem dos validados | receiver materializa DB/preseed/delta dos mesmos FDs em staging 0700/0600 antes do ACK | NO-GO; nunca reabrir ciphertext |
+| Sender escolhe claims apenas bem formadas | expected bundle/cutoff/source/target fixados receiver-side | NO-GO antes de abrir artefactos |
 
 Stopping conditions adicionais: release/config drift, role demasiado amplo, efeito
 externo, credencial em log/argv, host key diferente, custo/TTL excedido, relógio

@@ -154,7 +154,6 @@ PY
     ssh "${ssh_options[@]}" "${USER}@127.0.0.1" \
       "cat > '${work}/db-${run}.age.partial' && sync '${work}/db-${run}.age.partial' && mv '${work}/db-${run}.age.partial' '${work}/db-${run}.age'"
   record_artifact "db-${run}" db
-  age -d -i "${work}/age.identity" <"${work}/db-${run}.age" >"${work}/db-${run}.dump"
   delta_bytes="$(python -c "import json; print(json.load(open('${work}/storage-${run}.json'))['delta_bytes'])")"
   transfer_tar "delta-${run}" "${work}/fixture-${run}/source" "${work}/delta-${run}.list"
   test -s "${work}/db-${run}.age"
@@ -188,17 +187,17 @@ PY
   ssh "${ssh_options[@]}" "${USER}@127.0.0.1" \
     "cat > '${work}/bundle-receiver-${run}.json.partial' && sync '${work}/bundle-receiver-${run}.json.partial' && mv '${work}/bundle-receiver-${run}.json.partial' '${work}/bundle-receiver-${run}.json' && sync '${work}'" \
     <"${work}/bundle-${run}.json"
+  cutoff="$(python -c "import json; print(json.load(open('${work}/bundle-${run}.json'))['cutoff_utc'])")"
+  release="$(git rev-parse HEAD)"
   ssh "${ssh_options[@]}" "${USER}@127.0.0.1" \
-    "cd '$(pwd)' && python -m scripts.standard_bundle_ack emit --manifest '${work}/bundle-receiver-${run}.json' --secret '${work}/ack-${run}.secret' --ack '${work}/ack-${run}.json' --artifact-root '${work}' --identity '${work}/age.identity'"
+    "cd '$(pwd)' && python -m scripts.standard_bundle_ack emit --manifest '${work}/bundle-receiver-${run}.json' --secret '${work}/ack-${run}.secret' --ack '${work}/ack-${run}.json' --artifact-root '${work}' --identity '${work}/age.identity' --plaintext-root '${work}/received-${run}' --expected-bundle-id 'synthetic-${run}' --expected-cutoff-utc '${cutoff}' --expected-source-release '${release}' --expected-target-release '${release}'"
   python -m scripts.standard_bundle_ack verify \
     --manifest "${work}/bundle-${run}.json" --secret "${work}/ack-${run}.secret" \
     --ack "${work}/ack-${run}.json"
   end_ns="$(python -c 'import time; print(time.monotonic_ns())')"
-  mkdir -m 0700 -p "${work}/received-${run}/preseed" "${work}/received-${run}/delta"
-  age -d -i "${work}/age.identity" <"${work}/preseed-${run}.age" |
-    tar -C "${work}/received-${run}/preseed" -xf -
-  age -d -i "${work}/age.identity" <"${work}/delta-${run}.age" |
-    tar -C "${work}/received-${run}/delta" -xf -
+  test -d "${work}/received-${run}/preseed"
+  test -d "${work}/received-${run}/delta"
+  test -s "${work}/received-${run}/db.dump"
   python - "${work}" "${run}" <<'PY'
 import json
 import sys
@@ -221,7 +220,7 @@ PY
     -c "DROP DATABASE IF EXISTS ${restored}" -c "CREATE DATABASE ${restored}" >/dev/null
   docker run --rm --network host -i -e PGPASSWORD=carfast "${CARFAST_POSTGRES_IMAGE}" \
     pg_restore -h 127.0.0.1 -U carfast -d "${restored}" --no-owner --no-acl \
-    <"${work}/db-${run}.dump"
+    <"${work}/received-${run}/db.dump"
   DATABASE_URL="postgresql+psycopg://carfast:carfast@127.0.0.1:5432/${restored}" \
     python -m scripts.validate_integral_migration_contract staging
   DATABASE_URL="postgresql+psycopg://carfast:carfast@127.0.0.1:5432/${restored}" \

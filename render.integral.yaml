@@ -3,10 +3,10 @@ services:
     name: carfast-integral-worker-action-time
     runtime: docker
     region: frankfurt
-    plan: starter
+    plan: standard
     autoDeployTrigger: "off"
     dockerfilePath: ./deploy/integral/Dockerfile
-    dockerCommand: /bin/sh -c 'umask 077 && exec /opt/carfast-venv/bin/python -m scripts.integral_render_entrypoint'
+    dockerCommand: umask 077 && exec /opt/carfast-venv/bin/python -m scripts.integral_render_entrypoint
     healthCheckPath: /health
     envVars:
       - key: INTEGRAL_EXPECTED_SECRET_MOUNT_TYPE
@@ -21,3 +21,4 @@ services:
 # PostgreSQL is created by the action-time API request, not this template, with:
 # postgresMajorVersion=17, plan=basic_256mb, region=frankfurt, diskSizeGB=1,
 # ipAllowList=[]; its internal URL is supplied only through the managed secret file.
+# Generated contract: scripts.integral_render_contract.blueprint_document.

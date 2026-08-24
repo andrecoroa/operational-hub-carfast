@@ -132,8 +132,8 @@ Rollback never mutates Blue data: restore writes, revoke/drop role, cancel trans
 
 ## Operator plan and authorization
 
-The only Render command is the digest-pinned Docker command in
-`render.integral.yaml`, which invokes `scripts.integral_render_entrypoint` under
+The only Render command is produced by `scripts.integral_render_contract` and checked
+into `render.integral.yaml`, which invokes `scripts.integral_render_entrypoint` under
 `tini`, uid/gid 10001 and `umask 077`. The former Render shell entrypoint is a fail-closed legacy
 guard and cannot execute. Synthetic and real-rehearsal roles share the same bootstrap,
 runtime preflight, tombstone, health, deadline and cleanup path. A real run starts only

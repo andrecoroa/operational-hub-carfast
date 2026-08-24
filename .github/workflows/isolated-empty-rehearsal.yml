@@ -78,6 +78,34 @@ jobs:
               python -m scripts.prepare_anonymized_stream \
                 --fixture tests/fixtures/anonymization_input.jsonl \
           | python -c "import sys; from app.platform.anonymized_receive import validated_envelopes; assert len(list(validated_envelopes(sys.stdin.buffer))) == 8"
+      - name: Prove canonical Render command starts pinned image and health
+        run: |
+          docker build -f deploy/integral/Dockerfile -t carfast-integral-runtime .
+          command="$(python -c 'from scripts.integral_render_contract import DOCKER_COMMAND; print(DOCKER_COMMAND)')"
+          test "$command" = "umask 077 && exec /opt/carfast-venv/bin/python -m scripts.integral_render_entrypoint"
+          test "${command#'/bin/sh -c'}" = "$command"
+          mkdir -p /tmp/carfast-render-command
+          printf '{}' >/tmp/carfast-render-command/tombstone.json
+          chmod 0777 /tmp/carfast-render-command
+          docker run -d --rm --name carfast-render-command \
+            -p 127.0.0.1:18010:10010 \
+            -v /tmp/carfast-render-command:/var/data \
+            -e INTEGRAL_RUNTIME_ROLE=receiver \
+            -e INTEGRAL_MODE=synthetic \
+            -e INTEGRAL_RELEASE_SHA="${GITHUB_SHA}" \
+            -e INTEGRAL_TOMBSTONE_PATH=/var/data/tombstone.json \
+            -e PORT=10010 \
+            carfast-integral-runtime /bin/sh -c "$command"
+          for attempt in $(seq 1 20); do
+            if curl --fail --silent http://127.0.0.1:18010/health >/dev/null; then
+              break
+            fi
+            sleep 1
+          done
+          curl --fail --silent http://127.0.0.1:18010/health >/dev/null
+          docker logs carfast-render-command 2>&1 | grep -F 'integral_entrypoint_restart_blocked=true'
+          test "$(docker inspect -f '{{.State.Running}}' carfast-render-command)" = true
+          docker stop -t 2 carfast-render-command >/dev/null
       - name: Create internal-only application network
         run: |
           docker network create --internal carfast-rehearsal-internal

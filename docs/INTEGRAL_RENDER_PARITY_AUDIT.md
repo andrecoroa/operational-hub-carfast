@@ -4,8 +4,10 @@ Status: **no real-data attempt is permitted by this document**.  Immutable code,
 API payloads and evidence must be reviewed again at the action-time gate.
 
 Canonical container command: `umask 077 && exec /opt/carfast-venv/bin/python -m
-scripts.integral_render_entrypoint`, with the base image pinned by digest.
-Canonical topology file: `render.integral.yaml`. Direct execution of the historical
+scripts.integral_render_entrypoint`, without quotes or a nested `/bin/sh -c` wrapper,
+with the base image pinned by digest. Its sole producer is
+`scripts.integral_render_contract`; `render.integral.yaml` is the checked-in Blueprint
+representation and contract tests require exact structural equality. Direct execution of the historical
 Render shell script or the internal E2E worker is rejected with exit code 64.
 
 ## Fixed release contract
@@ -28,6 +30,7 @@ sizes, hashes, authorization, bundle ID, cutoff and release agree.
 | Image/release | CI-built checkout | Digest-pinned PG17/Python Docker image | Render builds the same Dockerfile | Pin commit and base digest; record Python, requirements, entrypoint and executable version fingerprints before listener | Runtime preflight JSON |
 | PG tools/driver | PostgreSQL 17 container | Native image toolchain was not fully evidenced in the failed real preflight | Known parity gap | Require `pg_dump`, `pg_restore`, `psql`, server all major 17; psycopg v3 URL; exact command/flag hash | `--version` hashes and command fingerprint |
 | User/umask | CI container user | Render process user; managed secret mount not mode 0600 | Confirmed mismatch | Start with `umask 077`; record uid/gid; managed source is read once, never consumed directly | uid/gid/umask and private-file stat evidence |
+| `dockerCommand` | Docker exec-form CMD | Render evaluates the API string as the container command | Historical NO-GO: a nested `/bin/sh -c '…'` made the quoted body one executable name (exit 127) | API/Blueprint value is wrapper-free `umask 077 && exec …`; one canonical producer | JSON serialization, Blueprint equality, pinned-container start/health/restart-block |
 | Managed secret | CI creates mode 0600 file | Render mount permissions triggered `permissions are too broad` | Confirmed cause | Accept only allowlisted regular, non-symlink source owned by root/process and not group/other-writable; copy once to process-owned 0700 tmpfs directory and 0600 file; validate fingerprint/closed claims there; unlink in `finally` | Adversarial tests plus sanitized source/private stat classes and absence proof |
 | Secret transport | Local env/file creation | Web Shell bracketed paste previously contaminated input | Confirmed cause | API-created secret file only; no shell/paste; URL parser rejects markers/control/whitespace/unknown host/database; HMAC/auth fingerprints only | Negative tests and matching sender/receiver fingerprints |
 | Filesystem | Temporary CI paths | 5 GB persistent disk at `/var/data`; `/dev/shm` ephemeral | Capacity/lifecycle differ | Secrets only in `/dev/shm/carfast-integral`; spools/tombstone on `/var/data`; verify mount types, ownership and free bytes | statvfs/mount-class evidence, no path contents |
@@ -43,6 +46,29 @@ sizes, hashes, authorization, bundle ID, cutoff and release agree.
 | Deadlines/cancel | Unit/integration deadlines | Render scheduling/network may delay | Timing differs | Fixed connect/read/bundle/consumer/join deadlines; cancellation closes sockets/pipes and kills child process group | duration evidence and no-live-child proof |
 | Memory | Local host | Starter memory | Different limit | Streaming bounded frames; no plaintext bundle in memory; record cgroup limit/peak; abort before stream if below fixed minimum | cgroup limit and peak RSS |
 | Cleanup | pytest/temp cleanup | API deletion and persistent disk | Cloud deletion is separate | On any outcome: close streams, kill children, remove secret environment references and cryptographic key objects, remove private copy/spools/staging, revoke auth/key, delete worker+disk+DB, verify 404/absence | cleanup checklist and API/UI read-back |
+
+## Closed Render resource payload review
+
+The offline producer fixes every action-time field. Manual payload construction is
+prohibited; effective API read-back must pass the paired validator before secrets,
+listeners or streams are permitted.
+
+| Resource | API schema/payload field | Fixed value | Required read-back proof |
+|---|---|---|---|
+| Private service | `type` | `private_service` | exact type |
+| Private service | `ownerId`, `repo`, `branch` | explicit inputs; integration branch | exact service/repository binding |
+| Private service | `autoDeploy` | `no` | exact disabled value |
+| Service details | `runtime`, `plan`, `region` | `docker`, `standard`, `frankfurt` | exact equality |
+| Docker details | `dockerfilePath`, `dockerContext`, `dockerCommand` | pinned path, `.`, wrapper-free canonical command | exact equality; deploy SHA separately pinned |
+| Disk | `name`, `mountPath`, `sizeGB` | canonical name, `/var/data`, `5` | disk endpoint/read-back equality |
+| Environment/secrets | `envVars`, `secretFiles` | closed generated arrays | names/fingerprints only; never values in evidence |
+| PostgreSQL | `plan`, `region`, `postgresMajorVersion`, `diskSizeGB` | `basic_256mb`, `frankfurt`, `17`, `1` | exact equality |
+| PostgreSQL network | `ipAllowList` | `[]` | `[]` or API-normalized `null`, plus external SQL denial |
+
+The worker validator covers command/runtime/plan/region/auto-deploy and the database
+validator covers version/capacity/network. Disk, deployed SHA, environment-name set
+and secret fingerprints remain separate action-time endpoint checks because service
+read-back does not return all of them inline.
 
 ## Historical causes and preventive proof
 
@@ -77,7 +103,7 @@ their exact lifecycle and accidental subprocess inheritance are less observable.
 
 - API-only PG17, Frankfurt, Basic-256mb, 1 GB, generated temporary DB/user,
   explicitly `ipAllowList: []`.
-- API-only private service, Frankfurt, Starter, 5 GB disk at `/var/data`, pinned
+- API-only private service, Frankfurt, Standard 2 GB, 5 GB disk at `/var/data`, pinned
   commit, Auto-Deploy off, no public URL, same repository release.
 - No Blue/Green URL, credential, ID or network mutation is supplied.
 - Start via one immutable script with `umask 077`; record uid/gid, Python and PG17

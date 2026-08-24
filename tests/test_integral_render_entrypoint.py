@@ -1,17 +1,24 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
 import yaml
 
 from scripts import integral_render_entrypoint as entrypoint
+from scripts.integral_render_contract import (
+    DOCKER_COMMAND,
+    blueprint_document,
+    postgres_api_payload,
+    serialized_worker_api_payload,
+    validate_postgres_readback,
+    validate_worker_readback,
+    worker_api_payload,
+)
 
 ROOT = Path(__file__).parents[1]
-CANONICAL = (
-    "/bin/sh -c 'umask 077 && exec /opt/carfast-venv/bin/python "
-    "-m scripts.integral_render_entrypoint'"
-)
+CANONICAL = DOCKER_COMMAND
 
 
 def test_render_contract_has_one_exact_entrypoint_and_external_postgres() -> None:
@@ -21,7 +28,7 @@ def test_render_contract_has_one_exact_entrypoint_and_external_postgres() -> Non
     service = services[0]
     assert service["type"] == "pserv"
     assert service["region"] == "frankfurt"
-    assert service["plan"] == "starter"
+    assert service["plan"] == "standard"
     assert service["autoDeployTrigger"] == "off"
     assert service["runtime"] == "docker"
     assert service["dockerfilePath"] == "./deploy/integral/Dockerfile"
@@ -34,6 +41,75 @@ def test_render_contract_has_one_exact_entrypoint_and_external_postgres() -> Non
     assert service["disk"] == {
         "name": "carfast-integral-spool", "mountPath": "/var/data", "sizeGB": 5
     }
+    assert blueprint == blueprint_document()
+
+
+def test_render_api_payload_serializes_native_command_without_competing_wrapper() -> None:
+    payload = worker_api_payload(owner_id="tea-test", repo="https://example.test/repo")
+    rendered = serialized_worker_api_payload(
+        owner_id="tea-test", repo="https://example.test/repo"
+    )
+    command = payload["serviceDetails"]["envSpecificDetails"]["dockerCommand"]
+    assert command == CANONICAL
+    assert not command.startswith(("'", '"', "/bin/sh", "sh -c"))
+    assert "'/bin/" not in command and '"/bin/' not in command
+    assert json.loads(rendered) == payload
+    assert '"dockerCommand":"umask 077 && exec ' in rendered
+    assert "/bin/sh -c" not in rendered
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        "/bin/sh -c 'umask 077 && exec /opt/carfast-venv/bin/python "
+        "-m scripts.integral_render_entrypoint'",
+        "'umask 077 && exec /opt/carfast-venv/bin/python -m scripts.integral_render_entrypoint'",
+        '"umask 077 && exec /opt/carfast-venv/bin/python -m scripts.integral_render_entrypoint"',
+    ],
+)
+def test_historical_wrapped_commands_are_not_canonical(bad: str) -> None:
+    assert bad != CANONICAL
+
+
+def test_render_postgres_api_payload_and_readbacks_are_closed() -> None:
+    pg = postgres_api_payload(owner_id="tea-test")
+    assert pg == {
+        "name": "carfast-integral-staging-action-time",
+        "ownerId": "tea-test",
+        "plan": "basic_256mb",
+        "region": "frankfurt",
+        "postgresMajorVersion": 17,
+        "diskSizeGB": 1,
+        "ipAllowList": [],
+    }
+    validate_postgres_readback({key: value for key, value in pg.items() if key != "ownerId"})
+    with pytest.raises(ValueError, match="public allowance"):
+        validate_postgres_readback({**pg, "ipAllowList": [{"source": "0.0.0.0/0"}]})
+
+
+def test_worker_readback_rejects_command_drift() -> None:
+    payload = worker_api_payload(owner_id="tea-test", repo="https://example.test/repo")
+    readback = {
+        "type": payload["type"],
+        "name": payload["name"],
+        "autoDeploy": payload["autoDeploy"],
+        "serviceDetails": payload["serviceDetails"],
+    }
+    validate_worker_readback(readback)
+    readback["serviceDetails"]["envSpecificDetails"]["dockerCommand"] = "/bin/sh -c 'bad'"
+    with pytest.raises(ValueError, match="read-back"):
+        validate_worker_readback(readback)
+
+
+def test_no_manual_render_command_competes_with_canonical_contract() -> None:
+    forbidden = "/bin/sh -c 'umask 077 && exec /opt/carfast-venv/bin/python"
+    candidates = [
+        ROOT / "render.integral.yaml",
+        ROOT / "docs/INTEGRAL_RENDER_PARITY_AUDIT.md",
+        ROOT / "docs/INTEGRAL_MIGRATION_READINESS.md",
+    ]
+    for path in candidates:
+        assert forbidden not in path.read_text(encoding="utf-8"), path
 
 
 def test_no_competing_render_entrypoint_or_local_postgres() -> None:

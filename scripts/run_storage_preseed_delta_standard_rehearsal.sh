@@ -5,6 +5,7 @@ set -euo pipefail
 : "${CARFAST_REHEARSAL_RUNS:=3}"
 : "${CARFAST_FINAL_BUDGET_SECONDS:=900}"
 : "${CARFAST_SSH_PORT:=22222}"
+: "${CARFAST_POSTGRES_IMAGE:=postgres:17-bookworm}"
 
 for command in age age-keygen ssh python docker sha256sum; do
   command -v "${command}" >/dev/null || { echo "missing_command=${command}" >&2; exit 20; }
@@ -12,9 +13,9 @@ done
 test "$(id -u)" -ne 0 || { echo "root_execution_forbidden" >&2; exit 21; }
 test -d /dev/shm || { echo "tmpfs_missing" >&2; exit 22; }
 printf 'age_version=%s\n' "$(age --version)"
-docker pull postgres:17-bookworm >/dev/null
-docker run --rm postgres:17-bookworm pg_dump --version | grep -E ' 17([. ]|$)'
-docker image inspect postgres:17-bookworm --format 'postgres_image={{index .RepoDigests 0}}'
+docker pull "${CARFAST_POSTGRES_IMAGE}" >/dev/null
+docker run --rm "${CARFAST_POSTGRES_IMAGE}" pg_dump --version | grep -E ' 17([. ]|$)'
+docker image inspect "${CARFAST_POSTGRES_IMAGE}" --format 'postgres_image={{index .RepoDigests 0}}'
 
 work="$(mktemp -d /dev/shm/carfast-standard-XXXXXX)"
 cleanup() {
@@ -71,6 +72,24 @@ transfer_generated() {
   test "${actual}" = "${expected}"
 }
 
+record_artifact() {
+  local label="$1"
+  python -m scripts.hash_age_artifact --artifact "${work}/${label}.age" \
+    --identity "${work}/age.identity" --output "${work}/${label}.evidence.json"
+}
+
+transfer_tar() {
+  local label="$1" root="$2" list="${3:-}"
+  if [[ -n "${list}" ]]; then
+    tar -C "${root}" -cf - -T "${list}"
+  else
+    tar -C "${root}" -cf - .
+  fi | age -r "${recipient}" |
+    ssh "${ssh_options[@]}" "${USER}@127.0.0.1" \
+      "cat > '${work}/${label}.age.partial' && sync '${work}/${label}.age.partial' && mv '${work}/${label}.age.partial' '${work}/${label}.age' && sync '${work}'"
+  record_artifact "${label}"
+}
+
 # Closed adversarials before consuming any full-volume run.
 bad_known_hosts="${work}/bad_known_hosts"
 ssh-keygen -q -t ed25519 -N '' -f "${work}/wrong-host"
@@ -101,39 +120,96 @@ for run in $(seq 1 "${CARFAST_REHEARSAL_RUNS}"); do
   python -m scripts.rehearse_storage_preseed_delta \
     --bytes "${CARFAST_REHEARSAL_BYTES}" \
     --final-budget-seconds "${CARFAST_FINAL_BUDGET_SECONDS}" \
+    --workspace "${work}/fixture-${run}" \
     >"${work}/storage-${run}.json"
   grep -q '"result": "PASS"' "${work}/storage-${run}.json"
-  transfer_generated "preseed-${run}" "${CARFAST_REHEARSAL_BYTES}"
+  transfer_tar "preseed-${run}" "${work}/fixture-${run}/preseed_snapshot"
+  python - "${work}/storage-${run}.json" "${work}/delta-${run}.list" <<'PY'
+import json
+import sys
+payload = json.load(open(sys.argv[1], encoding="utf-8"))
+with open(sys.argv[2], "w", encoding="utf-8") as handle:
+    for path in payload["delta_copy_paths"]:
+        handle.write(path + "\n")
+PY
 
   database="carfast_standard_${run}"
   restored="carfast_standard_restored_${run}"
-  docker run --rm --network host -e PGPASSWORD=carfast postgres:17-bookworm \
+  docker run --rm --network host -e PGPASSWORD=carfast "${CARFAST_POSTGRES_IMAGE}" \
     psql -h 127.0.0.1 -U carfast -d carfast_test -v ON_ERROR_STOP=1 \
     -c "DROP DATABASE IF EXISTS ${database}" -c "CREATE DATABASE ${database}" >/dev/null
   DATABASE_URL="postgresql+psycopg://carfast:carfast@127.0.0.1:5432/${database}" \
     python -m alembic upgrade ffae1f2a3b4c
+  docker run --rm --network host -e PGPASSWORD=carfast "${CARFAST_POSTGRES_IMAGE}" \
+    psql -h 127.0.0.1 -U carfast -d "${database}" -v ON_ERROR_STOP=1 \
+    -c "INSERT INTO audit_log(action, detail) SELECT 'synthetic.rehearsal', repeat(md5(g::text), 32768) FROM generate_series(1,208) AS g" >/dev/null
   DATABASE_URL="postgresql+psycopg://carfast:carfast@127.0.0.1:5432/${database}" \
     python -m scripts.validate_integral_migration_contract source
   start_ns="$(python -c 'import time; print(time.monotonic_ns())')"
-  docker run --rm --network host -e PGPASSWORD=carfast postgres:17-bookworm \
+  docker run --rm --network host -e PGPASSWORD=carfast "${CARFAST_POSTGRES_IMAGE}" \
     pg_dump -h 127.0.0.1 -U carfast -d "${database}" -Fc --no-owner --no-acl |
-    tee >(sha256sum | cut -d' ' -f1 >"${work}/db-${run}.source.sha256") |
     age -r "${recipient}" |
     ssh "${ssh_options[@]}" "${USER}@127.0.0.1" \
       "cat > '${work}/db-${run}.age.partial' && sync '${work}/db-${run}.age.partial' && mv '${work}/db-${run}.age.partial' '${work}/db-${run}.age'"
+  record_artifact "db-${run}"
   age -d -i "${work}/age.identity" <"${work}/db-${run}.age" >"${work}/db-${run}.dump"
-  test "$(sha256sum "${work}/db-${run}.dump" | cut -d' ' -f1)" = \
-    "$(cat "${work}/db-${run}.source.sha256")"
   delta_bytes="$(python -c "import json; print(json.load(open('${work}/storage-${run}.json'))['delta_bytes'])")"
-  transfer_generated "delta-${run}" "${delta_bytes}"
+  transfer_tar "delta-${run}" "${work}/fixture-${run}/source" "${work}/delta-${run}.list"
   test -s "${work}/db-${run}.age"
   test -s "${work}/delta-${run}.age"
-  printf 'bundle=%s ack=BUNDLE_CAPTURED\n' "${run}"
+  head -c 32 /dev/urandom >"${work}/ack-${run}.secret"
+  chmod 0600 "${work}/ack-${run}.secret"
+  python - "${work}" "${run}" "$(git rev-parse HEAD)" <<'PY'
+import json
+import sys
+from datetime import datetime, timezone
+root, run, release = sys.argv[1:]
+storage = json.load(open(f"{root}/storage-{run}.json", encoding="utf-8"))
+artifacts = [json.load(open(f"{root}/{name}-{run}.evidence.json", encoding="utf-8"))
+             for name in ("preseed", "db", "delta")]
+payload = {"bundle_id": f"synthetic-{run}", "cutoff_utc": datetime.now(timezone.utc).isoformat(),
+           "source_release": release, "target_release": release,
+           "preseed_manifest_sha256": storage["preseed_manifest_sha256"],
+           "final_manifest_sha256": storage["final_manifest_sha256"],
+           "deletion_count": storage["delta_remove_objects"], "artifacts": artifacts}
+with open(f"{root}/bundle-{run}.json", "w", encoding="utf-8") as handle:
+    json.dump(payload, handle, sort_keys=True)
+PY
+  ssh "${ssh_options[@]}" "${USER}@127.0.0.1" \
+    "cat > '${work}/bundle-receiver-${run}.json.partial' && sync '${work}/bundle-receiver-${run}.json.partial' && mv '${work}/bundle-receiver-${run}.json.partial' '${work}/bundle-receiver-${run}.json' && sync '${work}'" \
+    <"${work}/bundle-${run}.json"
+  ssh "${ssh_options[@]}" "${USER}@127.0.0.1" \
+    "cd '$(pwd)' && python -m scripts.standard_bundle_ack emit --manifest '${work}/bundle-receiver-${run}.json' --secret '${work}/ack-${run}.secret' --ack '${work}/ack-${run}.json' --artifact-root '${work}' --identity '${work}/age.identity'"
+  python -m scripts.standard_bundle_ack verify \
+    --manifest "${work}/bundle-${run}.json" --secret "${work}/ack-${run}.secret" \
+    --ack "${work}/ack-${run}.json"
   end_ns="$(python -c 'import time; print(time.monotonic_ns())')"
-  docker run --rm --network host -e PGPASSWORD=carfast postgres:17-bookworm \
+  mkdir -m 0700 -p "${work}/received-${run}/preseed" "${work}/received-${run}/delta"
+  age -d -i "${work}/age.identity" <"${work}/preseed-${run}.age" |
+    tar -C "${work}/received-${run}/preseed" -xf -
+  age -d -i "${work}/age.identity" <"${work}/delta-${run}.age" |
+    tar -C "${work}/received-${run}/delta" -xf -
+  python - "${work}" "${run}" <<'PY'
+import json
+import sys
+from app.platform.integral_reconciliation import StorageEvidence
+from app.platform.storage_preseed_delta import (
+    assert_secure_storage_exact, calculate_delta, secure_sync_manifest,
+)
+from pathlib import Path
+root = Path(sys.argv[1]); run = sys.argv[2]
+preseed = tuple(StorageEvidence(**item) for item in json.load(open(root / f"fixture-{run}/preseed-manifest.json", encoding="utf-8")))
+final = tuple(StorageEvidence(**item) for item in json.load(open(root / f"fixture-{run}/final-manifest.json", encoding="utf-8")))
+delta = calculate_delta(preseed, final)
+target = root / f"received-{run}/preseed"
+secure_sync_manifest(root / f"received-{run}/delta", target, delta.copy,
+                     remove=delta.remove, synthetic_only=True)
+assert_secure_storage_exact(target, final, synthetic_only=True)
+PY
+  docker run --rm --network host -e PGPASSWORD=carfast "${CARFAST_POSTGRES_IMAGE}" \
     psql -h 127.0.0.1 -U carfast -d carfast_test -v ON_ERROR_STOP=1 \
     -c "DROP DATABASE IF EXISTS ${restored}" -c "CREATE DATABASE ${restored}" >/dev/null
-  docker run --rm --network host -i -e PGPASSWORD=carfast postgres:17-bookworm \
+  docker run --rm --network host -i -e PGPASSWORD=carfast "${CARFAST_POSTGRES_IMAGE}" \
     pg_restore -h 127.0.0.1 -U carfast -d "${restored}" --no-owner --no-acl \
     <"${work}/db-${run}.dump"
   DATABASE_URL="postgresql+psycopg://carfast:carfast@127.0.0.1:5432/${restored}" \

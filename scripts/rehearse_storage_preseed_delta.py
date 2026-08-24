@@ -5,8 +5,11 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shutil
 import tempfile
 import time
+from contextlib import nullcontext
+from dataclasses import asdict
 from pathlib import Path
 
 from app.platform.storage_preseed_delta import (
@@ -32,8 +35,15 @@ def _write_pattern(path: Path, size: int, byte: int) -> None:
             remaining -= len(part)
 
 
-def run(total_bytes: int, final_budget_seconds: float) -> dict[str, object]:
-    with tempfile.TemporaryDirectory(prefix="carfast-preseed-delta-") as temporary:
+def run(
+    total_bytes: int, final_budget_seconds: float, workspace: Path | None = None
+) -> dict[str, object]:
+    if workspace is None:
+        context = tempfile.TemporaryDirectory(prefix="carfast-preseed-delta-")
+    else:
+        workspace.mkdir(mode=0o700)
+        context = nullcontext(str(workspace))
+    with context as temporary:
         root = Path(temporary)
         source, staging = root / "source", root / "staging"
         source.mkdir()
@@ -56,6 +66,8 @@ def run(total_bytes: int, final_budget_seconds: float) -> dict[str, object]:
         assert_exact(staging, preseed, synthetic_only=True) if secure else assert_exact(
             staging, preseed
         )
+        if workspace is not None:
+            shutil.copytree(staging, root / "preseed_snapshot")
 
         (source / "documents" / "mutable.bin").write_bytes(b"final-mutated-object")
         (source / "audit" / "removed.bin").unlink()
@@ -71,7 +83,7 @@ def run(total_bytes: int, final_budget_seconds: float) -> dict[str, object]:
         elapsed = time.monotonic() - started
         if elapsed >= final_budget_seconds:
             raise RuntimeError("synthetic final delta exceeded its closed budget")
-        return {
+        result = {
             "result": "PASS",
             "preseed_bytes": sum(item.size for item in preseed),
             "preseed_manifest_sha256": storage_manifest_digest(preseed),
@@ -84,15 +96,28 @@ def run(total_bytes: int, final_budget_seconds: float) -> dict[str, object]:
             "final_manifest_sha256": storage_manifest_digest(final),
             "final_phase_seconds": round(elapsed, 6),
             "final_budget_seconds": final_budget_seconds,
+            "delta_copy_paths": [item.path for item in delta.copy],
+            "delta_remove_paths": list(delta.remove),
         }
+        if workspace is not None:
+            (root / "preseed-manifest.json").write_text(
+                json.dumps([asdict(item) for item in preseed], sort_keys=True) + "\n",
+                encoding="utf-8",
+            )
+            (root / "final-manifest.json").write_text(
+                json.dumps([asdict(item) for item in final], sort_keys=True) + "\n",
+                encoding="utf-8",
+            )
+        return result
 
 
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--bytes", type=int, default=64 * 1024 * 1024)
     parser.add_argument("--final-budget-seconds", type=float, default=900.0)
+    parser.add_argument("--workspace", type=Path)
     args = parser.parse_args()
-    print(json.dumps(run(args.bytes, args.final_budget_seconds), sort_keys=True))
+    print(json.dumps(run(args.bytes, args.final_budget_seconds, args.workspace), sort_keys=True))
 
 
 if __name__ == "__main__":

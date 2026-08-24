@@ -65,7 +65,7 @@ jobs:
         run: |
           python -m compileall -q app scripts
           python -c "from app.main import app; assert app.title"
-          python -m ruff check scripts/check_migration_heads.py scripts/bootstrap_installation.py scripts/check_clean_install.py scripts/capture_architecture_baseline.py scripts/export_legacy_inventory.py scripts/build_integral_config_manifest.py scripts/build_integral_reconciliation_manifest.py scripts/compare_integral_reconciliation_manifests.py scripts/export_integral_storage.py scripts/import_integral_storage.py scripts/integral_private_transfer.py scripts/integral_render_contract.py scripts/integral_render_entrypoint.py scripts/preflight_integral_config.py scripts/preflight_integral_runtime.py scripts/rehearse_storage_preseed_delta.py scripts/reset_integral_target_sequences.py scripts/run_phase10_rehearsal.py scripts/validate_isolated_environment.py app/platform app/partners app/documents app/service_desk app/stock_domain app/automotive app/models/platform.py app/core/return_context.py app/core/post_action.py migrations/versions/fff37f8a9b0d_add_module_catalogue.py tests/test_modular_foundation.py tests/test_visual_foundation.py tests/test_partners_boundary.py tests/test_documents_boundary.py tests/test_service_desk_boundary.py tests/test_stock_boundary.py tests/test_automotive_boundary.py tests/test_legacy_consolidation.py tests/test_phase10_rehearsal.py tests/test_integral_config.py tests/test_integral_reconciliation.py tests/test_integral_storage_stream.py tests/test_integral_transfer.py tests/test_integral_render_entrypoint.py tests/test_isolated_environment.py tests/test_preflight_integral_runtime.py tests/test_storage_preseed_delta.py
+          python -m ruff check scripts/check_migration_heads.py scripts/bootstrap_installation.py scripts/check_clean_install.py scripts/capture_architecture_baseline.py scripts/export_legacy_inventory.py scripts/build_integral_config_manifest.py scripts/build_integral_reconciliation_manifest.py scripts/compare_integral_reconciliation_manifests.py scripts/export_integral_storage.py scripts/hash_age_artifact.py scripts/import_integral_storage.py scripts/integral_private_transfer.py scripts/integral_render_contract.py scripts/integral_render_entrypoint.py scripts/preflight_integral_config.py scripts/preflight_integral_runtime.py scripts/rehearse_storage_preseed_delta.py scripts/reset_integral_target_sequences.py scripts/run_phase10_rehearsal.py scripts/standard_bundle_ack.py scripts/validate_isolated_environment.py app/platform app/partners app/documents app/service_desk app/stock_domain app/automotive app/models/platform.py app/core/return_context.py app/core/post_action.py migrations/versions/fff37f8a9b0d_add_module_catalogue.py tests/test_modular_foundation.py tests/test_visual_foundation.py tests/test_partners_boundary.py tests/test_documents_boundary.py tests/test_service_desk_boundary.py tests/test_stock_boundary.py tests/test_automotive_boundary.py tests/test_legacy_consolidation.py tests/test_phase10_rehearsal.py tests/test_integral_config.py tests/test_integral_reconciliation.py tests/test_integral_storage_stream.py tests/test_integral_transfer.py tests/test_integral_render_entrypoint.py tests/test_isolated_environment.py tests/test_preflight_integral_runtime.py tests/test_storage_preseed_delta.py
 
       - name: Verify frozen architecture baseline
         run: python -m scripts.capture_architecture_baseline --check
@@ -112,20 +112,6 @@ jobs:
   storage-preseed-standard:
     runs-on: ubuntu-latest
     timeout-minutes: 45
-    services:
-      postgres:
-        image: postgres:17-bookworm
-        env:
-          POSTGRES_DB: carfast_test
-          POSTGRES_USER: carfast
-          POSTGRES_PASSWORD: carfast
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U carfast -d carfast_test"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -138,6 +124,20 @@ jobs:
           python -m pip install -r requirements-dev.txt
           sudo apt-get update
           sudo apt-get install -y age openssh-server
+      - name: Pin and start PostgreSQL 17
+        run: |
+          docker pull postgres:17-bookworm
+          POSTGRES_DIGEST="$(docker image inspect postgres:17-bookworm --format '{{index .RepoDigests 0}}')"
+          test -n "$POSTGRES_DIGEST"
+          echo "CARFAST_POSTGRES_IMAGE=$POSTGRES_DIGEST" >> "$GITHUB_ENV"
+          docker run -d --name carfast-standard-postgres --network host \
+            -e POSTGRES_DB=carfast_test -e POSTGRES_USER=carfast \
+            -e POSTGRES_PASSWORD=carfast "$POSTGRES_DIGEST"
+          for attempt in $(seq 1 30); do
+            docker exec carfast-standard-postgres pg_isready -U carfast -d carfast_test && break
+            test "$attempt" -lt 30
+            sleep 1
+          done
       - name: Configure isolated loopback SSH
         run: |
           mkdir -p /dev/shm/carfast-ssh ~/.ssh
@@ -160,3 +160,4 @@ jobs:
         run: |
           test -z "$(find /dev/shm -maxdepth 1 -type d -name 'carfast-standard-*' -print -quit)"
           rm -rf /dev/shm/carfast-ssh ~/.ssh/authorized_keys
+          docker rm -f carfast-standard-postgres >/dev/null 2>&1 || true

@@ -173,6 +173,13 @@ SSH, commits atómicos, dump/restore com clients PG17, contrato 162→166, ACK d
 e adversariais de host key, truncamento e chave errada. A imagem PG é registada pelo
 RepoDigest e a versão age é incluída na evidência. O p95 soma scan/aplicação final do
 storage ao tempo cronometrado de `pg_dump + DB cifrada + delta cifrado + ACK`.
+Os artefactos transmitidos são os tarballs construídos das árvores produzidas pelas
+primitives, não payloads paralelos: preseed completo, delta contendo apenas copies e
+deletion list ligada ao manifesto. O receiver valida tamanho/SHA-256 de ciphertext e
+plaintext, aplica o delta recebido e reconcilia o manifesto final. O ACK é emitido
+pelo receiver, HMAC-SHA256, curto, e liga bundle/cutoff/releases, digests dos dois
+manifests, deletion count e todos os artefactos; o sender verifica-o antes de fechar
+a fase cronometrada.
 
 ## 7. FMEA e stopping conditions
 

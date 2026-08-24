@@ -287,7 +287,11 @@ class _SecureLinuxRoot:
             raise IntegralReconciliationError("secure storage operations require Linux/POSIX")
         flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
         self.fd = os.open(root, flags)
-        metadata = os.fstat(self.fd)
+        try:
+            metadata = os.fstat(self.fd)
+        except Exception:
+            os.close(self.fd)
+            raise
         if not stat.S_ISDIR(metadata.st_mode):
             os.close(self.fd)
             raise IntegralReconciliationError("secure storage root must be a directory")
@@ -306,7 +310,11 @@ class _SecureLinuxRoot:
             os.mkdir(name, mode=0o700, dir_fd=parent_fd)
             os.fsync(parent_fd)
             descriptor = os.open(name, flags, dir_fd=parent_fd)
-        metadata = os.fstat(descriptor)
+        try:
+            metadata = os.fstat(descriptor)
+        except Exception:
+            os.close(descriptor)
+            raise
         if metadata.st_dev != self.device or not stat.S_ISDIR(metadata.st_mode):
             os.close(descriptor)
             raise IntegralReconciliationError("storage directory crosses mount or changed type")
@@ -327,7 +335,11 @@ class _SecureLinuxRoot:
     def open_regular(self, parent_fd: int, name: str) -> tuple[int, os.stat_result]:
         flags = os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC
         descriptor = os.open(name, flags, dir_fd=parent_fd)
-        metadata = os.fstat(descriptor)
+        try:
+            metadata = os.fstat(descriptor)
+        except Exception:
+            os.close(descriptor)
+            raise
         if (
             metadata.st_dev != self.device
             or not stat.S_ISREG(metadata.st_mode)
@@ -465,11 +477,7 @@ def secure_sync_manifest(
                         temporary = f".{target_name}.carfast-partial-{uuid.uuid4().hex}"
                         temp_fd = os.open(
                             temporary,
-                            os.O_WRONLY
-                            | os.O_CREAT
-                            | os.O_EXCL
-                            | os.O_NOFOLLOW
-                            | os.O_CLOEXEC,
+                            os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC,
                             0o600,
                             dir_fd=target_parent,
                         )

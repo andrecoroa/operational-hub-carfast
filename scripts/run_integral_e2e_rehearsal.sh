@@ -28,7 +28,7 @@ sender_envelope="${INTEGRAL_SENDER_SECRET_ENVELOPE_FILE:?managed sender envelope
 receiver_envelope="${INTEGRAL_RECEIVER_SECRET_ENVELOPE_FILE:?managed receiver envelope required}"
 sender_envelope_sha="${INTEGRAL_SENDER_SECRET_ENVELOPE_SHA256:?sender envelope fingerprint required}"
 receiver_envelope_sha="${INTEGRAL_RECEIVER_SECRET_ENVELOPE_SHA256:?receiver envelope fingerprint required}"
-export INTEGRAL_PRIVATE_SECRET_ROOT="$work_root/integral-private-secrets-$run_id"
+export INTEGRAL_PRIVATE_SECRET_ROOT="/dev/shm/carfast-integral-$run_id"
 
 cleanup() {
   exit_status=$?

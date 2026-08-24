@@ -47,7 +47,8 @@ def test_no_competing_render_entrypoint_or_local_postgres() -> None:
 
 def test_docker_runtime_pins_pg17_user_and_canonical_entrypoint() -> None:
     dockerfile = (ROOT / "deploy/integral/Dockerfile").read_text()
-    assert dockerfile.startswith("FROM postgres:17-bookworm")
+    assert dockerfile.startswith("FROM postgres:17.10-bookworm@sha256:")
+    assert len(dockerfile.splitlines()[0].rsplit("sha256:", 1)[1]) == 64
     assert "USER 10001:10001" in dockerfile
     assert 'ENTRYPOINT ["/usr/bin/tini", "--"]' in dockerfile
     assert "scripts.integral_render_entrypoint" in dockerfile
@@ -84,10 +85,14 @@ def test_tombstone_blocks_before_preflight_or_child(
     monkeypatch.setenv("INTEGRAL_MODE", "synthetic")
     monkeypatch.setenv("INTEGRAL_TOMBSTONE_PATH", str(tombstone))
 
-    monkeypatch.setattr(entrypoint, "health_server", lambda: pytest.fail("health opened"))
+    class Server:
+        def shutdown(self) -> None:
+            return
+    monkeypatch.setattr(entrypoint, "health_server", lambda: Server())
     monkeypatch.setattr(
         entrypoint, "runtime_preflight", lambda _role: pytest.fail("preflight ran")
     )
+    monkeypatch.setattr(entrypoint, "hold_restart_blocked", lambda: None)
     assert entrypoint.main() == 0
 
 

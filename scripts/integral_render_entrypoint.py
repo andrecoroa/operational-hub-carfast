@@ -15,6 +15,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlsplit
 
+import psycopg
+
 from app.platform.integral_config import validate_integral_config
 from app.platform.integral_secrets import bootstrap_integral_secrets
 
@@ -71,6 +73,10 @@ def health_server() -> ThreadingHTTPServer:
     return server
 
 
+def hold_restart_blocked() -> None:
+    threading.Event().wait()
+
+
 def reserve_tombstone(path: Path) -> bool:
     """Atomically claim the one-shot before health, preflight, or network effects."""
     path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -113,12 +119,16 @@ def write_tombstone(path: Path, result: str) -> None:
 
 
 def runtime_preflight(role: str) -> dict[str, object]:
-    os.umask(0o077)
+    previous_umask = os.umask(0o077)
     secret_sha = bootstrap_integral_secrets()
     config_role = "receiver" if role == "synthetic_orchestrator" else role
     config_sha = validate_integral_config(config_role)
     database_url = need("DATABASE_URL")
     host = external_private_host(database_url)
+    with psycopg.connect(database_url.replace("postgresql+psycopg", "postgresql", 1)) as connection:
+        server_major = int(connection.info.server_version // 10000)
+    if server_major != PG_MAJOR:
+        raise RuntimeError("postgres_server_major_mismatch")
     spool_root = Path(need("INTEGRAL_SPOOL_ROOT"))
     declared = int(need("INTEGRAL_DECLARED_BUNDLE_BYTES"))
     margin = int(os.environ.get("INTEGRAL_DISK_MARGIN_BYTES", str(128 * 1024 * 1024)))
@@ -144,6 +154,10 @@ def runtime_preflight(role: str) -> dict[str, object]:
         "uid": os.geteuid() if hasattr(os, "geteuid") else -1,
         "gid": os.getegid() if hasattr(os, "getegid") else -1,
         "memory_limit_bytes": memory_limit,
+        "postgres_server_major": server_major,
+        "psycopg_version": psycopg.__version__,
+        "umask": "077",
+        "previous_umask": f"{previous_umask:03o}",
         "entrypoint_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
     }
 
@@ -185,6 +199,11 @@ def main() -> int:
     tombstone = Path(need("INTEGRAL_TOMBSTONE_PATH"))
     if not reserve_tombstone(tombstone):
         print("integral_entrypoint_restart_blocked=true", flush=True)
+        server = health_server()
+        try:
+            hold_restart_blocked()
+        finally:
+            server.shutdown()
         return 0
     server = health_server()
     result = "no-go"
@@ -225,22 +244,36 @@ def main() -> int:
                 child.wait(timeout=10)
             except subprocess.TimeoutExpired:
                 os.killpg(child.pid, signal.SIGKILL)
-        write_tombstone(tombstone, result)
-        server.shutdown()
-        for pattern in ("carfast-integral-*.spool", "integral-private-secrets-*/*"):
-            for item in Path(need("INTEGRAL_SPOOL_ROOT")).glob(pattern):
-                if item.is_file():
-                    item.unlink(missing_ok=True)
-        for name in ("DATABASE_URL", "STAGING_DATABASE_URL", "INTEGRAL_TRANSFER_KEY"):
-            value = os.environ.pop(name, None)
-            if value:
-                value = "\0" * len(value)
-        private_root = Path(
-            os.environ.get("INTEGRAL_PRIVATE_SECRET_ROOT", "/dev/shm/carfast-integral")
-        )
-        shutil.rmtree(private_root, ignore_errors=True)
+        cleanup_errors = []
+        try:
+            write_tombstone(tombstone, result)
+        except Exception as exc:
+            cleanup_errors.append(type(exc).__name__)
+        try:
+            server.shutdown()
+        except Exception as exc:
+            cleanup_errors.append(type(exc).__name__)
+        try:
+            spool_root = Path(need("INTEGRAL_SPOOL_ROOT"))
+            for pattern in ("carfast-integral-*.spool", "integral-private-secrets-*/*"):
+                for item in spool_root.glob(pattern):
+                    if item.is_file():
+                        item.unlink(missing_ok=True)
+        except Exception as exc:
+            cleanup_errors.append(type(exc).__name__)
+        try:
+            for name in ("DATABASE_URL", "STAGING_DATABASE_URL", "INTEGRAL_TRANSFER_KEY"):
+                os.environ.pop(name, None)
+            private_root = Path(
+                os.environ.get("INTEGRAL_PRIVATE_SECRET_ROOT", "/dev/shm/carfast-integral")
+            )
+            shutil.rmtree(private_root, ignore_errors=True)
+        except Exception as exc:
+            cleanup_errors.append(type(exc).__name__)
         for signum, handler in previous_handlers.items():
             signal.signal(signum, handler)
+        if cleanup_errors:
+            print(f"integral_cleanup_failures={len(cleanup_errors)}", file=sys.stderr)
 
 
 if __name__ == "__main__":

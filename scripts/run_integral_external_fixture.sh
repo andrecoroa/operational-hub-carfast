@@ -39,6 +39,7 @@ receiver_sha="$(INTEGRAL_ENVELOPE_DATABASE_URL_INPUT="$receiver_url" INTEGRAL_EN
 chmod 0444 "$sender_envelope" "$receiver_envelope"
 
 export INTEGRAL_RUNTIME_ROLE=synthetic_orchestrator INTEGRAL_MODE=synthetic
+export PORT=10010
 export INTEGRAL_ISOLATED_REHEARSAL=true
 export RENDER_EMPTY_REHEARSAL=true REHEARSAL_DATABASE_HOST="$host"
 export INTEGRAL_RELEASE_SHA="${GITHUB_SHA:?release required}" INTEGRAL_RUN_ID="$run_id" INTEGRAL_STORAGE_BYTES="$storage_bytes"

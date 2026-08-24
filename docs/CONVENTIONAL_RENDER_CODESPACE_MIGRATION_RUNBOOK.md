@@ -34,10 +34,14 @@ Every item must have machine-readable evidence and an independent PASS:
    free bytes and free inodes on the exact instances and paths. No installation
    is permitted during the window.
 3. Freeze nominal source and target manifests. Source must be exactly 162
-   application relations. Target contract must be exactly 166. Explain any
-   extra/missing relation and every non-empty target table against the seed
-   contract. Current read-back (2026-08-24) is 167 public tables and about 490
-   estimated rows on Green, so this item currently fails.
+   application relations. Target contract is exactly 166 declared application
+   tables; `alembic_version` is one technical table and is excluded. Exact Green
+   read-back on 2026-08-25 proved `APPLICATION_TABLES=166` and
+   `TECHNICAL_TABLES=1 alembic_version`. Exact counts using
+   `scripts.check_clean_install` found rows only in its 16 versioned reference
+   tables and printed `OPERATIONAL_NONZERO=NONE`. This closes the earlier
+   167-vs-166 false discrepancy; the evidence must be repeated immediately before
+   a real window.
 4. Prove one Alembic head and the ordered source revision -> `ffae1f2a3b4c` ->
    `fff37f8a9b0d` path, including the four additive relations, constraints,
    indexes, sequences, ownership, grants, search path and allowed seeds.
@@ -46,10 +50,16 @@ Every item must have machine-readable evidence and an independent PASS:
    only then run Alembic to the target contract. Never restore with `--clean`
    over the permanent Green database.
 6. Prove a single quiesce mechanism that blocks and drains web mutations,
-   uploads/filesystem writes, email, jobs, webhooks, portals and integrations;
-   enforce database read-only as an additional control. Record zero active write
-   transactions and two identical storage manifests before setting `CUTOFF_UTC`.
-   `default_transaction_read_only` alone is explicitly insufficient.
+   uploads/filesystem writes, email, jobs, webhooks, portals and integrations.
+   The selected mechanism is: Render paid-service Maintenance Mode (public traffic
+   returns 503 while private networking and SSH remain available); drain in-flight
+   requests; enforce database read-only and drain write transactions; atomically
+   rename the exact storage root to a cutoff name on the same mount; create the
+   original pathname as mode 0555; scan `/proc/*/fd` and refuse capture while any
+   descriptor references the cutoff tree. Record two identical storage manifests
+   before setting `CUTOFF_UTC`. `default_transaction_read_only` alone is explicitly
+   insufficient. Maintenance Mode does not stop internal background jobs, so DB
+   denial, the storage barrier and zero-open-FD check remain mandatory.
 7. Rehearse the exact inverse operation before the window and install an
    independent watchdog that restores application and database writes no later
    than 60 minutes, even if the operator SSH session dies.
@@ -96,6 +106,26 @@ Phase A/Phase B manifests, storage validation and cleanup. Three consecutive
 runs are required; one must use full representative volume. Exit codes from both
 SSH endpoints and every pipeline stage are captured separately. Stdout is payload
 only; diagnostics go to sanitized stderr.
+
+The corrected 16 MiB transport probe on 2026-08-25 completed Blue -> Codespace ->
+Green in 33 seconds with both SSH endpoints RC 0. Green decrypted exactly
+16,777,216 bytes, every decrypt/hash/count stage returned RC 0, and the synthetic
+staging tree was absent after cleanup. A same-filesystem quiesce rehearsal proved
+open-FD detection, fail-closed replacement path, writer drain, atomic restoration
+and cleanup, all PASS. These bounded probes do not replace the required
+representative DB+storage dry-run or its throughput gate.
+
+### Quiesce reversal and watchdog contract
+
+The real storage operation is permitted only after the synthetic rehearsal has
+been repeated against the read-back parent mount and metadata (without touching
+the real root). The finally/watchdog sequence is fixed: stop capture; remove the
+0555 placeholder only if its inode matches the recorded placeholder; atomically
+rename the recorded cutoff inode back to the original path; restore its recorded
+mode/owner; disable database read-only; disable Maintenance Mode; prove health and
+writes. Any inode/path drift aborts automated renames and escalates without deleting
+either tree. The watchdog uses an independent session/control path and starts before
+Maintenance Mode; it must execute this reversal by minute 60 even if relay SSH dies.
 
 ## Real action sequence (still gated)
 

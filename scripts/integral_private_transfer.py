@@ -27,6 +27,7 @@ from app.platform.encrypted_spool import (
     encrypt_verified_stream,
     restore_verified_spool,
 )
+from app.platform.integral_config import validate_integral_config
 from app.platform.integral_storage_stream import pack_storage, unpack_storage
 from app.platform.integral_tcp import (
     CONTROL_BUNDLE_SPOOL_ACCEPTED,
@@ -468,6 +469,7 @@ def send_storage_tcp(root: Path) -> int:
 
 def send_bundle_tcp(root: Path, on_bundle_accepted: object | None = None) -> int:
     """Send DB and storage concurrently; callback runs after their common bundle ACK."""
+    validate_integral_config("sender")
     accepted = {name: threading.Event() for name in ("database", "storage")}
     release = {name: threading.Event() for name in accepted}
     failures: list[BaseException] = []
@@ -785,6 +787,7 @@ def _reconcile_bundle(staging_root: Path | None) -> None:
 
 
 def serve_tcp_streams(stream_types: tuple[str, ...], staging_root: Path | None) -> int:
+    validate_integral_config("receiver")
     key = transfer_key()
     source, destination = (
         required("INTEGRAL_SOURCE_SERVICE"),

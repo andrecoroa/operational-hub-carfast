@@ -18,6 +18,7 @@ def _port() -> int:
 
 
 def _environment(monkeypatch: pytest.MonkeyPatch, port: int, timeout: int = 5) -> None:
+    monkeypatch.setattr(transfer, "validate_integral_config", lambda _role: "test")
     values = {
         "INTEGRAL_TRANSFER_KEY": "k" * 32,
         "INTEGRAL_SOURCE_SERVICE": "srv-bundle-blue",
@@ -42,6 +43,41 @@ def _run_client(name: str, failures: list[BaseException]) -> None:
         transfer._send_tcp(name, io.BytesIO((name.encode() + b"-") * 200_000))
     except BaseException as exc:
         failures.append(exc)
+
+
+def test_sender_config_failure_precedes_threads_dump_and_stream(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(
+        transfer,
+        "validate_integral_config",
+        lambda _role: (_ for _ in ()).throw(RuntimeError("missing closed claim")),
+    )
+    monkeypatch.setattr(
+        transfer.subprocess,
+        "Popen",
+        lambda *args, **kwargs: pytest.fail("pg_dump started before config validation"),
+    )
+    with pytest.raises(RuntimeError, match="missing closed claim"):
+        transfer.send_bundle_tcp(tmp_path)
+
+
+def test_receiver_config_failure_precedes_listener_and_staging(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(
+        transfer,
+        "validate_integral_config",
+        lambda _role: (_ for _ in ()).throw(RuntimeError("receiver claim drift")),
+    )
+    monkeypatch.setattr(
+        transfer.socket,
+        "socket",
+        lambda *args, **kwargs: pytest.fail("listener opened before config validation"),
+    )
+    with pytest.raises(RuntimeError, match="receiver claim drift"):
+        transfer.serve_tcp_streams(("database", "storage"), tmp_path)
+    assert not list(tmp_path.iterdir())
 
 
 def test_isolated_rehearsal_allows_only_explicit_loopback_endpoint(

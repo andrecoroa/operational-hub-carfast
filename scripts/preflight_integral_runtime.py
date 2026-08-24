@@ -14,6 +14,8 @@ from urllib.parse import urlsplit
 
 import psycopg
 
+from app.platform.integral_config import validate_integral_config
+
 EXPECTED_PG_MAJOR = 17
 MIN_FREE_MARGIN = 128 * 1024 * 1024
 
@@ -42,6 +44,7 @@ def tool_major(name: str) -> tuple[int, str]:
 
 
 def main() -> int:
+    config_fingerprint = validate_integral_config("receiver")
     if required("INTEGRAL_DATABASE_DUMP_PHASE") != "source-staging":
         raise RuntimeError("database dump phase must be source-staging")
     snapshot = required("INTEGRAL_HMAC_SNAPSHOT_SHA256")
@@ -106,6 +109,7 @@ def main() -> int:
         json.dumps(
             {
                 "database": database,
+                "config_fingerprint": config_fingerprint,
                 "python": sys.version_info[:3],
                 "postgres_server_major": EXPECTED_PG_MAJOR,
                 "role_owns_database": True,

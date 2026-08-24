@@ -80,9 +80,36 @@ dd if=/dev/zero of="$storage_root/root-manifest.bin" bs=4096 count=1 status=none
 hmac_key="synthetic-integral-hmac-material-${run_id}-32bytes"
 hmac_snapshot="$(printf %s "$hmac_key" | sha256sum | cut -d ' ' -f 1)"
 destination_host="${INTEGRAL_REHEARSAL_DESTINATION_HOST:-carfast-integral-fixture}"
-common_env="INTEGRAL_DATABASE_DUMP_PHASE=source-staging INTEGRAL_TRANSFER_KEY=$hmac_key INTEGRAL_HMAC_SNAPSHOT_SHA256=$hmac_snapshot INTEGRAL_EXPECTED_HMAC_SNAPSHOT_SHA256=$hmac_snapshot INTEGRAL_SOURCE_SERVICE=srv-synthetic-source INTEGRAL_DESTINATION_SERVICE=srv-synthetic-destination INTEGRAL_RELEASE_SHA=${GITHUB_SHA:-0000000000000000000000000000000000000000} INTEGRAL_CUTOFF_ID=cut-synthetic-$run_id INTEGRAL_BUNDLE_ID=bundle-synthetic-$run_id INTEGRAL_DESTINATION_HOST=$destination_host INTEGRAL_EXPECTED_DESTINATION_HOST=$destination_host INTEGRAL_DESTINATION_PORT=10001 INTEGRAL_EXPECTED_DESTINATION_PORT=10001 INTEGRAL_DATABASE_DESTINATION_PHASE=staging INTEGRAL_SOURCE_REVISION=ffae1f2a3b4c INTEGRAL_EXPECTED_DATABASE_HOST=$host INTEGRAL_ISOLATED_REHEARSAL=true INTEGRAL_MAX_STREAM_BYTES=2147483648 INTEGRAL_CLIENT_TIMEOUT_SECONDS=1200 INTEGRAL_BUNDLE_TIMEOUT_SECONDS=900 INTEGRAL_SPOOL_ROOT=$work_root"
+export INTEGRAL_HMAC_SNAPSHOT_SHA256="$hmac_snapshot" INTEGRAL_EXPECTED_HMAC_SNAPSHOT_SHA256="$hmac_snapshot"
+export INTEGRAL_SOURCE_SERVICE=srv-synthetic-source INTEGRAL_DESTINATION_SERVICE=srv-synthetic-destination
+export INTEGRAL_RELEASE_SHA="${GITHUB_SHA:-0000000000000000000000000000000000000000}"
+export INTEGRAL_CUTOFF_ID="cut-synthetic-$run_id" INTEGRAL_BUNDLE_ID="bundle-synthetic-$run_id"
+export INTEGRAL_DESTINATION_HOST="$destination_host" INTEGRAL_EXPECTED_DESTINATION_HOST="$destination_host"
+export INTEGRAL_DESTINATION_PORT=10001 INTEGRAL_EXPECTED_DESTINATION_PORT=10001
+export INTEGRAL_MAX_STREAM_BYTES=2147483648 INTEGRAL_CLIENT_TIMEOUT_SECONDS=1200 INTEGRAL_BUNDLE_TIMEOUT_SECONDS=900
+export REAL_DATA_ALLOWED=false EXTERNAL_INTEGRATIONS_ENABLED=false
+export INTEGRAL_MANIFEST_SENDER_DATABASE_DUMP_PHASE=source-staging
+export INTEGRAL_MANIFEST_SENDER_EXPECTED_DATABASE_HOST="$host" INTEGRAL_MANIFEST_SENDER_EXPECTED_DATABASE_NAME="$source_db"
+export INTEGRAL_MANIFEST_RECEIVER_DATABASE_DESTINATION_PHASE=staging
+export INTEGRAL_MANIFEST_RECEIVER_EXPECTED_DATABASE_HOST="$host" INTEGRAL_MANIFEST_RECEIVER_EXPECTED_DATABASE_NAME="$staging_db"
+export INTEGRAL_MANIFEST_RECEIVER_DECLARED_BUNDLE_BYTES="$((storage_bytes + 64 * 1024 * 1024))"
+export INTEGRAL_MANIFEST_RECEIVER_SOURCE_REVISION=ffae1f2a3b4c INTEGRAL_MANIFEST_RECEIVER_SPOOL_ROOT="$work_root"
+config_manifest="$(python -m scripts.build_integral_config_manifest)"
+config_sha="$(printf %s "$config_manifest" | sha256sum | cut -d ' ' -f 1)"
+common_env="INTEGRAL_TRANSFER_KEY=$hmac_key INTEGRAL_HMAC_SNAPSHOT_SHA256=$hmac_snapshot INTEGRAL_EXPECTED_HMAC_SNAPSHOT_SHA256=$hmac_snapshot INTEGRAL_SOURCE_SERVICE=srv-synthetic-source INTEGRAL_DESTINATION_SERVICE=srv-synthetic-destination INTEGRAL_RELEASE_SHA=${GITHUB_SHA:-0000000000000000000000000000000000000000} INTEGRAL_CUTOFF_ID=cut-synthetic-$run_id INTEGRAL_BUNDLE_ID=bundle-synthetic-$run_id INTEGRAL_DESTINATION_HOST=$destination_host INTEGRAL_EXPECTED_DESTINATION_HOST=$destination_host INTEGRAL_DESTINATION_PORT=10001 INTEGRAL_EXPECTED_DESTINATION_PORT=10001 INTEGRAL_ISOLATED_REHEARSAL=true INTEGRAL_MAX_STREAM_BYTES=2147483648 INTEGRAL_CLIENT_TIMEOUT_SECONDS=1200 INTEGRAL_BUNDLE_TIMEOUT_SECONDS=900 REAL_DATA_ALLOWED=false EXTERNAL_INTEGRATIONS_ENABLED=false INTEGRAL_CONFIG_MANIFEST=$config_manifest INTEGRAL_CONFIG_SHA256=$config_sha"
+
+env $common_env INTEGRAL_DATABASE_DUMP_PHASE=source-staging \
+  INTEGRAL_EXPECTED_DATABASE_HOST="$host" INTEGRAL_EXPECTED_DATABASE_NAME="$source_db" \
+  python -m scripts.preflight_integral_config --role sender
+env $common_env INTEGRAL_DATABASE_DESTINATION_PHASE=staging \
+  INTEGRAL_DECLARED_BUNDLE_BYTES="$((storage_bytes + 64 * 1024 * 1024))" \
+  INTEGRAL_EXPECTED_DATABASE_HOST="$host" INTEGRAL_EXPECTED_DATABASE_NAME="$staging_db" \
+  INTEGRAL_SOURCE_REVISION=ffae1f2a3b4c INTEGRAL_SPOOL_ROOT="$work_root" \
+  python -m scripts.preflight_integral_config --role receiver
 
 env $common_env \
+  INTEGRAL_DATABASE_DESTINATION_PHASE=staging INTEGRAL_SOURCE_REVISION=ffae1f2a3b4c \
+  INTEGRAL_EXPECTED_DATABASE_HOST="$host" \
   STAGING_DATABASE_URL="postgresql://$staging_role:$staging_password@$host:5432/$staging_db" \
   INTEGRAL_EXPECTED_DATABASE_NAME="$staging_db" INTEGRAL_SPOOL_ROOT="$work_root" \
   INTEGRAL_DECLARED_BUNDLE_BYTES="$((storage_bytes + 64 * 1024 * 1024))" \
@@ -111,6 +138,9 @@ restore_duration=$((restore_finished - restore_started))
 echo "negative_restore_stage=pg_restore rc=$negative_rc duration_seconds=$restore_duration stderr_bytes=$negative_bytes stderr_sha256=$negative_sha"
 
 env $common_env APP_ENV=test \
+  INTEGRAL_DATABASE_DESTINATION_PHASE=staging INTEGRAL_DECLARED_BUNDLE_BYTES="$((storage_bytes + 64 * 1024 * 1024))" \
+  INTEGRAL_SOURCE_REVISION=ffae1f2a3b4c INTEGRAL_SPOOL_ROOT="$work_root" \
+  INTEGRAL_EXPECTED_DATABASE_HOST="$host" \
   DATABASE_URL="postgresql+psycopg://$staging_role:$staging_password@$host:5432/$staging_db" \
   INTEGRAL_EXPECTED_DATABASE_NAME="$staging_db" \
   python -m scripts.integral_private_transfer receive-bundle-tcp \
@@ -118,6 +148,7 @@ env $common_env APP_ENV=test \
 receiver_pid=$!
 sleep 2
 env $common_env \
+  INTEGRAL_DATABASE_DUMP_PHASE=source-staging INTEGRAL_EXPECTED_DATABASE_HOST="$host" \
   DATABASE_URL="postgresql+psycopg://$source_role:$source_password@$host:5432/$source_db" \
   INTEGRAL_EXPECTED_DATABASE_NAME="$source_db" \
   python -m scripts.integral_private_transfer send-bundle-tcp --root "$storage_root"

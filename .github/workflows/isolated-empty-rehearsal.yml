@@ -60,7 +60,7 @@ jobs:
             tests/test_integral_transfer.py tests/test_integral_migration_contract.py
           python -m pytest -q tests/test_preflight_integral_runtime.py \
             tests/test_encrypted_spool.py tests/test_integral_tcp.py \
-            tests/test_integral_bundle_tcp.py
+            tests/test_integral_bundle_tcp.py tests/test_integral_config.py
           python -m pytest -q tests/test_capture_authorization.py \
             tests/test_anonymized_stream.py tests/test_anonymized_receive.py \
             tests/test_render_empty_rehearsal_guard.py \

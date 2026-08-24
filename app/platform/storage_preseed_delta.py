@@ -55,7 +55,11 @@ def validate_storage_manifest(items: tuple[StorageEvidence, ...]) -> None:
         if key in folded and folded[key] != item.path:
             raise IntegralReconciliationError("storage manifest contains case-colliding paths")
         folded[key] = item.path
-        if item.size < 0 or len(item.sha256) != 64 or any(c not in "0123456789abcdef" for c in item.sha256):
+        if (
+            item.size < 0
+            or len(item.sha256) != 64
+            or any(c not in "0123456789abcdef" for c in item.sha256)
+        ):
             raise IntegralReconciliationError(f"invalid storage evidence: {item.path}")
 
 
@@ -232,7 +236,7 @@ def sync_manifest(
             flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_BINARY", 0)
             descriptor = os.open(temporary, flags, 0o600)
             with reader, os.fdopen(descriptor, "wb") as writer:
-                for chunk in iter(lambda: reader.read(CHUNK_SIZE), b""):
+                while chunk := reader.read(CHUNK_SIZE):
                     writer.write(chunk)
                     size += len(chunk)
                     digest.update(chunk)
@@ -244,7 +248,9 @@ def sync_manifest(
             if identity_before != identity_after:
                 raise IntegralReconciliationError(f"source changed during copy: {item.path}")
             if (size, digest.hexdigest()) != (item.size, item.sha256):
-                raise IntegralReconciliationError(f"source differs from closed manifest: {item.path}")
+                raise IntegralReconciliationError(
+                    f"source differs from closed manifest: {item.path}"
+                )
             os.replace(temporary, dst)
             _fsync_directory(dst.parent)
         finally:
@@ -269,5 +275,281 @@ def assert_storage_exact(root: Path, expected: tuple[StorageEvidence, ...]) -> N
     if actual != expected:
         raise IntegralReconciliationError(
             "storage reconciliation mismatch: "
+            f"expected={storage_manifest_digest(expected)} actual={storage_manifest_digest(actual)}"
+        )
+
+
+class _SecureLinuxRoot:
+    """Descriptor-confined Linux tree; no operation re-resolves an accepted parent."""
+
+    def __init__(self, root: Path) -> None:
+        if os.name != "posix" or not hasattr(os, "O_NOFOLLOW"):
+            raise IntegralReconciliationError("secure storage operations require Linux/POSIX")
+        flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
+        self.fd = os.open(root, flags)
+        metadata = os.fstat(self.fd)
+        if not stat.S_ISDIR(metadata.st_mode):
+            os.close(self.fd)
+            raise IntegralReconciliationError("secure storage root must be a directory")
+        self.device = metadata.st_dev
+
+    def close(self) -> None:
+        os.close(self.fd)
+
+    def _open_directory(self, parent_fd: int, name: str, *, create: bool) -> int:
+        flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
+        try:
+            descriptor = os.open(name, flags, dir_fd=parent_fd)
+        except FileNotFoundError:
+            if not create:
+                raise
+            os.mkdir(name, mode=0o700, dir_fd=parent_fd)
+            os.fsync(parent_fd)
+            descriptor = os.open(name, flags, dir_fd=parent_fd)
+        metadata = os.fstat(descriptor)
+        if metadata.st_dev != self.device or not stat.S_ISDIR(metadata.st_mode):
+            os.close(descriptor)
+            raise IntegralReconciliationError("storage directory crosses mount or changed type")
+        return descriptor
+
+    def open_parent(self, relative: PurePosixPath, *, create: bool) -> tuple[int, str]:
+        current = os.dup(self.fd)
+        try:
+            for component in relative.parts[:-1]:
+                following = self._open_directory(current, component, create=create)
+                os.close(current)
+                current = following
+            return current, relative.parts[-1]
+        except Exception:
+            os.close(current)
+            raise
+
+    def open_regular(self, parent_fd: int, name: str) -> tuple[int, os.stat_result]:
+        flags = os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC
+        descriptor = os.open(name, flags, dir_fd=parent_fd)
+        metadata = os.fstat(descriptor)
+        if (
+            metadata.st_dev != self.device
+            or not stat.S_ISREG(metadata.st_mode)
+            or metadata.st_nlink != 1
+        ):
+            os.close(descriptor)
+            raise IntegralReconciliationError("storage object is not a unique regular file")
+        return descriptor, metadata
+
+
+def _digest_descriptor(descriptor: int) -> tuple[int, str]:
+    digest = hashlib.sha256()
+    size = 0
+    os.lseek(descriptor, 0, os.SEEK_SET)
+    while True:
+        chunk = os.read(descriptor, CHUNK_SIZE)
+        if not chunk:
+            break
+        size += len(chunk)
+        digest.update(chunk)
+    return size, digest.hexdigest()
+
+
+def _identity(metadata: os.stat_result) -> tuple[int, int, int, int]:
+    return metadata.st_dev, metadata.st_ino, metadata.st_size, metadata.st_mtime_ns
+
+
+def build_secure_storage_manifest(
+    root: Path, *, synthetic_only: bool = False
+) -> tuple[StorageEvidence, ...]:
+    """Scan entirely through held dirfds, rejecting all namespace ambiguity."""
+    if not synthetic_only:
+        raise IntegralReconciliationError(
+            "secure scanner remains synthetic-only pending audit PASS"
+        )
+    tree = _SecureLinuxRoot(root)
+    evidence: list[StorageEvidence] = []
+    folded: dict[str, str] = {}
+
+    def visit(directory_fd: int, prefix: tuple[str, ...]) -> None:
+        for name in sorted(os.listdir(directory_fd)):
+            if not name or "/" in name or name in {".", ".."}:
+                raise IntegralReconciliationError("invalid storage directory entry")
+            relative = PurePosixPath(*prefix, name).as_posix()
+            if unicodedata.normalize("NFC", relative) != relative:
+                raise IntegralReconciliationError(f"storage path is not NFC: {relative!r}")
+            key = relative.casefold()
+            if key in folded and folded[key] != relative:
+                raise IntegralReconciliationError("case-colliding storage paths are forbidden")
+            folded[key] = relative
+            metadata = os.stat(name, dir_fd=directory_fd, follow_symlinks=False)
+            if metadata.st_dev != tree.device:
+                raise IntegralReconciliationError("storage mount boundary is forbidden")
+            if stat.S_ISDIR(metadata.st_mode):
+                child = tree._open_directory(directory_fd, name, create=False)
+                try:
+                    if _identity(os.fstat(child))[:2] != _identity(metadata)[:2]:
+                        raise IntegralReconciliationError("directory changed during secure scan")
+                    visit(child, (*prefix, name))
+                finally:
+                    os.close(child)
+                continue
+            if not stat.S_ISREG(metadata.st_mode) or metadata.st_nlink != 1:
+                raise IntegralReconciliationError("symlink, hardlink, or special storage object")
+            descriptor, opened = tree.open_regular(directory_fd, name)
+            try:
+                if _identity(opened) != _identity(metadata):
+                    raise IntegralReconciliationError("storage object changed before open")
+                size, digest = _digest_descriptor(descriptor)
+                after = os.fstat(descriptor)
+                if _identity(after) != _identity(opened) or size != after.st_size:
+                    raise IntegralReconciliationError("storage object changed while hashing")
+            finally:
+                os.close(descriptor)
+            evidence.append(StorageEvidence(relative, size, digest))
+
+    try:
+        visit(tree.fd, ())
+    finally:
+        tree.close()
+    result = tuple(sorted(evidence, key=lambda item: item.path))
+    validate_storage_manifest(result)
+    return result
+
+
+def _validate_remove(remove: tuple[str, ...]) -> None:
+    if tuple(sorted(set(remove))) != remove:
+        raise IntegralReconciliationError("storage remove paths must be unique and sorted")
+    dummy = "0" * 64
+    validate_storage_manifest(tuple(StorageEvidence(path, 0, dummy) for path in remove))
+
+
+def secure_sync_manifest(
+    source: Path,
+    target: Path,
+    desired: tuple[StorageEvidence, ...],
+    *,
+    remove: tuple[str, ...] = (),
+    interrupt_after: int | None = None,
+    synthetic_only: bool = False,
+) -> CopyResult:
+    """Materialize a manifest using only held dirfds and *at operations."""
+    if not synthetic_only:
+        raise IntegralReconciliationError("secure sync remains synthetic-only pending audit PASS")
+    validate_storage_manifest(desired)
+    _validate_remove(remove)
+    if set(remove) & {item.path for item in desired}:
+        raise IntegralReconciliationError("storage copy/remove sets overlap")
+    source_tree = _SecureLinuxRoot(source)
+    target_tree: _SecureLinuxRoot | None = None
+    copied = skipped = bytes_copied = 0
+    try:
+        target_tree = _SecureLinuxRoot(target)
+        for item in desired:
+            relative = _safe_relative(item.path)
+            source_parent, source_name = source_tree.open_parent(relative, create=False)
+            try:
+                target_parent, target_name = target_tree.open_parent(relative, create=True)
+                try:
+                    try:
+                        existing_fd, _ = target_tree.open_regular(target_parent, target_name)
+                    except FileNotFoundError:
+                        existing_fd = None
+                    if existing_fd is not None:
+                        try:
+                            if _digest_descriptor(existing_fd) == (item.size, item.sha256):
+                                skipped += 1
+                                continue
+                        finally:
+                            os.close(existing_fd)
+                    if interrupt_after is not None and copied >= interrupt_after:
+                        raise InterruptedError("synthetic interruption")
+                    source_fd, before = source_tree.open_regular(source_parent, source_name)
+                    try:
+                        temporary = f".{target_name}.carfast-partial-{uuid.uuid4().hex}"
+                        temp_fd = os.open(
+                            temporary,
+                            os.O_WRONLY
+                            | os.O_CREAT
+                            | os.O_EXCL
+                            | os.O_NOFOLLOW
+                            | os.O_CLOEXEC,
+                            0o600,
+                            dir_fd=target_parent,
+                        )
+                        digest = hashlib.sha256()
+                        size = 0
+                        try:
+                            while True:
+                                chunk = os.read(source_fd, CHUNK_SIZE)
+                                if not chunk:
+                                    break
+                                remaining = memoryview(chunk)
+                                while remaining:
+                                    written = os.write(temp_fd, remaining)
+                                    if written <= 0:
+                                        raise IntegralReconciliationError(
+                                            "short write to storage staging"
+                                        )
+                                    remaining = remaining[written:]
+                                size += len(chunk)
+                                digest.update(chunk)
+                            os.fsync(temp_fd)
+                            if _identity(os.fstat(source_fd)) != _identity(before):
+                                raise IntegralReconciliationError(
+                                    "source changed during secure copy"
+                                )
+                            if (size, digest.hexdigest()) != (item.size, item.sha256):
+                                raise IntegralReconciliationError(
+                                    "source differs from closed manifest"
+                                )
+                            os.replace(
+                                temporary,
+                                target_name,
+                                src_dir_fd=target_parent,
+                                dst_dir_fd=target_parent,
+                            )
+                            os.fsync(target_parent)
+                        finally:
+                            os.close(temp_fd)
+                            try:
+                                os.unlink(temporary, dir_fd=target_parent)
+                            except FileNotFoundError:
+                                pass
+                    finally:
+                        os.close(source_fd)
+                    copied += 1
+                    bytes_copied += size
+                finally:
+                    os.close(target_parent)
+            finally:
+                os.close(source_parent)
+        for value in remove:
+            relative = _safe_relative(value)
+            try:
+                parent_fd, name = target_tree.open_parent(relative, create=False)
+            except FileNotFoundError:
+                continue
+            try:
+                try:
+                    metadata = os.stat(name, dir_fd=parent_fd, follow_symlinks=False)
+                except FileNotFoundError:
+                    continue
+                if not stat.S_ISREG(metadata.st_mode) or metadata.st_nlink != 1:
+                    raise IntegralReconciliationError("refusing to remove non-regular object")
+                os.unlink(name, dir_fd=parent_fd)
+                os.fsync(parent_fd)
+            finally:
+                os.close(parent_fd)
+    finally:
+        source_tree.close()
+        if target_tree is not None:
+            target_tree.close()
+    return CopyResult(copied, skipped, bytes_copied)
+
+
+def assert_secure_storage_exact(
+    root: Path, expected: tuple[StorageEvidence, ...], *, synthetic_only: bool = False
+) -> None:
+    actual = build_secure_storage_manifest(root, synthetic_only=synthetic_only)
+    if actual != expected:
+        raise IntegralReconciliationError(
+            "secure storage reconciliation mismatch: "
             f"expected={storage_manifest_digest(expected)} actual={storage_manifest_digest(actual)}"
         )

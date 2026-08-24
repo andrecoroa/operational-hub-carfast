@@ -47,9 +47,16 @@ Implementação de referência **apenas para fixtures sintéticas** de
 manifests/delta/retoma: `app.platform.storage_preseed_delta`. As funções de scan e
 sync recusam execução sem `synthetic_only=True`; isto impede uso acidental em dados
 reais. A prova offline é `python -m scripts.rehearse_storage_preseed_delta`.
-O scanner/aplicador Linux real é um artefacto obrigatório do gate seguinte: deve
-operar por `dirfd/openat`, `O_NOFOLLOW` em cada componente, `fstat` no descriptor e
-`renameat/unlinkat`, eliminando check-then-use por pathname.
+O scanner/aplicador Linux está implementado em
+`app.platform.storage_preseed_delta.build_secure_storage_manifest` e
+`secure_sync_manifest`: opera por dirfds mantidos, `openat`/`O_NOFOLLOW` em cada
+componente, `fstat` no descriptor e `renameat`/`unlinkat`, eliminando reutilização de
+parents por pathname. Mantém-se bloqueado por `synthetic_only=True` até revisão
+independente e 3/3 provas Linux concluírem PASS.
+As raízes source e staging são previamente criadas, pertencem exclusivamente ao
+processo e o staging tem modo 0700. Nenhum utilizador concorrente com o mesmo UID é
+admitido; uma alteração de namespace pela própria aplicação durante preseed invalida
+o manifesto, e durante o cutoff é uma stopping condition.
 
 ## 2. A — preseed cifrado com Blue writable
 
@@ -160,6 +167,12 @@ projected_delta_bytes >= worst observed mutation burst
 ```
 
 O teste local dá correção funcional, não autoriza extrapolar rede/IO para a janela.
+O executor CI canónico é `scripts/run_storage_preseed_delta_standard_rehearsal.sh`:
+executa três vezes as primitives Linux, interrupção/retoma `.partial`, age antes de
+SSH, commits atómicos, dump/restore com clients PG17, contrato 162→166, ACK de bundle
+e adversariais de host key, truncamento e chave errada. A imagem PG é registada pelo
+RepoDigest e a versão age é incluída na evidência. O p95 soma scan/aplicação final do
+storage ao tempo cronometrado de `pg_dump + DB cifrada + delta cifrado + ACK`.
 
 ## 7. FMEA e stopping conditions
 
@@ -170,6 +183,7 @@ O teste local dá correção funcional, não autoriza extrapolar rede/IO para a 
 | Delete/rename perdido | diff por path; rename=delete+copy | exact manifest ou NO-GO |
 | Symlink/special/traversal | `lstat`, same-root, path parser | abortar antes do pipe |
 | Parent trocado entre check/use | dirfd/openat + O_NOFOLLOW; nunca pathname | abortar; nenhum real sem prova Linux |
+| Escrita parcial pelo kernel | loop até consumir memoryview + bytes/hash | apagar temp; NO-GO |
 | Ciphertext truncado/tampered | age auth, bytes, rc, SHA | apagar parcial, NO-GO |
 | Retoma mistura bundles | claims/fingerprint fechados | rejeitar e limpar |
 | Disco/inodes insuficientes | fórmula e read-back | não iniciar |
@@ -178,6 +192,8 @@ O teste local dá correção funcional, não autoriza extrapolar rede/IO para a 
 | 162→166 diverge | contrato aditivo/manifests/FK/sequences | não promover |
 | Promoção híbrida | Green parado + marker conjunto | rollback dos dois pointers |
 | Cleanup incompleto | inventário/read-back final | NO-GO e escalamento |
+| Leak de descriptor em falha | testes `/proc/self/fd` em target/temp inválidos | NO-GO |
+| Host key ou age identity errada | negativos antes de full-volume | NO-GO |
 
 Stopping conditions adicionais: release/config drift, role demasiado amplo, efeito
 externo, credencial em log/argv, host key diferente, custo/TTL excedido, relógio
@@ -185,8 +201,8 @@ inválido, qualquer diferença inexplicada ou incapacidade de restaurar writes.
 
 ## 8. Gate único seguinte
 
-Antes do gate devem existir: scanner/aplicador Linux dirfd auditado; testes/CI
-verdes; revisão independente; inventário
+Antes do gate devem existir: scanner/aplicador Linux dirfd auditado e desbloqueado
+num commit posterior; testes/CI verdes; revisão independente; inventário
 162/166 fechado; release imutável; resultado 3/3 da prova sintética standard em
 volume real e previsão p95 <=15 min; topologia/custo/cleanup fixados.
 

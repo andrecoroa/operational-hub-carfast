@@ -4,14 +4,18 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import tempfile
 import time
 from pathlib import Path
 
 from app.platform.storage_preseed_delta import (
+    assert_secure_storage_exact,
     assert_storage_exact,
+    build_secure_storage_manifest,
     build_stable_storage_manifest,
     calculate_delta,
+    secure_sync_manifest,
     storage_manifest_digest,
     sync_manifest,
 )
@@ -33,30 +37,37 @@ def run(total_bytes: int, final_budget_seconds: float) -> dict[str, object]:
         root = Path(temporary)
         source, staging = root / "source", root / "staging"
         source.mkdir()
+        staging.mkdir(mode=0o700)
         portions = (total_bytes // 2, total_bytes // 3)
         _write_pattern(source / "documents" / "stable.bin", portions[0], 0x31)
         _write_pattern(source / "documents" / "mutable.bin", portions[1], 0x32)
         _write_pattern(source / "audit" / "removed.bin", total_bytes - sum(portions), 0x33)
-        preseed = build_stable_storage_manifest(source, synthetic_only=True)
+        secure = os.name == "posix"
+        build = build_secure_storage_manifest if secure else build_stable_storage_manifest
+        sync = secure_sync_manifest if secure else sync_manifest
+        assert_exact = assert_secure_storage_exact if secure else assert_storage_exact
+        preseed = build(source, synthetic_only=True)
         interrupted = False
         try:
-            sync_manifest(source, staging, preseed, interrupt_after=1, synthetic_only=True)
+            sync(source, staging, preseed, interrupt_after=1, synthetic_only=True)
         except InterruptedError:
             interrupted = True
-        resumed = sync_manifest(source, staging, preseed, synthetic_only=True)
-        assert_storage_exact(staging, preseed)
+        resumed = sync(source, staging, preseed, synthetic_only=True)
+        assert_exact(staging, preseed, synthetic_only=True) if secure else assert_exact(
+            staging, preseed
+        )
 
         (source / "documents" / "mutable.bin").write_bytes(b"final-mutated-object")
         (source / "audit" / "removed.bin").unlink()
         (source / "documents" / "stable.bin").rename(source / "documents" / "renamed.bin")
         _write_pattern(source / "documents" / "new.bin", 4 * 1024 * 1024, 0x34)
-        final = build_stable_storage_manifest(source, synthetic_only=True)
-        delta = calculate_delta(preseed, final)
         started = time.monotonic()
-        applied = sync_manifest(
-            source, staging, delta.copy, remove=delta.remove, synthetic_only=True
+        final = build(source, synthetic_only=True)
+        delta = calculate_delta(preseed, final)
+        applied = sync(source, staging, delta.copy, remove=delta.remove, synthetic_only=True)
+        assert_exact(staging, final, synthetic_only=True) if secure else assert_exact(
+            staging, final
         )
-        assert_storage_exact(staging, final)
         elapsed = time.monotonic() - started
         if elapsed >= final_budget_seconds:
             raise RuntimeError("synthetic final delta exceeded its closed budget")
@@ -71,7 +82,7 @@ def run(total_bytes: int, final_budget_seconds: float) -> dict[str, object]:
             "delta_remove_objects": len(delta.remove),
             "delta_bytes": applied.bytes_copied,
             "final_manifest_sha256": storage_manifest_digest(final),
-            "final_delta_seconds": round(elapsed, 6),
+            "final_phase_seconds": round(elapsed, 6),
             "final_budget_seconds": final_budget_seconds,
         }
 

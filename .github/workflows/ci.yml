@@ -65,7 +65,7 @@ jobs:
         run: |
           python -m compileall -q app scripts
           python -c "from app.main import app; assert app.title"
-          python -m ruff check scripts/check_migration_heads.py scripts/bootstrap_installation.py scripts/check_clean_install.py scripts/capture_architecture_baseline.py scripts/export_legacy_inventory.py scripts/build_integral_config_manifest.py scripts/build_integral_reconciliation_manifest.py scripts/compare_integral_reconciliation_manifests.py scripts/export_integral_storage.py scripts/import_integral_storage.py scripts/integral_private_transfer.py scripts/integral_render_contract.py scripts/integral_render_entrypoint.py scripts/preflight_integral_config.py scripts/preflight_integral_runtime.py scripts/reset_integral_target_sequences.py scripts/run_phase10_rehearsal.py scripts/validate_isolated_environment.py app/platform app/partners app/documents app/service_desk app/stock_domain app/automotive app/models/platform.py app/core/return_context.py app/core/post_action.py migrations/versions/fff37f8a9b0d_add_module_catalogue.py tests/test_modular_foundation.py tests/test_visual_foundation.py tests/test_partners_boundary.py tests/test_documents_boundary.py tests/test_service_desk_boundary.py tests/test_stock_boundary.py tests/test_automotive_boundary.py tests/test_legacy_consolidation.py tests/test_phase10_rehearsal.py tests/test_integral_config.py tests/test_integral_reconciliation.py tests/test_integral_storage_stream.py tests/test_integral_transfer.py tests/test_integral_render_entrypoint.py tests/test_isolated_environment.py tests/test_preflight_integral_runtime.py
+          python -m ruff check scripts/check_migration_heads.py scripts/bootstrap_installation.py scripts/check_clean_install.py scripts/capture_architecture_baseline.py scripts/export_legacy_inventory.py scripts/build_integral_config_manifest.py scripts/build_integral_reconciliation_manifest.py scripts/compare_integral_reconciliation_manifests.py scripts/export_integral_storage.py scripts/import_integral_storage.py scripts/integral_private_transfer.py scripts/integral_render_contract.py scripts/integral_render_entrypoint.py scripts/preflight_integral_config.py scripts/preflight_integral_runtime.py scripts/rehearse_storage_preseed_delta.py scripts/reset_integral_target_sequences.py scripts/run_phase10_rehearsal.py scripts/validate_isolated_environment.py app/platform app/partners app/documents app/service_desk app/stock_domain app/automotive app/models/platform.py app/core/return_context.py app/core/post_action.py migrations/versions/fff37f8a9b0d_add_module_catalogue.py tests/test_modular_foundation.py tests/test_visual_foundation.py tests/test_partners_boundary.py tests/test_documents_boundary.py tests/test_service_desk_boundary.py tests/test_stock_boundary.py tests/test_automotive_boundary.py tests/test_legacy_consolidation.py tests/test_phase10_rehearsal.py tests/test_integral_config.py tests/test_integral_reconciliation.py tests/test_integral_storage_stream.py tests/test_integral_transfer.py tests/test_integral_render_entrypoint.py tests/test_isolated_environment.py tests/test_preflight_integral_runtime.py tests/test_storage_preseed_delta.py
 
       - name: Verify frozen architecture baseline
         run: python -m scripts.capture_architecture_baseline --check
@@ -107,3 +107,56 @@ jobs:
           tests/test_integral_transfer.py
           tests/test_integral_render_entrypoint.py
           tests/test_isolated_environment.py
+          tests/test_storage_preseed_delta.py
+
+  storage-preseed-standard:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: postgres:17-bookworm
+        env:
+          POSTGRES_DB: carfast_test
+          POSTGRES_USER: carfast
+          POSTGRES_PASSWORD: carfast
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U carfast -d carfast_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+      - name: Install Python and standard transport dependencies
+        run: |
+          python -m pip install -r requirements-dev.txt
+          sudo apt-get update
+          sudo apt-get install -y age openssh-server
+      - name: Configure isolated loopback SSH
+        run: |
+          mkdir -p /dev/shm/carfast-ssh ~/.ssh
+          ssh-keygen -q -t ed25519 -N '' -f /dev/shm/carfast-ssh/client
+          ssh-keygen -q -t ed25519 -N '' -f /dev/shm/carfast-ssh/host
+          cat /dev/shm/carfast-ssh/client.pub > ~/.ssh/authorized_keys
+          chmod 700 ~/.ssh
+          chmod 600 ~/.ssh/authorized_keys /dev/shm/carfast-ssh/client
+          printf 'Port 22222\nListenAddress 127.0.0.1\nHostKey /dev/shm/carfast-ssh/host\nPasswordAuthentication no\nKbdInteractiveAuthentication no\nPubkeyAuthentication yes\nAuthorizedKeysFile .ssh/authorized_keys\nAllowUsers %s\nPidFile /dev/shm/carfast-ssh/sshd.pid\n' "$USER" > /dev/shm/carfast-ssh/sshd_config
+          sudo mkdir -p /run/sshd
+          sudo /usr/sbin/sshd -f /dev/shm/carfast-ssh/sshd_config
+          ssh-keyscan -p 22222 127.0.0.1 > /dev/shm/carfast-ssh/known_hosts 2>/dev/null
+      - name: Run 3/3 full-scale standard rehearsals
+        env:
+          CARFAST_KNOWN_HOSTS: /dev/shm/carfast-ssh/known_hosts
+          CARFAST_SSH_IDENTITY: /dev/shm/carfast-ssh/client
+        run: bash scripts/run_storage_preseed_delta_standard_rehearsal.sh
+      - name: Prove tmpfs cleanup
+        if: always()
+        run: |
+          test -z "$(find /dev/shm -maxdepth 1 -type d -name 'carfast-standard-*' -print -quit)"
+          rm -rf /dev/shm/carfast-ssh ~/.ssh/authorized_keys

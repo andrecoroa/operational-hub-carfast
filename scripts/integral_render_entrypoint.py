@@ -56,10 +56,10 @@ def tool_fingerprint(name: str) -> dict[str, str | int]:
     return {"major": PG_MAJOR, "sha256": hashlib.sha256(evidence).hexdigest()}
 
 
-def mount_type(path: Path) -> str:
+def mount_record(path: Path) -> tuple[str, str]:
     mountinfo = Path("/proc/self/mountinfo")
     if not mountinfo.is_file():
-        return "unavailable"
+        return "unavailable", "unavailable"
     resolved = str(path.resolve())
     matches: list[tuple[int, str]] = []
     for line in mountinfo.read_text().splitlines():
@@ -68,7 +68,35 @@ def mount_type(path: Path) -> str:
         mountpoint = fields[4].replace("\\040", " ")
         if resolved == mountpoint or resolved.startswith(mountpoint.rstrip("/") + "/"):
             matches.append((len(mountpoint), fields[separator + 1]))
-    return max(matches, default=(0, "unknown"))[1]
+    if not matches:
+        return "unknown", "unknown"
+    _, filesystem = max(matches)
+    matching_points = []
+    for line in mountinfo.read_text().splitlines():
+        fields = line.split()
+        mountpoint = fields[4].replace("\\040", " ")
+        if resolved == mountpoint or resolved.startswith(mountpoint.rstrip("/") + "/"):
+            matching_points.append(mountpoint)
+    return filesystem, max(matching_points, key=len)
+
+
+def validate_mounts(spool_root: Path) -> dict[str, str]:
+    private_root = Path(
+        os.environ.get("INTEGRAL_PRIVATE_SECRET_ROOT", "/dev/shm/carfast-integral")
+    )
+    spool_type, spool_mountpoint = mount_record(spool_root)
+    secret_type, secret_mountpoint = mount_record(private_root)
+    if os.environ.get("INTEGRAL_ISOLATED_REHEARSAL") != "true":
+        if secret_type != need("INTEGRAL_EXPECTED_SECRET_MOUNT_TYPE"):
+            raise RuntimeError("secret_mount_type_rejected")
+        if spool_mountpoint != need("INTEGRAL_EXPECTED_SPOOL_MOUNTPOINT"):
+            raise RuntimeError("spool_mountpoint_rejected")
+    return {
+        "spool_mount_type": spool_type,
+        "spool_mountpoint": spool_mountpoint,
+        "secret_mount_type": secret_type,
+        "secret_mountpoint": secret_mountpoint,
+    }
 
 
 class Health(BaseHTTPRequestHandler):
@@ -142,11 +170,8 @@ def runtime_preflight(role: str) -> dict[str, object]:
             "entrypoint_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
             "memory_peak_bytes": int(memory_peak.read_text()) if memory_peak.is_file() else -1,
             "spool_free_bytes": shutil.disk_usage(spool_root).free,
-            "spool_mount_type": mount_type(spool_root),
-            "secret_mount_type": mount_type(
-                Path(os.environ.get("INTEGRAL_PRIVATE_SECRET_ROOT", "/dev/shm/carfast-integral"))
-            ),
             "synthetic_role_pair": True,
+            **validate_mounts(spool_root),
         }
     secret_sha = bootstrap_integral_secrets()
     config_sha = validate_integral_config(role)
@@ -189,10 +214,7 @@ def runtime_preflight(role: str) -> dict[str, object]:
         "memory_peak_bytes": int(Path("/sys/fs/cgroup/memory.peak").read_text())
         if Path("/sys/fs/cgroup/memory.peak").is_file()
         else -1,
-        "spool_mount_type": mount_type(spool_root),
-        "secret_mount_type": mount_type(
-            Path(os.environ.get("INTEGRAL_PRIVATE_SECRET_ROOT", "/dev/shm/carfast-integral"))
-        ),
+        **validate_mounts(spool_root),
     }
 
 
@@ -272,13 +294,21 @@ def main() -> int:
                 os.killpg(child.pid, signal.SIGKILL)
         raise RuntimeError("child_deadline_exceeded") from exc
     finally:
+        peak_path = Path("/sys/fs/cgroup/memory.peak")
+        limit_path = Path("/sys/fs/cgroup/memory.max")
+        if peak_path.is_file() and limit_path.is_file():
+            peak = int(peak_path.read_text())
+            raw_limit = limit_path.read_text().strip()
+            print(f"integral_memory_peak_bytes={peak}", flush=True)
+            if raw_limit != "max" and peak >= int(raw_limit):
+                result = "memory-limit-reached"
         if child is not None and child.poll() is None:
             os.killpg(child.pid, signal.SIGTERM)
             try:
                 child.wait(timeout=10)
             except subprocess.TimeoutExpired:
                 os.killpg(child.pid, signal.SIGKILL)
-        cleanup_errors = []
+        cleanup_errors = ["memory-limit-reached"] if result == "memory-limit-reached" else []
         try:
             write_tombstone(tombstone, result)
         except Exception as exc:

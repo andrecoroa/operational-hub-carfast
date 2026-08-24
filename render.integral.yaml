@@ -8,6 +8,11 @@ services:
     dockerfilePath: ./deploy/integral/Dockerfile
     dockerCommand: /bin/sh -c 'umask 077 && exec /opt/carfast-venv/bin/python -m scripts.integral_render_entrypoint'
     healthCheckPath: /health
+    envVars:
+      - key: INTEGRAL_EXPECTED_SECRET_MOUNT_TYPE
+        value: tmpfs
+      - key: INTEGRAL_EXPECTED_SPOOL_MOUNTPOINT
+        value: /var/data
     disk:
       name: carfast-integral-spool
       mountPath: /var/data

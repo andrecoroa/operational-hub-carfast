@@ -27,6 +27,10 @@ def test_render_contract_has_one_exact_entrypoint_and_external_postgres() -> Non
     assert service["dockerfilePath"] == "./deploy/integral/Dockerfile"
     assert service["dockerCommand"] == CANONICAL
     assert service["healthCheckPath"] == "/health"
+    assert service["envVars"] == [
+        {"key": "INTEGRAL_EXPECTED_SECRET_MOUNT_TYPE", "value": "tmpfs"},
+        {"key": "INTEGRAL_EXPECTED_SPOOL_MOUNTPOINT", "value": "/var/data"},
+    ]
     assert service["disk"] == {
         "name": "carfast-integral-spool", "mountPath": "/var/data", "sizeGB": 5
     }
@@ -69,6 +73,15 @@ def test_private_database_host_is_bound_exactly(monkeypatch: pytest.MonkeyPatch)
     assert entrypoint.external_private_host(
         "postgresql+psycopg://u:p@dpg-fixture-a:5432/carfast_integral_staging_1_test"
     ) == "dpg-fixture-a"
+
+
+def test_mount_contract_is_fail_closed(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.delenv("INTEGRAL_ISOLATED_REHEARSAL", raising=False)
+    monkeypatch.setenv("INTEGRAL_EXPECTED_SECRET_MOUNT_TYPE", "tmpfs")
+    monkeypatch.setenv("INTEGRAL_EXPECTED_SPOOL_MOUNTPOINT", "/var/data")
+    monkeypatch.setattr(entrypoint, "mount_record", lambda _path: ("overlay", "/"))
+    with pytest.raises(RuntimeError, match="secret_mount_type_rejected"):
+        entrypoint.validate_mounts(tmp_path)
 
 
 def test_failure_output_contract_never_contains_exception_text() -> None:

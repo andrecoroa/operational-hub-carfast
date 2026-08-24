@@ -7,6 +7,7 @@ import hashlib
 import http.client
 import json
 import os
+import re
 import shutil
 import socket
 import subprocess
@@ -44,6 +45,11 @@ from app.platform.integral_tcp import (
     write_framed,
 )
 from app.platform.integral_transfer import ChunkedReader, issue_token, verify_token
+
+_SAFE_MIGRATION_CONTRACT_DIAGNOSTIC = re.compile(
+    r"^migration_contract_phase=(?:source|staging|target) valid=false "
+    r"failure_code=[a-z][a-z0-9_]* detail_sha256=[0-9a-f]{64}$"
+)
 
 CHUNK_BYTES = 1024 * 1024
 TARGET_MARKER = Path("/tmp/carfast-integral-target-prepared.json")
@@ -706,11 +712,21 @@ def _run_bundle_gate(command: list[str], environment: dict[str, str]) -> None:
         timeout=20 * 60,
     )
     if result.returncode:
+        safe_diagnostic = ""
+        if "scripts.validate_integral_migration_contract" in command:
+            matches = [
+                line
+                for line in result.stderr.splitlines()
+                if _SAFE_MIGRATION_CONTRACT_DIAGNOSTIC.fullmatch(line)
+            ]
+            if len(matches) == 1:
+                safe_diagnostic = f" diagnostic={matches[0]}"
         raise RuntimeError(
             f"bundle gate failed command={command[2] if len(command) > 2 else command[0]} "
             f"rc={result.returncode} duration_ms={int((time.monotonic() - started) * 1000)} "
             f"stderr_bytes={len(result.stderr.encode())} "
             f"stderr_sha256={hashlib.sha256(result.stderr.encode()).hexdigest()}"
+            f"{safe_diagnostic}"
         )
     if result.stdout.strip():
         print(result.stdout.strip(), flush=True)

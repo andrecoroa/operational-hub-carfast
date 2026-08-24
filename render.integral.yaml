@@ -1,0 +1,17 @@
+services:
+  - type: pserv
+    name: carfast-integral-worker-action-time
+    runtime: python
+    region: frankfurt
+    plan: starter
+    autoDeployTrigger: "off"
+    buildCommand: pip install -r requirements.txt
+    startCommand: python -m scripts.integral_render_entrypoint
+    disk:
+      name: carfast-integral-spool
+      mountPath: /var/data
+      sizeGB: 5
+
+# PostgreSQL is created by the action-time API request, not this template, with:
+# postgresMajorVersion=17, plan=basic_256mb, region=frankfurt, diskSizeGB=1,
+# ipAllowList=[]; its internal URL is supplied only through the managed secret file.

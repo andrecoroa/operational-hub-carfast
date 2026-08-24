@@ -31,11 +31,9 @@ def test_contract_failure_codes_are_stable_and_non_sensitive(
 
 
 def test_render_rehearsal_has_persistent_one_shot_guard() -> None:
-    script = open("scripts/run_integral_render_rehearsal.sh", encoding="utf-8").read()
-    assert 'if [ -e "$one_shot_state" ]' in script
-    assert 'render_integral_one_shot=blocked prior_state_present=true' in script
-    assert 'finish_one_shot "no-go"' in script
-    assert 'finish_one_shot "pass"' in script
-    assert script.index('if [ -e "$one_shot_state" ]') < script.index(
-        "scripts/run_integral_e2e_rehearsal.sh"
-    )
+    legacy = open("scripts/run_integral_render_rehearsal.sh", encoding="utf-8").read()
+    entrypoint = open("scripts/integral_render_entrypoint.py", encoding="utf-8").read()
+    assert "legacy_render_entrypoint_rejected=true" in legacy
+    assert 'if tombstone.exists()' in entrypoint
+    assert 'integral_entrypoint_restart_blocked=true' in entrypoint
+    assert 'write_tombstone(tombstone, result)' in entrypoint

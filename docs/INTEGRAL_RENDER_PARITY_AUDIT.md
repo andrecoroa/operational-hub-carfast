@@ -3,6 +3,10 @@
 Status: **no real-data attempt is permitted by this document**.  Immutable code,
 API payloads and evidence must be reviewed again at the action-time gate.
 
+Canonical executable entrypoint: `python -m scripts.integral_render_entrypoint`.
+Canonical topology file: `render.integral.yaml`. Direct execution of the historical
+Render shell script or the internal E2E worker is rejected with exit code 64.
+
 ## Fixed release contract
 
 The next synthetic evidence release is the commit that contains this document and

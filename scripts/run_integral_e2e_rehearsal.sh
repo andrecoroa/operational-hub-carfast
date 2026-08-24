@@ -1,11 +1,17 @@
 #!/bin/sh
 set -eu
 
+test "${INTEGRAL_ENTRYPOINT_DELEGATED:-0}" = 1 || {
+  echo "legacy_integral_e2e_direct_invocation_rejected=true" >&2
+  exit 64
+}
+
 run_id="${1:?run id required}"
 storage_bytes="${2:?storage bytes required}"
 case "$run_id" in *[!0-9]*) exit 2;; esac
 
 host="${INTEGRAL_REHEARSAL_PGHOST:-rehearsal-postgres}"
+case "$host" in localhost|127.0.0.1|::1|rehearsal-postgres) echo "external_postgres_required=true" >&2; exit 64;; esac
 admin_role="${INTEGRAL_REHEARSAL_ADMIN_ROLE:-carfast}"
 admin_password="${INTEGRAL_REHEARSAL_ADMIN_PASSWORD:-carfast}"
 source_db="carfast_integral_source_${run_id}_test"
@@ -18,9 +24,10 @@ work_root="${INTEGRAL_REHEARSAL_WORK_ROOT:-/tmp}"
 storage_root="$work_root/integral-e2e-${run_id}-source"
 staging_root="$work_root/integral-e2e-${run_id}-staging"
 receiver_pid=""
-sender_envelope="$work_root/integral-secrets-sender-$run_id.json"
-receiver_envelope="$work_root/integral-secrets-receiver-$run_id.json"
-export INTEGRAL_MANAGED_SECRET_ROOT="$work_root"
+sender_envelope="${INTEGRAL_SENDER_SECRET_ENVELOPE_FILE:?managed sender envelope required}"
+receiver_envelope="${INTEGRAL_RECEIVER_SECRET_ENVELOPE_FILE:?managed receiver envelope required}"
+sender_envelope_sha="${INTEGRAL_SENDER_SECRET_ENVELOPE_SHA256:?sender envelope fingerprint required}"
+receiver_envelope_sha="${INTEGRAL_RECEIVER_SECRET_ENVELOPE_SHA256:?receiver envelope fingerprint required}"
 export INTEGRAL_PRIVATE_SECRET_ROOT="$work_root/integral-private-secrets-$run_id"
 
 cleanup() {
@@ -38,7 +45,6 @@ cleanup() {
     echo "synthetic_receiver_diagnostic_end" >&2
   fi
   rm -f "/tmp/integral-receiver-$run_id.log" "/tmp/integral-preflight-$run_id.json"
-  rm -f "$sender_envelope" "$receiver_envelope"
   rm -f "$work_root"/carfast-integral-*.spool
   rm -rf "$INTEGRAL_PRIVATE_SECRET_ROOT"
   rm -rf "$storage_root" "$staging_root"
@@ -83,44 +89,11 @@ truncate -s "$first" "$storage_root/documents/vehicles/fixture-$run_id/archive.b
 truncate -s "$second" "$storage_root/email/attachments/message.bin"
 dd if=/dev/zero of="$storage_root/root-manifest.bin" bs=4096 count=1 status=none
 
-hmac_key="synthetic-integral-hmac-material-${run_id}-32bytes"
-hmac_snapshot="$(printf %s "$hmac_key" | sha256sum | cut -d ' ' -f 1)"
 destination_host="${INTEGRAL_REHEARSAL_DESTINATION_HOST:-carfast-integral-fixture}"
-export INTEGRAL_HMAC_SNAPSHOT_SHA256="$hmac_snapshot" INTEGRAL_EXPECTED_HMAC_SNAPSHOT_SHA256="$hmac_snapshot"
-export INTEGRAL_SOURCE_SERVICE=srv-synthetic-source INTEGRAL_DESTINATION_SERVICE=srv-synthetic-destination
-export INTEGRAL_RELEASE_SHA="${GITHUB_SHA:-0000000000000000000000000000000000000000}"
-export INTEGRAL_CUTOFF_ID="cut-synthetic-$run_id" INTEGRAL_BUNDLE_ID="bundle-synthetic-$run_id"
-export INTEGRAL_DESTINATION_HOST="$destination_host" INTEGRAL_EXPECTED_DESTINATION_HOST="$destination_host"
-export INTEGRAL_DESTINATION_PORT=10001 INTEGRAL_EXPECTED_DESTINATION_PORT=10001
-export INTEGRAL_MAX_STREAM_BYTES=2147483648 INTEGRAL_CLIENT_TIMEOUT_SECONDS=1200 INTEGRAL_BUNDLE_TIMEOUT_SECONDS=900
-export INTEGRAL_MODE=synthetic INTEGRAL_AUTHORIZATION_STATE_ROOT="$work_root/auth"
-export INTEGRAL_AUTHORIZATION_ID=none INTEGRAL_AUTHORIZATION_ISSUED_AT=none INTEGRAL_AUTHORIZATION_EXPIRES_AT=none
-export REAL_DATA_ALLOWED=false EXTERNAL_INTEGRATIONS_ENABLED=false EMAIL_ENABLED=false JOBS_ENABLED=false
-export WEBHOOKS_ENABLED=false PORTALS_ENABLED=false INTEGRAL_CUTOVER_REQUESTED=false INTEGRAL_PRODUCTION_DEPLOY_REQUESTED=false
-export INTEGRAL_MANIFEST_SENDER_DATABASE_DUMP_PHASE=source-staging
-export INTEGRAL_MANIFEST_SENDER_EXPECTED_DATABASE_HOST="$host" INTEGRAL_MANIFEST_SENDER_EXPECTED_DATABASE_NAME="$source_db"
-export INTEGRAL_MANIFEST_RECEIVER_DATABASE_DESTINATION_PHASE=staging
-export INTEGRAL_MANIFEST_RECEIVER_EXPECTED_DATABASE_HOST="$host" INTEGRAL_MANIFEST_RECEIVER_EXPECTED_DATABASE_NAME="$staging_db"
-export INTEGRAL_MANIFEST_RECEIVER_DECLARED_BUNDLE_BYTES="$((storage_bytes + 64 * 1024 * 1024))"
-export INTEGRAL_MANIFEST_RECEIVER_SOURCE_REVISION=ffae1f2a3b4c INTEGRAL_MANIFEST_RECEIVER_SPOOL_ROOT="$work_root"
-sender_url="postgresql://$source_role:$source_password@$host:5432/$source_db"
-receiver_url="postgresql://$staging_role:$staging_password@$host:5432/$staging_db"
-sender_envelope_sha="$(
-  INTEGRAL_ENVELOPE_DATABASE_URL_INPUT="$sender_url" INTEGRAL_ENVELOPE_TRANSFER_KEY_INPUT="$hmac_key" \
-    python -m scripts.build_integral_secret_envelope --role sender --output "$sender_envelope"
-)"
-receiver_envelope_sha="$(
-  INTEGRAL_ENVELOPE_DATABASE_URL_INPUT="$receiver_url" INTEGRAL_ENVELOPE_TRANSFER_KEY_INPUT="$hmac_key" \
-    python -m scripts.build_integral_secret_envelope --role receiver --output "$receiver_envelope"
-)"
-config_manifest="$(
-  INTEGRAL_SECRET_ENVELOPE_FILE="$receiver_envelope" INTEGRAL_SECRET_ENVELOPE_ROLE=receiver \
-  INTEGRAL_SECRET_ENVELOPE_SHA256="$receiver_envelope_sha" \
-  INTEGRAL_EXPECTED_DATABASE_HOST="$host" INTEGRAL_EXPECTED_DATABASE_NAME="$staging_db" \
-    python -m scripts.build_integral_config_manifest
-)"
-config_sha="$(printf %s "$config_manifest" | sha256sum | cut -d ' ' -f 1)"
-common_env="INTEGRAL_HMAC_SNAPSHOT_SHA256=$hmac_snapshot INTEGRAL_EXPECTED_HMAC_SNAPSHOT_SHA256=$hmac_snapshot INTEGRAL_SOURCE_SERVICE=srv-synthetic-source INTEGRAL_DESTINATION_SERVICE=srv-synthetic-destination INTEGRAL_RELEASE_SHA=${GITHUB_SHA:-0000000000000000000000000000000000000000} INTEGRAL_CUTOFF_ID=cut-synthetic-$run_id INTEGRAL_BUNDLE_ID=bundle-synthetic-$run_id INTEGRAL_DESTINATION_HOST=$destination_host INTEGRAL_EXPECTED_DESTINATION_HOST=$destination_host INTEGRAL_DESTINATION_PORT=10001 INTEGRAL_EXPECTED_DESTINATION_PORT=10001 INTEGRAL_ISOLATED_REHEARSAL=true INTEGRAL_MAX_STREAM_BYTES=2147483648 INTEGRAL_CLIENT_TIMEOUT_SECONDS=1200 INTEGRAL_BUNDLE_TIMEOUT_SECONDS=900 INTEGRAL_MODE=synthetic INTEGRAL_AUTHORIZATION_STATE_ROOT=$work_root/auth INTEGRAL_AUTHORIZATION_ID=none INTEGRAL_AUTHORIZATION_ISSUED_AT=none INTEGRAL_AUTHORIZATION_EXPIRES_AT=none REAL_DATA_ALLOWED=false EXTERNAL_INTEGRATIONS_ENABLED=false EMAIL_ENABLED=false JOBS_ENABLED=false WEBHOOKS_ENABLED=false PORTALS_ENABLED=false INTEGRAL_CUTOVER_REQUESTED=false INTEGRAL_PRODUCTION_DEPLOY_REQUESTED=false INTEGRAL_CONFIG_MANIFEST=$config_manifest INTEGRAL_CONFIG_SHA256=$config_sha"
+test "${INTEGRAL_MODE:?}" = synthetic
+test "${REAL_DATA_ALLOWED:?}" = false
+test "${INTEGRAL_EXPECTED_DATABASE_HOST:?}" = "$host"
+common_env=""
 
 sender_secret_env="INTEGRAL_SECRET_ENVELOPE_FILE=$sender_envelope INTEGRAL_SECRET_ENVELOPE_ROLE=sender INTEGRAL_SECRET_ENVELOPE_SHA256=$sender_envelope_sha"
 receiver_secret_env="INTEGRAL_SECRET_ENVELOPE_FILE=$receiver_envelope INTEGRAL_SECRET_ENVELOPE_ROLE=receiver INTEGRAL_SECRET_ENVELOPE_SHA256=$receiver_envelope_sha"

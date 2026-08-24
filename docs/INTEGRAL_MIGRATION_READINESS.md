@@ -132,6 +132,13 @@ Rollback never mutates Blue data: restore writes, revoke/drop role, cancel trans
 
 ## Operator plan and authorization
 
-The synthetic Render command remains `sh scripts/run_integral_render_rehearsal.sh`. A real run starts only after `python -m scripts.preflight_integral_runtime` succeeds and then follows the numbered state machine. Capture commands, IDs and sanitized fingerprints; never record credentials, keys, payload or SQL. No compatibility edits and no `pg_restore --clean` against live Green.
+The only Render command is `python -m scripts.integral_render_entrypoint`, pinned in
+`render.integral.yaml`. The former Render shell entrypoint is a fail-closed legacy
+guard and cannot execute. Synthetic and real-rehearsal roles share the same bootstrap,
+runtime preflight, tombstone, health, deadline and cleanup path. A real run starts only
+after that entrypoint's non-consuming preflights succeed and then follows the numbered
+state machine. Capture commands, IDs and sanitized fingerprints; never record
+credentials, keys, payload or SQL. No compatibility edits and no `pg_restore --clean`
+against live Green.
 
 **Authorization required:** “Autorizo uma única tentativa integral real final no HEAD executável `e4a545374e562678f7c60aab240617e3b70bba01`, segundo este runbook, com Blue read-only até 20 minutos, recursos temporários dentro do ledger total de EUR 5, sem cutover, DNS, integrações, produção ou promoção do Green.”

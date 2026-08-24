@@ -22,7 +22,7 @@ from app.platform.integral_secrets import bootstrap_integral_secrets
 
 ENTRYPOINT_VERSION = 1
 PG_MAJOR = 17
-ALLOWED_ROLES = {"receiver", "sender", "synthetic_orchestrator"}
+ALLOWED_ROLES = {"receiver", "sender"}
 LOCAL_HOSTS = {"127.0.0.1", "::1", "localhost", "rehearsal-postgres"}
 FAILURE_PREFIX = "integral_entrypoint_failure"
 
@@ -121,8 +121,7 @@ def write_tombstone(path: Path, result: str) -> None:
 def runtime_preflight(role: str) -> dict[str, object]:
     previous_umask = os.umask(0o077)
     secret_sha = bootstrap_integral_secrets()
-    config_role = "receiver" if role == "synthetic_orchestrator" else role
-    config_sha = validate_integral_config(config_role)
+    config_sha = validate_integral_config(role)
     database_url = need("DATABASE_URL")
     host = external_private_host(database_url)
     with psycopg.connect(database_url.replace("postgresql+psycopg", "postgresql", 1)) as connection:
@@ -163,13 +162,6 @@ def runtime_preflight(role: str) -> dict[str, object]:
 
 
 def child_command(role: str) -> list[str]:
-    if role == "synthetic_orchestrator":
-        return [
-            "sh",
-            "scripts/run_integral_e2e_rehearsal.sh",
-            need("INTEGRAL_RUN_ID"),
-            need("INTEGRAL_STORAGE_BYTES"),
-        ]
     if role == "receiver":
         return [
             sys.executable,
@@ -194,8 +186,6 @@ def main() -> int:
     mode = need("INTEGRAL_MODE")
     if role not in ALLOWED_ROLES or mode not in {"synthetic", "real_rehearsal"}:
         raise RuntimeError("runtime_role_or_mode_rejected")
-    if role == "synthetic_orchestrator" and mode != "synthetic":
-        raise RuntimeError("synthetic_orchestrator_mode_rejected")
     tombstone = Path(need("INTEGRAL_TOMBSTONE_PATH"))
     if not reserve_tombstone(tombstone):
         print("integral_entrypoint_restart_blocked=true", flush=True)

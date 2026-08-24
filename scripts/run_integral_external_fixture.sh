@@ -38,8 +38,7 @@ sender_sha="$(INTEGRAL_ENVELOPE_DATABASE_URL_INPUT="$sender_url" INTEGRAL_ENVELO
 receiver_sha="$(INTEGRAL_ENVELOPE_DATABASE_URL_INPUT="$receiver_url" INTEGRAL_ENVELOPE_TRANSFER_KEY_INPUT="$hmac_key" python -m scripts.build_integral_secret_envelope --role receiver --output "$receiver_envelope")"
 chmod 0444 "$sender_envelope" "$receiver_envelope"
 
-export INTEGRAL_RUNTIME_ROLE=synthetic_orchestrator INTEGRAL_MODE=synthetic
-export PORT=10010
+export INTEGRAL_MODE=synthetic
 export INTEGRAL_ISOLATED_REHEARSAL=true
 export RENDER_EMPTY_REHEARSAL=true REHEARSAL_DATABASE_HOST="$host"
 export INTEGRAL_RELEASE_SHA="${GITHUB_SHA:?release required}" INTEGRAL_RUN_ID="$run_id" INTEGRAL_STORAGE_BYTES="$storage_bytes"
@@ -75,6 +74,6 @@ manifest="$(python -m scripts.build_integral_config_manifest)"
 export INTEGRAL_CONFIG_MANIFEST="$manifest"
 export INTEGRAL_CONFIG_SHA256="$(printf %s "$manifest" | sha256sum | cut -d ' ' -f 1)"
 
-stage=entrypoint
-python -m scripts.integral_render_entrypoint
+stage=entrypoint_pair
+INTEGRAL_ENTRYPOINT_DELEGATED=1 sh scripts/run_integral_e2e_rehearsal.sh "$run_id" "$storage_bytes"
 stage=complete

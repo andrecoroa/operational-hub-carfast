@@ -42,7 +42,8 @@ def test_no_competing_render_entrypoint_or_local_postgres() -> None:
     assert "INTEGRAL_ENTRYPOINT_DELEGATED" in internal
     assert "external_postgres_required=true" in internal
     assert "build_integral_secret_envelope" not in internal
-    assert "scripts.integral_render_entrypoint" in fixture
+    assert "run_integral_e2e_rehearsal.sh" in fixture
+    assert internal.count("python -m scripts.integral_render_entrypoint") == 2
 
 
 def test_docker_runtime_pins_pg17_user_and_canonical_entrypoint() -> None:
@@ -81,7 +82,7 @@ def test_tombstone_blocks_before_preflight_or_child(
 ) -> None:
     tombstone = tmp_path / "one-shot.json"
     tombstone.write_text("{}")
-    monkeypatch.setenv("INTEGRAL_RUNTIME_ROLE", "synthetic_orchestrator")
+    monkeypatch.setenv("INTEGRAL_RUNTIME_ROLE", "receiver")
     monkeypatch.setenv("INTEGRAL_MODE", "synthetic")
     monkeypatch.setenv("INTEGRAL_TOMBSTONE_PATH", str(tombstone))
 

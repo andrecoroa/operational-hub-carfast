@@ -469,7 +469,9 @@ def send_storage_tcp(root: Path) -> int:
 
 def send_bundle_tcp(root: Path, on_bundle_accepted: object | None = None) -> int:
     """Send DB and storage concurrently; callback runs after their common bundle ACK."""
-    validate_integral_config("sender")
+    validate_integral_config(
+        "sender", consume_authorization=os.environ.get("INTEGRAL_MODE") == "real_rehearsal"
+    )
     accepted = {name: threading.Event() for name in ("database", "storage")}
     release = {name: threading.Event() for name in accepted}
     failures: list[BaseException] = []
@@ -787,7 +789,9 @@ def _reconcile_bundle(staging_root: Path | None) -> None:
 
 
 def serve_tcp_streams(stream_types: tuple[str, ...], staging_root: Path | None) -> int:
-    validate_integral_config("receiver")
+    validate_integral_config(
+        "receiver", consume_authorization=os.environ.get("INTEGRAL_MODE") == "real_rehearsal"
+    )
     key = transfer_key()
     source, destination = (
         required("INTEGRAL_SOURCE_SERVICE"),

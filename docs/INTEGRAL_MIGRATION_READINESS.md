@@ -1,5 +1,32 @@
 # Integral migration: final readiness and real-rehearsal gate
 
+## Contract v2 correction after the pre-Blue NO-GO
+
+The immutable `3a5aa61f` attempt stopped before any Blue role, read-only window or
+stream because schema v1 required `REAL_DATA_ALLOWED=false` unconditionally. Schema
+v2 removes that contradiction without weakening the default:
+
+- `mode=synthetic` requires `REAL_DATA_ALLOWED=false` and the exact sentinel
+  authorization; it cannot consume an authorization or carry real data;
+- `mode=real_rehearsal` requires `REAL_DATA_ALLOWED=true` plus a unique signed
+  authorization ID, timezone-aware issue/expiry timestamps and a lifetime no longer
+  than 15 minutes;
+- the signature binds mode, authorization ID, source/destination service and database
+  hosts, private destination host/port, release, bundle, cutoff and timestamps;
+- sender and receiver use the same closed manifest and fingerprint. Each atomically
+  consumes its role-scoped authorization marker before opening a process or socket;
+- integrations, email, jobs, webhooks and portals must remain false. Cutover and
+  production-deploy requests are closed false-only claims in both modes;
+- missing/unknown/expired/drifted/ambiguous claims, bad signatures and replay fail
+  closed. Non-consuming preflight precedes resource/role/read-only orchestration;
+  the actual sender/receiver entrypoints perform the one-use consume.
+
+Preventive tests cover every missing/divergent shared and role claim, unknown claims,
+fingerprint drift, synthetic-with-real-data, valid signed real rehearsal, absent and
+expired authorization, signature drift, replay, every external-effect switch and both
+cutover/production switches. Transfer ordering tests prove rejection precedes dump
+processes, listeners and staging writes.
+
 Report closed: 2026-08-24, Europe/Lisbon. Status: **synthetic readiness accepted; real rehearsal closed pending one explicit authorization**.
 
 ## Immutable release and evidence
@@ -37,6 +64,7 @@ The frozen contract binds one `bundle_id`, cut-off, release, source, private des
 | Confirmed cause | Proved correction | Preventive gate |
 |---|---|---|
 | Invalid phase enum | enforce exact `source-staging` | preflight fails before role/read-only |
+| v1 forced synthetic safety claim during a real gate | explicit mutually-exclusive v2 modes and signed short-lived real authorization | synthetic-real contradiction, expiry, signature, replay and effects/cutover adversarials |
 | HMAC/config drift after restart | immutable equal fingerprints | mismatch test before role/read-only |
 | Restore diagnostics discarded | sanitized stage/rc/duration/stderr-size/SHA | real negative restore every rehearsal |
 | Sender hang after negative consumer | cancel event, socket/pipe close, bounded joins/process termination | negative consumer, lost ACK and restore failure prove no hang/residue |

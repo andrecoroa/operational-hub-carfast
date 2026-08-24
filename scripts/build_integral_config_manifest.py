@@ -4,7 +4,14 @@ from __future__ import annotations
 
 import os
 
-from app.platform.integral_config import ROLE_ENV, SHARED_ENV, canonical_manifest
+from app.platform.integral_config import (
+    AUTHORIZATION_ENV,
+    ROLE_ENV,
+    SCHEMA_VERSION,
+    SHARED_ENV,
+    canonical_manifest,
+    sign_authorization,
+)
 
 
 def need(name: str) -> str:
@@ -24,16 +31,19 @@ def main() -> int:
         claim: need(f"INTEGRAL_MANIFEST_RECEIVER_{env_name.removeprefix('INTEGRAL_')}")
         for claim, env_name in ROLE_ENV["receiver"].items()
     }
-    print(
-        canonical_manifest(
-            {
-                "schema_version": 1,
-                "shared": shared,
-                "sender": sender,
-                "receiver": receiver,
-            }
+    authorization = {claim: need(env_name) for claim, env_name in AUTHORIZATION_ENV.items()}
+    manifest = {
+        "schema_version": SCHEMA_VERSION,
+        "shared": shared,
+        "authorization": {**authorization, "signature": "none"},
+        "sender": sender,
+        "receiver": receiver,
+    }
+    if shared["mode"] == "real_rehearsal":
+        manifest["authorization"]["signature"] = sign_authorization(
+            manifest, need("INTEGRAL_TRANSFER_KEY")
         )
-    )
+    print(canonical_manifest(manifest))
     return 0
 
 

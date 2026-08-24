@@ -3,6 +3,13 @@ set -eu
 
 test "${REAL_DATA_ALLOWED:-false}" = false
 test "${EXTERNAL_INTEGRATIONS_ENABLED:-false}" = false
+test "${INTEGRAL_MODE:-synthetic}" = synthetic
+test "${EMAIL_ENABLED:-false}" = false
+test "${JOBS_ENABLED:-false}" = false
+test "${WEBHOOKS_ENABLED:-false}" = false
+test "${PORTALS_ENABLED:-false}" = false
+test "${INTEGRAL_CUTOVER_REQUESTED:-false}" = false
+test "${INTEGRAL_PRODUCTION_DEPLOY_REQUESTED:-false}" = false
 
 export PGDATA=/var/data/carfast-render-postgres
 install -d -o postgres -g postgres "$PGDATA" /var/run/postgresql

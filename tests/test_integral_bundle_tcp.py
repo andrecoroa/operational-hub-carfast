@@ -18,7 +18,9 @@ def _port() -> int:
 
 
 def _environment(monkeypatch: pytest.MonkeyPatch, port: int, timeout: int = 5) -> None:
-    monkeypatch.setattr(transfer, "validate_integral_config", lambda _role: "test")
+    monkeypatch.setattr(
+        transfer, "validate_integral_config", lambda _role, **_kwargs: "test"
+    )
     values = {
         "INTEGRAL_TRANSFER_KEY": "k" * 32,
         "INTEGRAL_SOURCE_SERVICE": "srv-bundle-blue",
@@ -51,7 +53,9 @@ def test_sender_config_failure_precedes_threads_dump_and_stream(
     monkeypatch.setattr(
         transfer,
         "validate_integral_config",
-        lambda _role: (_ for _ in ()).throw(RuntimeError("missing closed claim")),
+        lambda _role, **_kwargs: (_ for _ in ()).throw(
+            RuntimeError("missing closed claim")
+        ),
     )
     monkeypatch.setattr(
         transfer.subprocess,
@@ -68,7 +72,9 @@ def test_receiver_config_failure_precedes_listener_and_staging(
     monkeypatch.setattr(
         transfer,
         "validate_integral_config",
-        lambda _role: (_ for _ in ()).throw(RuntimeError("receiver claim drift")),
+        lambda _role, **_kwargs: (_ for _ in ()).throw(
+            RuntimeError("receiver claim drift")
+        ),
     )
     monkeypatch.setattr(
         transfer.socket,

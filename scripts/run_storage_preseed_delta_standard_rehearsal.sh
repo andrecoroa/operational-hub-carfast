@@ -71,7 +71,7 @@ transfer_generated() {
   expected="$(digest_bytes "${bytes}")"
   generate_bytes "${bytes}" | age -r "${recipient}" |
     ssh "${ssh_options[@]}" "${USER}@127.0.0.1" \
-      "cat > '${work}/${label}.age.partial' && sync '${work}/${label}.age.partial' && mv '${work}/${label}.age.partial' '${work}/${label}.age'"
+      "umask 077; cat > '${work}/${label}.age.partial' && sync '${work}/${label}.age.partial' && mv '${work}/${label}.age.partial' '${work}/${label}.age'"
   actual="$(ssh "${ssh_options[@]}" "${USER}@127.0.0.1" \
     "age -d -i '${work}/age.identity' < '${work}/${label}.age' | sha256sum | cut -d' ' -f1")"
   test "${actual}" = "${expected}"
@@ -92,7 +92,7 @@ transfer_tar() {
     tar -C "${root}" -cf - .
   fi | age -r "${recipient}" |
     ssh "${ssh_options[@]}" "${USER}@127.0.0.1" \
-      "cat > '${work}/${label}.age.partial' && sync '${work}/${label}.age.partial' && mv '${work}/${label}.age.partial' '${work}/${label}.age' && sync '${work}'"
+      "umask 077; cat > '${work}/${label}.age.partial' && sync '${work}/${label}.age.partial' && mv '${work}/${label}.age.partial' '${work}/${label}.age' && sync '${work}'"
   record_artifact "${label}" "${label%%-*}"
 }
 
@@ -106,7 +106,7 @@ if ssh -p "${CARFAST_SSH_PORT}" -o BatchMode=yes -o StrictHostKeyChecking=yes \
   echo host_key_negative_failed >&2; exit 30
 fi
 generate_bytes 16777216 | age -r "${recipient}" |
-  ssh "${ssh_options[@]}" "${USER}@127.0.0.1" "cat > '${work}/resume.age.partial'"
+  ssh "${ssh_options[@]}" "${USER}@127.0.0.1" "umask 077; cat > '${work}/resume.age.partial'"
 ssh "${ssh_options[@]}" "${USER}@127.0.0.1" \
   "test -s '${work}/resume.age.partial' && test ! -e '${work}/resume.age'"
 transfer_generated resume 33554432
@@ -156,7 +156,7 @@ PY
     pg_dump -h 127.0.0.1 -U carfast -d "${database}" -Fc --no-owner --no-acl |
     age -r "${recipient}" |
     ssh "${ssh_options[@]}" "${USER}@127.0.0.1" \
-      "cat > '${work}/db-${run}.age.partial' && sync '${work}/db-${run}.age.partial' && mv '${work}/db-${run}.age.partial' '${work}/db-${run}.age'"
+      "umask 077; cat > '${work}/db-${run}.age.partial' && sync '${work}/db-${run}.age.partial' && mv '${work}/db-${run}.age.partial' '${work}/db-${run}.age'"
   record_artifact "db-${run}" db
   delta_bytes="$(python -c "import json; print(json.load(open('${work}/storage-${run}.json'))['delta_bytes'])")"
   transfer_tar "delta-${run}" "${work}/fixture-${run}/source" "${work}/delta-${run}.list"
@@ -189,7 +189,7 @@ with open(f"{root}/bundle-{run}.json", "w", encoding="utf-8") as handle:
     json.dump(payload, handle, sort_keys=True)
 PY
   ssh "${ssh_options[@]}" "${USER}@127.0.0.1" \
-    "cat > '${work}/bundle-receiver-${run}.json.partial' && sync '${work}/bundle-receiver-${run}.json.partial' && mv '${work}/bundle-receiver-${run}.json.partial' '${work}/bundle-receiver-${run}.json' && sync '${work}'" \
+    "umask 077; cat > '${work}/bundle-receiver-${run}.json.partial' && sync '${work}/bundle-receiver-${run}.json.partial' && mv '${work}/bundle-receiver-${run}.json.partial' '${work}/bundle-receiver-${run}.json' && sync '${work}'" \
     <"${work}/bundle-${run}.json"
   cutoff="$(python -c "import json; print(json.load(open('${work}/bundle-${run}.json'))['cutoff_utc'])")"
   release="$(git rev-parse HEAD)"

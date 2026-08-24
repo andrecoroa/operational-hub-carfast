@@ -214,6 +214,7 @@ def test_standard_rehearsal_materializes_before_ack_and_requires_digest():
     assert "<\"${work}/delta-${run}.age\"" not in source
     assert "CARFAST_POSTGRES_IMAGE must be an immutable RepoDigest" in source
     assert "@sha256:[0-9a-f]{64}" in source
+    assert source.count('"umask 077; cat >') >= 5
     receiver = Path("scripts/standard_bundle_ack.py").read_text()
     main = receiver[receiver.index("def main()") :]
     assert main.index("validate_manifest(") < main.index("args.ack.write_text(")

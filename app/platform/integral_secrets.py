@@ -52,6 +52,15 @@ def validate_database_url(value: str, expected_host: str, expected_database: str
         raise RuntimeError("integral secret database URL shape is invalid")
 
 
+def sqlalchemy_database_url(value: str) -> str:
+    """Pin SQLAlchemy to the installed psycopg v3 driver without changing the libpq URL."""
+    if value.startswith("postgresql://"):
+        return "postgresql+psycopg://" + value.removeprefix("postgresql://")
+    if value.startswith("postgres://"):
+        return "postgresql+psycopg://" + value.removeprefix("postgres://")
+    return value
+
+
 def load_secret_envelope(
     path: Path, *, expected_role: str, expected_host: str, expected_database: str
 ) -> tuple[dict[str, str], str]:
@@ -104,6 +113,6 @@ def bootstrap_integral_secrets(environment: MutableMapping[str, str] | None = No
     database_url = secrets.pop("STAGING_DATABASE_URL")
     if expected_role == "receiver":
         env["STAGING_DATABASE_URL"] = database_url
-    env["DATABASE_URL"] = database_url
+    env["DATABASE_URL"] = sqlalchemy_database_url(database_url)
     env.update(secrets)
     return fingerprint

@@ -7,7 +7,11 @@ from pathlib import Path
 
 import pytest
 
-from app.platform.integral_secrets import bootstrap_integral_secrets, load_secret_envelope
+from app.platform.integral_secrets import (
+    bootstrap_integral_secrets,
+    load_secret_envelope,
+    sqlalchemy_database_url,
+)
 
 
 def encoded(value: str) -> str:
@@ -47,8 +51,25 @@ def test_restricted_envelope_loads_and_bootstraps(tmp_path: Path) -> None:
     }
     assert bootstrap_integral_secrets(env) == hashlib.sha256(raw).hexdigest()
     assert env["STAGING_DATABASE_URL"].startswith("postgresql://")
-    assert env["DATABASE_URL"] == env["STAGING_DATABASE_URL"]
+    assert env["DATABASE_URL"].startswith("postgresql+psycopg://")
+    assert env["DATABASE_URL"].removeprefix("postgresql+psycopg://") == env[
+        "STAGING_DATABASE_URL"
+    ].removeprefix("postgresql://")
     assert env["INTEGRAL_TRANSFER_KEY"] == "k" * 32
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        ("postgresql://u:p@host/db", "postgresql+psycopg://u:p@host/db"),
+        ("postgres://u:p@host/db", "postgresql+psycopg://u:p@host/db"),
+        ("postgresql+psycopg://u:p@host/db", "postgresql+psycopg://u:p@host/db"),
+    ],
+)
+def test_sqlalchemy_url_is_pinned_to_installed_psycopg_driver(
+    value: str, expected: str
+) -> None:
+    assert sqlalchemy_database_url(value) == expected
 
 
 @pytest.mark.parametrize(

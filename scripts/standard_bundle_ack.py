@@ -52,11 +52,18 @@ def canonical(value: object) -> bytes:
 
 
 def _open_regular(path: Path) -> int:
-    parent = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
     try:
-        descriptor = os.open(path.name, os.O_RDONLY | os.O_NOFOLLOW, dir_fd=parent)
-    finally:
-        os.close(parent)
+        parent = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        try:
+            descriptor = os.open(
+                path.name,
+                os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW,
+                dir_fd=parent,
+            )
+        finally:
+            os.close(parent)
+    except OSError:
+        raise SystemExit("invalid_regular_input") from None
     metadata = os.fstat(descriptor)
     if (
         not stat.S_ISREG(metadata.st_mode)

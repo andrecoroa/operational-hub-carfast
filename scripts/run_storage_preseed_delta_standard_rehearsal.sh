@@ -5,7 +5,11 @@ set -euo pipefail
 : "${CARFAST_REHEARSAL_RUNS:=3}"
 : "${CARFAST_FINAL_BUDGET_SECONDS:=900}"
 : "${CARFAST_SSH_PORT:=22222}"
-: "${CARFAST_POSTGRES_IMAGE:=postgres:17-bookworm}"
+: "${CARFAST_POSTGRES_IMAGE:?CARFAST_POSTGRES_IMAGE must be an immutable RepoDigest}"
+
+[[ "${CARFAST_POSTGRES_IMAGE}" =~ ^[^[:space:]@]+@sha256:[0-9a-f]{64}$ ]] || {
+  echo postgres_image_not_digest >&2; exit 19;
+}
 
 for command in age age-keygen ssh python docker sha256sum; do
   command -v "${command}" >/dev/null || { echo "missing_command=${command}" >&2; exit 20; }

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import hashlib
+import subprocess
+import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -89,3 +91,13 @@ def test_standard_rehearsal_uses_nul_verbatim_tar_file_list():
     source = Path("scripts/run_storage_preseed_delta_standard_rehearsal.sh").read_text()
     assert "--null --verbatim-files-from --files-from=" in source
     assert 'handle.write(path.encode("utf-8") + b"\\0")' in source
+
+
+def test_receiver_validator_imports_with_stdlib_only():
+    result = subprocess.run(
+        [sys.executable, "-S", "-c", "import scripts.standard_bundle_ack"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr

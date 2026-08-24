@@ -12,15 +12,10 @@ import stat
 import subprocess
 import tarfile
 import time
+import unicodedata
+from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
-
-from app.platform.integral_reconciliation import IntegralReconciliationError, StorageEvidence
-from app.platform.storage_preseed_delta import (
-    calculate_delta,
-    storage_manifest_digest,
-    validate_storage_manifest,
-)
 
 SHAPE = {
     "bundle_id", "cutoff_utc", "source_release", "target_release",
@@ -37,6 +32,19 @@ ROLES = {"preseed", "db", "delta"}
 HEX64 = re.compile(r"[0-9a-f]{64}\Z")
 RELEASE = re.compile(r"[0-9a-f]{40}\Z")
 BUNDLE = re.compile(r"synthetic-([1-9][0-9]*)\Z")
+
+
+@dataclass(frozen=True, slots=True)
+class StorageEvidence:
+    path: str
+    size: int
+    sha256: str
+
+
+@dataclass(frozen=True, slots=True)
+class StorageDelta:
+    copy: tuple[StorageEvidence, ...]
+    remove: tuple[str, ...]
 
 
 def canonical(value: object) -> bytes:
@@ -71,6 +79,49 @@ def _sha(value: object, error: str) -> str:
     return value
 
 
+def _validate_objects(items: tuple[StorageEvidence, ...]) -> None:
+    previous = ""
+    folded: dict[str, str] = {}
+    for item in items:
+        path = PurePosixPath(item.path)
+        if (
+            not item.path
+            or path.is_absolute()
+            or ".." in path.parts
+            or item.path != path.as_posix()
+            or unicodedata.normalize("NFC", item.path) != item.path
+            or any(ord(character) < 32 or ord(character) == 127 for character in item.path)
+            or item.path <= previous
+            or type(item.size) is not int
+            or item.size < 0
+            or HEX64.fullmatch(item.sha256) is None
+        ):
+            raise ValueError("invalid storage object")
+        casefolded = item.path.casefold()
+        if casefolded in folded and folded[casefolded] != item.path:
+            raise ValueError("case-colliding storage object")
+        folded[casefolded] = item.path
+        previous = item.path
+
+
+def _storage_manifest_digest(items: tuple[StorageEvidence, ...]) -> str:
+    _validate_objects(items)
+    return hashlib.sha256(canonical([asdict(item) for item in items])).hexdigest()
+
+
+def _calculate_delta(
+    preseed: tuple[StorageEvidence, ...], final: tuple[StorageEvidence, ...]
+) -> StorageDelta:
+    _validate_objects(preseed)
+    _validate_objects(final)
+    before = {item.path: item for item in preseed}
+    after = {item.path: item for item in final}
+    return StorageDelta(
+        copy=tuple(after[path] for path in sorted(after) if before.get(path) != after[path]),
+        remove=tuple(sorted(set(before) - set(after))),
+    )
+
+
 def _objects(value: object, error: str) -> tuple[StorageEvidence, ...]:
     if not isinstance(value, list) or any(not isinstance(item, dict) for item in value):
         raise SystemExit(error)
@@ -78,8 +129,8 @@ def _objects(value: object, error: str) -> tuple[StorageEvidence, ...]:
         raise SystemExit(error)
     try:
         result = tuple(StorageEvidence(**item) for item in value)
-        validate_storage_manifest(result)
-    except (IntegralReconciliationError, TypeError):
+        _validate_objects(result)
+    except (TypeError, ValueError):
         raise SystemExit(error) from None
     return result
 
@@ -167,13 +218,13 @@ def validate_manifest(manifest: dict, artifact_root: Path, identity: Path) -> No
 
     preseed = _objects(manifest["preseed_objects"], "invalid_preseed_manifest")
     final = _objects(manifest["final_objects"], "invalid_final_manifest")
-    if storage_manifest_digest(preseed) != _sha(
+    if _storage_manifest_digest(preseed) != _sha(
         manifest["preseed_manifest_sha256"], "invalid_preseed_digest"
-    ) or storage_manifest_digest(final) != _sha(
+    ) or _storage_manifest_digest(final) != _sha(
         manifest["final_manifest_sha256"], "invalid_final_digest"
     ):
         raise SystemExit("storage_manifest_digest_mismatch")
-    delta = calculate_delta(preseed, final)
+    delta = _calculate_delta(preseed, final)
     deletions = manifest["deletion_paths"]
     if (
         not isinstance(deletions, list)

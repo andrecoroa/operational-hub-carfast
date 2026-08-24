@@ -326,20 +326,20 @@ def main() -> int:
         cleanup_errors = [result] if result.startswith("memory-") else []
         try:
             write_tombstone(tombstone, result)
-        except Exception as exc:
-            cleanup_errors.append(type(exc).__name__)
+        except Exception:
+            cleanup_errors.append("tombstone")
         try:
             server.shutdown()
-        except Exception as exc:
-            cleanup_errors.append(type(exc).__name__)
+        except Exception:
+            cleanup_errors.append("health")
         try:
             spool_root = Path(need("INTEGRAL_SPOOL_ROOT"))
             for pattern in ("carfast-integral-*.spool", "integral-private-secrets-*/*"):
                 for item in spool_root.glob(pattern):
                     if item.is_file():
                         item.unlink(missing_ok=True)
-        except Exception as exc:
-            cleanup_errors.append(type(exc).__name__)
+        except Exception:
+            cleanup_errors.append("spool")
         try:
             for name in ("DATABASE_URL", "STAGING_DATABASE_URL", "INTEGRAL_TRANSFER_KEY"):
                 os.environ.pop(name, None)
@@ -347,8 +347,8 @@ def main() -> int:
                 os.environ.get("INTEGRAL_PRIVATE_SECRET_ROOT", "/dev/shm/carfast-integral")
             )
             shutil.rmtree(private_root, ignore_errors=True)
-        except Exception as exc:
-            cleanup_errors.append(type(exc).__name__)
+        except Exception:
+            cleanup_errors.append("secrets")
         for signum, handler in previous_handlers.items():
             signal.signal(signum, handler)
         if cleanup_errors:
@@ -357,6 +357,10 @@ def main() -> int:
             except Exception:
                 pass
             print(f"integral_cleanup_failures={len(cleanup_errors)}", file=sys.stderr)
+            print(
+                "integral_cleanup_stages=" + ",".join(sorted(cleanup_errors)),
+                file=sys.stderr,
+            )
             raise RuntimeError("cleanup_failed")
 
 

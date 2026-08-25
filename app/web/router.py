@@ -335,8 +335,9 @@ from app.services.workshop_report_extractor import (
 )
 from app.services.workshop_templates import STELLANTIS_REPORTS
 from app.web.clean_admin import ADMIN_NAV, clean_admin_router, clean_admin_user_has
+from app.web.template_runtime import configure_visual_template_runtime
 
-templates = Jinja2Templates(directory="app/templates")
+templates = configure_visual_template_runtime(Jinja2Templates(directory="app/templates"))
 templates.env.filters["lisbon_datetime"] = local_datetime
 web_router = APIRouter(include_in_schema=False)
 INVOICE_OCR_MANIFEST_SCHEMA = "carfast.invoice-ocr-manifest.v1"

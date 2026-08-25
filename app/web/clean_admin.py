@@ -94,7 +94,9 @@ from app.services.users import create_user
 from app.services.work_classification import user_work_scope_allows
 
 clean_admin_router = APIRouter()
-templates = Jinja2Templates(directory="app/templates")
+from app.web.template_runtime import configure_visual_template_runtime
+
+templates = configure_visual_template_runtime(Jinja2Templates(directory="app/templates"))
 templates.env.filters["lisbon_datetime"] = local_datetime
 
 CODE_PATTERN = re.compile(r"^[a-z][a-z0-9_.-]{1,79}$")

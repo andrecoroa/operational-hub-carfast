@@ -86,7 +86,9 @@ from app.services.work_classification import (
 )
 
 email_router = APIRouter()
-templates = Jinja2Templates(directory="app/templates")
+from app.web.template_runtime import configure_visual_template_runtime
+
+templates = configure_visual_template_runtime(Jinja2Templates(directory="app/templates"))
 templates.env.filters["lisbon_datetime"] = local_datetime
 
 

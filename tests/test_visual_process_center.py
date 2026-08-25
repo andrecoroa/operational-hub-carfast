@@ -20,7 +20,7 @@ def test_process_center_is_an_operational_workbench_not_a_legacy_catalog() -> No
         'role="region"',
         'tabindex="0"',
         "Tarefas de gestão",
-        "Abrir gestão completa",
+        "Criar processo",
     ):
         assert contract in source
     assert "Base limpa da nova experiência" not in source

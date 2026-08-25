@@ -29307,8 +29307,16 @@ def management_center_denied(request: Request, write: bool = False) -> RedirectR
     if user_id:
         with SessionLocal() as db:
             roles = task_role_codes(db, user_id)
+            user = db.get(User, user_id)
+            permission_codes = get_user_permission_codes(db, user) if user else set()
         if roles and roles.issubset({"admin", "user_admin", "functional_admin"}):
             return RedirectResponse("/v2-clean?error=forbidden", status_code=303)
+        if not request.url.path.startswith("/v2-clean/") and not (
+            "manager" in roles or "tasks.management.close" in permission_codes
+        ):
+            return RedirectResponse(
+                "/v2-clean/processes?error=forbidden", status_code=303
+            )
     permissions = (
         (
             "management_center.write",
@@ -31005,7 +31013,7 @@ def management_center_detail(
             .order_by(ManagementHistory.changed_at.desc(), ManagementHistory.id.desc())
             .limit(80)
         ).all()
-        other_processes = db.scalars(
+        other_process_statement = (
             select(ManagementProcess)
             .where(
                 ManagementProcess.process_type_id == process.process_type_id,
@@ -31013,7 +31021,16 @@ def management_center_detail(
             )
             .order_by(ManagementProcess.internal_reference.desc())
             .limit(120)
-        ).all()
+        )
+        other_process_scope = management_process_scope_filter(
+            db,
+            user_id=detail_user_id,
+            role_codes=detail_role_codes,
+            permission_codes=detail_permission_codes,
+        )
+        if other_process_scope is not None:
+            other_process_statement = other_process_statement.where(other_process_scope)
+        other_processes = db.scalars(other_process_statement).all()
         return templates.TemplateResponse(
             request,
             "management_process_detail.html",

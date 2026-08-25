@@ -127,6 +127,7 @@ def test_executor_can_filter_open_create_and_return_to_the_same_queue(
     assert "Criar processo" in response.text
     assert "/v2-clean/tasks?workspace=management&amp;create=1" in response.text
     assert "Executor — pode criar e executar no seu âmbito." in response.text
+    assert "Abrir gestão completa" not in response.text
     assert 'value="AA-00-AA"' in response.text
     token = html.unescape(re.search(r"return_context=([^\"]+)", response.text).group(1))
 
@@ -212,6 +213,12 @@ def test_team_and_operational_coordinators_receive_the_exact_scope_label(
     assert "SIN-LISBOA" in team_page.text
     assert "SIN-PORTO" not in team_page.text
     assert "Criar processo" not in team_page.text
+    assert "Abrir gestão completa" not in team_page.text
+    legacy_denied = client.get("/management-center", follow_redirects=False)
+    assert legacy_denied.headers["location"] == "/v2-clean"
+    scoped_detail = client.get(f"/v2-clean/processes/{local_process.id}")
+    assert scoped_detail.status_code == 200
+    assert "SIN-PORTO" not in scoped_detail.text
 
     client.get("/logout")
     _login(client, "operational.coordinator@carfast.local")
@@ -220,6 +227,7 @@ def test_team_and_operational_coordinators_receive_the_exact_scope_label(
     assert "acompanha a operação autorizada" in operational_page.text
     assert "SIN-LISBOA" in operational_page.text
     assert "SIN-PORTO" in operational_page.text
+    assert "Abrir gestão completa" not in operational_page.text
     assert "Criar processo" not in operational_page.text
 
 

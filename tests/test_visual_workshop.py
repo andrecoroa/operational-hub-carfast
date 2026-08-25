@@ -95,3 +95,4 @@ def test_workshop_summary_preference_is_server_side_and_user_scoped():
     assert 'code = f"workshop_summary_{user_id}"' in router
     assert 'SettingsCatalog.code == "user_ui_preferences"' in router
     assert '"workshop_summary_open": workshop_summary_open' in router
+    assert '"foundation_ui_enabled": settings.visual_foundation_enabled' in router

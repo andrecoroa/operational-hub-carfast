@@ -43,6 +43,7 @@ def test_visual_tokens_and_responsive_contract_are_present() -> None:
         '.clean-shell .sidebar-footer { grid-row: 3; align-self: end;',
         'grid-auto-rows: 48px;',
         '.visual-nav-open .clean-shell .sidebar-evolution-create,.visual-nav-open .clean-shell .sidebar a.sidebar-legacy-link { width: 48px;',
+        '.visual-menu-button { display: inline-grid; width: 48px; min-width: 48px; height: 48px;',
     ):
         assert contract in css
 

@@ -127,7 +127,7 @@ dialog { border: 1px solid var(--cf-gray-200); border-radius: 12px; box-shadow: 
   .clean-shell .sidebar-evolution-create,.clean-shell .sidebar a.sidebar-legacy-link { width: 42px; min-width: 42px; min-height: 42px; height: 42px; padding-inline: 0; }
   .visual-mobile-brand { display: flex; align-items: center; color: var(--cf-navy-950); }
   .visual-mobile-brand strong { display: none; }
-  .visual-menu-button { display: inline-grid; place-items: center; color: var(--cf-navy-950); background: transparent; border: 1px solid var(--cf-gray-200); }
+  .visual-menu-button { display: inline-grid; width: 48px; min-width: 48px; height: 48px; place-items: center; color: var(--cf-navy-950); background: transparent; border: 1px solid var(--cf-gray-200); }
   .visual-nav-open { overflow: hidden; }
   .visual-nav-open .clean-shell .sidebar { z-index: 60; width: min(320px,86vw); padding-inline: 12px; }
   .visual-nav-open .clean-shell .sidebar h1,.visual-nav-open .clean-shell .sidebar nav,.visual-nav-open .clean-shell .sidebar-status,.visual-nav-open .clean-shell .sidebar-action-label { display: initial; }

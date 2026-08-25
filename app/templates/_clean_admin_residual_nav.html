@@ -1,0 +1,31 @@
+{% set residual_admin_routes = [
+  ('operations', 'Operações', '/v2-clean/admin/operations'),
+  ('organization', 'Organização', '/v2-clean/admin/organization'),
+  ('settings', 'Parametrizações', '/v2-clean/admin/settings'),
+  ('evolution', 'Evolução', '/v2-clean/admin/evolution'),
+  ('audit', 'Auditoria', '/v2-clean/admin/audit'),
+  ('integrations', 'Integrações', '/v2-clean/admin/integrations'),
+  ('security', 'Segurança', '/v2-clean/admin/security'),
+  ('workshop_models', 'Modelos Oficina', '/v2-clean/admin/workshop-models')
+] %}
+<section class="clean-admin-residual-shell clean-card-wide" aria-label="Administração operacional">
+  <div class="clean-admin-residual-heading">
+    <div>
+      <p class="eyebrow">Administração operacional</p>
+      {% if admin_section == 'operations' %}<h1>Operações e Service Desk</h1><p>Entradas operacionais, filas e regras, sem duplicar o trabalho diário.</p>{% endif %}
+      {% if admin_section == 'organization' %}<h1>Organização e equipas</h1><p>Áreas, equipas e âmbitos que sustentam perfis e responsabilidades.</p>{% endif %}
+      {% if admin_section == 'settings' %}<h1>Parametrizações</h1><p>Catálogos e valores versionados usados pelos módulos ativos.</p>{% endif %}
+      {% if admin_section == 'evolution' %}<h1>Evolução da aplicação</h1><p>Pedidos, decisões e histórico com revisão humana antes da execução.</p>{% endif %}
+      {% if admin_section == 'audit' %}<h1>Auditoria</h1><p>Rastreabilidade imutável de alterações administrativas e operacionais.</p>{% endif %}
+      {% if admin_section == 'integrations' %}<h1>Integrações</h1><p>Estado técnico sem exposição de credenciais; efeitos externos permanecem controlados.</p>{% endif %}
+      {% if admin_section == 'security' %}<h1>Segurança e acessos</h1><p>Revisão de privilégios, perfis e âmbitos com menor privilégio.</p>{% endif %}
+      {% if admin_section == 'workshop_models' %}<h1>Modelos da Oficina</h1><p>Versões aplicáveis apenas a novos processos e publicação explicitamente confirmada.</p>{% endif %}
+    </div>
+    <a class="ui-button ui-button--secondary" href="/v2-clean/admin/setup">Rever percurso inicial</a>
+  </div>
+  <nav class="clean-admin-residual-nav" aria-label="Conteúdos residuais da Administração">
+    {% for code, label, href in residual_admin_routes %}
+      <a href="{{ href }}"{% if admin_section == code %} aria-current="page" class="is-active"{% endif %}>{{ label }}</a>
+    {% endfor %}
+  </nav>
+</section>

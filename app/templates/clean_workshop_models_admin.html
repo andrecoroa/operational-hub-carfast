@@ -3,7 +3,8 @@
 <div class="app-shell clean-shell">
   {% set active_menu = "clean_admin" %}
   {% include "_sidebar.html" %}
-  <main class="content clean-content clean-admin-content">
+  <main class="content clean-content clean-admin-content ui-foundation">
+    {% set visual_section = "Sistema" %}{% set visual_page = "Administração" %}{% include "_visual_topbar.html" %}
     <header class="clean-header-shell clean-card-wide clean-admin-header">
       <div class="clean-header-topbar">
         <div>
@@ -19,6 +20,8 @@
         {% endfor %}
       </nav>
     </header>
+
+    {% include "_clean_admin_residual_nav.html" %}
 
     <div class="clean-admin-section-heading clean-card-wide">
       <div><p class="eyebrow">Operação / Oficina</p><h3>Modelos da Oficina</h3><p>Configuração versionada para novos processos, sem alterar processos já iniciados.</p></div>
@@ -119,6 +122,8 @@
               </ul>
             </details>
           </article>
+        {% else %}
+          <article class="clean-panel clean-admin-empty-state" role="status"><strong>Sem modelos de Oficina</strong><span>Os modelos versionados surgem aqui após o bootstrap de configuração.</span></article>
         {% endfor %}
       </div>
     </section>
@@ -173,6 +178,8 @@
                   </details>
                 </td>
               </tr>
+            {% else %}
+              <tr><td colspan="7"><div class="clean-admin-empty-state" role="status"><strong>Sem diagnósticos configurados</strong><span>O catálogo está vazio; nenhuma sugestão será criada automaticamente.</span></div></td></tr>
             {% endfor %}
           </tbody>
         </table>

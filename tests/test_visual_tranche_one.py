@@ -11,8 +11,8 @@ def test_visual_stylesheet_is_feature_gated() -> None:
     base = (TEMPLATES / "base.html").read_text(encoding="utf-8")
 
     assert "{% if foundation_ui_enabled %}" in base
-    assert "/static/css/visual-v2.css?v=20260825-service-desk4" in base
-    assert "/static/js/visual-v2.js?v=20260825-service-desk4" in base
+    assert "/static/css/visual-v2.css?v=20260825-email1" in base
+    assert "/static/js/visual-v2.js?v=20260825-email1" in base
 
 
 def test_priority_surfaces_share_the_canonical_topbar() -> None:
@@ -21,6 +21,7 @@ def test_priority_surfaces_share_the_canonical_topbar() -> None:
         "clean_task_center.html",
         "clean_fleet_detail.html",
         "clean_admin.html",
+        "clean_email_inbox.html",
     ):
         source = (TEMPLATES / name).read_text(encoding="utf-8")
         assert '{% include "_visual_topbar.html" %}' in source, name

@@ -2,42 +2,45 @@
 {% block body %}
 <div class="app-shell clean-shell">
   {% set active_menu="email" %}{% include "_sidebar.html" %}
-  <main class="content clean-content email-page{% if foundation_ui_enabled %} ui-foundation ui-page-shell{% endif %}">
-    <header class="email-header{% if foundation_ui_enabled %} ui-page-header{% endif %}"><div><p class="eyebrow">Comunicação</p><h1>Email</h1><p>Conversas recebidas e respostas preparadas por caixa.</p></div>{% if compose_channels %}<button type="button" data-email-compose-open>Novo email</button>{% endif %}</header>
+  <main class="content clean-content email-page{% if foundation_ui_enabled %} ui-foundation ui-page-shell visual-email-center{% endif %}">
+    {% set visual_section = "Comunicação" %}{% set visual_page = "Email" %}{% include "_visual_topbar.html" %}
+    <header class="email-header{% if foundation_ui_enabled %} ui-page-header visual-email-heading{% endif %}"><div><p class="eyebrow">Comunicação</p><h1>Email</h1><p>Receber, triar e responder a todas as caixas num único centro operacional.</p></div>{% if compose_channels %}<button type="button" data-email-compose-open>Novo email</button>{% endif %}</header>
     {% if request.query_params.get('error') == 'invalid_recipient' %}<div class="clean-alert-warning">Indica um endereço de email válido.</div>{% elif request.query_params.get('error') == 'missing_message' %}<div class="clean-alert-warning">Indica o assunto e a mensagem.</div>{% elif request.query_params.get('error') == 'inactive_supplier' %}<div class="clean-alert-warning">O fornecedor está inativo para novas utilizações; o histórico permanece disponível.</div>{% endif %}
-    <nav class="email-channel-tabs" aria-label="Caixas de email">
+    {% if foundation_ui_enabled %}<section class="visual-email-overview" aria-label="Resumo do Email"><header><div><p class="visual-kicker">Caixas e prioridades</p><h2>Visão operacional</h2></div><a class="button-link secondary-link" href="/v2-clean/admin/work-classification?view=channels">Parametrizar caixas</a></header>{% endif %}
+    <nav class="email-channel-tabs{% if foundation_ui_enabled %} visual-email-mailboxes{% endif %}" aria-label="Caixas de email">
       <a href="/v2-clean/email?status={{ filters.status }}{% if filters.q %}&q={{ filters.q|urlencode }}{% endif %}" class="{% if not filters.channel %}active{% endif %}">Todas as caixas</a>
       {% for item in channels %}<a href="/v2-clean/email?channel={{ item.code }}&status={{ filters.status }}{% if filters.q %}&q={{ filters.q|urlencode }}{% endif %}" class="{% if filters.channel == item.code %}active{% endif %}">{{ item.name }}</a>{% endfor %}
     </nav>
-    <nav class="email-operational-summary" aria-label="Indicadores operacionais">
-      <a href="?status=triage"><strong>{{ operational_counters.triage }}</strong><span>Por triar</span></a>
-      <a href="?status=all&responsible=mine"><strong>{{ operational_counters.mine }}</strong><span>Atribuídos a mim</span></a>
-      <a href="?status=all&responsible=unassigned"><strong>{{ operational_counters.unassigned }}</strong><span>Sem executor</span></a>
-      <a href="?status=all&due=overdue"><strong>{{ operational_counters.overdue }}</strong><span>SLA ultrapassado</span></a>
-      <a href="?status=waiting_reply"><strong>{{ operational_counters.waiting }}</strong><span>A aguardar resposta</span></a>
+    <nav class="email-operational-summary{% if foundation_ui_enabled %} visual-email-metrics{% endif %}" aria-label="Indicadores operacionais">
+      <a href="?status=triage">{% if foundation_ui_enabled %}<i aria-hidden="true">IN</i>{% endif %}<strong>{{ operational_counters.triage }}</strong><span>Por triar</span><small>entrada</small></a>
+      <a href="?status=all&responsible=mine">{% if foundation_ui_enabled %}<i aria-hidden="true">EU</i>{% endif %}<strong>{{ operational_counters.mine }}</strong><span>Atribuídos a mim</span><small>trabalho</small></a>
+      <a href="?status=all&responsible=unassigned">{% if foundation_ui_enabled %}<i aria-hidden="true">—</i>{% endif %}<strong>{{ operational_counters.unassigned }}</strong><span>Sem executor</span><small>atribuir</small></a>
+      <a href="?status=all&due=overdue">{% if foundation_ui_enabled %}<i class="is-danger" aria-hidden="true">!</i>{% endif %}<strong>{{ operational_counters.overdue }}</strong><span>SLA ultrapassado</span><small>prioridade</small></a>
+      <a href="?status=waiting_reply">{% if foundation_ui_enabled %}<i aria-hidden="true">↗</i>{% endif %}<strong>{{ operational_counters.waiting }}</strong><span>A aguardar resposta</span><small>seguimento</small></a>
     </nav>
-    <nav class="email-summary" aria-label="Estados das conversas">
+    <nav class="email-summary{% if foundation_ui_enabled %} visual-email-statuses{% endif %}" aria-label="Estados das conversas">
       <a href="?status=all{% if filters.channel %}&channel={{ filters.channel }}{% endif %}{% if filters.q %}&q={{ filters.q|urlencode }}{% endif %}" class="email-status-tile {% if filters.status == 'all' %}active{% endif %}"><strong>{{ total_count }}</strong><span>Todos</span></a>
       {% for code, label in status_labels.items() %}<a href="?status={{ code }}{% if filters.channel %}&channel={{ filters.channel }}{% endif %}{% if filters.q %}&q={{ filters.q|urlencode }}{% endif %}" class="email-status-tile {% if filters.status == code %}active{% endif %}"><strong>{{ counts.get(code, 0) }}</strong><span>{{ label }}</span></a>{% endfor %}
-    </nav>
-    <form class="email-filters" method="get">
+    </nav>{% if foundation_ui_enabled %}</section>{% endif %}
+    {% if foundation_ui_enabled %}<section class="visual-email-workbench"><header class="visual-email-workbench-header"><div><p class="visual-kicker">Inbox unificada</p><h2>Conversas</h2><p>{{ total_count }} resultados nos filtros atuais.</p></div><span class="visual-count-badge">{{ total_count }}</span></header>{% endif %}
+    <form class="email-filters{% if foundation_ui_enabled %} visual-email-filters{% endif %}" method="get">
       <label class="email-filter-search">Pesquisar<input name="q" value="{{ filters.q }}" placeholder="ID, assunto, remetente ou conteúdo"></label>
       <label>Caixa<select name="channel"><option value="">Todas as caixas</option>{% for item in channels %}<option value="{{ item.code }}" {% if filters.channel == item.code %}selected{% endif %}>{{ item.name }}</option>{% endfor %}</select></label>
       <label>Estado<select name="status"><option value="all" {% if filters.status == 'all' %}selected{% endif %}>Todos os estados</option>{% for code, label in status_labels.items() %}<option value="{{ code }}" {% if filters.status == code %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
       <label>Responsável<select name="responsible"><option value="">Todos</option><option value="mine" {% if filters.responsible == 'mine' %}selected{% endif %}>Atribuídos a mim</option><option value="unassigned" {% if filters.responsible == 'unassigned' %}selected{% endif %}>Sem executor</option>{% for user in filter_users %}<option value="{{ user.id }}" {% if filters.responsible == user.id|string %}selected{% endif %}>{{ user.name }}</option>{% endfor %}{% for team in filter_teams %}<option value="team:{{ team.id }}" {% if filters.responsible == 'team:' ~ team.id %}selected{% endif %}>{{ team.name }} · equipa</option>{% endfor %}</select></label>
       <label>Prazo<select name="due"><option value="">Todos</option><option value="overdue" {% if filters.due == 'overdue' %}selected{% endif %}>SLA ultrapassado</option><option value="today" {% if filters.due == 'today' %}selected{% endif %}>Termina hoje</option><option value="no_sla" {% if filters.due == 'no_sla' %}selected{% endif %}>Sem SLA</option></select></label>
-      <button type="submit">Filtrar</button>
+      <button type="submit">Aplicar filtros</button>
       <a class="button-link secondary-link" href="/v2-clean/email">Limpar</a>
     </form>
-    <section class="email-table-wrap{% if foundation_ui_enabled %} ui-table-container{% endif %}" tabindex="0" role="region" aria-label="Conversas de email"><table class="email-table email-work-table"><thead><tr><th>ID / última mensagem</th><th>Conversa</th><th>Caixa / entrada original</th><th>Responsável funcional</th><th>Executor / equipa</th><th>Prazo</th><th>Estado</th><th></th></tr></thead><tbody>
+    <section class="email-table-wrap{% if foundation_ui_enabled %} ui-table-container visual-email-table-wrap{% endif %}" tabindex="0" role="region" aria-label="Conversas de email"><table class="email-table email-work-table{% if foundation_ui_enabled %} visual-email-table{% endif %}"><thead><tr><th>ID / última mensagem</th><th>Conversa</th><th>Caixa / entrada original</th><th>Responsável funcional</th><th>Executor / equipa</th><th>Prazo</th><th>Estado</th><th></th></tr></thead><tbody>
       {% for row in rows %}{% set thread = row.thread %}{% set channel = row.channel %}<tr class="email-inbox-row" data-email-preview="{{ thread.id }}" tabindex="0"><td><strong>{{ row.reference }}</strong><small>{{ (thread.last_message_at|lisbon_datetime).strftime('%d/%m/%Y %H:%M') if thread.last_message_at else '-' }}</small></td><td><strong>{{ thread.subject }}</strong><small>{{ thread.sender_name or thread.sender_email }}{% if thread.sender_name and thread.sender_email %} · {{ thread.sender_email }}{% endif %}</small></td><td><strong>{{ channel.name }}</strong><small>Recebido originalmente em: {{ thread.original_recipient_address or 'não identificado' }}</small></td><td><strong>{{ row.functional_owner.name if row.functional_owner else 'Por definir' }}</strong>{% if thread.administrative_review_required %}<small class="clean-status-pill is-inactive">Revisão administrativa</small>{% endif %}</td><td><strong>{{ row.assignment_label }}</strong></td><td>{% if thread.resolution_due_at %}<span class="email-due email-due-{{ row.sla.resolution }}">Resolução {{ (thread.resolution_due_at|lisbon_datetime).strftime('%d/%m/%Y %H:%M') }}</span>{% else %}<span class="email-muted">Resolução sem SLA</span>{% endif %}{% if thread.first_response_due_at %}<small class="clean-sla-state is-{{ row.sla.first_response }}">1.ª resposta {{ (thread.first_response_due_at|lisbon_datetime).strftime('%d/%m/%Y %H:%M') }}</small>{% endif %}</td><td><span class="email-badge status-{{ thread.status }}">{{ status_labels.get(thread.status, thread.status) }}</span></td><td><button type="button" class="button-link" data-email-preview-trigger="{{ thread.id }}">Abrir</button></td></tr>
       {% else %}<tr><td colspan="8" class="email-empty">Sem conversas nestes filtros.</td></tr>{% endfor %}
-    </tbody></table></section>
+    </tbody></table></section>{% if foundation_ui_enabled %}</section>{% endif %}
   </main>
 </div>
-<dialog class="email-preview-dialog" id="email-preview-dialog"><div class="email-preview-loading">A abrir conversa…</div></dialog>
+<dialog class="email-preview-dialog{% if foundation_ui_enabled %} visual-email-preview{% endif %}" id="email-preview-dialog"><div class="email-preview-loading">A abrir conversa…</div></dialog>
 {% if compose_channels %}
-<dialog class="email-compose-dialog" id="email-compose-dialog">
+<dialog class="email-compose-dialog{% if foundation_ui_enabled %} visual-email-compose{% endif %}" id="email-compose-dialog">
   <form method="post" action="/v2-clean/email/new" class="email-new-message-form">
     <header><div><p class="eyebrow">Nova mensagem</p><h2>Novo email</h2></div><button type="button" class="secondary" data-email-compose-close>Fechar</button></header>
     <label>De / Responder como

@@ -1258,7 +1258,7 @@
       historyPreviewTrigger = button;
       historyPreviewModal.hidden = false;
       document.body.classList.add("clean-modal-open");
-      historyPreviewModal.querySelector("[data-history-preview-close]")?.focus();
+      historyPreviewModal.querySelector("button[data-history-preview-close]")?.focus();
     });
   });
   document.querySelectorAll("[data-history-preview-close]").forEach((button) => {

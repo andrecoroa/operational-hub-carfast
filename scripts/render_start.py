@@ -6,6 +6,11 @@ import time
 from pathlib import Path
 from urllib.parse import urlparse, urlunparse
 
+try:
+    from scripts.migration_window_recovery import recover_migration_window
+except ModuleNotFoundError:  # direct `python scripts/render_start.py` on Render
+    from migration_window_recovery import recover_migration_window
+
 
 DB_ENV_KEYS = (
     "CARFAST_DATABASE_URL",
@@ -206,6 +211,9 @@ def main() -> None:
     database_url = choose_database_url()
     env = os.environ.copy()
     env["DATABASE_URL"] = database_url
+    recovered = recover_migration_window(database_url)
+    if recovered:
+        print("[render_start] migration_window_recovery=complete")
     prepare_document_storage()
     env = os.environ.copy()
     env["DATABASE_URL"] = database_url

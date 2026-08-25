@@ -23,6 +23,10 @@ def test_residual_documentation_navigation_is_canonical_and_complete() -> None:
     assert "/v2-clean/documentation/imports/invoices" not in nav
     assert 'nav_has_permission(request, "vehicles.read", "vehicles.write", "admin.manage")' in nav
 
+    sidebar = (TEMPLATES / "_sidebar.html").read_text(encoding="utf-8")
+    assert 'href="/v2-clean/documentation/imports">Importações</a>' in sidebar
+    assert "/v2-clean/documentation/imports/invoices" not in sidebar
+
 
 def test_document_only_profile_never_sees_fleet_guarded_destinations() -> None:
     environment = Environment(loader=FileSystemLoader(TEMPLATES), autoescape=True)

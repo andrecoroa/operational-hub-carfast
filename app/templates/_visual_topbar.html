@@ -4,10 +4,19 @@
     <button class="visual-menu-button" type="button" aria-label="Abrir navegação" aria-controls="visual-sidebar">☰</button>
     <strong>CarFast</strong>
   </div>
-  <nav class="visual-breadcrumbs" aria-label="Breadcrumb">
-    <a href="/v2-clean">Início</a>
-    {% if visual_section %}<span aria-hidden="true">›</span><span>{{ visual_section }}</span>{% endif %}
-    {% if visual_page %}<span aria-hidden="true">›</span><strong aria-current="page">{{ visual_page }}</strong>{% endif %}
-  </nav>
+  <strong class="visual-topbar-title">{{ visual_page or "CarFast" }}</strong>
+  <div class="visual-topbar-actions">
+    <form class="visual-global-search" action="/v2-clean/tasks" method="get" role="search">
+      <span aria-hidden="true">⌕</span><input type="search" name="search" aria-label="Pesquisar" placeholder="Pesquisar"><kbd>⌘ K</kbd>
+    </form>
+    <a class="visual-icon-action" href="/alerts" aria-label="Notificações"><span aria-hidden="true">♢</span></a>
+  </div>
 </header>
+{% if not visual_dashboard_pilot %}
+<nav class="visual-breadcrumbs" aria-label="Breadcrumb">
+  <a href="/v2-clean">Início</a>
+  {% if visual_section %}<span aria-hidden="true">/</span><span>{{ visual_section }}</span>{% endif %}
+  {% if visual_page %}<span aria-hidden="true">/</span><strong aria-current="page">{{ visual_page }}</strong>{% endif %}
+</nav>
+{% endif %}
 {% endif %}

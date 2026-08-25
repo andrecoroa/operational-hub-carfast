@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block body %}
-<div class="app-shell clean-shell">
+<div class="app-shell clean-shell visual-dashboard-shell">
   {% set active_menu = "clean" %}
   {% include "_sidebar.html" %}
   {% set home_nav_perms = nav_permissions(request) %}
@@ -10,78 +10,59 @@
   {% set home_can_workshop_write = home_can_workshop and nav_has_permission(request, "workshop.write", "admin.manage") %}
   {% set home_can_fleet = "navigation.fleet.access" in home_nav_perms and nav_has_permission(request, "vehicles.read", "vehicles.write", "fleet.commerce.manage", "admin.manage") %}
   {% set home_can_documentation = "navigation.documentation.access" in home_nav_perms and nav_has_permission(request, "documents.read", "documents.write", "admin.manage") %}
-  <main class="content clean-content">
-    {% set visual_section = "Operação" %}{% set visual_page = "Visão geral" %}{% include "_visual_topbar.html" %}
-    <header class="clean-hero clean-home-hero clean-home-operational-hero">
-      <div>
-        <p class="eyebrow">Operação</p>
-        <h2>Visão geral</h2>
-        <p>Trabalho em curso, prioridades e acessos principais da operação CarFast.</p>
-      </div>
-      <div class="button-row">
-        {% if home_can_workshop_write %}<a class="button-link" href="/v2-clean/workshop-entry">Nova entrada</a>{% endif %}
-        {% if home_can_tasks %}<a class="button-link secondary-link" href="/v2-clean/tasks#new-task">Nova tarefa</a>{% endif %}
+  <main class="content clean-content visual-dashboard">
+    {% set visual_section = "Operação" %}{% set visual_page = "Visão geral" %}{% set visual_dashboard_pilot = true %}{% include "_visual_topbar.html" %}
+    <nav class="visual-page-breadcrumbs" aria-label="Breadcrumb da página">
+      <a href="/v2-clean">Início</a><span aria-hidden="true">/</span><strong aria-current="page">Visão geral</strong>
+    </nav>
+    <header class="visual-dashboard-heading">
+      <div><p class="visual-kicker">Operação</p><h1>Visão geral</h1><p>Acompanhe a operação, identifique prioridades e avance diretamente para o trabalho em curso.</p></div>
+      <div class="visual-dashboard-actions">
+        {% if home_can_tasks %}<a class="visual-button secondary" href="/v2-clean/tasks#new-task">Nova tarefa</a>{% endif %}
+        {% if home_can_workshop_write %}<a class="visual-button primary" href="/v2-clean/workshop-entry">Nova entrada</a>{% endif %}
       </div>
     </header>
-
-    <section class="clean-home-metrics" aria-label="Indicadores principais">
-      <article><span>Viaturas</span><strong>{{ quick_metrics.vehicles }}</strong><em>na frota</em></article>
-      <article><span>Tarefas</span><strong>{{ quick_metrics.tasks }}</strong><em>abertas</em></article>
-      <article><span>Oficina</span><strong>{{ quick_metrics.workshop_alerts }}</strong><em>alertas</em></article>
-      <article><span>Auditorias</span><strong>{{ quick_metrics.audits }}</strong><em>abertas</em></article>
+    <section class="visual-dashboard-metrics" aria-label="Indicadores principais">
+      <a class="visual-metric-card" href="/v2-clean/fleet"><span class="visual-metric-icon is-blue" aria-hidden="true">▱</span><span><small>Viaturas na frota</small><strong>{{ quick_metrics.vehicles }}</strong><em>Consultar frota</em></span></a>
+      <a class="visual-metric-card" href="/v2-clean/tasks"><span class="visual-metric-icon is-violet" aria-hidden="true">✓</span><span><small>Tarefas abertas</small><strong>{{ quick_metrics.tasks }}</strong><em>Ver fila de trabalho</em></span></a>
+      <a class="visual-metric-card" href="/v2-clean/workshop"><span class="visual-metric-icon is-amber" aria-hidden="true">⌁</span><span><small>Alertas de oficina</small><strong>{{ quick_metrics.workshop_alerts }}</strong><em>Rever oficina</em></span></a>
+      <a class="visual-metric-card" href="/v2-clean/processes"><span class="visual-metric-icon is-green" aria-hidden="true">◎</span><span><small>Auditorias abertas</small><strong>{{ quick_metrics.audits }}</strong><em>Ver prioridades</em></span></a>
     </section>
-
-    <section class="clean-home-main-grid">
-      <article class="clean-panel clean-home-process-panel">
-        <div class="table-heading flat-heading">
-          <div>
-            <p class="eyebrow">Prioridades</p>
-            <h3>Trabalho por área</h3>
-          </div>
-          {% if home_can_processes %}<a class="table-link" href="/v2-clean/processes">Ver processos</a>{% endif %}
-        </div>
-        <div class="clean-home-work-queue">
+    <section class="visual-dashboard-grid">
+      <article class="visual-card visual-work-card">
+        <header class="visual-card-header">
+          <div><p class="visual-kicker">Prioridades</p><h2>Trabalho por área</h2><p>Estado consolidado das equipas operacionais.</p></div>
+          {% if home_can_processes %}<a class="visual-text-link" href="/v2-clean/processes">Ver processos <span aria-hidden="true">→</span></a>{% endif %}
+        </header>
+        <div class="visual-work-table" role="table" aria-label="Trabalho por área">
+          <div class="visual-work-table-head" role="row"><span>Área</span><span>Estado</span><span>Abertos</span><span>Críticos</span><span></span></div>
           {% for area in area_cards %}
             {% set area_allowed = (area.href.startswith('/v2-clean/tasks') and home_can_tasks) or (area.href.startswith('/v2-clean/processes') and home_can_processes) or (area.href.startswith('/v2-clean/workshop') and home_can_workshop) or (area.href.startswith('/v2-clean/fleet') and home_can_fleet) or (area.href.startswith('/v2-clean/documentation') and home_can_documentation) %}
             {% if area_allowed %}
-            <a class="clean-home-work-row" href="{{ area.href }}">
-              <span class="clean-area-code">{{ area.label[:2]|upper }}</span>
-              <div>
-                <strong>{{ area.label }}</strong>
-                <small>{{ area.description }}</small>
-              </div>
-              <div class="clean-home-work-counts">
-                <span><b>{{ area.open }}</b> abertos</span>
-                <span class="{% if area.critical %}is-critical{% endif %}"><b>{{ area.critical }}</b> críticos</span>
-              </div>
+            <a class="visual-work-table-row" role="row" href="{{ area.href }}">
+              <span class="visual-work-area"><b>{{ area.label[:2]|upper }}</b><span><strong>{{ area.label }}</strong><small>{{ area.description }}</small></span></span>
+              <span><i class="visual-status-dot {% if area.critical %}is-warning{% else %}is-active{% endif %}"></i>{% if area.critical %}Requer atenção{% else %}Operacional{% endif %}</span>
+              <strong>{{ area.open }}</strong><strong class="{% if area.critical %}is-danger{% endif %}">{{ area.critical }}</strong><span aria-hidden="true">›</span>
             </a>
             {% endif %}
           {% endfor %}
         </div>
       </article>
-
-      <aside class="clean-home-side-stack">
-        <article class="clean-panel clean-home-action-panel">
-          <div>
-            <p class="eyebrow">Acessos rápidos</p>
-            <h3>Operação diária</h3>
-          </div>
-          <div class="clean-home-shortcuts">
-            {% if home_can_workshop %}<a href="/v2-clean/workshop"><span>Oficina</span><b>Dashboard</b></a>{% endif %}
-            {% if home_can_fleet %}<a href="/v2-clean/fleet"><span>Frota</span><b>Consultar viaturas</b></a>{% endif %}
-            {% if home_can_documentation %}<a href="/v2-clean/documentation"><span>Documentação</span><b>Importar e validar</b></a>{% endif %}
-            {% if home_can_tasks %}<a href="/v2-clean/tasks"><span>Tarefas</span><b>Abrir fila</b></a>{% endif %}
+      <aside class="visual-dashboard-aside">
+        <article class="visual-card visual-attention-card">
+          <header class="visual-card-header compact"><div><p class="visual-kicker">Atenção</p><h2>Prioridades de hoje</h2></div><span class="visual-count-badge">{{ quick_metrics.workshop_alerts + quick_metrics.audits }}</span></header>
+          <div class="visual-attention-list">
+            <a href="/v2-clean/workshop"><span class="visual-attention-icon is-amber">!</span><span><strong>Oficina</strong><small>{{ quick_metrics.workshop_alerts }} alertas a rever</small></span><b>›</b></a>
+            <a href="/v2-clean/processes"><span class="visual-attention-icon is-blue">✓</span><span><strong>Auditorias</strong><small>{{ quick_metrics.audits }} registos abertos</small></span><b>›</b></a>
           </div>
         </article>
-
-        <article class="clean-panel clean-home-action-panel clean-home-attention-panel">
-          <div>
-            <p class="eyebrow">Atenção</p>
-            <h3>{{ quick_metrics.workshop_alerts + quick_metrics.audits }} registos a rever</h3>
-            <p>{{ quick_metrics.workshop_alerts }} alertas de oficina e {{ quick_metrics.audits }} auditorias abertas.</p>
-          </div>
-          <div class="clean-action-row">
-            {% if home_can_processes %}<a class="button-link secondary-link" href="/v2-clean/processes">Ver prioridades</a>{% endif %}
+        <article class="visual-card visual-quick-card">
+          <header class="visual-card-header compact"><div><p class="visual-kicker">Acessos rápidos</p><h2>Operação diária</h2></div></header>
+          <div class="visual-quick-grid">
+            {% if home_can_workshop %}<a href="/v2-clean/workshop"><span>⌁</span><strong>Oficina</strong><small>Dashboard</small></a>{% endif %}
+            {% if home_can_fleet %}<a href="/v2-clean/fleet"><span>▱</span><strong>Frota</strong><small>Viaturas</small></a>{% endif %}
+            {% if home_can_documentation %}<a href="/v2-clean/documentation"><span>□</span><strong>Documentos</strong><small>Triagem</small></a>{% endif %}
+            {% if home_can_tasks %}<a href="/v2-clean/tasks"><span>✓</span><strong>Tarefas</strong><small>Fila</small></a>{% endif %}
           </div>
         </article>
       </aside>
@@ -89,4 +70,3 @@
   </main>
 </div>
 {% endblock %}
-

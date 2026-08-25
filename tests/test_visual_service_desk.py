@@ -74,6 +74,8 @@ def test_service_desk_responsive_contract_has_local_not_global_overflow() -> Non
         ".visual-service-desk .clean-task-side-form button.secondary { color: var(--cf-blue-600);",
         ".visual-task-drawer .clean-task-collaboration-state > span { display: grid;",
         ".visual-task-open { display: inline-flex; min-width: 72px;",
+        ".visual-task-drawer .clean-task-context-actions button",
+        "width: 18px !important; min-width: 18px; height: 18px;",
     ):
         assert contract in css
 

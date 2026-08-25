@@ -86,7 +86,7 @@ def test_workshop_responsive_contract_has_local_not_global_overflow():
 
 def test_workshop_asset_is_cache_busted():
     base = _read("app/templates/base.html")
-    assert "/static/css/visual-v2.css?v=20260825-workshop1" in base
+    assert "/static/css/visual-v2.css?v=20260825-workshop2" in base
 
 
 def test_workshop_summary_preference_is_server_side_and_user_scoped():

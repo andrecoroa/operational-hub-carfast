@@ -274,10 +274,13 @@ Pre-window **NO-GO pending independent review and final read-back**. The 166 app
 technical relation count and allowed reference-only Green rows are closed. The
 private future Green database, synthetic 162 -> 162 -> Alembic 166 path, same-mount
 quiesce mechanics and exact 1,256,277,934-byte encrypted full-volume transfer have
-passed. `scripts/conventional_migration_gate.py synthetic-gate` then completed
+passed. `scripts/conventional_migration_gate.py synthetic-gate` completed
 three common bounded lifecycle runs with independent watchdog RC 0, bundle ACK,
 atomic storage rollback and cleanup; canonical manifest fingerprint is
 `2a47529bd43c318022849d9ee7187ef296b1152410f73735c542512b4313eea0`.
+This is explicitly partial synthetic evidence and reports `NO_GO`; it does not
+claim that Render Maintenance Mode, database read-only or action-time read-back
+has passed.
 The superseded data-only promotion RC1 is not a gate and must not be retried.
 Only an independent PASS and the non-consuming action-time read-back may change
 this status. Blue remains writable and no real payload has started.

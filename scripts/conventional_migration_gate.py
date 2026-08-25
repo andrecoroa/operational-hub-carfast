@@ -158,9 +158,32 @@ def synthetic_once(run_number: int, delay: float = 0.15) -> dict[str, object]:
 def run_gate() -> dict[str, object]:
     manifest = command_manifest()
     runs = [synthetic_once(index) for index in range(1, 4)]
-    gates = {str(index): "PASS" for index in range(1, 16)}
+    gates = {
+        str(index): {"status": "PENDING", "evidence": []}
+        for index in range(1, 16)
+    }
+    gates["7"] = {
+        "status": "SYNTHETIC_PASS",
+        "evidence": ["independent watchdog subprocess", "short timeout", "atomic inverse"],
+    }
+    gates["10"] = {
+        "status": "PARTIAL_PASS",
+        "evidence": ["prior exact full-volume transport", "separate PG17 162-to-166 proof"],
+    }
+    gates["11"] = {
+        "status": "PARTIAL_PASS",
+        "evidence": ["secret-free canonical manifest fingerprint"],
+    }
+    gates["12"] = {
+        "status": "SYNTHETIC_PASS",
+        "evidence": ["three bounded common lifecycle runs"],
+    }
+    gates["14"] = {
+        "status": "SYNTHETIC_PASS",
+        "evidence": ["bundle ACK ordering", "atomic storage rollback"],
+    }
     return {
-        "status": "PASS",
+        "status": "NO_GO",
         "synthetic_only": True,
         "manifest_fingerprint": fingerprint(manifest),
         "gates": gates,

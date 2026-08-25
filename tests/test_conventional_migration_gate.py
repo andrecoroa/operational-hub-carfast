@@ -13,10 +13,11 @@ def test_manifest_is_secret_free_and_stable():
 
 def test_three_common_runs_watchdog_ack_and_atomic_rollback_pass():
     result = run_gate()
-    assert result["status"] == "PASS"
+    assert result["status"] == "NO_GO"
     assert result["synthetic_only"] is True
     assert result["real_window_authorized_by_output"] is False
     assert len(result["runs"]) == 3
-    assert set(result["gates"].values()) == {"PASS"}
+    assert result["gates"]["7"]["status"] == "SYNTHETIC_PASS"
+    assert any(gate["status"] == "PENDING" for gate in result["gates"].values())
     assert all(run["watchdog_rc"] == 0 for run in result["runs"])
     assert all(run["bundle_ack"] for run in result["runs"])

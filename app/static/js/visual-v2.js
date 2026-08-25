@@ -3,10 +3,12 @@
   if (documentWorkbench) {
     const view = new URLSearchParams(location.search).get("view") || "queue";
     const documentViewKey = `carfast-document-scroll:${location.pathname}:${view}`;
-    const savedDocumentScroll = sessionStorage.getItem(documentViewKey);
-    if (savedDocumentScroll !== null) requestAnimationFrame(() => scrollTo(0, Number(savedDocumentScroll) || 0));
+    const savedDocumentScroll = JSON.parse(sessionStorage.getItem(documentViewKey) || "null");
+    if (savedDocumentScroll && Date.now() - savedDocumentScroll.savedAt < 8 * 60 * 60 * 1000) {
+      requestAnimationFrame(() => scrollTo(0, Number(savedDocumentScroll.scrollY) || 0));
+    }
     document.querySelectorAll("[data-document-view-link]").forEach((link) => {
-      link.addEventListener("click", () => sessionStorage.setItem(documentViewKey, String(scrollY)));
+      link.addEventListener("click", () => sessionStorage.setItem(documentViewKey, JSON.stringify({ scrollY, savedAt: Date.now() })));
     });
   }
   const globalSearch = document.querySelector("[data-visual-global-search]");

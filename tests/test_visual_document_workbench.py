@@ -40,6 +40,7 @@ def test_document_workbench_keeps_real_routes_data_and_decision_form() -> None:
     assert "doc-arch-table" in source  # feature-flag OFF fallback remains usable
     assert 'class="doc-arch-filters"' in source
     assert "Triar documento selecionado" in source
+    assert '&selected={{ row.document.id }}">Triar</a>' in source
 
 
 def test_document_selection_is_server_derived_and_defaults_to_first_row() -> None:
@@ -81,3 +82,5 @@ def test_document_views_preserve_return_context_and_scroll() -> None:
     assert "data-document-view-link" in template
     assert "carfast-document-scroll:" in script
     assert "sessionStorage.setItem(documentViewKey" in script
+    assert "8 * 60 * 60 * 1000" in script
+    assert "document_return_context" in template

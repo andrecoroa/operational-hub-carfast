@@ -31,7 +31,8 @@ def test_process_center_preserves_rbac_and_uses_local_table_overflow() -> None:
     source = TEMPLATE.read_text(encoding="utf-8")
     css = CSS.read_text(encoding="utf-8")
 
-    assert 'nav_has_permission(request, "management_center.read", "management_center.write", "admin.manage")' in source
+    assert 'nav_has_permission(request, "management_center.read", "management_center.write", "admin.manage")' not in source
+    assert 'nav_has_permission(request, "management_center.read", "management_center.write")' not in source
     assert ".process-command-table{overflow-x:auto}" in css
     assert ".process-command-layout{display:grid" in css
     assert "@media(max-width:1024px)" in css

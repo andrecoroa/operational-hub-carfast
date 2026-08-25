@@ -5,7 +5,7 @@
   {% include "_sidebar.html" %}
   {% set home_nav_perms = nav_permissions(request) %}
   {% set home_can_tasks = "navigation.tasks.access" in home_nav_perms and nav_has_permission(request, "tasks.read", "tasks.operational.read", "tasks.operational.write", "tasks.workshop.read", "tasks.workshop.write", "tasks.audit.read", "tasks.audit.write", "tasks.administration.read", "tasks.administration.write", "tasks.management.read", "tasks.management.create", "tasks.management.update", "tasks.management.close", "tasks.recurring.manage", "admin.manage") %}
-  {% set home_can_processes = "navigation.processes.access" in home_nav_perms and nav_has_permission(request, "management_center.read", "management_center.write", "admin.manage") %}
+  {% set home_can_processes = "navigation.processes.access" in home_nav_perms and nav_has_permission(request, "management_center.read", "management_center.write") %}
   {% set home_can_workshop = "navigation.workshop.access" in home_nav_perms and nav_has_permission(request, "workshop.read", "workshop.write", "admin.manage") %}
   {% set home_can_workshop_write = home_can_workshop and nav_has_permission(request, "workshop.write", "admin.manage") %}
   {% set home_can_fleet = "navigation.fleet.access" in home_nav_perms and nav_has_permission(request, "vehicles.read", "vehicles.write", "fleet.commerce.manage", "admin.manage") %}

@@ -127,7 +127,7 @@
                           </ul>
                           <small>Total: {{ "%.2f"|format(ref.value or 0) }} €</small>
 
-                          {% if nav_has_permission(request, "management_center.write", "admin.manage") %}
+                          {% if nav_has_permission(request, "management_center.write") %}
                             <form class="reconciliation-match-form" method="post" action="/management-center/reconciliation/associate">
                               <input type="hidden" name="mode" value="attach_to_ar">
                               <input type="hidden" name="ref_line_ids" value="{{ row.ref_line_ids }}">

@@ -8,7 +8,8 @@
       <div><p class="eyebrow">Operação / Centro de Processos</p><h2>Centro de Processos</h2><p>Priorize, acompanhe e abra o contexto operacional sem perder os filtros de trabalho.</p></div>
       <div class="clean-header-actions process-command-actions">
         <a class="button-link secondary-link" href="/v2-clean/tasks?workspace=management">Tarefas de gestão</a>
-        {% if nav_has_permission(request, "management_center.read", "management_center.write", "admin.manage") %}<a class="button-link primary-link" href="/management-center">Abrir gestão completa</a>{% endif %}
+        {% if can_create_process %}<a class="button-link primary-link" href="/v2-clean/tasks?workspace=management&amp;open_create=1">Criar processo</a>{% endif %}
+        {% if not process_access_denied %}<a class="button-link secondary-link" href="/management-center">Abrir gestão completa</a>{% endif %}
       </div>
     </header>
 
@@ -21,36 +22,54 @@
 
     <section class="clean-panel process-command-toolbar" aria-labelledby="process-filter-title">
       <div><p class="eyebrow">Fila de trabalho</p><h3 id="process-filter-title">Encontrar e priorizar</h3></div>
-      <form method="get" action="/v2-clean/processes" role="search">
-        <label>Pesquisar <input type="search" name="q" placeholder="Referência, viatura ou responsável" autocomplete="off"></label>
-        <label>Estado <select name="status"><option value="">Todos</option><option value="open">Em aberto</option><option value="critical">Crítico</option></select></label>
-        <label>Área <select name="area"><option value="">Todas</option>{% for area in area_cards %}<option value="{{ area.code }}">{{ area.label }}</option>{% endfor %}</select></label>
+      <form method="get" action="/v2-clean/processes" role="search" data-process-filter-form>
+        <label>Pesquisar <input type="search" name="q" value="{{ process_filters.q }}" placeholder="Referência, viatura ou responsável" autocomplete="off"></label>
+        <label>Estado <select name="status"><option value="">Todos</option>{% for code, label in process_status_labels.items() %}<option value="{{ code }}" {% if process_filters.status == code %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+        <label>Modelo <select name="model"><option value="">Todos</option>{% for process_type in process_types %}<option value="{{ process_type.code }}" {% if process_filters.model == process_type.code %}selected{% endif %}>{{ process_type.name }}</option>{% endfor %}</select></label>
         <button type="submit">Aplicar filtros</button><a class="button-link secondary-link" href="/v2-clean/processes">Limpar</a>
       </form>
+      <div class="process-loading-state" data-process-loading role="status" aria-live="polite" hidden>A atualizar a fila…</div>
     </section>
 
     <section class="process-command-layout" id="process-workbench">
       <div class="clean-panel process-command-queue">
-        <header class="process-command-section-head"><div><p class="eyebrow">Visão operacional</p><h3>Filas por área</h3></div><span>{{ process_metrics.areas }} áreas</span></header>
-        <div class="process-command-table" role="region" aria-label="Filas de processos" tabindex="0">
-          <table><thead><tr><th>Área</th><th>Em aberto</th><th>Críticos</th><th>Modelos</th><th><span class="sr-only">Ação</span></th></tr></thead><tbody>
-          {% for area in area_cards %}
-            <tr{% if area.critical %} id="priority-critical"{% endif %}>
-              <td><span class="clean-area-code">{{ area.short }}</span><div><strong>{{ area.label }}</strong><small>{{ area.description }}</small></div></td>
-              <td><strong>{{ area.open }}</strong><small>{{ area.state }}</small></td>
-              <td>{% if area.critical %}<span class="process-priority-pill">{{ area.critical }} críticos</span>{% else %}<span class="process-state-pill">Sem críticos</span>{% endif %}</td>
-              <td><span>{{ area.models|length }}</span><small>{{ area.models|join(' · ') }}</small></td>
-              <td><a class="button-link secondary-link" href="{{ area.href }}">{{ area.action }}</a></td>
-            </tr>
-          {% endfor %}
-          </tbody></table>
-        </div>
+        <header class="process-command-section-head"><div><p class="eyebrow">Visão operacional</p><h3>Fila de processos</h3></div><span>{{ recent_management|length }} visíveis</span></header>
+        {% if process_access_denied %}
+          <div class="process-command-state" role="status"><strong>Sem acesso operacional</strong><p>Administrador não recebe acesso implícito. É necessária uma capacidade operacional explícita do Centro de Processos.</p><a class="button-link secondary-link" href="/v2-clean">Voltar ao início</a></div>
+        {% elif process_filter_error %}
+          <div class="process-command-state process-command-error" role="alert"><strong>Filtros inválidos</strong><p>O estado ou modelo pedido não pertence ao catálogo ativo. Nenhum processo foi consultado.</p><a class="button-link secondary-link" href="/v2-clean/processes">Repor filtros</a></div>
+        {% elif recent_management %}
+          <div class="process-command-table" role="region" aria-label="Fila de processos" tabindex="0">
+            <table><thead><tr><th>Processo</th><th>Estado / fase</th><th>Prioridade</th><th>Contexto</th><th><span class="sr-only">Ação</span></th></tr></thead><tbody>
+            {% for process in recent_management %}
+              <tr{% if process.priority in ['critical', 'urgent'] %} id="priority-critical"{% endif %}>
+                <td><span class="clean-area-code">{{ process_type_by_id.get(process.process_type_id).code[:2]|upper if process_type_by_id.get(process.process_type_id) else 'PR' }}</span><div><strong>{{ process.internal_reference }}</strong><small>{{ process.title }}</small></div></td>
+                <td><strong>{{ process_status_labels.get(process.status, process.status) }}</strong><small>{{ process_phase_labels.get(process.phase, process.phase) }}</small></td>
+                <td>{% if process.priority in ['critical', 'urgent'] %}<span class="process-priority-pill">{{ process.priority|capitalize }}</span>{% else %}<span class="process-state-pill">{{ process.priority|capitalize }}</span>{% endif %}</td>
+                <td><span>{{ process.plate or process.customer_name or 'Sem contexto associado' }}</span><small>{{ process_type_by_id.get(process.process_type_id).name if process_type_by_id.get(process.process_type_id) else 'Modelo não disponível' }}</small></td>
+                <td><a class="button-link secondary-link" href="/v2-clean/processes/{{ process.id }}?return_context={{ process_return_token|urlencode }}">Abrir</a></td>
+              </tr>
+            {% endfor %}
+            </tbody></table>
+          </div>
+        {% else %}
+          <div class="process-command-state" role="status"><strong>Sem processos nestes filtros</strong><p>Altere os filtros ou crie um processo, se tiver capacidade de Executor.</p>{% if can_create_process %}<a class="button-link primary-link" href="/v2-clean/tasks?workspace=management&amp;open_create=1">Criar processo</a>{% endif %}</div>
+        {% endif %}
       </div>
 
       <aside class="clean-panel process-command-summary" id="process-models">
         <p class="eyebrow">Contexto</p><h3>Resumo da operação</h3>
-        <dl><div><dt>Total em aberto</dt><dd>{{ process_metrics.open }}</dd></div><div><dt>A exigir revisão</dt><dd>{{ process_metrics.critical }}</dd></div><div><dt>Modelos disponíveis</dt><dd>{{ process_metrics.models }}</dd></div></dl>
+        <dl><div><dt>Total em aberto</dt><dd>{{ process_metrics.open }}</dd></div><div><dt>A exigir revisão</dt><dd>{{ process_metrics.critical }}</dd></div><div><dt>Categorias ativas</dt><dd>{{ process_metrics.categories }}</dd></div><div><dt>Subcategorias ativas</dt><dd>{{ process_metrics.subcategories }}</dd></div><div><dt>Modelos disponíveis</dt><dd>{{ process_metrics.models }}</dd></div></dl>
         <div class="process-command-guidance"><strong>Próxima ação</strong><p>Comece pelas filas críticas. O detalhe preserva o contexto e permite regressar a esta visão.</p></div>
+        <section class="process-responsibility" aria-label="Âmbito de responsabilidade">
+          <strong>Responsabilidade ativa</strong>
+          {% if process_access_denied %}<p>Administração — sem conteúdo operacional implícito.</p>
+          {% elif manager_exception_mode %}<p>Gestor — execução apenas excecional, com alerta, justificação obrigatória e auditoria.</p>
+          {% elif can_coordinate_operational %}<p>Coordenador Operacional — acompanha a operação autorizada.</p>
+          {% elif can_coordinate_team %}<p>Coordenador de Equipa{% if process_team_names %} · {{ process_team_names|join(', ') }}{% endif %}</p>
+          {% elif can_create_process %}<p>Executor — pode criar e executar no seu âmbito.</p>
+          {% else %}<p>Consulta — sem ações de execução.</p>{% endif %}
+        </section>
         <a class="button-link secondary-link" href="/v2-clean/tasks?workspace=management">Ver tarefas associadas</a>
       </aside>
     </section>

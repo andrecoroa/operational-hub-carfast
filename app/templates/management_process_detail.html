@@ -11,7 +11,7 @@
         <p class="breadcrumb">Processo do tipo {{ process_type.name if process_type else "não definido" }} · {{ process.title }}</p>
       </div>
       <div class="button-row">
-        <a class="button-link secondary-link" href="/management-center">Voltar</a>
+        <a class="button-link secondary-link" href="{{ process_return_url or '/management-center' }}">Voltar</a>
       </div>
     </header>
 
@@ -134,7 +134,7 @@
           <div>
             <dt>Responsabilidade</dt>
             <dd>
-              {% if nav_has_permission(request, "management_center.write", "admin.manage") %}
+              {% if nav_has_permission(request, "management_center.write") %}
                 <form method="post" action="/management-center/{{ process.id }}/liability" class="management-liability-form">
                   <select name="liability">
                     {% for code, label in liability_options %}
@@ -171,8 +171,9 @@
               </div>
               <strong>{{ action.title }}</strong>
               <p>{{ action.description or "-" }}</p>
-              {% if action.status == "open" and nav_has_permission(request, "management_center.write", "admin.manage") %}
-                <form method="post" action="/management-center/{{ process.id }}/actions/{{ action.id }}/complete">
+              {% if action.status == "open" and nav_has_permission(request, "management_center.write") %}
+                <form method="post" action="/v2-clean/processes/{{ process.id }}/actions/{{ action.id }}/complete">
+                  {% if manager_exception_mode %}<div class="notice-inline warning"><strong>Execução excecional de Gestor</strong><p>Esta ação exige justificação e fica registada na auditoria.</p></div><label>Justificação<textarea name="justification" minlength="12" maxlength="1000" required></textarea></label>{% endif %}
                   <button type="submit">Concluir</button>
                 </form>
               {% endif %}
@@ -223,7 +224,7 @@
                   <small>{{ association.reason or "-" }}</small>
                 </td>
                 <td>
-                  {% if association.active and nav_has_permission(request, "management_center.write", "admin.manage") and other_processes %}
+                  {% if association.active and nav_has_permission(request, "management_center.write") and other_processes %}
                     <form class="association-move-form" method="post" action="/management-center/{{ process.id }}/associations/{{ association.id }}/move">
                       <select name="target_process_id" required>
                         {% for target in other_processes %}
@@ -288,7 +289,7 @@
                   <small>{{ association.reason or "-" }}</small>
                 </td>
                 <td>
-                  {% if association.active and nav_has_permission(request, "management_center.write", "admin.manage") and other_processes %}
+                  {% if association.active and nav_has_permission(request, "management_center.write") and other_processes %}
                     <form class="association-move-form" method="post" action="/management-center/{{ process.id }}/associations/{{ association.id }}/move">
                       <select name="target_process_id" required>
                         {% for target in other_processes %}

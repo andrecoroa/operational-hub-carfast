@@ -19,6 +19,14 @@
     window.location.assign(`/v2-clean/tasks?q=${encodeURIComponent(term)}`);
   });
 
+  const processFilter = document.querySelector("[data-process-filter-form]");
+  processFilter?.addEventListener("submit", () => {
+    const loading = document.querySelector("[data-process-loading]");
+    processFilter.setAttribute("aria-busy", "true");
+    if (loading) loading.hidden = false;
+    processFilter.querySelectorAll("button").forEach((button) => { button.disabled = true; });
+  });
+
   const menuButton = document.querySelector(".visual-menu-button");
   const sidebar = document.querySelector("#visual-sidebar");
   if (!menuButton || !sidebar) return;

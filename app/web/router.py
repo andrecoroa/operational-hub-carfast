@@ -34,6 +34,7 @@ from app.core.change_notice import (
 )
 from app.core.config import settings
 from app.core.database import SessionLocal
+from app.core.return_context import issue_return_context, resolve_return_context
 from app.core.security import verify_password
 from app.models.admin import Permission, Role, RolePermission, User, UserRole
 from app.models.documents import (
@@ -106,7 +107,12 @@ from app.models.vehicles import (
     VehicleManualField,
     VehicleOperationalStatusEvent,
 )
-from app.models.work_hierarchy import ServiceDeskTicketType, WorkQueue
+from app.models.work_hierarchy import (
+    ServiceDeskTicketType,
+    WorkCategory,
+    WorkQueue,
+    WorkSubcategory,
+)
 from app.models.workshop import (
     WorkshopProcess,
     WorkshopProcessEvidence,
@@ -252,6 +258,7 @@ from app.services.task_center import (
     task_due_condition,
     task_team_relation_filter,
     task_visibility_filter,
+    task_role_codes,
     user_can_view_task,
     user_team_ids,
 )
@@ -3961,29 +3968,151 @@ def clean_experience_home(request: Request):
         )
 
 
+PROCESS_CENTER_PERMISSIONS = {
+    "management_center.read",
+    "management_center.write",
+    "tasks.management.read",
+    "tasks.management.create",
+    "tasks.management.update",
+    "tasks.management.close",
+}
+PROCESS_CENTER_STATUSES = {"open", "waiting", "in_progress", "closed", "cancelled"}
+
+
 @web_router.get("/v2-clean/processes", response_class=HTMLResponse)
-def clean_process_center(request: Request):
+def clean_process_center(
+    request: Request,
+    q: str = "",
+    status: str = "",
+    model: str = "",
+):
     denied = clean_experience_denied(request)
     if denied:
         return denied
     with SessionLocal() as db:
+        user_id = get_web_user_id(request)
+        current_user = db.get(User, user_id) if user_id else None
+        permission_codes = (
+            get_user_permission_codes(db, current_user) if current_user else set()
+        )
+        role_codes = task_role_codes(db, user_id) if user_id else set()
+        process_permissions = permission_codes.intersection(PROCESS_CENTER_PERMISSIONS)
+        access_denied = not process_permissions or bool(role_codes) and role_codes.issubset(
+            {"admin", "user_admin", "functional_admin"}
+        )
+        clean_status = status.strip().lower()
+        filter_error = bool(clean_status and clean_status not in PROCESS_CENTER_STATUSES)
+        clean_query = q.strip()[:160]
+        clean_model = model.strip()[:80]
+
         area_cards = clean_process_area_cards(db)
-        recent_audits: list[VehicleHistoryAudit] = []
+        process_types = list(
+            db.scalars(
+                select(ManagementProcessType)
+                .where(ManagementProcessType.active.is_(True))
+                .order_by(ManagementProcessType.name)
+            )
+        )
+        process_type_by_id = {item.id: item for item in process_types}
         recent_management: list[ManagementProcess] = []
+        if not access_denied and not filter_error:
+            statement = select(ManagementProcess).order_by(
+                ManagementProcess.closed_at.is_not(None),
+                ManagementProcess.sla_due_on,
+                ManagementProcess.id.desc(),
+            )
+            if clean_query:
+                like_query = f"%{clean_query.lower()}%"
+                statement = statement.where(
+                    or_(
+                        func.lower(ManagementProcess.internal_reference).like(like_query),
+                        func.lower(ManagementProcess.title).like(like_query),
+                        func.lower(func.coalesce(ManagementProcess.plate, "")).like(like_query),
+                        func.lower(func.coalesce(ManagementProcess.customer_name, "")).like(like_query),
+                    )
+                )
+            if clean_status:
+                statement = statement.where(ManagementProcess.status == clean_status)
+            if clean_model:
+                selected_type = next(
+                    (item for item in process_types if item.code == clean_model), None
+                )
+                if selected_type is None:
+                    filter_error = True
+                else:
+                    statement = statement.where(
+                        ManagementProcess.process_type_id == selected_type.id
+                    )
+            if not filter_error:
+                recent_management = list(db.scalars(statement.limit(50)))
+
+        return_token = issue_return_context(
+            settings.app_secret_key,
+            path="/v2-clean/processes",
+            query=request.url.query,
+            anchor="process-workbench",
+        )
+        team_names = []
+        if user_id:
+            team_names = list(
+                db.scalars(
+                    select(Team.name)
+                    .join(TeamMember, TeamMember.team_id == Team.id)
+                    .where(TeamMember.user_id == user_id, Team.active.is_(True))
+                    .order_by(Team.name)
+                )
+            )
         process_metrics = {
             "areas": len(area_cards),
-            "open": sum(int(area["open"]) for area in area_cards),
-            "critical": sum(int(area["critical"]) for area in area_cards),
-            "models": sum(len(area["models"]) for area in area_cards),
+            "open": db.scalar(
+                select(func.count()).select_from(ManagementProcess).where(
+                    ManagementProcess.closed_at.is_(None),
+                    ~ManagementProcess.status.in_({"closed", "cancelled"}),
+                )
+            ) or 0,
+            "critical": db.scalar(
+                select(func.count()).select_from(ManagementProcess).where(
+                    ManagementProcess.closed_at.is_(None),
+                    ManagementProcess.priority.in_({"critical", "urgent"}),
+                )
+            ) or 0,
+            "models": len(process_types),
+            "categories": db.scalar(
+                select(func.count()).select_from(WorkCategory).where(
+                    WorkCategory.active.is_(True)
+                )
+            ) or 0,
+            "subcategories": db.scalar(
+                select(func.count()).select_from(WorkSubcategory).where(
+                    WorkSubcategory.active.is_(True)
+                )
+            ) or 0,
         }
         return templates.TemplateResponse(
             request,
             "clean_process_center.html",
             {
                 "area_cards": area_cards,
-                "recent_audits": recent_audits,
                 "recent_management": recent_management,
+                "process_type_by_id": process_type_by_id,
+                "process_types": process_types,
                 "process_metrics": process_metrics,
+                "process_status_labels": PROCESS_STATUS_LABELS,
+                "process_phase_labels": PROCESS_PHASE_LABELS,
+                "process_access_denied": access_denied,
+                "process_filter_error": filter_error,
+                "process_filters": {"q": clean_query, "status": clean_status, "model": clean_model},
+                "process_return_token": return_token,
+                "process_role_codes": role_codes,
+                "process_team_names": team_names,
+                "can_create_process": bool(
+                    not access_denied and process_permissions.intersection(
+                        {"management_center.write", "tasks.management.create"}
+                    )
+                ),
+                "can_coordinate_team": not access_denied and "tasks.management.update" in permission_codes,
+                "can_coordinate_operational": not access_denied and "tasks.management.close" in permission_codes,
+                "manager_exception_mode": not access_denied and "manager" in role_codes,
                 "foundation_ui_enabled": settings.visual_foundation_enabled,
             },
         )
@@ -29097,7 +29226,13 @@ def task_bulk_import_confirm(request: Request):
 
 
 def management_center_denied(request: Request, write: bool = False) -> RedirectResponse | None:
-    permissions = ("management_center.write", "admin.manage") if write else ("management_center.read", "management_center.write", "admin.manage")
+    # Administration is outside the operational hierarchy. An administrator may
+    # enter only when an operational capability is explicitly assigned.
+    permissions = (
+        ("management_center.write",)
+        if write
+        else ("management_center.read", "management_center.write")
+    )
     return require_any_web_permission(request, *permissions)
 
 
@@ -30648,13 +30783,25 @@ def management_center_reconciliation_associate(
         f"/management-center/reconciliation?selected_plate={selected_plate}&mode={selected_mode}&window_days={window_days}&plate={plate_filter}",
         status_code=303,
     )
+@web_router.get("/v2-clean/processes/{process_id}", response_class=HTMLResponse)
 @web_router.get("/management-center/{process_id}", response_class=HTMLResponse)
-def management_center_detail(request: Request, process_id: int, updated: str | None = None):
+def management_center_detail(
+    request: Request,
+    process_id: int,
+    updated: str | None = None,
+    return_context: str = "",
+):
     if not get_web_user_id(request):
         return RedirectResponse("/login", status_code=303)
     denied = management_center_denied(request)
     if denied:
         return denied
+    resolved_return = resolve_return_context(
+        settings.app_secret_key,
+        return_context,
+        allowed_prefixes=("/v2-clean/processes",),
+        max_age_seconds=8 * 60 * 60,
+    )
     with SessionLocal() as db:
         process = db.get(ManagementProcess, process_id)
         if not process:
@@ -30762,6 +30909,8 @@ def management_center_detail(request: Request, process_id: int, updated: str | N
             .order_by(ManagementProcess.internal_reference.desc())
             .limit(120)
         ).all()
+        detail_user_id = get_web_user_id(request)
+        detail_role_codes = task_role_codes(db, detail_user_id) if detail_user_id else set()
         return templates.TemplateResponse(
             request,
             "management_process_detail.html",
@@ -30791,6 +30940,10 @@ def management_center_detail(request: Request, process_id: int, updated: str | N
                 "severity_labels": MANAGEMENT_SEVERITY_LABELS,
                 "action_status_labels": ACTION_STATUS_LABELS,
                 "updated": updated,
+                "manager_exception_mode": "manager" in detail_role_codes,
+                "process_return_url": (
+                    resolved_return.url if resolved_return else "/management-center"
+                ),
             },
         )
 
@@ -30834,8 +30987,14 @@ def management_center_set_liability(request: Request, process_id: int, liability
     return RedirectResponse(f"/management-center/{process_id}?updated=liability", status_code=303)
 
 
+@web_router.post("/v2-clean/processes/{process_id}/actions/{action_id}/complete", response_class=HTMLResponse)
 @web_router.post("/management-center/{process_id}/actions/{action_id}/complete", response_class=HTMLResponse)
-def management_center_complete_action(request: Request, process_id: int, action_id: int):
+def management_center_complete_action(
+    request: Request,
+    process_id: int,
+    action_id: int,
+    justification: str = Form(""),
+):
     user_id = get_web_user_id(request)
     if not user_id:
         return RedirectResponse("/login", status_code=303)
@@ -30843,6 +31002,13 @@ def management_center_complete_action(request: Request, process_id: int, action_
     if denied:
         return denied
     with SessionLocal() as db:
+        role_codes = task_role_codes(db, user_id)
+        clean_justification = justification.strip()[:1000]
+        if "manager" in role_codes and len(clean_justification) < 12:
+            return RedirectResponse(
+                f"/management-center/{process_id}?updated=manager_justification_required",
+                status_code=303,
+            )
         action = db.get(ManagementAction, action_id)
         if not action or action.process_id != process_id:
             return RedirectResponse(f"/management-center/{process_id}", status_code=303)
@@ -30858,7 +31024,11 @@ def management_center_complete_action(request: Request, process_id: int, action_
                 entity_id=str(action.id),
                 old_value="open",
                 new_value="done",
-                detail=action.title,
+                detail=(
+                    f"Execução excecional de Gestor. Justificação: {clean_justification}"
+                    if "manager" in role_codes
+                    else action.title
+                ),
             )
         )
         db.commit()

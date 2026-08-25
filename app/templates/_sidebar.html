@@ -24,7 +24,7 @@
     {% if is_clean_experience %}
       {% set can_nav_home = "navigation.home.access" in nav_perms and nav_has_permission(request, "dashboard.read", "admin.manage") %}
       {% set can_nav_tasks = "navigation.tasks.access" in nav_perms and nav_has_permission(request, "tasks.read", "tasks.operational.read", "tasks.operational.write", "tasks.workshop.read", "tasks.workshop.write", "tasks.audit.read", "tasks.audit.write", "tasks.administration.read", "tasks.administration.write", "tasks.management.read", "tasks.management.create", "tasks.management.update", "tasks.management.close", "tasks.recurring.manage", "admin.manage") %}
-      {% set can_nav_processes = "navigation.processes.access" in nav_perms and nav_has_permission(request, "management_center.read", "management_center.write", "admin.manage") %}
+      {% set can_nav_processes = "navigation.processes.access" in nav_perms and nav_has_permission(request, "management_center.read", "management_center.write") %}
       {% set can_nav_workshop = "navigation.workshop.access" in nav_perms and nav_has_permission(request, "workshop.read", "workshop.write", "admin.manage") %}
       {% set can_nav_fleet = "navigation.fleet.access" in nav_perms and nav_has_permission(request, "vehicles.read", "vehicles.write", "admin.manage") %}
       {% set can_nav_sales = "navigation.fleet.access" in nav_perms and nav_has_permission(request, "fleet.commerce.manage", "vehicles.write", "admin.manage") %}

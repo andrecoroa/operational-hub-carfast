@@ -250,3 +250,8 @@ def test_vehicle_document_css_keeps_global_overflow_local_and_mobile_targets() -
     assert ".vehicle-document-table{min-width:980px}" in css
     assert 'content:"Deslize para consultar todos os campos →"' in css
     assert ".vehicle-document-filters :is(input,select,button,.button-link){width:100%;height:48px" in css
+    assert ".vehicle-document-workbench .doc-arch-nav a" in css
+    assert ".vehicle-document-workbench .doc-vehicle-preview-link" in css
+    assert ".vehicle-document-workbench .doc-arch-pagination a" in css
+    assert "display:inline-flex;min-height:44px;align-items:center" in css
+    assert ".vehicle-document-header>.button-link{width:100%;min-height:48px}" in css

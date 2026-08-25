@@ -3,8 +3,10 @@
 <div class="app-shell clean-shell">
   {% set active_menu = "fleet_sales" %}
   {% include "_sidebar.html" %}
-  <main class="content clean-content sale-page">
-    <header class="clean-workshop-header clean-workshop-header-final">
+  <main class="content clean-content sale-page{% if foundation_ui_enabled %} visual-fleet-sales visual-sales-detail-page{% endif %}">
+    {% if foundation_ui_enabled %}{% set visual_section = "Frota" %}{% set visual_page = "Processo de venda" %}{% include "_visual_topbar.html" %}
+    {% set active_sales_view = "pipeline" %}{% include "_sales_context_nav.html" %}{% endif %}
+    <header class="clean-workshop-header clean-workshop-header-final{% if foundation_ui_enabled %} visual-fleet-heading visual-sales-heading{% endif %}">
       <div>
         <p class="eyebrow">Frota / venda de viaturas</p>
         <h2>{{ vehicle.plate or "Viatura" }} · {{ vehicle.brand or "" }} {{ vehicle.model or "" }}</h2>
@@ -147,6 +149,17 @@
               <label><input type="checkbox" name="image_ids" value="{{ image.id }}" checked><img src="/v2-clean/fleet/sales/{{ vehicle.id }}/images/{{ image.id }}" alt=""><span>{{ image.caption or image.original_name }}</span></label>
             {% else %}
               <span class="muted">A publicação será criada sem imagens.</span>
+            {% endfor %}
+          </div>
+        </fieldset>
+        <fieldset class="sale-form-full sale-authorized-documents">
+          <legend>Documentos autorizados para esta publicação</legend>
+          <p>Seleção explícita: nenhum documento é incluído por omissão.</p>
+          <div class="sale-document-choice-list">
+            {% for document in documents %}
+              <label><input type="checkbox" name="document_ids" value="{{ document.id }}"><span><strong>{{ document.title or document.original_name }}</strong><small>{{ document.document_type or document.file_type or 'Documento' }}{% if document.document_date %} · {{ document.document_date.strftime('%d/%m/%Y') }}{% endif %}</small></span></label>
+            {% else %}
+              <span class="muted">Não existem documentos elegíveis associados à viatura.</span>
             {% endfor %}
           </div>
         </fieldset>

@@ -2,6 +2,7 @@
 {% block body %}
 {% set vehicle = snapshot.get("vehicle", {}) %}
 {% set sale = snapshot.get("sale", {}) %}
+{% set documents = snapshot.get("documents", []) %}
 <div class="portal-shell">
   {% include "_portal_header.html" %}
 <main class="public-sale-page">
@@ -34,6 +35,11 @@
       {% if sale.get("public_notes") %}<div class="public-sale-description">{{ sale.get("public_notes") }}</div>{% endif %}
     </div>
   </section>
+
+  {% if documents %}<section class="public-sale-documents" aria-labelledby="public-sale-documents-title">
+    <div><p class="eyebrow">Documentação autorizada</p><h2 id="public-sale-documents-title">Documentos incluídos pela CarFast</h2><p>Apenas os documentos selecionados explicitamente para este snapshot são apresentados.</p></div>
+    <ul>{% for document in documents %}<li><strong>{{ document.get("title") }}</strong><span>{{ document.get("type") or "Documento" }}{% if document.get("date") %} · {{ document.get("date") }}{% endif %}</span></li>{% endfor %}</ul>
+  </section>{% endif %}
 
   <section class="public-sale-contact" id="interesse">
     <div>

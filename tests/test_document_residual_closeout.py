@@ -72,6 +72,13 @@ def test_new_document_picker_uses_canonical_blue_teal_selection() -> None:
     assert "#fff7ef" not in source
 
 
+def test_ocr_calibration_keeps_wide_tables_inside_local_scroll() -> None:
+    css = (ROOT / "app" / "static" / "css" / "app.css").read_text(encoding="utf-8")
+    assert ".clean-doc-ocr-calibration-grid > *" in css
+    assert ".clean-doc-ocr-calibration-card .clean-doc-table-wrap" in css
+    assert "overflow-x: auto" in css
+
+
 def test_route_matrix_is_frozen_at_admin_setup_release_and_lists_only_real_residuals() -> None:
     source = MATRIX.read_text(encoding="utf-8")
     assert "46166d8713bcff8222c7f954fa36ae1b0f6f18cc" in source

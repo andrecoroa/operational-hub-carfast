@@ -1,4 +1,12 @@
 (() => {
+  const globalSearch = document.querySelector("[data-visual-global-search]");
+  globalSearch?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const term = new FormData(globalSearch).get("q")?.toString().trim();
+    if (!term) return;
+    window.location.assign(`/v2-clean/tasks?q=${encodeURIComponent(term)}`);
+  });
+
   const menuButton = document.querySelector(".visual-menu-button");
   const sidebar = document.querySelector("#visual-sidebar");
   if (!menuButton || !sidebar) return;

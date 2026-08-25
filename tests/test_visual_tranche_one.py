@@ -54,8 +54,40 @@ def test_topbar_exposes_navigation_and_accessible_controls() -> None:
     assert "{% if foundation_ui_enabled %}" in source
     assert 'aria-label="Breadcrumb"' in source
     assert 'aria-label="Abrir navegação"' in source
-    assert "Pesquisa global" not in source
-    assert "Notificações" not in source
+    assert 'role="search"' in source
+    assert "data-visual-global-search" in source
+    assert 'action="/v2-clean/tasks"' not in source
+    assert 'name="q"' in source
+    assert 'aria-label="Pesquisar tarefas"' in source
+    assert 'aria-label="Notificações"' in source
+    assert '"navigation.tasks.access" in visual_topbar_perms' in source
+    assert '"dashboard.read" in visual_topbar_perms' in source
+    assert "⌘ K" not in source
+    script = VISUAL_JS.read_text(encoding="utf-8")
+    assert 'window.location.assign(`/v2-clean/tasks?q=${encodeURIComponent(term)}`)' in script
+
+
+def test_dashboard_pilot_rebuilds_markup_instead_of_reusing_legacy_cards() -> None:
+    source = (TEMPLATES / "clean_home.html").read_text(encoding="utf-8")
+
+    for component in (
+        'class="visual-dashboard-heading"',
+        'class="visual-dashboard-metrics"',
+        'class="visual-work-table"',
+        'class="visual-attention-list"',
+        'class="visual-quick-grid"',
+        '<table class="visual-work-table"',
+    ):
+        assert component in source
+    assert "clean-home-metrics" not in source
+    assert "clean-home-main-grid" not in source
+    for permission_guard in (
+        "{% if home_can_fleet %}",
+        "{% if home_can_tasks %}",
+        "{% if home_can_workshop %}",
+        "{% if home_can_processes %}",
+    ):
+        assert permission_guard in source
 
 
 def test_mobile_navigation_is_keyboard_closeable() -> None:

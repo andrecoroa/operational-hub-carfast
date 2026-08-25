@@ -1,13 +1,28 @@
 {% if foundation_ui_enabled %}
+{% set visual_topbar_perms = nav_permissions(request) %}
+{% set visual_can_search_tasks = "navigation.tasks.access" in visual_topbar_perms and nav_has_permission(request, "tasks.read", "tasks.operational.read", "tasks.operational.write", "tasks.workshop.read", "tasks.workshop.write", "tasks.audit.read", "tasks.audit.write", "tasks.administration.read", "tasks.administration.write", "tasks.management.read", "tasks.management.create", "tasks.management.update", "tasks.management.close", "tasks.recurring.manage", "admin.manage") %}
 <header class="visual-topbar">
   <div class="visual-mobile-brand">
     <button class="visual-menu-button" type="button" aria-label="Abrir navegação" aria-controls="visual-sidebar">☰</button>
     <strong>CarFast</strong>
   </div>
-  <nav class="visual-breadcrumbs" aria-label="Breadcrumb">
-    <a href="/v2-clean">Início</a>
-    {% if visual_section %}<span aria-hidden="true">›</span><span>{{ visual_section }}</span>{% endif %}
-    {% if visual_page %}<span aria-hidden="true">›</span><strong aria-current="page">{{ visual_page }}</strong>{% endif %}
-  </nav>
+  <strong class="visual-topbar-title">{{ visual_page or "CarFast" }}</strong>
+  <div class="visual-topbar-actions">
+    {% if visual_can_search_tasks %}
+    <form class="visual-global-search" method="get" role="search" data-visual-global-search>
+      <span aria-hidden="true">⌕</span><input type="search" name="q" aria-label="Pesquisar tarefas" placeholder="Pesquisar tarefas">
+    </form>
+    {% endif %}
+    {% if "dashboard.read" in visual_topbar_perms %}
+    <a class="visual-icon-action" href="/alerts" aria-label="Notificações"><span aria-hidden="true">♢</span></a>
+    {% endif %}
+  </div>
 </header>
+{% if not visual_dashboard_pilot %}
+<nav class="visual-breadcrumbs" aria-label="Breadcrumb">
+  <a href="/v2-clean">Início</a>
+  {% if visual_section %}<span aria-hidden="true">/</span><span>{{ visual_section }}</span>{% endif %}
+  {% if visual_page %}<span aria-hidden="true">/</span><strong aria-current="page">{{ visual_page }}</strong>{% endif %}
+</nav>
+{% endif %}
 {% endif %}

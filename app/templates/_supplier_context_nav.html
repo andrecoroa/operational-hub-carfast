@@ -1,0 +1,16 @@
+<nav class="partner-context-nav" aria-label="Parceiros e parametrização">
+  <a href="/v2-clean/suppliers"{% if partner_tab == 'directory' %} aria-current="page"{% endif %}>Parceiros</a>
+  {% if nav_has_permission(request, 'suppliers.configuration.manage', 'admin.manage') %}
+    <a href="/v2-clean/admin/suppliers"{% if partner_tab == 'configuration' %} aria-current="page"{% endif %}>Tipos e modelos</a>
+  {% endif %}
+  {% if nav_has_permission(request, 'admin.users.manage', 'users.manage', 'admin.manage') %}
+    <a href="/v2-clean/admin/users"{% if partner_tab == 'users' %} aria-current="page"{% endif %}>Utilizadores</a>
+  {% endif %}
+  {% if nav_has_permission(request, 'admin.roles.manage', 'users.manage', 'admin.manage') %}
+    <a href="/v2-clean/admin/roles"{% if partner_tab == 'roles' %} aria-current="page"{% endif %}>Perfis e permissões</a>
+  {% endif %}
+  {% if nav_has_permission(request, 'admin.manage') %}
+    <a href="/v2-clean/admin/work-classification"{% if partner_tab == 'categories' %} aria-current="page"{% endif %}>Categorias</a>
+    <a href="/v2-clean/admin/email"{% if partner_tab == 'email' %} aria-current="page"{% endif %}>Email</a>
+  {% endif %}
+</nav>

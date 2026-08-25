@@ -3,6 +3,8 @@
 <div class="app-shell clean-shell">
   {% set active_menu = "suppliers" %}{% include "_sidebar.html" %}
   <main class="content clean-content supplier-page{% if foundation_ui_enabled %} ui-foundation{% endif %}">
+    {% set visual_section = "Parceiros" %}{% set visual_page = supplier.name %}{% include "_visual_topbar.html" %}
+    {% set partner_tab = "directory" %}{% include "_supplier_context_nav.html" %}
     <header class="supplier-hero"><div><p class="eyebrow">Ficha geral · {{ supplier.tax_id or 'sem NIF/VAT' }}</p><h1>{{ supplier.name }}</h1><p>{{ supplier.legal_name or 'Entidade transversal CarFast' }}</p><div class="supplier-chips">{% for item in assigned_types %}<span class="supplier-chip">{{ item.name }}</span>{% endfor %}</div></div><div class="supplier-hero-actions">{% if can_email %}<a class="button-link" href="/v2-clean/email?supplier_id={{ supplier.id }}&module_code={{ assigned_types[0].module_code if assigned_types else 'general' }}&compose=1">Preparar email</a>{% endif %}<a class="button-link secondary-link" href="/v2-clean/suppliers">Voltar</a></div></header>
     {% if request.query_params.get('saved') %}<div class="success">Alteração guardada com auditoria.</div>{% endif %}
     <section class="supplier-layout{% if foundation_ui_enabled %} ui-split-panel{% endif %}">

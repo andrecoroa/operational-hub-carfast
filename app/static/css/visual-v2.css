@@ -67,7 +67,8 @@ body { color: var(--cf-gray-950); background: var(--cf-gray-050); font: 400 14px
 .clean-shell .sidebar .nav-section-label { margin: 18px 12px 5px; color: #8fa6c0; font-size: 10px; letter-spacing: .09em; }
 .clean-shell .sidebar-footer { border-top: 1px solid rgb(255 255 255 / 16%); }
 .clean-shell .sidebar-footer-actions { justify-content: flex-start; }
-.clean-shell .sidebar-logout button { display: grid; width: 42px; min-width: 42px; height: 42px; min-height: 42px; padding: 0; place-items: center; color: #dce6f2; background: transparent; border: 1px solid rgb(255 255 255 / 18%); }
+.clean-shell .sidebar-evolution-create,.clean-shell .sidebar a.sidebar-legacy-link,.clean-shell .sidebar-logout button { width: 36px; min-width: 36px; height: 36px; min-height: 36px; padding: 0; color: #dce6f2; background: transparent; border: 1px solid rgb(255 255 255 / 18%); box-shadow: none; }
+.clean-shell .sidebar-logout button { display: grid; width: 36px; min-width: 36px; height: 36px; min-height: 36px; padding: 0; place-items: center; color: #dce6f2; background: transparent; border: 1px solid rgb(255 255 255 / 18%); }
 .clean-shell .sidebar-logout button::before { content: "↪"; font-size: 18px; }
 .clean-shell .sidebar-action-label { position: absolute; overflow: hidden; width: 1px; height: 1px; clip: rect(0 0 0 0); }
 .clean-shell .sidebar-status { color: #eef5ff; background: rgb(255 255 255 / 11%); border-color: rgb(255 255 255 / 18%); }
@@ -212,8 +213,8 @@ dialog { border: 1px solid var(--cf-gray-200); border-radius: 12px; box-shadow: 
   .clean-shell { grid-template-columns: var(--visual-sidebar-collapsed) minmax(0,1fr); }
   .clean-shell .sidebar { width: var(--visual-sidebar-collapsed); padding-inline: 8px; }
   .clean-shell .sidebar h1,.clean-shell .sidebar nav,.clean-shell .sidebar-status,.clean-shell .sidebar-action-label { display: none; }
-  .clean-shell .sidebar > .sidebar-brand::before { display: flex; width: 42px; min-width: 0; height: 42px; padding: 0; justify-content: center; content: "CF"; color: #fff; background: transparent; border: 0; border-radius: 0; box-shadow: none; letter-spacing: 0; }
-  .clean-shell .sidebar .visual-brand-mark { display: none; }
+  .clean-shell .sidebar > .sidebar-brand::before { display: none; }
+  .clean-shell .sidebar .visual-brand-mark { display: grid; top: 16px; left: 16px; }
   .clean-shell .sidebar .sidebar-brand > .eyebrow { display: none; }
   .clean-shell .sidebar-collapse-toggle,.clean-shell .sidebar-logout { display: none; }
   .clean-shell .sidebar-footer { grid-row: 3; align-self: end; }
@@ -235,7 +236,8 @@ dialog { border: 1px solid var(--cf-gray-200); border-radius: 12px; box-shadow: 
   .visual-nav-open .clean-shell .sidebar { z-index: 60; width: min(320px,86vw); padding-inline: 12px; }
   .visual-nav-open .clean-shell .sidebar h1,.visual-nav-open .clean-shell .sidebar nav,.visual-nav-open .clean-shell .sidebar-status,.visual-nav-open .clean-shell .sidebar-action-label { display: initial; }
   .visual-nav-open .clean-shell .sidebar nav { display: flex; }
-  .visual-nav-open .clean-shell .sidebar > .sidebar-brand::before { width: auto; min-width: 132px; padding: 0 16px; justify-content: flex-start; content: "CARFAST"; letter-spacing: .14em; }
+  .visual-nav-open .clean-shell .sidebar .visual-brand-mark { left: 8px; }
+  .visual-nav-open .clean-shell .sidebar .sidebar-brand > .eyebrow { display: block; margin: 5px 0 0 42px; }
   .visual-nav-open .clean-shell .sidebar-logout { display: block; }
   .visual-nav-open::after { position: fixed; z-index: 50; inset: 0; content: ""; background: rgb(6 27 56 / 55%); }
 }

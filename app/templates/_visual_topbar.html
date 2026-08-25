@@ -9,7 +9,7 @@
   <strong class="visual-topbar-title">{{ visual_page or "CarFast" }}</strong>
   <div class="visual-topbar-actions">
     {% if visual_can_search_tasks %}
-    <form class="visual-global-search" action="/v2-clean/tasks" method="get" role="search">
+    <form class="visual-global-search" method="get" role="search" data-visual-global-search>
       <span aria-hidden="true">⌕</span><input type="search" name="q" aria-label="Pesquisar tarefas" placeholder="Pesquisar tarefas">
     </form>
     {% endif %}

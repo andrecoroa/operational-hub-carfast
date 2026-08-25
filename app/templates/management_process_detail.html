@@ -144,6 +144,7 @@
                       <option value="{{ liability_value }}" selected>{{ liability_value }}</option>
                     {% endif %}
                   </select>
+                  {% if manager_exception_mode %}<label>Justificação<textarea name="justification" minlength="12" maxlength="1000" required></textarea></label>{% endif %}
                   <button type="submit">Guardar</button>
                 </form>
               {% else %}
@@ -231,7 +232,7 @@
                           <option value="{{ target.id }}">{{ target.internal_reference }}</option>
                         {% endfor %}
                       </select>
-                      <input name="reason" placeholder="Motivo">
+                      <input name="reason" placeholder="{% if manager_exception_mode %}Justificação obrigatória{% else %}Motivo{% endif %}" {% if manager_exception_mode %}minlength="12" required{% endif %}>
                       <button type="submit">Mover</button>
                     </form>
                   {% else %}
@@ -296,7 +297,7 @@
                           <option value="{{ target.id }}">{{ target.internal_reference }}</option>
                         {% endfor %}
                       </select>
-                      <input name="reason" placeholder="Motivo">
+                      <input name="reason" placeholder="{% if manager_exception_mode %}Justificação obrigatória{% else %}Motivo{% endif %}" {% if manager_exception_mode %}minlength="12" required{% endif %}>
                       <button type="submit">Mover</button>
                     </form>
                   {% else %}

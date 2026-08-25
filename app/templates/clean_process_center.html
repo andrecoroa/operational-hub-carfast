@@ -33,6 +33,7 @@
           <label>Matrícula<input name="plate" maxlength="40" autocomplete="off"></label>
           <label>Categoria<input name="category" list="process-category-options" autocomplete="off"><datalist id="process-category-options">{% for item in process_categories %}<option value="{{ item.name }}"></option>{% endfor %}</datalist></label>
           <label>Subcategoria<input name="subcategory" list="process-subcategory-options" autocomplete="off"><datalist id="process-subcategory-options">{% for item in process_subcategories %}<option value="{{ item.name }}"></option>{% endfor %}</datalist></label>
+          {% if manager_exception_mode %}<div class="notice-inline warning process-create-wide"><strong>Execução excecional de Gestor</strong><p>A criação exige justificação e fica registada na auditoria.</p></div><label class="process-create-wide">Justificação<textarea name="justification" minlength="12" maxlength="1000" required></textarea></label>{% endif %}
           <div class="process-create-actions"><button type="submit">Criar processo</button><a class="button-link secondary-link" href="#process-workbench">Cancelar</a></div>
         </form>
       </details>

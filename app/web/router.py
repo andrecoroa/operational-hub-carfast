@@ -4220,6 +4220,7 @@ def clean_process_center_create(
     plate: str = Form(""),
     category: str = Form(""),
     subcategory: str = Form(""),
+    justification: str = Form(""),
 ):
     user_id = get_web_user_id(request)
     if not user_id:
@@ -4228,6 +4229,7 @@ def clean_process_center_create(
         user = db.get(User, user_id)
         role_codes = task_role_codes(db, user_id)
         permission_codes = get_user_permission_codes(db, user) if user else set()
+        clean_justification = justification.strip()[:1000]
         if role_codes and role_codes.issubset(
             {"admin", "user_admin", "functional_admin"}
         ):
@@ -4236,6 +4238,11 @@ def clean_process_center_create(
             {"management_center.write", "tasks.management.create"}
         ):
             return RedirectResponse("/v2-clean/processes?error=forbidden", status_code=303)
+        if "manager" in role_codes and len(clean_justification) < 12:
+            return RedirectResponse(
+                "/v2-clean/processes?error=manager_justification_required",
+                status_code=303,
+            )
 
         clean_title = " ".join(title.split())[:240]
         clean_priority = priority.strip().lower()
@@ -4327,7 +4334,12 @@ def clean_process_center_create(
                 entity_type="management_process",
                 entity_id=str(process.id),
                 new_value="open",
-                detail=f"Processo criado pelo Executor com tarefa {task.id} associada.",
+                detail=(
+                    f"Execução excecional de Gestor. Justificação: {clean_justification}. "
+                    f"Tarefa {task.id} associada."
+                    if "manager" in role_codes
+                    else f"Processo criado pelo Executor com tarefa {task.id} associada."
+                ),
             )
         )
         db.commit()
@@ -31231,13 +31243,25 @@ def _management_process_detail_redirect(
 
 @web_router.post("/v2-clean/processes/{process_id}/liability", response_class=HTMLResponse)
 @web_router.post("/management-center/{process_id}/liability", response_class=HTMLResponse)
-def management_center_set_liability(request: Request, process_id: int, liability: str = Form(...)):
+def management_center_set_liability(
+    request: Request,
+    process_id: int,
+    liability: str = Form(...),
+    justification: str = Form(""),
+):
     user_id = get_web_user_id(request)
     if not user_id:
         return RedirectResponse("/login", status_code=303)
     denied = management_center_denied(request, write=True)
     if denied:
         return denied
+    with SessionLocal() as db:
+        role_codes = task_role_codes(db, user_id)
+    clean_justification = justification.strip()[:1000]
+    if "manager" in role_codes and len(clean_justification) < 12:
+        return _management_process_detail_redirect(
+            request, process_id, "manager_justification_required"
+        )
     selected_liability = normalize_liability_value(liability)
     if not selected_liability:
         return _management_process_detail_redirect(request, process_id, "liability_invalid")
@@ -31264,7 +31288,12 @@ def management_center_set_liability(request: Request, process_id: int, liability
                 entity_id=str(process.id),
                 old_value=LIABILITY_LABELS.get(old_value or "", old_value or ""),
                 new_value=LIABILITY_LABELS.get(selected_liability, selected_liability),
-                detail="Classificação de responsabilidade atualizada.",
+                detail=(
+                    "Execução excecional de Gestor. "
+                    f"Justificação: {clean_justification}. Responsabilidade atualizada."
+                    if "manager" in role_codes
+                    else "Classificação de responsabilidade atualizada."
+                ),
             )
         )
         db.commit()
@@ -31338,6 +31367,11 @@ def management_center_move_association(
     if denied:
         return denied
     with SessionLocal() as db:
+        role_codes = task_role_codes(db, user_id)
+        if "manager" in role_codes and len(reason.strip()) < 12:
+            return _management_process_detail_redirect(
+                request, process_id, "manager_justification_required"
+            )
         association = db.get(ManagementProcessAssociation, association_id)
         target = db.get(ManagementProcess, target_process_id)
         if not association or association.process_id != process_id or not target:
@@ -31349,6 +31383,8 @@ def management_center_move_association(
         ):
             return _management_process_detail_redirect(request, process_id, "forbidden")
         move_reason = reason.strip() or f"Correção para {target.internal_reference}."
+        if "manager" in role_codes:
+            move_reason = f"Execução excecional de Gestor. Justificação: {move_reason}"
         end_association(db, association, reason=move_reason, user_id=user_id)
         db.add(
             ManagementProcessAssociation(

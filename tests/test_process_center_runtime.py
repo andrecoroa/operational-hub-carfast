@@ -322,6 +322,104 @@ def test_manager_exception_requires_justification_and_is_audited(client, db_sess
     assert "Execução excecional de Gestor" in detail.text
     assert 'name="justification"' in detail.text
 
+    rejected_creation = client.post(
+        "/v2-clean/processes",
+        data={
+            "title": "Criação Gestor sem justificação",
+            "process_type_code": "claims",
+            "priority": "normal",
+        },
+        follow_redirects=False,
+    )
+    assert rejected_creation.headers["location"].endswith(
+        "error=manager_justification_required"
+    )
+    accepted_creation = client.post(
+        "/v2-clean/processes",
+        data={
+            "title": "Criação Gestor justificada",
+            "process_type_code": "claims",
+            "priority": "normal",
+            "justification": "Intervenção excecional necessária para desbloqueio.",
+        },
+        follow_redirects=False,
+    )
+    assert accepted_creation.status_code == 303
+    db_session.expire_all()
+    manager_process = db_session.scalar(
+        select(ManagementProcess).where(
+            ManagementProcess.title == "Criação Gestor justificada"
+        )
+    )
+    manager_creation_history = db_session.scalar(
+        select(ManagementHistory).where(
+            ManagementHistory.process_id == manager_process.id,
+            ManagementHistory.action == "process.created",
+        )
+    )
+    assert "Execução excecional de Gestor" in manager_creation_history.detail
+
+    rejected_liability = client.post(
+        f"/v2-clean/processes/{process_id}/liability",
+        data={"liability": "culpado", "justification": "curta"},
+        follow_redirects=False,
+    )
+    assert rejected_liability.headers["location"].endswith(
+        "updated=manager_justification_required"
+    )
+    accepted_liability = client.post(
+        f"/v2-clean/processes/{process_id}/liability",
+        data={
+            "liability": "culpado",
+            "justification": "Decisão excecional revista pelo Gestor responsável.",
+        },
+        follow_redirects=False,
+    )
+    assert accepted_liability.headers["location"].endswith("updated=liability")
+    db_session.expire_all()
+    liability_history = db_session.scalar(
+        select(ManagementHistory).where(
+            ManagementHistory.process_id == process_id,
+            ManagementHistory.action == "claim.liability",
+        )
+    )
+    assert "Execução excecional de Gestor" in liability_history.detail
+
+    movable = ManagementProcessAssociation(
+        process_id=process_id,
+        entity_type="task",
+        entity_id=999999,
+        association_role="evidence",
+        active=True,
+    )
+    db_session.add(movable)
+    db_session.commit()
+    rejected_move = client.post(
+        f"/v2-clean/processes/{process_id}/associations/{movable.id}/move",
+        data={"target_process_id": manager_process.id, "reason": "curta"},
+        follow_redirects=False,
+    )
+    assert rejected_move.headers["location"].endswith(
+        "updated=manager_justification_required"
+    )
+    accepted_move = client.post(
+        f"/v2-clean/processes/{process_id}/associations/{movable.id}/move",
+        data={
+            "target_process_id": manager_process.id,
+            "reason": "Correção excecional de associação validada pelo Gestor.",
+        },
+        follow_redirects=False,
+    )
+    assert accepted_move.headers["location"].endswith("updated=association")
+    db_session.expire_all()
+    moved_history = db_session.scalar(
+        select(ManagementHistory).where(
+            ManagementHistory.process_id == manager_process.id,
+            ManagementHistory.action == "association.created",
+        )
+    )
+    assert "Execução excecional de Gestor" in moved_history.detail
+
     rejected = client.post(
         f"/v2-clean/processes/{process_id}/actions/{action_id}/complete",
         data={"justification": "curta"},

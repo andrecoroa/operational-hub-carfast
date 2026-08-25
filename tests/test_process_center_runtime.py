@@ -216,6 +216,8 @@ def test_process_queue_empty_and_invalid_filters_are_explicit(client, db_session
         follow_redirects=False,
     )
     assert invalid_creation.headers["location"].endswith("error=invalid_classification")
+    error_page = client.get(invalid_creation.headers["location"])
+    assert "A categoria/subcategoria não pertence ao catálogo ativo." in error_page.text
     assert db_session.scalar(
         select(ManagementProcess).where(ManagementProcess.title == "Não deve persistir")
     ) is None

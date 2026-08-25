@@ -4037,6 +4037,7 @@ def clean_process_center(
     status: str = "",
     model: str = "",
     created: str = "",
+    error: str = "",
 ):
     denied = clean_experience_denied(request)
     if denied:
@@ -4195,6 +4196,7 @@ def clean_process_center(
                 "process_filter_error": filter_error,
                 "process_filters": {"q": clean_query, "status": clean_status, "model": clean_model},
                 "process_created": created.strip()[:80],
+                "process_error": error.strip()[:80],
                 "process_return_token": return_token,
                 "process_role_codes": role_codes,
                 "process_team_names": team_names,

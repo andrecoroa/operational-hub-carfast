@@ -22988,6 +22988,7 @@ def clean_workshop_phase(
             "workshop_process": process,
             "workshop_admin": workshop_admin,
             "workshop_summary_open": workshop_summary_open,
+            "foundation_ui_enabled": settings.visual_foundation_enabled,
             "active_step": phase,
             "phase_data": phase_data,
             "photo_phase_row": phase_row,

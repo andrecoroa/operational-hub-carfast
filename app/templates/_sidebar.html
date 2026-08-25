@@ -64,9 +64,21 @@
         <summary data-nav-icon="fleet" {% if fleet_menu_open %}class="active"{% endif %}>Frota</summary>
         <div class="sidebar-nav-children">
           {% if nav_has_permission(request, "vehicles.read", "vehicles.write", "admin.manage") %}<a class="sidebar-sub-link {% if active_menu == 'fleet' %}active{% endif %}" href="/v2-clean/fleet">Viaturas</a>{% endif %}
+          {% if nav_has_permission(request, "vehicles.read", "vehicles.write", "admin.manage") %}<a class="sidebar-sub-link" href="/alerts">Alertas</a>{% endif %}
+          {% if nav_has_permission(request, "tasks.read", "tasks.operational.read", "tasks.operational.write", "admin.manage") %}<a class="sidebar-sub-link" href="/v2-clean/tasks?workspace=fleet">Ocorrências</a>{% endif %}
+          {% if nav_has_permission(request, "documents.read", "documents.write", "admin.manage") and nav_has_permission(request, "vehicles.read", "vehicles.write", "admin.manage") %}<a class="sidebar-sub-link" href="/v2-clean/documentation/by-vehicle">Documentos</a>{% endif %}
           {% if nav_has_permission(request, "fleet.commerce.manage", "vehicles.write", "admin.manage") %}
-            <a class="sidebar-sub-link {% if active_menu == 'fleet_sales' %}active{% endif %}" href="/v2-clean/fleet/sales">Venda de viaturas</a>
+            <details class="sidebar-sub-group" {% if active_menu == 'fleet_sales' %}open{% endif %}>
+              <summary>Vendas</summary>
+              <div>
+                <a class="sidebar-sub-link {% if active_menu == 'fleet_sales' %}active{% endif %}" href="/v2-clean/fleet/sales">Pipeline</a>
+                <a class="sidebar-sub-link" href="/v2-clean/fleet/sales/proposals">Processos de venda</a>
+                <a class="sidebar-sub-link" href="/v2-clean/fleet/sales/opportunities">Clientes / comerciantes</a>
+                <a class="sidebar-sub-link" href="/v2-clean/fleet/sales?search=1">Publicações</a>
+              </div>
+            </details>
           {% endif %}
+          {% if nav_has_permission(request, "vehicles.write", "admin.manage") %}<a class="sidebar-sub-link" href="/v2-clean/admin?section=fleet">Configuração</a>{% endif %}
         </div>
       </details>{% endif %}
       {% if can_nav_stock and not can_nav_workshop %}

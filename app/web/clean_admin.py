@@ -760,6 +760,7 @@ def _layout_context(
         "admin_module_labels": ADMIN_MODULE_LABELS,
         "admin_module_nav": ADMIN_MODULE_NAV,
         "admin_module_dimension_labels": ADMIN_MODULE_DIMENSION_LABELS,
+        "foundation_ui_enabled": settings.visual_foundation_enabled,
         **extra,
     }
 

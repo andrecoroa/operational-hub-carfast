@@ -61,3 +61,18 @@ def test_mobile_navigation_is_keyboard_closeable() -> None:
     assert 'event.key === "Tab"' in script
     assert 'setAttribute("aria-expanded"' in script
     assert 'menuButton.focus()' in script
+
+
+def test_priority_routes_propagate_the_visual_feature_flag() -> None:
+    router = (ROOT / "app" / "web" / "router.py").read_text(encoding="utf-8")
+    admin = (ROOT / "app" / "web" / "clean_admin.py").read_text(encoding="utf-8")
+
+    home_block = router[router.index('"clean_home.html"') : router.index('"clean_home.html"') + 400]
+    fleet_block = router[
+        router.index('"clean_fleet_detail.html"') : router.index('"clean_fleet_detail.html"') + 900
+    ]
+    layout_block = admin[admin.index("def _layout_context(") : admin.index("def _redirect(")]
+
+    assert '"foundation_ui_enabled": settings.visual_foundation_enabled' in home_block
+    assert '"foundation_ui_enabled": settings.visual_foundation_enabled' in fleet_block
+    assert '"foundation_ui_enabled": settings.visual_foundation_enabled' in layout_block

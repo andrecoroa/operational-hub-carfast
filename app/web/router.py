@@ -3954,6 +3954,7 @@ def clean_experience_home(request: Request):
             {
                 "area_cards": area_cards,
                 "quick_metrics": quick_metrics,
+                "foundation_ui_enabled": settings.visual_foundation_enabled,
             },
         )
 
@@ -22287,6 +22288,7 @@ def clean_fleet_detail(request: Request, vehicle_id: int, return_to: str = ""):
             "maintenance_plans": maintenance_plans,
             "maintenance_plan": maintenance_plans[0] if maintenance_plans else None,
             "return_to": safe_return_to,
+            "foundation_ui_enabled": settings.visual_foundation_enabled,
         },
     )
 

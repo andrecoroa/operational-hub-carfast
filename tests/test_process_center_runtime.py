@@ -125,7 +125,7 @@ def test_executor_can_filter_open_create_and_return_to_the_same_queue(
     assert response.status_code == 200
     assert "SIN-TEST-001" in response.text
     assert "Criar processo" in response.text
-    assert "/v2-clean/tasks?workspace=management&amp;create=1" in response.text
+    assert 'action="/v2-clean/processes"' in response.text
     assert "Executor — pode criar e executar no seu âmbito." in response.text
     assert "Abrir gestão completa" not in response.text
     assert 'value="AA-00-AA"' in response.text
@@ -134,6 +134,55 @@ def test_executor_can_filter_open_create_and_return_to_the_same_queue(
     detail = client.get(f"/v2-clean/processes/{process.id}?return_context={token}")
     assert detail.status_code == 200
     assert "/v2-clean/processes?q=AA-00-AA&amp;status=open&amp;model=claims#process-workbench" in detail.text
+
+    created = client.post(
+        "/v2-clean/processes",
+        data={
+            "title": "Novo processo operacional",
+            "process_type_code": "claims",
+            "priority": "high",
+            "plate": "BB 11 BB",
+            "category": "",
+            "subcategory": "",
+        },
+        follow_redirects=False,
+    )
+    assert created.status_code == 303
+    assert created.headers["location"].startswith("/v2-clean/processes?created=PRC-")
+    db_session.expire_all()
+    new_process = db_session.scalar(
+        select(ManagementProcess).where(
+            ManagementProcess.title == "Novo processo operacional"
+        )
+    )
+    assert new_process is not None
+    linked_task = db_session.scalar(
+        select(Task).where(
+            Task.entity_type == "management_process",
+            Task.entity_id == str(new_process.id),
+        )
+    )
+    assert linked_task is not None
+    assert linked_task.assigned_to_id == executor.id
+    association = db_session.scalar(
+        select(ManagementProcessAssociation).where(
+            ManagementProcessAssociation.process_id == new_process.id,
+            ManagementProcessAssociation.entity_type == "task",
+            ManagementProcessAssociation.entity_id == linked_task.id,
+            ManagementProcessAssociation.active.is_(True),
+        )
+    )
+    assert association is not None
+    creation_history = db_session.scalar(
+        select(ManagementHistory).where(
+            ManagementHistory.process_id == new_process.id,
+            ManagementHistory.action == "process.created",
+        )
+    )
+    assert creation_history is not None
+    created_page = client.get(created.headers["location"])
+    assert new_process.internal_reference in created_page.text
+    assert "tarefa de execução e o histórico foram associados atomicamente" in created_page.text
 
 
 def test_process_queue_empty_and_invalid_filters_are_explicit(client, db_session):
@@ -145,6 +194,7 @@ def test_process_queue_empty_and_invalid_filters_are_explicit(client, db_session
         role_codes=["operator"],
         organizational_unit_codes=["carfast"],
     )
+    _seed_process(db_session)
     db_session.commit()
     _login(client, "empty.process@carfast.local")
 
@@ -154,6 +204,21 @@ def test_process_queue_empty_and_invalid_filters_are_explicit(client, db_session
     assert "Sem processos nestes filtros" in empty.text
     assert "Filtros inválidos" in invalid.text
     assert "Nenhum processo foi consultado" in invalid.text
+    invalid_creation = client.post(
+        "/v2-clean/processes",
+        data={
+            "title": "Não deve persistir",
+            "process_type_code": "claims",
+            "priority": "normal",
+            "category": "Categoria inexistente",
+            "subcategory": "",
+        },
+        follow_redirects=False,
+    )
+    assert invalid_creation.headers["location"].endswith("error=invalid_classification")
+    assert db_session.scalar(
+        select(ManagementProcess).where(ManagementProcess.title == "Não deve persistir")
+    ) is None
 
 
 def test_team_and_operational_coordinators_receive_the_exact_scope_label(

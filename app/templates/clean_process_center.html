@@ -8,19 +8,35 @@
       <div><p class="eyebrow">Operação / Centro de Processos</p><h2>Centro de Processos</h2><p>Priorize, acompanhe e abra o contexto operacional sem perder os filtros de trabalho.</p></div>
       <div class="clean-header-actions process-command-actions">
         <a class="button-link secondary-link" href="/v2-clean/tasks?workspace=management">Tarefas de gestão</a>
-        {% if can_create_process %}<a class="button-link primary-link" href="/v2-clean/tasks?workspace=management&amp;create=1">Criar processo</a>{% endif %}
+        {% if can_create_process %}<a class="button-link primary-link" href="#new-process">Criar processo</a>{% endif %}
       </div>
     </header>
 
     {% if process_access_denied %}
       <section class="clean-panel process-command-state" role="status"><strong>Sem acesso operacional</strong><p>Administrador não recebe acesso implícito. É necessária uma capacidade operacional explícita do Centro de Processos.</p><a class="button-link secondary-link" href="/v2-clean">Voltar ao início</a></section>
     {% else %}
+    {% if process_created %}<section class="notice-inline" role="status"><strong>Processo {{ process_created }} criado.</strong> A tarefa de execução e o histórico foram associados atomicamente.</section>{% endif %}
     <section class="clean-process-kpi-row process-command-kpis" aria-label="Indicadores do centro de processos">
       <a href="#process-workbench"><span>Em acompanhamento</span><strong>{{ process_metrics.open }}</strong><em>processos ativos</em></a>
       <a href="#priority-critical"><span>Prioridade imediata</span><strong>{{ process_metrics.critical }}</strong><em>processos críticos</em></a>
       <a href="#process-workbench"><span>Áreas operacionais</span><strong>{{ process_metrics.areas }}</strong><em>filas disponíveis</em></a>
       <a href="#process-models"><span>Modelos ativos</span><strong>{{ process_metrics.models }}</strong><em>percursos configurados</em></a>
     </section>
+
+    {% if can_create_process %}
+      <details class="clean-panel process-create-panel" id="new-process">
+        <summary>Criar novo processo</summary>
+        <form method="post" action="/v2-clean/processes" class="process-create-form">
+          <label class="process-create-wide">Título<input name="title" maxlength="240" required></label>
+          <label>Modelo<select name="process_type_code" required><option value="">Selecionar</option>{% for process_type in process_types %}<option value="{{ process_type.code }}">{{ process_type.name }}</option>{% endfor %}</select></label>
+          <label>Prioridade<select name="priority"><option value="normal">Normal</option><option value="high">Alta</option><option value="urgent">Urgente</option><option value="critical">Crítica</option><option value="low">Baixa</option></select></label>
+          <label>Matrícula<input name="plate" maxlength="40" autocomplete="off"></label>
+          <label>Categoria<input name="category" list="process-category-options" autocomplete="off"><datalist id="process-category-options">{% for item in process_categories %}<option value="{{ item.name }}"></option>{% endfor %}</datalist></label>
+          <label>Subcategoria<input name="subcategory" list="process-subcategory-options" autocomplete="off"><datalist id="process-subcategory-options">{% for item in process_subcategories %}<option value="{{ item.name }}"></option>{% endfor %}</datalist></label>
+          <div class="process-create-actions"><button type="submit">Criar processo</button><a class="button-link secondary-link" href="#process-workbench">Cancelar</a></div>
+        </form>
+      </details>
+    {% endif %}
 
     <section class="clean-panel process-command-toolbar" aria-labelledby="process-filter-title">
       <div><p class="eyebrow">Fila de trabalho</p><h3 id="process-filter-title">Encontrar e priorizar</h3></div>
@@ -53,7 +69,7 @@
             </tbody></table>
           </div>
         {% else %}
-          <div class="process-command-state" role="status"><strong>Sem processos nestes filtros</strong><p>Altere os filtros ou crie um processo, se tiver capacidade de Executor.</p>{% if can_create_process %}<a class="button-link primary-link" href="/v2-clean/tasks?workspace=management&amp;create=1">Criar processo</a>{% endif %}</div>
+          <div class="process-command-state" role="status"><strong>Sem processos nestes filtros</strong><p>Altere os filtros ou crie um processo, se tiver capacidade de Executor.</p>{% if can_create_process %}<a class="button-link primary-link" href="#new-process">Criar processo</a>{% endif %}</div>
         {% endif %}
       </div>
 

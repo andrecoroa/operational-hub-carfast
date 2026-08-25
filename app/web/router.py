@@ -4036,6 +4036,7 @@ def clean_process_center(
     q: str = "",
     status: str = "",
     model: str = "",
+    created: str = "",
 ):
     denied = clean_experience_denied(request)
     if denied:
@@ -4072,6 +4073,20 @@ def clean_process_center(
                 select(ManagementProcessType)
                 .where(ManagementProcessType.active.is_(True))
                 .order_by(ManagementProcessType.name)
+            )
+        )
+        process_categories = list(
+            db.scalars(
+                select(WorkCategory)
+                .where(WorkCategory.active.is_(True))
+                .order_by(WorkCategory.name)
+            )
+        )
+        process_subcategories = list(
+            db.scalars(
+                select(WorkSubcategory)
+                .where(WorkSubcategory.active.is_(True))
+                .order_by(WorkSubcategory.name)
             )
         )
         process_type_by_id = {item.id: item for item in process_types}
@@ -4171,12 +4186,15 @@ def clean_process_center(
                 "recent_management": recent_management,
                 "process_type_by_id": process_type_by_id,
                 "process_types": process_types,
+                "process_categories": process_categories,
+                "process_subcategories": process_subcategories,
                 "process_metrics": process_metrics,
                 "process_status_labels": PROCESS_STATUS_LABELS,
                 "process_phase_labels": PROCESS_PHASE_LABELS,
                 "process_access_denied": access_denied,
                 "process_filter_error": filter_error,
                 "process_filters": {"q": clean_query, "status": clean_status, "model": clean_model},
+                "process_created": created.strip()[:80],
                 "process_return_token": return_token,
                 "process_role_codes": role_codes,
                 "process_team_names": team_names,
@@ -4191,6 +4209,124 @@ def clean_process_center(
                 "foundation_ui_enabled": settings.visual_foundation_enabled,
             },
         )
+
+
+@web_router.post("/v2-clean/processes", response_class=HTMLResponse)
+def clean_process_center_create(
+    request: Request,
+    title: str = Form(...),
+    process_type_code: str = Form(...),
+    priority: str = Form("normal"),
+    plate: str = Form(""),
+    category: str = Form(""),
+    subcategory: str = Form(""),
+):
+    user_id = get_web_user_id(request)
+    if not user_id:
+        return RedirectResponse("/login", status_code=303)
+    with SessionLocal() as db:
+        user = db.get(User, user_id)
+        role_codes = task_role_codes(db, user_id)
+        permission_codes = get_user_permission_codes(db, user) if user else set()
+        if role_codes and role_codes.issubset(
+            {"admin", "user_admin", "functional_admin"}
+        ):
+            return RedirectResponse("/v2-clean/processes?error=forbidden", status_code=303)
+        if not permission_codes.intersection(
+            {"management_center.write", "tasks.management.create"}
+        ):
+            return RedirectResponse("/v2-clean/processes?error=forbidden", status_code=303)
+
+        clean_title = " ".join(title.split())[:240]
+        clean_priority = priority.strip().lower()
+        if not clean_title or clean_priority not in {"low", "normal", "high", "urgent", "critical"}:
+            return RedirectResponse("/v2-clean/processes?error=invalid_process", status_code=303)
+        process_type = db.scalar(
+            select(ManagementProcessType).where(
+                ManagementProcessType.code == process_type_code.strip(),
+                ManagementProcessType.active.is_(True),
+            )
+        )
+        if not process_type:
+            return RedirectResponse("/v2-clean/processes?error=invalid_model", status_code=303)
+
+        active_categories = {
+            item.name
+            for item in db.scalars(
+                select(WorkCategory).where(WorkCategory.active.is_(True))
+            )
+        }
+        active_subcategories = {
+            item.name
+            for item in db.scalars(
+                select(WorkSubcategory).where(WorkSubcategory.active.is_(True))
+            )
+        }
+        clean_category = category.strip()
+        clean_subcategory = subcategory.strip()
+        if (clean_category and clean_category not in active_categories) or (
+            clean_subcategory and clean_subcategory not in active_subcategories
+        ):
+            return RedirectResponse("/v2-clean/processes?error=invalid_classification", status_code=303)
+
+        reference = f"PRC-{date.today():%Y%m%d}-{uuid.uuid4().hex[:8].upper()}"
+        process = ManagementProcess(
+            process_type_id=process_type.id,
+            internal_reference=reference,
+            title=clean_title,
+            status="open",
+            phase="information_request",
+            priority=clean_priority,
+            plate=normalize_identifier(plate) if plate.strip() else None,
+            opened_on=date.today(),
+        )
+        db.add(process)
+        db.flush()
+        task = Task(
+            title=clean_title,
+            description=f"Processo {reference} · {process_type.name}",
+            task_type="management_task",
+            source="process_center",
+            category=clean_category or None,
+            subcategory=clean_subcategory or None,
+            status="new",
+            priority=clean_priority,
+            plate=process.plate,
+            entity_type="management_process",
+            entity_id=str(process.id),
+            assigned_to_id=user_id,
+            created_by_id=user_id,
+            assignment_mode="manual",
+            assignment_state="assigned_user",
+        )
+        db.add(task)
+        db.flush()
+        db.add(
+            ManagementProcessAssociation(
+                process_id=process.id,
+                entity_type="task",
+                entity_id=task.id,
+                association_role="execution",
+                active=True,
+                reason="Tarefa de execução criada atomicamente com o processo.",
+                created_by_id=user_id,
+            )
+        )
+        db.add(
+            ManagementHistory(
+                process_id=process.id,
+                user_id=user_id,
+                action="process.created",
+                entity_type="management_process",
+                entity_id=str(process.id),
+                new_value="open",
+                detail=f"Processo criado pelo Executor com tarefa {task.id} associada.",
+            )
+        )
+        db.commit()
+    return RedirectResponse(
+        f"/v2-clean/processes?created={reference}&q={reference}", status_code=303
+    )
 
 
 def clean_task_prefill_from_context(

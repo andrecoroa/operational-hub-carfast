@@ -78,9 +78,43 @@ Every item must have machine-readable evidence and an independent PASS:
 10. Run the synthetic dry-run below on the same instances, users, binaries,
     mounts, SSH options and paths. Project measured throughput to complete capture
     and immutable validation before minute 50.
+11. Freeze the exact action-time command manifest and SHA-256 fingerprint it.
+    It contains service/database IDs, releases, hosts, storage roots, binaries,
+    options, table manifests, timeout values and rollback commands, but no
+    credentials. Sender and receiver must independently read back the same
+    fingerprint immediately before quiesce.
+12. Prove the complete DB+storage bundle path three consecutive times with one
+    bundle/cutoff per run. At least one run uses 1,256,277,934 storage bytes and
+    the real PG17 dump/restore/Alembic commands. Separate transport and database
+    proofs do not satisfy this gate.
+13. Measure peak bytes and inodes for DB ciphertext, storage ciphertext,
+    decrypted database restore and storage staging simultaneously. Require at
+    least 20% free-byte and 20% free-inode margin after the measured peak.
+14. Prove an authenticated `BUNDLE_CAPTURED` record only after both ciphertexts,
+    sizes, hashes, archive listings and the common cutoff validate. Prove the
+    inverse storage rename using recorded dir/inode/mode/owner, including a
+    failure after each capture and during restore.
+15. Obtain independent PASS against items 1-14 and repeat a non-consuming final
+    read-back immediately before the window. Any drift resets this gate to
+    NO-GO.
 
 Any failed item is a pre-window NO-GO. No role, read-only mode or real stream may
 be created or started.
+
+The single executable gate is:
+
+```bash
+python scripts/conventional_migration_gate.py manifest
+python scripts/conventional_migration_gate.py synthetic-gate
+```
+
+It emits a secret-free canonical command manifest and SHA-256 fingerprint, starts
+an independent watchdog process, begins its monotonic clock at the first mutation
+blocker, proves a single DB+storage bundle ACK, and runs atomic storage rollback
+three consecutive times. Its output is synthetic evidence only and can never
+authorize the real window. The full-volume capacity/throughput input is the prior
+exact 1,256,277,934-byte PASS; the three lifecycle runs intentionally use bounded
+fixtures to avoid repeating that payload.
 
 ## Exact synthetic dry-run
 
@@ -138,8 +172,10 @@ Maintenance Mode; it must execute this reversal by minute 60 even if relay SSH d
 
 1. Arm watchdog and verify rollback channel; create ephemeral SELECT-only role for
    the frozen 162-table list and prove writes/DDL/sequences denied.
-2. Quiesce all application/filesystem writers, drain sessions, enforce DB
-   read-only, then set `WINDOW_START_UTC`, `CUTOFF_UTC` and the 60-minute deadline.
+2. Set `WINDOW_START_UTC` and arm the 60-minute deadline immediately before the
+   first mutation blocker (Maintenance Mode). Then drain application/filesystem
+   writers, enforce DB read-only and the storage barrier. Set `CUTOFF_UTC` only
+   after both domains are proven quiescent; the window clock never resets.
 3. Capture encrypted DB and storage streams into `.partial` files on Green staging.
    Bind sizes, ciphertext SHA-256, releases, bundle and cutoff in one manifest.
 4. Validate both ciphertexts are complete and decryptable; validate the DB archive
@@ -224,20 +260,24 @@ permanent environment is a later cost gate.
   drops the role. Failure during restore resets only the explicitly proven empty
   future Green database before any connection switch; the existing rollback
   database is never cleaned or overwritten.
-- In NO-GO, remove Green synthetic/staging material. In PASS, retain only the
-  promoted, reconciled Green baseline and its non-secret evidence; remove all
-  staging/partial/export material. In both outcomes remove age identity and
+- In NO-GO, remove Green synthetic/staging material. In PASS, retain the
+  reconciled future Green database `dpg-da6d4d2jnfac73e2cl40-a`, promoted storage
+  baseline and non-secret evidence; remove all other staging/partial/export
+  material. In both outcomes remove age identity and
   binaries, relay tmpfs material and repository public-key file; revoke only the
   named Render key; delete the dedicated Codespace; prove Blue writable, Green
   unchanged, temporary resources absent and ledger within the approved ceiling.
 
 ## Current gate result
 
-Pre-window **NO-GO** with 11/15 gates definitively PASS. The 166 application + 1
+Pre-window **NO-GO pending independent review and final read-back**. The 166 application + 1
 technical relation count and allowed reference-only Green rows are closed. The
 private future Green database, synthetic 162 -> 162 -> Alembic 166 path, same-mount
 quiesce mechanics and exact 1,256,277,934-byte encrypted full-volume transfer have
-passed. Remaining gates are the complete maintenance/database/storage watchdog
-reversal, frozen action-time commands and fingerprints, independent review, and
-the final 15-item preflight. The superseded data-only promotion RC1 is not a gate
-and must not be retried. Blue remains writable and no real payload has started.
+passed. `scripts/conventional_migration_gate.py synthetic-gate` then completed
+three common bounded lifecycle runs with independent watchdog RC 0, bundle ACK,
+atomic storage rollback and cleanup; canonical manifest fingerprint is
+`2a47529bd43c318022849d9ee7187ef296b1152410f73735c542512b4313eea0`.
+The superseded data-only promotion RC1 is not a gate and must not be retried.
+Only an independent PASS and the non-consuming action-time read-back may change
+this status. Blue remains writable and no real payload has started.

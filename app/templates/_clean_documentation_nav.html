@@ -2,6 +2,10 @@
   <a href="/v2-clean/documentation/triage" {% if doc_nav == "triage" %}class="active"{% endif %}>Triagem</a>
   <a href="/v2-clean/documentation/treatment" {% if doc_nav == "treatment" %}class="active"{% endif %}>Tratamento</a>
   <a href="/v2-clean/documentation/by-vehicle" {% if doc_nav == "by_vehicle" %}class="active"{% endif %}>Por viatura</a>
-  <a href="/v2-clean/documentation/imports/invoices" {% if doc_nav == "imports" %}class="active"{% endif %}>Importação</a>
+  <a href="/v2-clean/documentation/imports" {% if doc_nav == "imports" %}class="active"{% endif %}>Importações</a>
   <a href="/v2-clean/documentation/archive" {% if doc_nav == "archive" %}class="active"{% endif %}>Arquivo</a>
+  {% if nav_has_permission(request, "vehicles.read", "vehicles.write", "admin.manage") %}
+    <a href="/v2-clean/diagnostics" {% if doc_nav == "diagnostics" %}class="active"{% endif %}>Diagnósticos</a>
+    <a href="/v2-clean/documents/ocr-validation" {% if doc_nav == "models" %}class="active"{% endif %}>OCR e modelos</a>
+  {% endif %}
 </nav>

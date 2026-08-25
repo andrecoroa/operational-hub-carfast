@@ -3,7 +3,9 @@
 <div class="app-shell clean-shell">
   {% set active_menu = "documents" %}
   {% include "_sidebar.html" %}
-  <main class="content clean-content">
+  <main class="content clean-content doc-arch-page">
+    {% set doc_nav = "models" %}
+    {% include "_clean_documentation_nav.html" %}
     <header class="clean-doc-page-header clean-card-wide clean-doc-center-header">
       <div class="clean-doc-header-main">
         <p class="eyebrow">Documentação / validação OCR</p>

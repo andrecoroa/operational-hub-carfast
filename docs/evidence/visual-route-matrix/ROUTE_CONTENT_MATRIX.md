@@ -1,6 +1,6 @@
 # Matriz factual das superfícies v2-clean
 
-Base: `integration/modular-architecture@8226c6e162eb5fc1964aba9e4c6fa5ea12ef5f8b`
+Base: `integration/modular-architecture@46166d8713bcff8222c7f954fa36ae1b0f6f18cc`
 
 Inventário: `scripts/check_visual_surface_inventory.py` — 53/53 rotas estáticas canónicas, incluindo o novo assistente `/v2-clean/admin/setup`.
 Shell: **PASS transversal em todas as 53 rotas** (asset, sidebar, topbar e composição de navegação). A coluna `Conteúdo` não herda esse PASS: descreve apenas a reconstrução da superfície funcional.
@@ -9,7 +9,7 @@ Shell: **PASS transversal em todas as 53 rotas** (asset, sidebar, topbar e compo
 |---:|---|---|---|---|
 | 1 | `/v2-clean` | PASS | reconstruído/aprovado | Dashboard aprovado |
 | 2 | `/v2-clean/admin` | PASS | reconstruído pendente de captura | Parceiros/Admin runtime PASS |
-| 2A | `/v2-clean/admin/setup` | PASS | reconstruído pendente de entrega | Assistente operacional de configuração inicial |
+| 2A | `/v2-clean/admin/setup` | PASS | reconstruído/aprovado | Green 46166d87; 9/9, RBAC e responsive PASS |
 | 3 | `/v2-clean/admin/audit` | PASS | parcial | Administração residual |
 | 4 | `/v2-clean/admin/evolution` | PASS | parcial | Administração residual |
 | 5 | `/v2-clean/admin/integrations` | PASS | parcial | Administração residual; efeitos externos OFF |
@@ -61,15 +61,14 @@ Shell: **PASS transversal em todas as 53 rotas** (asset, sidebar, topbar e compo
 | 51 | `/v2-clean/workshop` | PASS | reconstruído/aprovado | Oficina aprovada |
 | 52 | `/v2-clean/workshop-entry` | PASS | reconstruído/aprovado | Oficina aprovada |
 
-## Superfícies ainda parcial ou legado (lista nominal fechada)
+## Superfícies ainda parcial ou legado (lista nominal fechada em 46166d87)
 
-1. **Administração residual:** `/v2-clean/admin/audit`, `/evolution`, `/integrations`, `/operations`, `/organization`, `/security`, `/settings` e `/workshop-models`.
-2. **Documentação residual:** `/v2-clean/diagnostics`, `/documentation/archive`, `/documentation/extraction-models`, `/documentation/financial-plans`, `/documentation/imports`, `/documentation/invoices`, `/documents`, `/documents/new` e `/documents/ocr-validation`.
-3. **Frota/Vendas:** `/v2-clean/fleet/financial-audit` e `/v2-clean/fleet/sales-access`.
-4. **Service Desk:** `/v2-clean/tasks/recurring`.
+1. **Documentação residual (tranche final A, ativa):** `/v2-clean/diagnostics` (auditoria técnica ainda isolada), `/v2-clean/documentation/archive` (lista sem contexto transversal), `/v2-clean/documentation/extraction-models` (área técnica isolada), `/v2-clean/documentation/financial-plans` (fluxo de importação antigo), `/v2-clean/documentation/imports` (hub sem percurso unificado), `/v2-clean/documentation/invoices` (monitor compatível, mas residual), `/v2-clean/documents` (centro histórico), `/v2-clean/documents/new` (formulário com estilos locais antigos) e `/v2-clean/documents/ocr-validation` (calibração fora da navegação canónica).
+2. **Administração residual (tranche final B):** `/v2-clean/admin/audit`, `/evolution`, `/integrations`, `/operations`, `/organization`, `/security`, `/settings` e `/workshop-models`; funcional, mas ainda sem composição final homogénea do assistente aprovado.
+3. **Resíduos operacionais (tranche final C):** `/v2-clean/fleet/financial-audit`, `/v2-clean/fleet/sales-access` e `/v2-clean/tasks/recurring`; superfícies especializadas ainda não fechadas pelo respetivo workbench.
 
 As superfícies reconstruídas pendentes apenas de captura não constam desta lista, porque o bloqueio é de evidência da plataforma e não de conteúdo.
 
 ## Regra de fecho
 
-Uma rota só muda para `reconstruído/aprovado` após testes funcionais/RBAC/estados, regressão transversal 52/52, revisão independente, CI, deploy Green, smoke autenticado e evidência responsive. A presença da shell nunca altera por si só a classificação do conteúdo.
+Uma rota só muda para `reconstruído/aprovado` após testes funcionais/RBAC/estados, regressão transversal 53/53, revisão independente, CI, deploy Green, smoke autenticado e evidência responsive. A presença da shell nunca altera por si só a classificação do conteúdo.

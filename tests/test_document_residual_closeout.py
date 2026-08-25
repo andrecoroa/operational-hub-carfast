@@ -85,9 +85,13 @@ def test_ocr_calibration_keeps_wide_tables_inside_local_scroll() -> None:
     assert "overflow-x: hidden" in css
 
 
-def test_route_matrix_is_frozen_at_admin_setup_release_and_lists_only_real_residuals() -> None:
+def test_route_matrix_records_final_closeout_and_names_remaining_residuals() -> None:
     source = MATRIX.read_text(encoding="utf-8")
-    assert "46166d8713bcff8222c7f954fa36ae1b0f6f18cc" in source
+    assert "84204d61ff44492560f6b5f292f1dc3975eba39c" in source
     assert "Green 46166d87; 9/9, RBAC e responsive PASS" in source
-    assert "tranche final A, ativa" in source
-    assert "regressão transversal 53/53" in source
+    assert "Não existem superfícies classificadas como `legado`" in source
+    assert source.count("| parcial |") == 3
+    assert "`/v2-clean/fleet/financial-audit`" in source
+    assert "`/v2-clean/fleet/sales-access`" in source
+    assert "`/v2-clean/tasks/recurring`" in source
+    assert "| legado |" not in source

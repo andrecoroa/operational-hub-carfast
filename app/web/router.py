@@ -5740,6 +5740,7 @@ def clean_tasks_update(
     waiting_reason: str = Form(""),
     waiting_reason_detail: str = Form(""),
     return_url: str = Form(""),
+    post_action: str = Form("close"),
 ):
     denied = clean_experience_denied(request)
     if denied:
@@ -6116,6 +6117,8 @@ def clean_tasks_update(
             user_id=user_id,
         )
         db.commit()
+    if post_action == "stay":
+        return clean_task_action_redirect(return_url, task_id=task_id, flag="updated")
     target = _clean_v2_return_url(return_url, "/v2-clean/tasks")
     separator = "&" if "?" in target else "?"
     return RedirectResponse(f"{target}{separator}updated=1", status_code=303)

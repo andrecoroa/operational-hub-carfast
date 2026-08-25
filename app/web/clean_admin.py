@@ -195,6 +195,12 @@ PERMISSION_GROUP_LABELS = {
 
 ADMIN_NAV = (
     (
+        "setup",
+        "Configuração inicial",
+        "/v2-clean/admin/setup",
+        ("admin.manage",),
+    ),
+    (
         "overview",
         "Visão geral",
         "/v2-clean/admin/overview",
@@ -335,6 +341,19 @@ QUICK_EVOLUTION_TYPE_LABELS = {
 }
 
 ADMIN_DOMAIN_DEFINITIONS = (
+    {
+        "code": "setup",
+        "label": "Configuração inicial",
+        "description": "Percurso guiado para preparar a instalação pela ordem segura.",
+        "items": (
+            (
+                "setup",
+                "Assistente operacional",
+                "/v2-clean/admin/setup",
+                ("admin.manage",),
+            ),
+        ),
+    },
     {
         "code": "operations",
         "label": "Operações e Service Desk",
@@ -822,6 +841,65 @@ def _active_admin_count(db) -> int:
         )
         or 0
     )
+
+
+@clean_admin_router.get("/v2-clean/admin/setup", response_class=HTMLResponse)
+def clean_admin_setup(request: Request):
+    access = _authorized(
+        request,
+        "admin.manage",
+    )
+    if not access:
+        return _denied(request)
+    user_id, permissions = access
+    with SessionLocal() as db:
+        counts = {
+            "units": db.scalar(select(func.count()).select_from(OrganizationalUnit)) or 0,
+            "teams": db.scalar(select(func.count()).select_from(Team)) or 0,
+            "roles": db.scalar(select(func.count()).select_from(Role).where(Role.active.is_(True))) or 0,
+            "permissions": db.scalar(select(func.count()).select_from(Permission)) or 0,
+            "users": db.scalar(select(func.count()).select_from(User).where(User.active.is_(True))) or 0,
+            "categories": db.scalar(select(func.count()).select_from(WorkCategory).where(WorkCategory.active.is_(True))) or 0,
+            "subcategories": db.scalar(select(func.count()).select_from(WorkSubcategory).where(WorkSubcategory.active.is_(True))) or 0,
+            "email_channels": db.scalar(select(func.count()).select_from(EmailChannel).where(EmailChannel.active.is_(True))) or 0,
+            "ticket_types": db.scalar(select(func.count()).select_from(ServiceDeskTicketType).where(ServiceDeskTicketType.active.is_(True))) or 0,
+            "document_types": db.scalar(
+                select(func.count())
+                .select_from(SettingsValue)
+                .join(SettingsCatalog, SettingsCatalog.id == SettingsValue.catalog_id)
+                .where(
+                    SettingsCatalog.code == "document_type",
+                    SettingsCatalog.active.is_(True),
+                    SettingsValue.active.is_(True),
+                )
+            ) or 0,
+            "workshop_models": db.scalar(select(func.count()).select_from(WorkshopTemplate).where(WorkshopTemplate.active.is_(True))) or 0,
+            "audit": db.scalar(select(func.count()).select_from(AuditLog)) or 0,
+        }
+        setup_steps = (
+            {"code": "organization", "label": "Estrutura organizacional", "description": "Definir áreas e equipas antes de atribuir pessoas.", "href": "/v2-clean/admin/organization", "metric": f"{counts['units']} áreas · {counts['teams']} equipas", "ready": counts["units"] > 0 and counts["teams"] > 0},
+            {"code": "roles", "label": "Perfis", "description": "Criar os perfis funcionais que representam responsabilidades reais.", "href": "/v2-clean/admin/roles", "metric": f"{counts['roles']} perfis ativos", "ready": counts["roles"] > 0},
+            {"code": "permissions", "label": "Permissões, capacidades e âmbitos", "description": "Rever capacidades gerais e limitar o trabalho por âmbito.", "href": "/v2-clean/admin/work-classification?view=permissions", "metric": f"{counts['permissions']} capacidades catalogadas", "ready": counts["permissions"] > 0},
+            {"code": "users", "label": "Utilizadores", "description": "Associar pessoas a perfis, áreas e equipas já revistos.", "href": "/v2-clean/admin/users", "metric": f"{counts['users']} utilizadores ativos", "ready": counts["users"] > 0},
+            {"code": "classification", "label": "Categorias e subcategorias", "description": "Configurar a linguagem operacional usada nas filas.", "href": "/v2-clean/admin/work-classification?view=desk", "metric": f"{counts['categories']} categorias · {counts['subcategories']} subcategorias", "ready": counts["categories"] > 0},
+            {"code": "email", "label": "Caixas e canais de Email", "description": "Rever canais, acesso e regras; segredos continuam fora da interface.", "href": "/v2-clean/admin/work-classification?view=channels", "metric": f"{counts['email_channels']} canais ativos", "ready": counts["email_channels"] > 0},
+            {"code": "operations", "label": "Tickets, tarefas e processos", "description": "Validar tipos, filas, responsáveis e modelos antes da entrada em operação.", "href": "/v2-clean/admin/operations", "metric": f"{counts['ticket_types']} tipos de ticket", "ready": counts["ticket_types"] > 0},
+            {"code": "documents", "label": "Tipos de documento", "description": "Rever o catálogo documental antes de configurar modelos específicos.", "href": "/v2-clean/admin/settings", "metric": f"{counts['document_types']} tipos ativos", "ready": counts["document_types"] > 0},
+            {"code": "models", "label": "Modelos operacionais", "description": "Rever modelos versionados; nenhuma publicação é automática.", "href": "/v2-clean/admin/workshop-models", "metric": f"{counts['workshop_models']} modelos ativos", "ready": counts["workshop_models"] > 0},
+        )
+        first_pending = next((step["code"] for step in setup_steps if not step["ready"]), None)
+        context = _layout_context(
+            db,
+            user_id,
+            permissions,
+            "setup",
+            setup_steps=setup_steps,
+            setup_ready=sum(1 for step in setup_steps if step["ready"]),
+            setup_total=len(setup_steps),
+            setup_first_pending=first_pending,
+            setup_audit_count=counts["audit"],
+        )
+    return templates.TemplateResponse(request, "clean_admin.html", context)
 
 
 @clean_admin_router.get("/v2-clean/admin/overview", response_class=HTMLResponse)

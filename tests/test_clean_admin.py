@@ -32,6 +32,7 @@ def test_clean_admin_pages_are_available_to_admin(authenticated_client):
     assert root.headers["location"] == "/v2-clean/admin/overview"
 
     for path, marker in (
+        ("/v2-clean/admin/setup", "Preparar a instalação pela ordem segura"),
         ("/v2-clean/admin/overview", "Modo local"),
         ("/v2-clean/admin/users", "Utilizadores"),
         ("/v2-clean/admin/roles", "Perfis e permissões"),
@@ -54,6 +55,56 @@ def test_clean_admin_pages_are_available_to_admin(authenticated_client):
     assert ">Email<" in roles_page.text
     assert "/v2-clean/admin/work-classification?view=channels" in roles_page.text
 
+
+def test_clean_admin_setup_is_guided_fail_closed_and_ordered(authenticated_client):
+    response = authenticated_client.get("/v2-clean/admin/setup")
+
+    assert response.status_code == 200
+    step_ids = (
+        "organization",
+        "roles",
+        "permissions",
+        "users",
+        "classification",
+        "email",
+        "operations",
+        "documents",
+        "models",
+    )
+    positions = [response.text.index(f'id="setup-{code}"') for code in step_ids]
+    assert positions == sorted(positions)
+    assert "Não cria, ativa ou publica configurações em massa" in response.text
+    assert "Este percurso não executa alterações irreversíveis" in response.text
+    assert 'action="/v2-clean/admin/setup' not in response.text
+    assert "/v2-clean/admin/audit" in response.text
+
+
+def test_clean_admin_setup_requires_authentication(client):
+    response = client.get("/v2-clean/admin/setup", follow_redirects=False)
+
+    assert response.status_code == 303
+    assert response.headers["location"].startswith("/login?")
+
+
+def test_clean_admin_setup_does_not_expose_metadata_to_limited_role(client, db_session):
+    create_user(
+        db_session,
+        name="Operador Limitado",
+        email="limited.setup@carfast.local",
+        password="Secret123!",
+        role_codes=["operator"],
+        organizational_unit_codes=["carfast"],
+    )
+    db_session.commit()
+    _login(client, "limited.setup@carfast.local", "Secret123!")
+
+    response = client.get("/v2-clean/admin/setup", follow_redirects=False)
+
+    assert response.status_code in {303, 403}
+    if response.status_code == 303:
+        assert response.headers["location"] == "/v2-clean?error=forbidden"
+    assert "Preparar a instalação pela ordem segura" not in response.text
+    assert "utilizadores ativos" not in response.text.lower()
 
 def test_seed_roles_preserves_manually_removed_profile_permission(db_session):
     role = db_session.scalar(select(Role).where(Role.code == "operator"))

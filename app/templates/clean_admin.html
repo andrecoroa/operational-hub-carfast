@@ -86,6 +86,43 @@
       </section>
     {% endif %}
 
+    {% if admin_section == "setup" %}
+      <section class="clean-admin-setup-hero clean-card-wide" aria-labelledby="setup-title">
+        <div>
+          <p class="eyebrow">Percurso guiado</p>
+          <h3 id="setup-title">Preparar a instalação pela ordem segura</h3>
+          <p>O assistente valida o estado e encaminha para cada área. Não cria, ativa ou publica configurações em massa.</p>
+        </div>
+        <div class="clean-admin-setup-score" aria-label="{{ setup_ready }} de {{ setup_total }} etapas com configuração disponível">
+          <strong>{{ setup_ready }}/{{ setup_total }}</strong><span>etapas com base configurada</span>
+        </div>
+      </section>
+      <section class="clean-admin-setup-layout clean-card-wide">
+        <ol class="clean-admin-setup-steps" aria-label="Etapas de configuração inicial">
+          {% for step in setup_steps %}
+            <li class="clean-admin-setup-step{% if step.ready %} is-ready{% endif %}" id="setup-{{ step.code }}">
+              <span class="clean-admin-setup-index">{{ loop.index }}</span>
+              <div><h4>{{ step.label }}</h4><p>{{ step.description }}</p><small>{{ step.metric }}</small></div>
+              <span class="pill {{ 'priority-low' if step.ready else 'muted-pill' }}">{{ 'Base disponível' if step.ready else 'Por configurar' }}</span>
+              <a class="button-link secondary-link" href="{{ step.href }}">Rever etapa<span class="sr-only">: {{ step.label }}</span></a>
+            </li>
+          {% endfor %}
+        </ol>
+        <aside class="clean-admin-setup-review" aria-labelledby="setup-review-title">
+          <p class="eyebrow">Revisão</p><h3 id="setup-review-title">Antes de disponibilizar</h3>
+          <ul>
+            <li>Confirmar hierarquia antes dos acessos.</li>
+            <li>Aplicar o menor privilégio por perfil e âmbito.</li>
+            <li>Manter integrações e efeitos externos desligados durante validação.</li>
+            <li>Rever alterações na Auditoria antes da entrada operacional.</li>
+          </ul>
+          {% if setup_first_pending %}<a class="button-link" href="#setup-{{ setup_first_pending }}">Continuar na primeira etapa pendente</a>{% endif %}
+          <a class="button-link secondary-link" href="/v2-clean/admin/audit">Rever auditoria · {{ setup_audit_count }} registos</a>
+          <p class="clean-field-help">Cada gravação continua a usar a validação e auditoria da respetiva área. Este percurso não executa alterações irreversíveis.</p>
+        </aside>
+      </section>
+    {% endif %}
+
     {% if admin_section == "operations" %}
       <section class="clean-admin-operations-hero clean-card-wide">
         <div>

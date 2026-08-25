@@ -29,6 +29,10 @@ def test_service_desk_uses_approved_visual_components_and_real_markup() -> None:
     assert 'name="post_action" value="stay"' in source
     assert 'name="post_action" value="close"' in source
     assert "{% else %}<button type=\"submit\">Guardar</button>{% endif %}" in source
+    assert '<span>Notificações</span>' in source
+    assert "Coordenador de Equipa" in source
+    assert '<span>Equipa fica por assumir</span>' in source
+    assert source.count("clean-task-collaboration-state") == 1
 
 
 def test_service_desk_drawer_traps_and_restores_focus() -> None:
@@ -66,6 +70,10 @@ def test_service_desk_responsive_contract_has_local_not_global_overflow() -> Non
         ".visual-task-drawer { width: 100vw; max-width: 100vw; }",
         ".visual-task-filters input,.visual-task-filters select,.visual-task-filters button { height: 48px; min-height: 48px; }",
         ".visual-task-open { min-width: 48px; height: 48px; }",
+        ".visual-service-desk .clean-task-notification-title { display: inline-flex;",
+        ".visual-service-desk .clean-task-side-form button.secondary { color: var(--cf-blue-600);",
+        ".visual-task-drawer .clean-task-collaboration-state > span { display: grid;",
+        ".visual-task-open { display: inline-flex; min-width: 72px;",
     ):
         assert contract in css
 

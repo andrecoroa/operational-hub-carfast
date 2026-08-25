@@ -23,10 +23,18 @@
       </div>
     </header>
     <section class="visual-dashboard-metrics" aria-label="Indicadores principais">
+      {% if home_can_fleet %}
       <a class="visual-metric-card" href="/v2-clean/fleet"><span class="visual-metric-icon is-blue" aria-hidden="true">▱</span><span><small>Viaturas na frota</small><strong>{{ quick_metrics.vehicles }}</strong><em>Consultar frota</em></span></a>
+      {% endif %}
+      {% if home_can_tasks %}
       <a class="visual-metric-card" href="/v2-clean/tasks"><span class="visual-metric-icon is-violet" aria-hidden="true">✓</span><span><small>Tarefas abertas</small><strong>{{ quick_metrics.tasks }}</strong><em>Ver fila de trabalho</em></span></a>
+      {% endif %}
+      {% if home_can_workshop %}
       <a class="visual-metric-card" href="/v2-clean/workshop"><span class="visual-metric-icon is-amber" aria-hidden="true">⌁</span><span><small>Alertas de oficina</small><strong>{{ quick_metrics.workshop_alerts }}</strong><em>Rever oficina</em></span></a>
+      {% endif %}
+      {% if home_can_processes %}
       <a class="visual-metric-card" href="/v2-clean/processes"><span class="visual-metric-icon is-green" aria-hidden="true">◎</span><span><small>Auditorias abertas</small><strong>{{ quick_metrics.audits }}</strong><em>Ver prioridades</em></span></a>
+      {% endif %}
     </section>
     <section class="visual-dashboard-grid">
       <article class="visual-card visual-work-card">
@@ -52,8 +60,12 @@
         <article class="visual-card visual-attention-card">
           <header class="visual-card-header compact"><div><p class="visual-kicker">Atenção</p><h2>Prioridades de hoje</h2></div><span class="visual-count-badge">{{ quick_metrics.workshop_alerts + quick_metrics.audits }}</span></header>
           <div class="visual-attention-list">
+            {% if home_can_workshop %}
             <a href="/v2-clean/workshop"><span class="visual-attention-icon is-amber">!</span><span><strong>Oficina</strong><small>{{ quick_metrics.workshop_alerts }} alertas a rever</small></span><b>›</b></a>
+            {% endif %}
+            {% if home_can_processes %}
             <a href="/v2-clean/processes"><span class="visual-attention-icon is-blue">✓</span><span><strong>Auditorias</strong><small>{{ quick_metrics.audits }} registos abertos</small></span><b>›</b></a>
+            {% endif %}
           </div>
         </article>
         <article class="visual-card visual-quick-card">

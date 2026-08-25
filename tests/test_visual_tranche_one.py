@@ -72,6 +72,13 @@ def test_dashboard_pilot_rebuilds_markup_instead_of_reusing_legacy_cards() -> No
         assert component in source
     assert "clean-home-metrics" not in source
     assert "clean-home-main-grid" not in source
+    for permission_guard in (
+        "{% if home_can_fleet %}",
+        "{% if home_can_tasks %}",
+        "{% if home_can_workshop %}",
+        "{% if home_can_processes %}",
+    ):
+        assert permission_guard in source
 
 
 def test_mobile_navigation_is_keyboard_closeable() -> None:

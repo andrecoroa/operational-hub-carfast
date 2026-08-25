@@ -42,39 +42,42 @@
           <div><p class="visual-kicker">Prioridades</p><h2>Trabalho por área</h2><p>Estado consolidado das equipas operacionais.</p></div>
           {% if home_can_processes %}<a class="visual-text-link" href="/v2-clean/processes">Ver processos <span aria-hidden="true">→</span></a>{% endif %}
         </header>
-        <div class="visual-work-table" role="table" aria-label="Trabalho por área">
-          <div class="visual-work-table-head" role="row"><span>Área</span><span>Estado</span><span>Abertos</span><span>Críticos</span><span></span></div>
+        <table class="visual-work-table" aria-label="Trabalho por área">
+          <thead><tr><th>Área</th><th>Estado</th><th>Abertos</th><th>Críticos</th><th><span class="sr-only">Abrir</span></th></tr></thead>
+          <tbody>
           {% for area in area_cards %}
             {% set area_allowed = (area.href.startswith('/v2-clean/tasks') and home_can_tasks) or (area.href.startswith('/v2-clean/processes') and home_can_processes) or (area.href.startswith('/v2-clean/workshop') and home_can_workshop) or (area.href.startswith('/v2-clean/fleet') and home_can_fleet) or (area.href.startswith('/v2-clean/documentation') and home_can_documentation) %}
             {% if area_allowed %}
-            <a class="visual-work-table-row" role="row" href="{{ area.href }}">
-              <span class="visual-work-area"><b>{{ area.label[:2]|upper }}</b><span><strong>{{ area.label }}</strong><small>{{ area.description }}</small></span></span>
-              <span><i class="visual-status-dot {% if area.critical %}is-warning{% else %}is-active{% endif %}"></i>{% if area.critical %}Requer atenção{% else %}Operacional{% endif %}</span>
-              <strong>{{ area.open }}</strong><strong class="{% if area.critical %}is-danger{% endif %}">{{ area.critical }}</strong><span aria-hidden="true">›</span>
-            </a>
+            <tr>
+              <td><a class="visual-work-area" href="{{ area.href }}"><b>{{ area.label[:2]|upper }}</b><span><strong>{{ area.label }}</strong><small>{{ area.description }}</small></span></a></td>
+              <td><span class="visual-work-status"><i class="visual-status-dot {% if area.critical %}is-warning{% else %}is-active{% endif %}"></i>{% if area.critical %}Requer atenção{% else %}Operacional{% endif %}</span></td>
+              <td><strong>{{ area.open }}</strong></td><td><strong class="{% if area.critical %}is-danger{% endif %}">{{ area.critical }}</strong></td>
+              <td><a class="visual-row-open" href="{{ area.href }}" aria-label="Abrir {{ area.label }}">›</a></td>
+            </tr>
             {% endif %}
           {% endfor %}
-        </div>
+          </tbody>
+        </table>
       </article>
       <aside class="visual-dashboard-aside">
         <article class="visual-card visual-attention-card">
-          <header class="visual-card-header compact"><div><p class="visual-kicker">Atenção</p><h2>Prioridades de hoje</h2></div><span class="visual-count-badge">{{ quick_metrics.workshop_alerts + quick_metrics.audits }}</span></header>
+          <header class="visual-card-header compact"><div><p class="visual-kicker">Atenção</p><h2>Prioridades de hoje</h2></div><span class="visual-count-badge">{{ (quick_metrics.workshop_alerts if home_can_workshop else 0) + (quick_metrics.audits if home_can_processes else 0) }}</span></header>
           <div class="visual-attention-list">
             {% if home_can_workshop %}
-            <a href="/v2-clean/workshop"><span class="visual-attention-icon is-amber">!</span><span><strong>Oficina</strong><small>{{ quick_metrics.workshop_alerts }} alertas a rever</small></span><b>›</b></a>
+            <a href="/v2-clean/workshop"><span class="visual-attention-icon is-amber" aria-hidden="true">!</span><span><strong>Oficina</strong><small>{{ quick_metrics.workshop_alerts }} alertas a rever</small></span><b aria-hidden="true">›</b></a>
             {% endif %}
             {% if home_can_processes %}
-            <a href="/v2-clean/processes"><span class="visual-attention-icon is-blue">✓</span><span><strong>Auditorias</strong><small>{{ quick_metrics.audits }} registos abertos</small></span><b>›</b></a>
+            <a href="/v2-clean/processes"><span class="visual-attention-icon is-blue" aria-hidden="true">✓</span><span><strong>Auditorias</strong><small>{{ quick_metrics.audits }} registos abertos</small></span><b aria-hidden="true">›</b></a>
             {% endif %}
           </div>
         </article>
         <article class="visual-card visual-quick-card">
           <header class="visual-card-header compact"><div><p class="visual-kicker">Acessos rápidos</p><h2>Operação diária</h2></div></header>
           <div class="visual-quick-grid">
-            {% if home_can_workshop %}<a href="/v2-clean/workshop"><span>⌁</span><strong>Oficina</strong><small>Dashboard</small></a>{% endif %}
-            {% if home_can_fleet %}<a href="/v2-clean/fleet"><span>▱</span><strong>Frota</strong><small>Viaturas</small></a>{% endif %}
-            {% if home_can_documentation %}<a href="/v2-clean/documentation"><span>□</span><strong>Documentos</strong><small>Triagem</small></a>{% endif %}
-            {% if home_can_tasks %}<a href="/v2-clean/tasks"><span>✓</span><strong>Tarefas</strong><small>Fila</small></a>{% endif %}
+            {% if home_can_workshop %}<a href="/v2-clean/workshop"><span aria-hidden="true">⌁</span><strong>Oficina</strong><small>Dashboard</small></a>{% endif %}
+            {% if home_can_fleet %}<a href="/v2-clean/fleet"><span aria-hidden="true">▱</span><strong>Frota</strong><small>Viaturas</small></a>{% endif %}
+            {% if home_can_documentation %}<a href="/v2-clean/documentation"><span aria-hidden="true">□</span><strong>Documentos</strong><small>Triagem</small></a>{% endif %}
+            {% if home_can_tasks %}<a href="/v2-clean/tasks"><span aria-hidden="true">✓</span><strong>Tarefas</strong><small>Fila</small></a>{% endif %}
           </div>
         </article>
       </aside>

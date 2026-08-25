@@ -3,16 +3,16 @@
 <div class="app-shell clean-shell">
   {% set active_menu = "fleet" %}
   {% include "_sidebar.html" %}
-  <main class="content clean-content visual-fleet-detail">
+  <main class="content clean-content{% if foundation_ui_enabled %} visual-fleet-detail{% endif %}">
     {% set visual_section = "Viaturas" %}{% set visual_page = ctx.vehicle.plate or "Detalhe" %}{% include "_visual_topbar.html" %}
     {% set vehicle = ctx.vehicle %}
-    <nav class="visual-fleet-context-nav" aria-label="Contexto da viatura">
+    {% if foundation_ui_enabled %}<nav class="visual-fleet-context-nav" aria-label="Contexto da viatura">
       <a class="active" href="/v2-clean/fleet/{{ vehicle.id }}">Resumo</a>
-      <a href="/v2-clean/fleet/{{ vehicle.id }}/documents">Documentos</a>
-      <a href="/v2-clean/fleet/{{ vehicle.id }}/diagnostics">Diagnósticos</a>
+      <a href="/v2-clean/fleet/{{ vehicle.id }}/documents?return_to={{ return_to|urlencode }}">Documentos</a>
+      <a href="/v2-clean/fleet/{{ vehicle.id }}/diagnostics?return_to={{ return_to|urlencode }}">Diagnósticos</a>
       {% if nav_has_permission(request, "fleet.commerce.manage", "vehicles.write", "admin.manage") %}<a href="/v2-clean/fleet/sales/{{ vehicle.id }}">Venda</a>{% endif %}
-    </nav>
-    <section class="clean-vehicle-header-card clean-vehicle-header-card-unified clean-vehicle-header-card-process visual-fleet-vehicle-hero">
+    </nav>{% endif %}
+    <section class="clean-vehicle-header-card clean-vehicle-header-card-unified clean-vehicle-header-card-process{% if foundation_ui_enabled %} visual-fleet-vehicle-hero{% endif %}">
       <div class="clean-vehicle-header-main">
         <div class="clean-vehicle-identity">
           <strong>{{ ctx.identity.plate or '-' }}</strong>
@@ -64,7 +64,7 @@
       </article>
     </section>
 
-    <section class="clean-phase-workbench clean-card-wide clean-fleet-workbench visual-fleet-detail-workbench">
+    <section class="clean-phase-workbench clean-card-wide clean-fleet-workbench{% if foundation_ui_enabled %} visual-fleet-detail-workbench{% endif %}">
       <aside class="clean-substep-rail" aria-label="Blocos da ficha">
         <button class="clean-substep-card active" type="button" data-target="regras">
           <span><b>Regras e datas</b><em>IPO, início e categoria</em></span>

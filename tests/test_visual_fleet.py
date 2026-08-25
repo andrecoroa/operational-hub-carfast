@@ -159,8 +159,8 @@ def test_sales_pipeline_is_a_composed_fleet_workbench():
     for path in (
         "/v2-clean/fleet/sales",
         "/v2-clean/fleet/sales/proposals",
-        "/v2-clean/fleet/sales-access",
         "/v2-clean/fleet/sales/opportunities",
+        "/v2-clean/fleet/sales?search=1",
     ):
         assert f'href="{path}"' in template
 
@@ -183,3 +183,65 @@ def test_fleet_empty_diagnostics_state_remains_explicit_and_non_mutating(
     assert response.status_code == 200
     assert "Não existem diagnósticos para os filtros selecionados." in response.text
     assert "Seleciona um diagnóstico para consultar os dados técnicos." in response.text
+
+
+def test_fleet_return_context_survives_detail_documents_and_diagnostics(
+    authenticated_client,
+    db_session,
+    monkeypatch,
+):
+    from app.web import router
+
+    monkeypatch.setitem(router.templates.env.globals, "foundation_ui_enabled", True)
+    monkeypatch.setattr(router.settings, "visual_foundation_enabled", True)
+    vehicle = Vehicle(plate="RC-25-GR", active=True, lifecycle_status="active")
+    db_session.add(vehicle)
+    db_session.commit()
+    return_to = "/v2-clean/fleet?scope=active&page=2#vehicle-99"
+
+    detail = authenticated_client.get(
+        f"/v2-clean/fleet/{vehicle.id}", params={"return_to": return_to}
+    )
+    documents = authenticated_client.get(
+        f"/v2-clean/fleet/{vehicle.id}/documents", params={"return_to": return_to}
+    )
+    diagnostics = authenticated_client.get(
+        f"/v2-clean/fleet/{vehicle.id}/diagnostics", params={"return_to": return_to}
+    )
+
+    assert detail.status_code == documents.status_code == diagnostics.status_code == 200
+    encoded = "/v2-clean/fleet%3Fscope%3Dactive%26page%3D2%23vehicle-99"
+    assert f"/documents?return_to={encoded}" in detail.text
+    assert f"/diagnostics?return_to={encoded}" in detail.text
+    assert f"?return_to={encoded}" in documents.text
+    assert f"?return_to={encoded}" in diagnostics.text
+    assert 'href="/v2-clean/fleet?scope=active&amp;page=2#vehicle-99"' in detail.text
+
+
+def test_fleet_detail_documents_diagnostics_and_sales_have_true_flag_off_fallback(
+    authenticated_client,
+    db_session,
+    monkeypatch,
+):
+    from app.web import router
+
+    monkeypatch.setitem(router.templates.env.globals, "foundation_ui_enabled", False)
+    monkeypatch.setattr(router.settings, "visual_foundation_enabled", False)
+    vehicle = Vehicle(plate="OFF-25-GR", active=True, lifecycle_status="active")
+    db_session.add(vehicle)
+    db_session.commit()
+
+    for path in (
+        f"/v2-clean/fleet/{vehicle.id}",
+        f"/v2-clean/fleet/{vehicle.id}/documents",
+        f"/v2-clean/fleet/{vehicle.id}/diagnostics",
+        "/v2-clean/fleet/sales",
+    ):
+        response = authenticated_client.get(path)
+        assert response.status_code == 200
+        assert "visual-v2.css" not in response.text
+        assert "visual-fleet-context-nav" not in response.text
+        assert "visual-fleet-detail-workbench" not in response.text
+        assert "visual-fleet-documents" not in response.text
+        assert "visual-fleet-diagnostics" not in response.text
+        assert "visual-fleet-sales" not in response.text

@@ -3,14 +3,14 @@
 <div class="app-shell clean-shell">
   {% set active_menu = "fleet" %}
   {% include "_sidebar.html" %}
-  <main class="content clean-content clean-diagnostic-page visual-fleet-diagnostics">
-    {% set visual_section = "Frota" %}{% set visual_page = "Diagnósticos" %}{% include "_visual_topbar.html" %}
+  <main class="content clean-content clean-diagnostic-page{% if foundation_ui_enabled %} visual-fleet-diagnostics{% endif %}">
+    {% if foundation_ui_enabled %}{% set visual_section = "Frota" %}{% set visual_page = "Diagnósticos" %}{% include "_visual_topbar.html" %}
     <nav class="visual-fleet-context-nav" aria-label="Contexto da viatura">
-      <a href="/v2-clean/fleet/{{ vehicle.id }}">Resumo</a>
-      <a href="/v2-clean/fleet/{{ vehicle.id }}/documents">Documentos</a>
+      <a href="/v2-clean/fleet/{{ vehicle.id }}?return_to={{ return_to|urlencode }}">Resumo</a>
+      <a href="/v2-clean/fleet/{{ vehicle.id }}/documents?return_to={{ return_to|urlencode }}">Documentos</a>
       <a class="active" href="/v2-clean/fleet/{{ vehicle.id }}/diagnostics">Diagnósticos</a>
-    </nav>
-    <section class="clean-vehicle-header-card clean-vehicle-header-card-unified clean-vehicle-header-card-process visual-fleet-vehicle-hero">
+    </nav>{% endif %}
+    <section class="clean-vehicle-header-card clean-vehicle-header-card-unified clean-vehicle-header-card-process{% if foundation_ui_enabled %} visual-fleet-vehicle-hero{% endif %}">
       <div class="clean-vehicle-header-main">
         <div class="clean-vehicle-identity">
           <strong>{{ ctx.identity.plate or "-" }}</strong>

@@ -14,6 +14,17 @@ BUNDLE = "window-20260825-abcd"
 
 
 def write_marker(root: Path, **overrides: object) -> Path:
+    def identity(name: str) -> tuple[int, int]:
+        try:
+            info = (root / name).stat()
+        except FileNotFoundError:
+            return (1, 1)
+        return (info.st_dev, info.st_ino)
+
+    documents_source = identity(f".cutoff-{BUNDLE}-carfast_documents")
+    documents_placeholder = identity("carfast_documents")
+    email_source = identity(f".cutoff-{BUNDLE}-email")
+    email_placeholder = identity("email")
     value = {
         "schema": recovery.MARKER_SCHEMA,
         "blue_release": recovery.BLUE_RELEASE,
@@ -21,6 +32,14 @@ def write_marker(root: Path, **overrides: object) -> Path:
         "parent_mode": 0o755,
         "documents_mode": 0o755,
         "email_mode": 0o750,
+        "documents_source_dev": documents_source[0],
+        "documents_source_inode": documents_source[1],
+        "documents_placeholder_dev": documents_placeholder[0],
+        "documents_placeholder_inode": documents_placeholder[1],
+        "email_source_dev": email_source[0],
+        "email_source_inode": email_source[1],
+        "email_placeholder_dev": email_placeholder[0],
+        "email_placeholder_inode": email_placeholder[1],
     }
     value.update(overrides)
     marker = root / recovery.MARKER_NAME
@@ -53,11 +72,15 @@ def test_no_marker_is_absolute_noop(tmp_path: Path, monkeypatch: pytest.MonkeyPa
 
 
 @pytest.mark.parametrize("partial", [False, True])
+@pytest.mark.skipif(os.name != "posix", reason="dirfd recovery is Linux-specific")
 def test_recovery_handles_crash_and_partial_recovery(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, partial: bool
 ) -> None:
-    interrupted_tree(tmp_path, partial=partial)
+    interrupted_tree(tmp_path)
     marker = write_marker(tmp_path)
+    if partial:
+        (tmp_path / "email").rmdir()
+        (tmp_path / f".cutoff-{BUNDLE}-email").rename(tmp_path / "email")
     database = Mock()
     monkeypatch.setattr(recovery, "_restore_database", database)
 
@@ -90,6 +113,7 @@ def test_invalid_marker_fails_closed(tmp_path: Path, mutation: dict[str, object]
         recovery.recover_migration_window("not-used", data_root=tmp_path)
 
 
+@pytest.mark.skipif(os.name != "posix", reason="dirfd recovery is Linux-specific")
 def test_symlink_marker_and_ambiguous_roots_fail_closed(tmp_path: Path) -> None:
     target = tmp_path / "target"
     target.write_text("{}", encoding="utf-8")
@@ -108,6 +132,7 @@ def test_symlink_marker_and_ambiguous_roots_fail_closed(tmp_path: Path) -> None:
         recovery.recover_migration_window("not-used", data_root=tmp_path)
 
 
+@pytest.mark.skipif(os.name != "posix", reason="dirfd recovery is Linux-specific")
 def test_marker_is_retained_when_database_reset_fails(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -125,6 +150,34 @@ def test_marker_is_retained_when_database_reset_fails(
     assert (tmp_path / "email" / "message.bin").exists()
 
 
+@pytest.mark.skipif(os.name != "posix", reason="dirfd recovery is Linux-specific")
+def test_frozen_inode_replacement_and_marker_replacement_fail_closed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    interrupted_tree(tmp_path)
+    marker = write_marker(tmp_path)
+    frozen = tmp_path / f".cutoff-{BUNDLE}-carfast_documents"
+    frozen.rename(tmp_path / "displaced")
+    frozen.mkdir()
+    with pytest.raises(recovery.RecoveryError, match="frozen inode"):
+        recovery.recover_migration_window("not-used", data_root=tmp_path)
+
+    marker.unlink()
+    frozen.rmdir()
+    (tmp_path / "displaced").rename(frozen)
+    marker = write_marker(tmp_path)
+
+    def replace_marker(_database_url: str) -> None:
+        marker.unlink()
+        replacement = write_marker(tmp_path)
+        replacement.chmod(0o600)
+
+    monkeypatch.setattr(recovery, "_restore_database", replace_marker)
+    with pytest.raises(recovery.RecoveryError, match="marker replacement"):
+        recovery.recover_migration_window("not-used", data_root=tmp_path)
+    assert marker.exists()
+
+
 @pytest.mark.skipif(
     not os.environ.get("RECOVERY_TEST_DATABASE_URL"),
     reason="requires PostgreSQL 17 integration service",
@@ -138,7 +191,11 @@ def test_postgresql17_role_and_database_defaults_are_restored(tmp_path: Path) ->
             cursor.execute("ALTER ROLE CURRENT_USER SET default_transaction_read_only=on")
             cursor.execute("ALTER DATABASE postgres SET default_transaction_read_only=on")
 
+    blocker = recovery.psycopg.connect(database_url, autocommit=True)
     assert recovery.recover_migration_window(database_url, data_root=tmp_path)
+    with pytest.raises(recovery.psycopg.Error):
+        blocker.execute("SELECT 1")
+    blocker.close()
     with recovery.psycopg.connect(database_url, autocommit=True) as connection:
         with connection.cursor() as cursor:
             cursor.execute("SHOW server_version_num")

@@ -44,9 +44,17 @@ class RecoveryMarker:
     parent_mode: int
     documents_mode: int
     email_mode: int
+    documents_source_dev: int
+    documents_source_inode: int
+    documents_placeholder_dev: int
+    documents_placeholder_inode: int
+    email_source_dev: int
+    email_source_inode: int
+    email_placeholder_dev: int
+    email_placeholder_inode: int
 
 
-def _read_marker(marker_path: Path) -> RecoveryMarker | None:
+def _read_marker(marker_path: Path) -> tuple[RecoveryMarker, tuple[int, int]] | None:
     try:
         fd = os.open(marker_path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
     except FileNotFoundError:
@@ -88,6 +96,14 @@ def _read_marker(marker_path: Path) -> RecoveryMarker | None:
         "parent_mode",
         "documents_mode",
         "email_mode",
+        "documents_source_dev",
+        "documents_source_inode",
+        "documents_placeholder_dev",
+        "documents_placeholder_inode",
+        "email_source_dev",
+        "email_source_inode",
+        "email_placeholder_dev",
+        "email_placeholder_inode",
     }
     if not isinstance(value, dict) or set(value) != expected:
         raise RecoveryError("migration recovery marker shape mismatch")
@@ -102,42 +118,78 @@ def _read_marker(marker_path: Path) -> RecoveryMarker | None:
     roots_have_invalid_mode = any(mode not in _ALLOWED_MODES for mode in modes[1:])
     if modes[0] not in _ALLOWED_PARENT_MODES or roots_have_invalid_mode:
         raise RecoveryError("migration recovery marker mode value mismatch")
-    return RecoveryMarker(bundle_id, *modes)
+    identity_values = (
+        value["documents_source_dev"],
+        value["documents_source_inode"],
+        value["documents_placeholder_dev"],
+        value["documents_placeholder_inode"],
+        value["email_source_dev"],
+        value["email_source_inode"],
+        value["email_placeholder_dev"],
+        value["email_placeholder_inode"],
+    )
+    if any(type(item) is not int or item < 1 for item in identity_values):
+        raise RecoveryError("migration recovery marker inode binding mismatch")
+    return RecoveryMarker(bundle_id, *modes, *identity_values), (info.st_dev, info.st_ino)
 
 
-def _directory_state(path: Path) -> os.stat_result | None:
+def _directory_state_at(data_fd: int, name: str) -> os.stat_result | None:
     try:
-        result = path.lstat()
+        result = os.stat(name, dir_fd=data_fd, follow_symlinks=False)
     except FileNotFoundError:
         return None
-    if not stat.S_ISDIR(result.st_mode) or path.is_symlink():
+    if not stat.S_ISDIR(result.st_mode):
         raise RecoveryError("migration recovery storage type mismatch")
     if not _owner_matches(result):
         raise RecoveryError("migration recovery storage owner mismatch")
     return result
 
 
-def _is_empty(path: Path) -> bool:
-    with os.scandir(path) as entries:
-        return next(entries, None) is None
+def _is_empty_at(data_fd: int, name: str) -> bool:
+    child_fd = os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=data_fd)
+    try:
+        return not os.listdir(child_fd)
+    finally:
+        os.close(child_fd)
 
 
-def _restore_root(original: Path, frozen: Path, mode: int) -> None:
-    original_state = _directory_state(original)
-    frozen_state = _directory_state(frozen)
+def _same_inode(info: os.stat_result, expected: tuple[int, int]) -> bool:
+    return (info.st_dev, info.st_ino) == expected
+
+
+def _restore_root_at(
+    data_fd: int,
+    original: str,
+    frozen: str,
+    mode: int,
+    *,
+    source_identity: tuple[int, int],
+    placeholder_identity: tuple[int, int],
+) -> None:
+    original_state = _directory_state_at(data_fd, original)
+    frozen_state = _directory_state_at(data_fd, frozen)
     if frozen_state is None:
-        if original_state is None:
+        if original_state is None or not _same_inode(original_state, source_identity):
             raise RecoveryError("migration recovery storage root is missing")
-        os.chmod(original, mode, follow_symlinks=False)
+        os.chmod(original, mode, dir_fd=data_fd, follow_symlinks=False)
         return
+    if not _same_inode(frozen_state, source_identity):
+        raise RecoveryError("migration recovery frozen inode mismatch")
     if original_state is not None:
         placeholder_mode = stat.S_IMODE(original_state.st_mode)
         invalid_mode = os.name == "posix" and placeholder_mode not in {0o500, 0o550, 0o555}
-        if invalid_mode or not _is_empty(original):
+        if (
+            invalid_mode
+            or not _same_inode(original_state, placeholder_identity)
+            or not _is_empty_at(data_fd, original)
+        ):
             raise RecoveryError("migration recovery storage state is ambiguous")
-        original.rmdir()
-    os.replace(frozen, original)
-    os.chmod(original, mode, follow_symlinks=False)
+        os.rmdir(original, dir_fd=data_fd)
+    os.rename(frozen, original, src_dir_fd=data_fd, dst_dir_fd=data_fd)
+    restored = _directory_state_at(data_fd, original)
+    if restored is None or not _same_inode(restored, source_identity):
+        raise RecoveryError("migration recovery storage rename mismatch")
+    os.chmod(original, mode, dir_fd=data_fd, follow_symlinks=False)
 
 
 def _restore_database(database_url: str) -> None:
@@ -164,8 +216,30 @@ def _restore_database(database_url: str) -> None:
                 )
                 cursor.execute(
                     "SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
-                    "WHERE datname=current_database() AND pid<>pg_backend_pid()"
+                    "WHERE datname=current_database() AND usename=current_user "
+                    "AND pid<>pg_backend_pid()"
                 )
+                if any(result is not True for (result,) in cursor.fetchall()):
+                    raise RecoveryError("migration recovery could not terminate every session")
+                cursor.execute(
+                    "SELECT count(*) FROM pg_stat_activity "
+                    "WHERE datname=current_database() AND usename=current_user "
+                    "AND pid<>pg_backend_pid()"
+                )
+                if cursor.fetchone()[0] != 0:
+                    raise RecoveryError("migration recovery concurrent sessions remain")
+                cursor.execute(
+                    "SELECT count(*) FROM pg_db_role_setting s "
+                    "JOIN pg_database d ON d.datname=current_database() "
+                    "WHERE (s.setrole=(SELECT oid FROM pg_roles WHERE rolname=current_user) "
+                    "AND s.setdatabase=0 OR s.setrole=0 AND s.setdatabase=d.oid) "
+                    "AND EXISTS (SELECT 1 FROM unnest(s.setconfig) c "
+                    "WHERE c LIKE 'default_transaction_read_only=%')"
+                )
+                if cursor.fetchone()[0] != 0:
+                    raise RecoveryError("migration recovery read-only defaults remain")
+        with psycopg.connect(database_url, autocommit=True) as verification:
+            with verification.cursor() as cursor:
                 cursor.execute("SHOW default_transaction_read_only")
                 if cursor.fetchone()[0] != "off":
                     raise RecoveryError("migration recovery database remains read-only")
@@ -183,24 +257,41 @@ def recover_migration_window(
     """Restore an interrupted window; return False without any side effect if absent."""
 
     marker_path = data_root / MARKER_NAME
-    marker = _read_marker(marker_path)
-    if marker is None:
+    marker_result = _read_marker(marker_path)
+    if marker_result is None:
         return False
+    marker, marker_identity = marker_result
 
-    root_state = _directory_state(data_root)
-    if root_state is None:
+    root_state = data_root.lstat()
+    if not stat.S_ISDIR(root_state.st_mode) or data_root.is_symlink():
         raise RecoveryError("migration recovery data root is missing")
     os.chmod(data_root, marker.parent_mode, follow_symlinks=False)
-    _restore_root(
-        data_root / "carfast_documents",
-        data_root / f".cutoff-{marker.bundle_id}-carfast_documents",
-        marker.documents_mode,
-    )
-    _restore_root(
-        data_root / "email",
-        data_root / f".cutoff-{marker.bundle_id}-email",
-        marker.email_mode,
-    )
-    _restore_database(database_url)
-    marker_path.unlink()
+    data_fd = os.open(data_root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        _restore_root_at(
+            data_fd,
+            "carfast_documents",
+            f".cutoff-{marker.bundle_id}-carfast_documents",
+            marker.documents_mode,
+            source_identity=(marker.documents_source_dev, marker.documents_source_inode),
+            placeholder_identity=(
+                marker.documents_placeholder_dev,
+                marker.documents_placeholder_inode,
+            ),
+        )
+        _restore_root_at(
+            data_fd,
+            "email",
+            f".cutoff-{marker.bundle_id}-email",
+            marker.email_mode,
+            source_identity=(marker.email_source_dev, marker.email_source_inode),
+            placeholder_identity=(marker.email_placeholder_dev, marker.email_placeholder_inode),
+        )
+        _restore_database(database_url)
+        current_marker = os.stat(MARKER_NAME, dir_fd=data_fd, follow_symlinks=False)
+        if (current_marker.st_dev, current_marker.st_ino) != marker_identity:
+            raise RecoveryError("migration recovery marker replacement detected")
+        os.unlink(MARKER_NAME, dir_fd=data_fd)
+    finally:
+        os.close(data_fd)
     return True

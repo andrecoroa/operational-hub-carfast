@@ -3,6 +3,7 @@ set -euo pipefail
 
 python -m pip install --upgrade pip
 python -m pip install -r requirements-dev.txt
+python -m scripts.validate_isolated_environment
 python scripts/check_migration_heads.py
 python -m alembic upgrade head
 python -m scripts.bootstrap_installation

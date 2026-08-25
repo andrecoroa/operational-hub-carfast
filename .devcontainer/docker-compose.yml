@@ -5,16 +5,23 @@ services:
       dockerfile: .devcontainer/Dockerfile
     command: sleep infinity
     environment:
-      APP_ENV: development
+      APP_ENV: test
       APP_SECRET_KEY: codespaces-development-only
       DATABASE_URL: postgresql+psycopg://carfast:carfast@postgres:5432/carfast_dev
       DOCUMENT_ARCHIVE_ROOT: /workspaces/.carfast-data/documents
       DOCUMENT_INVOICE_INBOX_PATH: /workspaces/.carfast-data/documents/inbox
       EMAIL_INBOUND_ENABLED: "false"
       EMAIL_OUTBOUND_ENABLED: "false"
+      WEBHOOKS_ENABLED: "false"
+      SCHEDULED_JOBS_ENABLED: "false"
+      PORTALS_ENABLED: "false"
+      EXTERNAL_INTEGRATIONS_ENABLED: "false"
+      DOCUMENT_FIXTURES_ONLY: "true"
+      REAL_DATA_ALLOWED: "false"
       EMAIL_STORAGE_ROOT: /workspaces/.carfast-data/email
       INTEGRATION_API_KEY: ""
       POSTMARK_SERVER_TOKEN: ""
+      WEBHOOK_SIGNING_SECRET: ""
       CARFAST_ADMIN_EMAIL: admin@carfast.local
       CARFAST_ADMIN_PASSWORD: LocalDevelopment123!
     volumes:

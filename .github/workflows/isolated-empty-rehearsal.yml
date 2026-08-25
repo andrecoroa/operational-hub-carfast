@@ -6,6 +6,7 @@ on:
     branches:
       - codex/isolated-empty-rehearsal
       - codex/anonymized-streaming-rehearsal
+      - codex/development-sandbox-clean-install
 
 permissions:
   contents: read

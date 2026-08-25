@@ -6,6 +6,7 @@ on:
     branches:
       - v2/production
       - integration/modular-architecture
+      - codex/development-sandbox-clean-install
 
 permissions:
   contents: read

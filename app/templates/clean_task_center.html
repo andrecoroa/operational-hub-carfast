@@ -42,8 +42,8 @@
 
     <details class="clean-task-notification-center" {% if request.query_params.get("notifications") == "open" %}open{% endif %}>
       <summary>
-        <span class="clean-task-notification-title">Notificações{% if task_notification_unread_count %}<b>{{ task_notification_unread_count }}</b>{% endif %}</span>
-        <small>Tarefas em que és responsável, criador, colaborador, acompanhante, suporte ou membro da equipa.</small>
+        <span class="clean-task-notification-title"><span>Notificações</span>{% if task_notification_unread_count %}<b aria-label="{{ task_notification_unread_count }} notificações não lidas">{{ task_notification_unread_count }}</b>{% endif %}</span>
+        <small class="clean-task-notification-help">Tarefas em que és responsável, criador, colaborador, acompanhante, suporte ou membro da equipa.</small>
       </summary>
       <div class="clean-task-notification-list">
         <header>
@@ -320,7 +320,7 @@
               <label class="span-2">Descrição da espera<textarea name="waiting_reason_detail" rows="2">{{ task.waiting_reason_detail or '' }}</textarea></label>
               <label>Executor<select name="assigned_to_id" data-service-desk-executor="user"><option value="">Por atribuir</option>{% for user in all_users %}{% set category_ids %}{% for category_id, ids in eligible_user_ids_by_category.items() if user.id in ids %} {{ category_id }}{% endfor %}{% endset %}{% if category_ids|trim or task.assigned_to_id == user.id %}<option value="{{ user.id }}" data-categories="{{ category_ids }}{% if task.assigned_to_id == user.id %} {{ task.work_category_id or '' }}{% endif %}" {% if task.assigned_to_id == user.id %}selected{% endif %}>{{ user.name }}{% if task.assigned_to_id == user.id and user.id not in eligible_user_ids_by_category.get(task.work_category_id, []) %} · histórico{% endif %}</option>{% endif %}{% endfor %}</select></label>
               <label>Equipa executora<select name="assigned_team_id" data-service-desk-executor="team"><option value="">Sem equipa</option>{% for team in all_teams %}{% set category_ids %}{% for category_id, ids in eligible_team_ids_by_category.items() if team.id in ids %} {{ category_id }}{% endfor %}{% endset %}{% if category_ids|trim or task.team_id == team.id %}<option value="{{ team.id }}" data-categories="{{ category_ids }}{% if task.team_id == team.id %} {{ task.work_category_id or '' }}{% endif %}" {% if task.team_id == team.id %}selected{% endif %}>{{ team.name }}{% if task.team_id == team.id and team.id not in eligible_team_ids_by_category.get(task.work_category_id, []) %} · histórico{% endif %}</option>{% endif %}{% endfor %}</select></label>
-              <label class="checkbox-label"><input type="checkbox" name="team_requires_claim" {% if task.assignment_state == 'team_unclaimed' %}checked{% endif %}> Equipa fica por assumir</label>
+              <label class="checkbox-label visual-task-claim-check"><input type="checkbox" name="team_requires_claim" {% if task.assignment_state == 'team_unclaimed' %}checked{% endif %}><span>Equipa fica por assumir</span></label>
               <label>Estado<select name="status">{% for code, label in [("new","Nova"),("in_execution","Em curso"),("waiting","Em espera"),("resolved","Resolvida"),("closed","Fechada"),("cancelled","Cancelada")] %}<option value="{{ code }}" {% if task.status == code %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
               <label>Prioridade<select name="priority">{% for code, label in [("low","Baixa"),("normal","Normal"),("high","Alta"),("urgent","Urgente")] %}<option value="{{ code }}" {% if task.priority == code %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
               <label>Prazo<input type="date" name="due_on" value="{{ task.due_on.isoformat() if task.due_on else '' }}"></label>
@@ -358,7 +358,7 @@
           </details>
         </div>
         <aside class="clean-task-preview-side">
-          <section><h3>Responsabilidade</h3><dl><dt>Executor</dt><dd>{{ task_assignment_labels.get(task.id, "A aguardar atribuição") }}</dd><dt>Supervisor</dt><dd>{{ users_by_id.get(task.supervisor_user_id).name if users_by_id.get(task.supervisor_user_id) else "Por definir" }}</dd><dt>Criada por</dt><dd>{{ users_by_id.get(task.created_by_id).name if users_by_id.get(task.created_by_id) else "-" }}</dd></dl>{% if task_claim_allowed_by_id.get(task.id) %}<form method="post" action="/v2-clean/tasks/{{ task.id }}/claim"><input type="hidden" name="return_url" value="{{ request.url.path }}?{{ request.url.query }}"><button>Assumir ticket</button></form>{% endif %}</section>
+          <section><h3>Responsabilidade</h3><dl><dt>Executor</dt><dd>{{ task_assignment_labels.get(task.id, "A aguardar atribuição") }}</dd><dt>{% if foundation_ui_enabled %}Coordenador de Equipa{% else %}Supervisor{% endif %}</dt><dd>{{ users_by_id.get(task.supervisor_user_id).name if users_by_id.get(task.supervisor_user_id) else "Por definir" }}</dd><dt>Criada por</dt><dd>{{ users_by_id.get(task.created_by_id).name if users_by_id.get(task.created_by_id) else "-" }}</dd></dl>{% if task_claim_allowed_by_id.get(task.id) %}<form method="post" action="/v2-clean/tasks/{{ task.id }}/claim"><input type="hidden" name="return_url" value="{{ request.url.path }}?{{ request.url.query }}"><button>Assumir ticket</button></form>{% endif %}</section>
           <section><h3>SLA</h3><dl><dt>Primeira resposta</dt><dd><span class="clean-sla-state is-{{ task_sla_by_id.get(task.id).first_response }}">{{ {'within':'Dentro do prazo','warning':'A terminar','overdue':'Ultrapassado','completed':'Concluído','paused':'Pausado','not_configured':'Sem SLA'}.get(task_sla_by_id.get(task.id).first_response) }}</span>{% if task.first_response_due_at %}<small>{{ (task.first_response_due_at|lisbon_datetime).strftime("%d/%m/%Y %H:%M") }}</small>{% endif %}</dd><dt>Resolução</dt><dd><span class="clean-sla-state is-{{ task_sla_by_id.get(task.id).resolution }}">{{ {'within':'Dentro do prazo','warning':'A terminar','overdue':'Ultrapassado','completed':'Concluído','paused':'Pausado','not_configured':'Sem SLA'}.get(task_sla_by_id.get(task.id).resolution) }}</span>{% if task.resolution_due_at %}<small>{{ (task.resolution_due_at|lisbon_datetime).strftime("%d/%m/%Y %H:%M") }}</small>{% endif %}</dd></dl></section>
           <section>
             <h3>Colaboração</h3>
@@ -367,9 +367,9 @@
             {% set active_collaborator_ids = active_collaborators|map(attribute="user_id")|list %}
             {% set current_followers = participants_by_task.get(task.id, [])|selectattr("role", "equalto", "follower")|selectattr("status", "equalto", "active")|selectattr("user_id", "equalto", current_user_id)|list %}
             <div class="clean-task-collaboration-state">
-              <span><b>Acompanhamento</b>{{ "Ativo" if current_followers else "Inativo" }}</span>
-              <span><b>Colaboradores</b>{{ active_collaborators|length }}</span>
-              <span><b>Suporte pendente</b>{{ help_requests_by_task.get(task.id, [])|selectattr("status", "equalto", "pending")|list|length }}</span>
+              <span><b>Acompanhamento</b><em>{{ "Ativo" if current_followers else "Inativo" }}</em></span>
+              <span><b>Colaboradores</b><em>{{ active_collaborators|length }}</em></span>
+              <span><b>Suporte pendente</b><em>{{ help_requests_by_task.get(task.id, [])|selectattr("status", "equalto", "pending")|list|length }}</em></span>
             </div>
             {% for participant in active_collaborators %}
               <div class="clean-task-collaborator-row">
@@ -380,7 +380,7 @@
             <p class="clean-task-action-help"><b>Acompanhar tarefa</b> — recebe atualizações e notificações, sem assumir responsabilidade.</p>
             <form method="post" action="/v2-clean/tasks/{{ task.id }}/participants/self" class="clean-task-side-form">
               <input type="hidden" name="return_url" value="{{ request.url.path }}?{{ request.url.query }}">
-              <button name="action" value="{{ 'leave' if current_followers else 'join' }}">{{ "Deixar de acompanhar" if current_followers else "Acompanhar tarefa" }}</button>
+              <button class="secondary" name="action" value="{{ 'leave' if current_followers else 'join' }}">{{ "Deixar de acompanhar" if current_followers else "Acompanhar tarefa" }}</button>
             </form>
             {% if can_write %}
               <p class="clean-task-action-help"><b>Acrescentar colaborador</b> — concede participação e visibilidade conforme as permissões.</p>
@@ -395,7 +395,7 @@
                 <input type="hidden" name="return_url" value="{{ request.url.path }}?{{ request.url.query }}">
                 <select name="requested_target" required><option value="">Solicitar suporte a...</option>{% if task_assignable_users_by_id.get(task.id) %}<optgroup label="Utilizadores">{% for user in task_assignable_users_by_id.get(task.id, []) %}<option value="user:{{ user.id }}">{{ user.name }}</option>{% endfor %}</optgroup>{% endif %}{% if task_support_teams_by_id.get(task.id) %}<optgroup label="Equipas">{% for team in task_support_teams_by_id.get(task.id, []) %}<option value="team:{{ team.id }}">{{ team.name }}</option>{% endfor %}</optgroup>{% endif %}</select>
                 <input name="message" placeholder="Suporte necessário">
-                <button>Solicitar suporte</button>
+                <button class="secondary">Solicitar suporte</button>
               </form>
             {% endif %}
             {% for help in help_requests_by_task.get(task.id, []) %}

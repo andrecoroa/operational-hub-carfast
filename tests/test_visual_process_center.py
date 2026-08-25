@@ -45,5 +45,8 @@ def test_route_content_matrix_covers_every_canonical_surface_once() -> None:
     source = MATRIX.read_text(encoding="utf-8")
     for path in EXPECTED_STATIC_HTML_SURFACES:
         assert source.count(f"| `{path}` |") == 1, path
-    assert "Shell: **PASS transversal em todas as 52 rotas**" in source
+    assert (
+        f"Shell: **PASS transversal em todas as {len(EXPECTED_STATIC_HTML_SURFACES)} rotas**"
+        in source
+    )
     assert "A presença da shell nunca altera por si só" in source

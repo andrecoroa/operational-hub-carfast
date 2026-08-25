@@ -1,14 +1,15 @@
 # Matriz factual das superfícies v2-clean
 
-Base: `integration/modular-architecture@5a5ff8ac7a0b946962cb7bd8334a368d5b730078`
+Base: `integration/modular-architecture@8226c6e162eb5fc1964aba9e4c6fa5ea12ef5f8b`
 
-Inventário: `scripts/check_visual_surface_inventory.py` — 52/52 rotas estáticas canónicas.
-Shell: **PASS transversal em todas as 52 rotas** (asset, sidebar, topbar e composição de navegação). A coluna `Conteúdo` não herda esse PASS: descreve apenas a reconstrução da superfície funcional.
+Inventário: `scripts/check_visual_surface_inventory.py` — 53/53 rotas estáticas canónicas, incluindo o novo assistente `/v2-clean/admin/setup`.
+Shell: **PASS transversal em todas as 53 rotas** (asset, sidebar, topbar e composição de navegação). A coluna `Conteúdo` não herda esse PASS: descreve apenas a reconstrução da superfície funcional.
 
 | # | Rota | Shell | Conteúdo | Evidência / próxima tranche |
 |---:|---|---|---|---|
 | 1 | `/v2-clean` | PASS | reconstruído/aprovado | Dashboard aprovado |
 | 2 | `/v2-clean/admin` | PASS | reconstruído pendente de captura | Parceiros/Admin runtime PASS |
+| 2A | `/v2-clean/admin/setup` | PASS | reconstruído pendente de entrega | Assistente operacional de configuração inicial |
 | 3 | `/v2-clean/admin/audit` | PASS | parcial | Administração residual |
 | 4 | `/v2-clean/admin/evolution` | PASS | parcial | Administração residual |
 | 5 | `/v2-clean/admin/integrations` | PASS | parcial | Administração residual; efeitos externos OFF |
@@ -25,7 +26,7 @@ Shell: **PASS transversal em todas as 52 rotas** (asset, sidebar, topbar e compo
 | 16 | `/v2-clean/diagnostics` | PASS | parcial | Documentação por viatura/diagnósticos |
 | 17 | `/v2-clean/documentation` | PASS | reconstruído/aprovado | Workbench documental aprovado |
 | 18 | `/v2-clean/documentation/archive` | PASS | parcial | Documentação residual |
-| 19 | `/v2-clean/documentation/by-vehicle` | PASS | parcial | Prioridade Documentação por viatura |
+| 19 | `/v2-clean/documentation/by-vehicle` | PASS | reconstruído/aprovado | Runtime Green 8226c6e1 PASS |
 | 20 | `/v2-clean/documentation/extraction-models` | PASS | parcial | Documentação residual |
 | 21 | `/v2-clean/documentation/financial-plans` | PASS | legado | Documentação residual |
 | 22 | `/v2-clean/documentation/imports` | PASS | parcial | Documentação residual |
@@ -43,30 +44,31 @@ Shell: **PASS transversal em todas as 52 rotas** (asset, sidebar, topbar e compo
 | 34 | `/v2-clean/fleet/sales/opportunities` | PASS | reconstruído pendente de captura | Runtime funcional PASS |
 | 35 | `/v2-clean/fleet/sales/proposals` | PASS | reconstruído pendente de captura | Runtime funcional PASS |
 | 36 | `/v2-clean/fleet/sales/publications` | PASS | reconstruído pendente de captura | Runtime funcional PASS |
-| 37 | `/v2-clean/processes` | PASS | legado | **Tranche ativa: Centro de Processos** |
-| 38 | `/v2-clean/stock` | PASS | parcial | Stock/Compras tranche seguinte |
-| 39 | `/v2-clean/stock/articles` | PASS | parcial | Stock/Compras tranche seguinte |
-| 40 | `/v2-clean/stock/current` | PASS | legado | Stock/Compras tranche seguinte |
-| 41 | `/v2-clean/stock/inventory` | PASS | parcial | Stock/Compras tranche seguinte |
-| 42 | `/v2-clean/stock/invoices` | PASS | parcial | Stock/Compras tranche seguinte |
-| 43 | `/v2-clean/stock/movements` | PASS | parcial | Stock/Compras tranche seguinte |
-| 44 | `/v2-clean/stock/orders` | PASS | parcial | Stock/Compras tranche seguinte |
-| 45 | `/v2-clean/stock/receipts` | PASS | parcial | Stock/Compras tranche seguinte |
-| 46 | `/v2-clean/stock/suppliers` | PASS | parcial | Stock/Compras tranche seguinte |
-| 47 | `/v2-clean/stock/workshop-requests` | PASS | parcial | Stock/Compras tranche seguinte |
+| 37 | `/v2-clean/processes` | PASS | reconstruído/aprovado | Centro de Processos runtime PASS |
+| 38 | `/v2-clean/stock` | PASS | reconstruído pendente de captura | Stock/Compras runtime PASS |
+| 39 | `/v2-clean/stock/articles` | PASS | reconstruído pendente de captura | Stock/Compras runtime PASS |
+| 40 | `/v2-clean/stock/current` | PASS | reconstruído pendente de captura | Stock/Compras runtime PASS |
+| 41 | `/v2-clean/stock/inventory` | PASS | reconstruído pendente de captura | Stock/Compras runtime PASS |
+| 42 | `/v2-clean/stock/invoices` | PASS | reconstruído pendente de captura | Stock/Compras runtime PASS |
+| 43 | `/v2-clean/stock/movements` | PASS | reconstruído pendente de captura | Stock/Compras runtime PASS |
+| 44 | `/v2-clean/stock/orders` | PASS | reconstruído pendente de captura | Stock/Compras runtime PASS |
+| 45 | `/v2-clean/stock/receipts` | PASS | reconstruído pendente de captura | Stock/Compras runtime PASS |
+| 46 | `/v2-clean/stock/suppliers` | PASS | reconstruído pendente de captura | Stock/Compras runtime PASS |
+| 47 | `/v2-clean/stock/workshop-requests` | PASS | reconstruído pendente de captura | Stock/Compras runtime PASS |
 | 48 | `/v2-clean/suppliers` | PASS | reconstruído pendente de captura | Parceiros runtime PASS |
 | 49 | `/v2-clean/tasks` | PASS | reconstruído/aprovado | Service Desk aprovado |
 | 50 | `/v2-clean/tasks/recurring` | PASS | parcial | Service Desk residual |
 | 51 | `/v2-clean/workshop` | PASS | reconstruído/aprovado | Oficina aprovada |
 | 52 | `/v2-clean/workshop-entry` | PASS | reconstruído/aprovado | Oficina aprovada |
 
-## Tranches residuais fechadas
+## Superfícies ainda parcial ou legado (lista nominal fechada)
 
-1. **Centro de Processos (ativa):** `/v2-clean/processes`; substituir o catálogo preparatório por comando operacional, filtros, filas, estados, prioridades, responsáveis, detalhe/retorno e estados vazios/sem permissão.
-2. **Stock e Compras:** resumo, artigos/existências, movimentos, pedidos Oficina, encomendas, receções, inventário, conferência e fornecedores; preservar ativação independente sob Oficina.
-3. **Documentação por viatura e residual:** por viatura, diagnósticos, arquivo, importações/faturas, modelos de extração, planos financeiros, criação e validação OCR.
-4. **Administração residual:** operações, organização, definições, segurança, auditoria, evolução, integrações e modelos Oficina.
-5. **Resíduos Vendas/Frota/Service Desk:** acesso a vendas, auditoria financeira, recorrências; fechar captura visual pendente sem repetir loops da plataforma.
+1. **Administração residual:** `/v2-clean/admin/audit`, `/evolution`, `/integrations`, `/operations`, `/organization`, `/security`, `/settings` e `/workshop-models`.
+2. **Documentação residual:** `/v2-clean/diagnostics`, `/documentation/archive`, `/documentation/extraction-models`, `/documentation/financial-plans`, `/documentation/imports`, `/documentation/invoices`, `/documents`, `/documents/new` e `/documents/ocr-validation`.
+3. **Frota/Vendas:** `/v2-clean/fleet/financial-audit` e `/v2-clean/fleet/sales-access`.
+4. **Service Desk:** `/v2-clean/tasks/recurring`.
+
+As superfícies reconstruídas pendentes apenas de captura não constam desta lista, porque o bloqueio é de evidência da plataforma e não de conteúdo.
 
 ## Regra de fecho
 

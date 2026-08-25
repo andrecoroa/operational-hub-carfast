@@ -134,8 +134,8 @@
           <div>
             <dt>Responsabilidade</dt>
             <dd>
-              {% if nav_has_permission(request, "management_center.write") %}
-                <form method="post" action="/management-center/{{ process.id }}/liability" class="management-liability-form">
+              {% if nav_has_permission(request, "management_center.write", "tasks.management.update", "tasks.management.close") %}
+                <form method="post" action="/v2-clean/processes/{{ process.id }}/liability" class="management-liability-form">
                   <select name="liability">
                     {% for code, label in liability_options %}
                       <option value="{{ code }}" {% if liability_value == code %}selected{% endif %}>{{ label }}</option>
@@ -171,7 +171,7 @@
               </div>
               <strong>{{ action.title }}</strong>
               <p>{{ action.description or "-" }}</p>
-              {% if action.status == "open" and nav_has_permission(request, "management_center.write") %}
+              {% if action.status == "open" and nav_has_permission(request, "management_center.write", "tasks.management.update", "tasks.management.close") %}
                 <form method="post" action="/v2-clean/processes/{{ process.id }}/actions/{{ action.id }}/complete">
                   {% if manager_exception_mode %}<div class="notice-inline warning"><strong>Execução excecional de Gestor</strong><p>Esta ação exige justificação e fica registada na auditoria.</p></div><label>Justificação<textarea name="justification" minlength="12" maxlength="1000" required></textarea></label>{% endif %}
                   <button type="submit">Concluir</button>
@@ -224,8 +224,8 @@
                   <small>{{ association.reason or "-" }}</small>
                 </td>
                 <td>
-                  {% if association.active and nav_has_permission(request, "management_center.write") and other_processes %}
-                    <form class="association-move-form" method="post" action="/management-center/{{ process.id }}/associations/{{ association.id }}/move">
+                  {% if association.active and nav_has_permission(request, "management_center.write", "tasks.management.close") and other_processes %}
+                    <form class="association-move-form" method="post" action="/v2-clean/processes/{{ process.id }}/associations/{{ association.id }}/move">
                       <select name="target_process_id" required>
                         {% for target in other_processes %}
                           <option value="{{ target.id }}">{{ target.internal_reference }}</option>
@@ -289,8 +289,8 @@
                   <small>{{ association.reason or "-" }}</small>
                 </td>
                 <td>
-                  {% if association.active and nav_has_permission(request, "management_center.write") and other_processes %}
-                    <form class="association-move-form" method="post" action="/management-center/{{ process.id }}/associations/{{ association.id }}/move">
+                  {% if association.active and nav_has_permission(request, "management_center.write", "tasks.management.close") and other_processes %}
+                    <form class="association-move-form" method="post" action="/v2-clean/processes/{{ process.id }}/associations/{{ association.id }}/move">
                       <select name="target_process_id" required>
                         {% for target in other_processes %}
                           <option value="{{ target.id }}">{{ target.internal_reference }}</option>

@@ -8,9 +8,11 @@ from app.models.management_center import (
     ManagementAction,
     ManagementHistory,
     ManagementProcess,
+    ManagementProcessAssociation,
     ManagementProcessType,
 )
 from app.models.organization import Team, TeamMember
+from app.models.tasks import Task
 from app.services.users import create_user
 
 
@@ -47,6 +49,33 @@ def _seed_process(db_session):
     return process_type, process
 
 
+def _link_process_task(db_session, process, *, user_id=None, team_id=None):
+    task = Task(
+        title=f"Acompanhar {process.internal_reference}",
+        task_type="management_task",
+        status="open",
+        priority="normal",
+        assigned_to_id=user_id,
+        team_id=team_id,
+        created_by_id=user_id,
+        assignment_mode="manual",
+        assignment_state="assigned_user" if user_id else "assigned_team",
+    )
+    db_session.add(task)
+    db_session.flush()
+    db_session.add(
+        ManagementProcessAssociation(
+            process_id=process.id,
+            entity_type="task",
+            entity_id=task.id,
+            association_role="execution",
+            active=True,
+            created_by_id=user_id,
+        )
+    )
+    return task
+
+
 def _create_capability_role(db_session, code: str, permission_codes: set[str]) -> None:
     role = Role(code=code, name=code.replace("_", " ").title(), active=True)
     db_session.add(role)
@@ -69,12 +98,17 @@ def test_administrator_has_no_implicit_operational_process_access(
     assert "Sem acesso operacional" in response.text
     assert "Administrador não recebe acesso implícito" in response.text
     assert "Criar processo" not in response.text
+    legacy = authenticated_client.get("/management-center", follow_redirects=False)
+    assert legacy.status_code == 303
+    assert legacy.headers["location"] == "/v2-clean"
+    assert "Em acompanhamento" not in response.text
+    assert "Categorias ativas" not in response.text
 
 
 def test_executor_can_filter_open_create_and_return_to_the_same_queue(
     client, db_session
 ):
-    create_user(
+    executor = create_user(
         db_session,
         name="Executor Teste",
         email="executor.process@carfast.local",
@@ -83,6 +117,7 @@ def test_executor_can_filter_open_create_and_return_to_the_same_queue(
         organizational_unit_codes=["carfast"],
     )
     _process_type, process = _seed_process(db_session)
+    _link_process_task(db_session, process, user_id=executor.id)
     db_session.commit()
     _login(client, "executor.process@carfast.local")
 
@@ -149,15 +184,32 @@ def test_team_and_operational_coordinators_receive_the_exact_scope_label(
         organizational_unit_codes=["carfast"],
     )
     team = Team(code="process-local", name="Lisboa", active=True)
-    db_session.add(team)
+    other_team = Team(code="process-other", name="Porto", active=True)
+    db_session.add_all([team, other_team])
     db_session.flush()
     db_session.add(TeamMember(team_id=team.id, user_id=team_user.id))
+    _type, local_process = _seed_process(db_session)
+    local_process.internal_reference = "SIN-LISBOA"
+    _link_process_task(db_session, local_process, team_id=team.id)
+    other_process = ManagementProcess(
+        process_type_id=_type.id,
+        internal_reference="SIN-PORTO",
+        title="Fora do âmbito localizado",
+        status="open",
+        phase="information_request",
+        priority="normal",
+    )
+    db_session.add(other_process)
+    db_session.flush()
+    _link_process_task(db_session, other_process, team_id=other_team.id)
     db_session.commit()
 
     _login(client, "team.coordinator@carfast.local")
     team_page = client.get("/v2-clean/processes")
     assert "Coordenador de Equipa" in team_page.text
     assert "Lisboa" in team_page.text
+    assert "SIN-LISBOA" in team_page.text
+    assert "SIN-PORTO" not in team_page.text
     assert "Criar processo" not in team_page.text
 
     client.get("/logout")
@@ -165,6 +217,8 @@ def test_team_and_operational_coordinators_receive_the_exact_scope_label(
     operational_page = client.get("/v2-clean/processes")
     assert "Coordenador Operacional" in operational_page.text
     assert "acompanha a operação autorizada" in operational_page.text
+    assert "SIN-LISBOA" in operational_page.text
+    assert "SIN-PORTO" in operational_page.text
     assert "Criar processo" not in operational_page.text
 
 
@@ -209,6 +263,7 @@ def test_manager_exception_requires_justification_and_is_audited(client, db_sess
         follow_redirects=False,
     )
     assert accepted.status_code == 303
+    assert accepted.headers["location"].endswith(f"/v2-clean/processes/{process_id}?updated=action")
     db_session.expire_all()
     assert db_session.get(ManagementAction, action_id).status == "done"
     history = db_session.scalar(

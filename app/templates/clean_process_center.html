@@ -13,6 +13,9 @@
       </div>
     </header>
 
+    {% if process_access_denied %}
+      <section class="clean-panel process-command-state" role="status"><strong>Sem acesso operacional</strong><p>Administrador não recebe acesso implícito. É necessária uma capacidade operacional explícita do Centro de Processos.</p><a class="button-link secondary-link" href="/v2-clean">Voltar ao início</a></section>
+    {% else %}
     <section class="clean-process-kpi-row process-command-kpis" aria-label="Indicadores do centro de processos">
       <a href="#process-workbench"><span>Em acompanhamento</span><strong>{{ process_metrics.open }}</strong><em>processos ativos</em></a>
       <a href="#priority-critical"><span>Prioridade imediata</span><strong>{{ process_metrics.critical }}</strong><em>processos críticos</em></a>
@@ -34,9 +37,7 @@
     <section class="process-command-layout" id="process-workbench">
       <div class="clean-panel process-command-queue">
         <header class="process-command-section-head"><div><p class="eyebrow">Visão operacional</p><h3>Fila de processos</h3></div><span>{{ recent_management|length }} visíveis</span></header>
-        {% if process_access_denied %}
-          <div class="process-command-state" role="status"><strong>Sem acesso operacional</strong><p>Administrador não recebe acesso implícito. É necessária uma capacidade operacional explícita do Centro de Processos.</p><a class="button-link secondary-link" href="/v2-clean">Voltar ao início</a></div>
-        {% elif process_filter_error %}
+        {% if process_filter_error %}
           <div class="process-command-state process-command-error" role="alert"><strong>Filtros inválidos</strong><p>O estado ou modelo pedido não pertence ao catálogo ativo. Nenhum processo foi consultado.</p><a class="button-link secondary-link" href="/v2-clean/processes">Repor filtros</a></div>
         {% elif recent_management %}
           <div class="process-command-table" role="region" aria-label="Fila de processos" tabindex="0">
@@ -73,6 +74,7 @@
         <a class="button-link secondary-link" href="/v2-clean/tasks?workspace=management">Ver tarefas associadas</a>
       </aside>
     </section>
+    {% endif %}
   </main>
 </div>
 {% endblock %}

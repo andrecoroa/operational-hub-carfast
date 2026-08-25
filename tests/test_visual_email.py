@@ -65,6 +65,9 @@ def test_email_responsive_contract_uses_local_overflow_and_full_screen_preview()
         'content: "Deslize para ver todas as colunas →"',
         ".visual-email-preview,.visual-email-compose { width: 100vw;",
         "height: 100dvh; max-height: 100dvh;",
+        ":is(.visual-email-preview,.visual-email-thread-page) .email-save-triage { color: #fff; background: var(--cf-blue-600);",
+        ":is(.visual-email-preview,.visual-email-thread-page) .email-conclude { color: #fff; background: var(--cf-teal-700);",
+        ".email-modal-footer .button-link { min-height: 48px;",
     ):
         assert contract in css
 

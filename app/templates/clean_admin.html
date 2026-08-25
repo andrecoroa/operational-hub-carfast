@@ -6,7 +6,8 @@
   <main class="content clean-content clean-admin-content{% if foundation_ui_enabled %} ui-foundation{% endif %}">
     {% set visual_section = "Sistema" %}{% set visual_page = "Administração" %}{% include "_visual_topbar.html" %}
     {% if admin_section in ['users', 'roles', 'work_classification', 'email'] %}
-      {% set partner_tab = 'users' if admin_section == 'users' else 'roles' if admin_section == 'roles' else 'categories' if admin_section == 'work_classification' else 'email' %}
+      {% set work_view = request.query_params.get('view', 'desk') %}
+      {% set partner_tab = 'users' if admin_section == 'users' else 'roles' if admin_section == 'roles' else 'email' if work_view in ['channels', 'templates'] else 'categories' %}
       {% include "_supplier_context_nav.html" %}
     {% endif %}
     <header class="clean-header-shell clean-card-wide clean-admin-header">

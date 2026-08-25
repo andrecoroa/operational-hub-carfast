@@ -16027,6 +16027,14 @@ button.clean-upload-preview-card {
   overflow-x: hidden;
 }
 
+.clean-doc-ocr-page .ui-button--primary {
+  background: #2563eb;
+}
+
+.clean-doc-ocr-page .ui-button--primary:hover {
+  background: #1d4ed8;
+}
+
 .clean-doc-ocr-layout {
   margin-top: 14px;
 }

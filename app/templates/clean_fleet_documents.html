@@ -636,7 +636,7 @@
     {% if foundation_ui_enabled %}{% set visual_section = "Frota" %}{% set visual_page = "Documentos" %}{% include "_visual_topbar.html" %}
     <nav class="visual-fleet-context-nav" aria-label="Contexto da viatura">
       <a href="/v2-clean/fleet/{{ vehicle.id }}?return_to={{ return_to|urlencode }}">Resumo</a>
-      <a class="active" href="/v2-clean/fleet/{{ vehicle.id }}/documents">Documentos</a>
+      <a class="active" aria-current="page" href="/v2-clean/fleet/{{ vehicle.id }}/documents?return_to={{ return_to|urlencode }}">Documentos</a>
       <a href="/v2-clean/fleet/{{ vehicle.id }}/diagnostics?return_to={{ return_to|urlencode }}">Diagnósticos</a>
     </nav>{% endif %}
     {% if request.query_params.get("removed") == "1" or request.query_params.get("remove_error") %}

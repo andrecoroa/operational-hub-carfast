@@ -8,7 +8,7 @@
     <nav class="visual-fleet-context-nav" aria-label="Contexto da viatura">
       <a href="/v2-clean/fleet/{{ vehicle.id }}?return_to={{ return_to|urlencode }}">Resumo</a>
       <a href="/v2-clean/fleet/{{ vehicle.id }}/documents?return_to={{ return_to|urlencode }}">Documentos</a>
-      <a class="active" href="/v2-clean/fleet/{{ vehicle.id }}/diagnostics">Diagnósticos</a>
+      <a class="active" aria-current="page" href="/v2-clean/fleet/{{ vehicle.id }}/diagnostics?return_to={{ return_to|urlencode }}">Diagnósticos</a>
     </nav>{% endif %}
     <section class="clean-vehicle-header-card clean-vehicle-header-card-unified clean-vehicle-header-card-process{% if foundation_ui_enabled %} visual-fleet-vehicle-hero{% endif %}">
       <div class="clean-vehicle-header-main">

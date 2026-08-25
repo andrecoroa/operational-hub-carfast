@@ -7,7 +7,7 @@
     {% set visual_section = "Viaturas" %}{% set visual_page = ctx.vehicle.plate or "Detalhe" %}{% include "_visual_topbar.html" %}
     {% set vehicle = ctx.vehicle %}
     {% if foundation_ui_enabled %}<nav class="visual-fleet-context-nav" aria-label="Contexto da viatura">
-      <a class="active" href="/v2-clean/fleet/{{ vehicle.id }}">Resumo</a>
+      <a class="active" aria-current="page" href="/v2-clean/fleet/{{ vehicle.id }}?return_to={{ return_to|urlencode }}">Resumo</a>
       <a href="/v2-clean/fleet/{{ vehicle.id }}/documents?return_to={{ return_to|urlencode }}">Documentos</a>
       <a href="/v2-clean/fleet/{{ vehicle.id }}/diagnostics?return_to={{ return_to|urlencode }}">Diagnósticos</a>
       {% if nav_has_permission(request, "fleet.commerce.manage", "vehicles.write", "admin.manage") %}<a href="/v2-clean/fleet/sales/{{ vehicle.id }}">Venda</a>{% endif %}

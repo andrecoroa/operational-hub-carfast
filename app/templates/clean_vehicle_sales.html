@@ -3,12 +3,19 @@
 <div class="app-shell clean-shell">
   {% set active_menu = "fleet_sales" %}
   {% include "_sidebar.html" %}
-  <main class="content clean-content sale-page">
-    <header class="clean-workshop-header clean-workshop-header-final">
+  <main class="content clean-content sale-page visual-fleet-sales">
+    {% set visual_section = "Frota" %}{% set visual_page = "Vendas" %}{% include "_visual_topbar.html" %}
+    <nav class="visual-fleet-context-nav visual-sales-context-nav" aria-label="Navegação de Vendas">
+      <a class="active" href="/v2-clean/fleet/sales">Pipeline</a>
+      <a href="/v2-clean/fleet/sales/proposals">Processos de venda</a>
+      <a href="/v2-clean/fleet/sales-access">Clientes / comerciantes</a>
+      <a href="/v2-clean/fleet/sales/opportunities">Publicações</a>
+    </nav>
+    <header class="clean-workshop-header clean-workshop-header-final visual-fleet-heading visual-sales-heading">
       <div>
         <p class="eyebrow">Frota / processo comercial</p>
-        <h2>Venda de viaturas</h2>
-        <p>Selecionar, valorizar e preparar viaturas para venda.</p>
+        <h2>Pipeline de venda</h2>
+        <p>Selecionar, valorizar e preparar viaturas para venda, preservando o contexto operacional da Frota.</p>
       </div>
       <div class="clean-header-actions clean-header-actions-strong">
         <a class="button-link secondary-link" href="/v2-clean/fleet">Voltar à frota</a>
@@ -31,7 +38,7 @@
       <div class="alert">Seleciona pelo menos uma viatura antes de aplicar uma ação.</div>
     {% endif %}
 
-    <section class="sale-kpi-grid" aria-label="Resumo do processo de venda">
+    <section class="sale-kpi-grid visual-sales-metrics" aria-label="Resumo do processo de venda">
       <a href="/v2-clean/fleet/sales?sale_status=for_sale"><span>Para venda</span><strong>{{ counts.for_sale }}</strong></a>
       <a href="/v2-clean/fleet/sales?market_state=missing_trade"><span>Sem valores de mercado</span><strong>{{ counts.missing_market }}</strong></a>
       <a href="/v2-clean/fleet/sales"><span>Com bloqueios</span><strong>{{ counts.blocked }}</strong></a>
@@ -39,9 +46,10 @@
       <a href="/v2-clean/fleet/sales?sale_status=sold"><span>Vendidas por entregar</span><strong>{{ counts.sold }}</strong></a>
     </section>
 
-    <section class="clean-panel clean-card-wide sale-filter-panel">
-      <div class="table-heading flat-heading">
-        <div><p class="eyebrow">Filtros de seleção</p><h3>Encontrar as viaturas certas</h3></div>
+    <section class="clean-panel clean-card-wide sale-filter-panel visual-sales-workbench">
+      <div class="table-heading flat-heading visual-sales-workbench-header">
+        <div><p class="eyebrow">Workbench comercial</p><h3>Encontrar as viaturas certas</h3><p>Filtros, seleção em massa e preparação individual no mesmo contexto.</p></div>
+        <span><strong>{{ total_filtered }}</strong> resultado{% if total_filtered != 1 %}s{% endif %}</span>
       </div>
       <form method="get" action="/v2-clean/fleet/sales" class="sale-filter-grid">
         <input type="hidden" name="search" value="1">
@@ -87,7 +95,6 @@
             {% for value in group_options %}<label><input type="checkbox" name="rentway_group" value="{{ value }}" {% if value in filters.rentway_group %}checked{% endif %}><span>{{ value }}</span></label>{% endfor %}
           </div>
         </details>
-        </label>
         <fieldset>
           <legend>Data da matrícula</legend>
           <span><input type="date" name="registration_from" value="{{ filters.registration_from }}" aria-label="Matrícula desde"><em>até</em><input type="date" name="registration_to" value="{{ filters.registration_to }}" aria-label="Matrícula até"></span>

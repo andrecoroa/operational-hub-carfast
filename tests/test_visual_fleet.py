@@ -146,6 +146,25 @@ def test_fleet_context_navigation_preserves_routes_and_sales_permission_gate():
     assert 'href="/v2-clean/fleet/sales/{{ vehicle.id }}"' in detail
 
 
+def test_sales_pipeline_is_a_composed_fleet_workbench():
+    template = _read("app/templates/clean_vehicle_sales.html")
+
+    assert "visual-fleet-sales" in template
+    assert '{% include "_visual_topbar.html" %}' in template
+    assert 'aria-label="Navegação de Vendas"' in template
+    assert "visual-sales-metrics" in template
+    assert "visual-sales-workbench" in template
+    assert "data-sale-bulk-form" in template
+    assert "data-sale-preview-dialog" in template
+    for path in (
+        "/v2-clean/fleet/sales",
+        "/v2-clean/fleet/sales/proposals",
+        "/v2-clean/fleet/sales-access",
+        "/v2-clean/fleet/sales/opportunities",
+    ):
+        assert f'href="{path}"' in template
+
+
 def test_fleet_empty_diagnostics_state_remains_explicit_and_non_mutating(
     authenticated_client,
     db_session,

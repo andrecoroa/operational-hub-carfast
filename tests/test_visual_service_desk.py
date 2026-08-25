@@ -38,6 +38,9 @@ def test_service_desk_drawer_traps_and_restores_focus() -> None:
         "taskPreviewTrigger = trigger || document.activeElement",
         "taskPreviewTrigger.focus()",
         'if (event.key !== "Tab") return;',
+        "item.closest('[hidden],[inert],[aria-hidden=\"true\"]')",
+        "item.getClientRects().length > 0",
+        "summary,iframe,object,embed",
         "last.focus()",
         "first.focus()",
     ):

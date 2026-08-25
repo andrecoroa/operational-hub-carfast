@@ -538,7 +538,12 @@
     document.querySelector("[data-task-source]").value = event.currentTarget.open ? "email" : "manual";
   });
   let taskPreviewTrigger = null;
-  const taskPreviewFocusable = (preview) => [...preview.querySelectorAll('a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])')].filter((item) => !item.hidden && item.getAttribute("aria-hidden") !== "true");
+  const taskPreviewFocusable = (preview) => [...preview.querySelectorAll('a[href],area[href],button,input,select,textarea,summary,iframe,object,embed,[contenteditable="true"],[tabindex]')].filter((item) => {
+    if (item.matches(':disabled') || item.tabIndex < 0) return false;
+    if (item.closest('[hidden],[inert],[aria-hidden="true"]')) return false;
+    const style = getComputedStyle(item);
+    return style.display !== "none" && style.visibility !== "hidden" && item.getClientRects().length > 0;
+  });
   const closeTaskPreview = (preview) => {
     preview?.classList.remove("is-open"); preview?.setAttribute("aria-hidden", "true");
     document.body.classList.remove("clean-task-preview-open");

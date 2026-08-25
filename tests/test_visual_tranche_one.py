@@ -38,6 +38,8 @@ def test_visual_tokens_and_responsive_contract_are_present() -> None:
         "@media (max-width: 767px)",
         ":focus-visible",
         "prefers-reduced-motion: reduce",
+        '.clean-shell .sidebar > .sidebar-brand::before { width: 42px;',
+        '.clean-shell .sidebar-collapse-toggle,.clean-shell .sidebar-logout { display: none;',
     ):
         assert contract in css
 

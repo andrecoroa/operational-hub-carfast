@@ -8,7 +8,10 @@ preseed/delta implementation are historical and must not be used here.
 
 - Blue service: `srv-d8145e7aqgkc73al90ig`, release `58a150c7`.
 - Green service: `srv-da5dk9bm8hqs73camds0`; release and database identity must
-  be read back immediately before action.
+  be read back immediately before action. PostgreSQL
+  `dpg-da6d4d2jnfac73e2cl40-a` is the future permanent Green database after a
+  tolerance-zero PASS. Existing PostgreSQL `dpg-da5dj0e417fc73f3uakg-a`
+  remains empty and untouched as the QA rollback database until a future gate.
 - Regional SSH endpoint: `ssh.frankfurt.render.com`, with a freshly read-back
   pinned host-key fingerprint.
 - Relay: dedicated GitHub Codespace in Europe West. It pipes ciphertext only;
@@ -45,10 +48,14 @@ Every item must have machine-readable evidence and an independent PASS:
 4. Prove one Alembic head and the ordered source revision -> `ffae1f2a3b4c` ->
    `fff37f8a9b0d` path, including the four additive relations, constraints,
    indexes, sequences, ownership, grants, search path and allowed seeds.
-5. Provision a separate empty staging database/schema on the Green side with a
-   tested rollback. Restore source 162 there, run Phase A tolerance-zero, and
-   only then run Alembic to the target contract. Never restore with `--clean`
-   over the permanent Green database.
+5. Read back the empty private PG17 database
+   `dpg-da6d4d2jnfac73e2cl40-a`, including Frankfurt region,
+   `Basic-256mb + 1 GB`, resource-level `ipAllowList: []`, private-only
+   connectivity, owner/grants/search path and capacity. Restore source 162
+   directly there, run Phase A tolerance-zero, and only then run Alembic to the
+   target contract. After PASS this same database becomes permanent; no
+   data-only promotion, second dump, truncate or restore into
+   `dpg-da5dj0e417fc73f3uakg-a` is permitted.
 6. Prove a single quiesce mechanism that blocks and drains web mutations,
    uploads/filesystem writes, email, jobs, webhooks, portals and integrations.
    The selected mechanism is: Render paid-service Maintenance Mode (public traffic
@@ -140,14 +147,31 @@ Maintenance Mode; it must execute this reversal by minute 60 even if relay SSH d
    `BUNDLE_CAPTURED` ACK.
 5. Restore Blue writes immediately, record `WINDOW_END_UTC`, prove application
    write capability and remove the temporary role. Do not wait for Green restore.
-6. Restore into empty Green-side staging. Phase A proves source 162 unchanged;
+6. Restore into the empty future Green database. Phase A proves source 162 unchanged;
    Alembic creates the deterministic target; Phase B proves target relations,
    sequences, FKs/orphans/counts/digests. Materialize storage into a separate tree
    and compare path/size/mode/mtime/SHA-256 tolerance-zero.
-7. Promote neither DB nor storage unless both validations PASS. On PASS, promote
-   the reconciled DB and storage together and keep Green populated as the durable
-   CarFast QA/future-production baseline, with every external effect still OFF.
-   Blue remains production; this is not cutover authorization.
+7. Promote neither connection nor storage unless both validations PASS. On PASS,
+   atomically promote the reconciled storage tree, then action-time switch only
+   the Web Green `DATABASE_URL` to the private URL of
+   `dpg-da6d4d2jnfac73e2cl40-a` and manually deploy the exact same Green release.
+   Auto-Deploy remains OFF. Health, Alembic head, manifests, permissions and all
+   external-effect OFF booleans must pass before Green is opened to QA. Blue is
+   not deployed and remains production; this is not cutover authorization.
+
+### Green database switch and rollback
+
+The switch is an action-time gate because it changes a live service secret and
+deploys Green. Before it, capture the current Green database host fingerprint,
+release SHA and external-effect booleans; prove the future database PASS and the
+old database healthy and unchanged. Apply the new private `DATABASE_URL` without
+logging it, trigger a manual deploy of the same release, and verify the running
+instance reads the expected private host fingerprint.
+
+Rollback changes `DATABASE_URL` back to `dpg-da5dj0e417fc73f3uakg-a`, manually
+deploys the same release, and proves health, clean-install state and effects OFF.
+Do not rename, move or delete either database before QA PASS and a later explicit
+gate. The old database is not a promotion target and must never be truncated.
 
 ## Durable Green baseline and later cutover delta
 
@@ -197,8 +221,9 @@ permanent environment is a later cost gate.
   relation/seed, non-zero pipeline RC, timeout, digest mismatch, insufficient
   space/inodes or any external effect causes immediate NO-GO.
 - Failure after either capture restores writes via watchdog, removes partials and
-  drops the role. Failure during restore deletes only the proven staging targets;
-  permanent Green is not cleaned or overwritten.
+  drops the role. Failure during restore resets only the explicitly proven empty
+  future Green database before any connection switch; the existing rollback
+  database is never cleaned or overwritten.
 - In NO-GO, remove Green synthetic/staging material. In PASS, retain only the
   promoted, reconciled Green baseline and its non-secret evidence; remove all
   staging/partial/export material. In both outcomes remove age identity and
@@ -208,7 +233,11 @@ permanent environment is a later cost gate.
 
 ## Current gate result
 
-Pre-window **NO-GO** until the 167-vs-166 and ~490-row Green discrepancies are
-classified, the separate staging/rollback is proven, common DB+filesystem quiesce
-and watchdog are implemented, and the exact full-volume synthetic dry-run passes
-independent review. Blue remains writable and no real payload has started.
+Pre-window **NO-GO** with 11/15 gates definitively PASS. The 166 application + 1
+technical relation count and allowed reference-only Green rows are closed. The
+private future Green database, synthetic 162 -> 162 -> Alembic 166 path, same-mount
+quiesce mechanics and exact 1,256,277,934-byte encrypted full-volume transfer have
+passed. Remaining gates are the complete maintenance/database/storage watchdog
+reversal, frozen action-time commands and fingerprints, independent review, and
+the final 15-item preflight. The superseded data-only promotion RC1 is not a gate
+and must not be retried. Blue remains writable and no real payload has started.

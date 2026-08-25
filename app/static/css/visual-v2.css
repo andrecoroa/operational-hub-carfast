@@ -359,7 +359,10 @@ dialog { border: 1px solid var(--cf-gray-200); border-radius: 12px; box-shadow: 
   .visual-service-kpi-icon { left: 9px; width: 28px; height: 28px; }
   .visual-task-workbench-header { min-height: 68px; padding: 13px 14px; }
   .visual-task-filters { grid-template-columns: repeat(2,minmax(0,1fr)); padding: 12px; }
+  .visual-task-filters input,.visual-task-filters select,.visual-task-filters button { height: 48px; min-height: 48px; }
   .visual-task-filters button { grid-column: 1 / -1; }
+  .visual-task-workbench .clean-task-workspace-tabs a,.visual-task-workbench .clean-task-mine-tabs a,.visual-task-open { min-height: 48px; }
+  .visual-task-open { min-width: 48px; height: 48px; }
   .visual-task-workbench .clean-task-table-wrap::before { display: block; padding: 7px 12px; content: "Deslize para ver todas as colunas →"; color: var(--cf-gray-600); background: var(--cf-gray-050); border-bottom: 1px solid var(--cf-gray-200); font-size: 10px; }
   .visual-task-drawer { width: 100vw; max-width: 100vw; }
   .visual-task-drawer .clean-preview-header { align-items: flex-start; }

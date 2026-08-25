@@ -27,6 +27,21 @@ def test_service_desk_uses_approved_visual_components_and_real_markup() -> None:
     assert source.count('class="visual-service-kpi-icon') == 5
     assert 'name="post_action" value="stay"' in source
     assert 'name="post_action" value="close"' in source
+    assert "{% else %}<button type=\"submit\">Guardar</button>{% endif %}" in source
+
+
+def test_service_desk_drawer_traps_and_restores_focus() -> None:
+    source = TEMPLATE.read_text(encoding="utf-8")
+
+    for contract in (
+        'role="dialog" aria-modal="true" tabindex="-1"',
+        "taskPreviewTrigger = trigger || document.activeElement",
+        "taskPreviewTrigger.focus()",
+        'if (event.key !== "Tab") return;',
+        "last.focus()",
+        "first.focus()",
+    ):
+        assert contract in source
 
 
 def test_service_desk_responsive_contract_has_local_not_global_overflow() -> None:
@@ -39,6 +54,8 @@ def test_service_desk_responsive_contract_has_local_not_global_overflow() -> Non
         ".visual-task-filters { grid-template-columns: repeat(2,minmax(0,1fr));",
         'content: "Deslize para ver todas as colunas →"',
         ".visual-task-drawer { width: 100vw; max-width: 100vw; }",
+        ".visual-task-filters input,.visual-task-filters select,.visual-task-filters button { height: 48px; min-height: 48px; }",
+        ".visual-task-open { min-width: 48px; height: 48px; }",
     ):
         assert contract in css
 

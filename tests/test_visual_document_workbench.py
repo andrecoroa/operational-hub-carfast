@@ -35,15 +35,18 @@ def test_document_workbench_keeps_real_routes_data_and_decision_form() -> None:
     assert 'action="/v2-clean/documentation/triage/{{ selected_row.document.id }}"' in source
     assert 'name="destination" required' in source
     assert 'name="decision_reason"' in source
-    assert 'name="selected"' not in source  # selection is a safe GET link, not mutable state
+    assert "foundation_ui_enabled" in source
+    assert "doc-arch-table" in source  # feature-flag OFF fallback remains usable
 
 
 def test_document_selection_is_server_derived_and_defaults_to_first_row() -> None:
     source = ROUTER.read_text(encoding="utf-8")
     assert "selected: int | None = None" in source
+    assert 'view: str = "queue"' in source
     assert 'row["document"].id == selected' in source
     assert 'rows[0] if rows else None' in source
     assert '"selected_row": selected_row' in source
+    assert '"foundation_ui_enabled": settings.visual_foundation_enabled' in source
 
 
 def test_document_workbench_responsive_contract() -> None:

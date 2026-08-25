@@ -13375,6 +13375,7 @@ def clean_documentation_triage(
     origin: str = "",
     confidence: str = "",
     selected: int | None = None,
+    view: str = "queue",
     page: int = 1,
     page_size: int = 25,
 ):
@@ -13481,12 +13482,15 @@ def clean_documentation_triage(
             (row for row in rows if row["document"].id == selected),
             rows[0] if rows else None,
         )
+        document_view = view if view in {"queue", "preview", "validation"} else "queue"
         return templates.TemplateResponse(
             request,
             "clean_documentation_triage.html",
             {
                 "rows": rows,
                 "selected_row": selected_row,
+                "document_view": document_view,
+                "foundation_ui_enabled": settings.visual_foundation_enabled,
                 "counts": counts,
                 "pagination": _documentation_pagination(
                     total,

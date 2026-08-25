@@ -3,7 +3,7 @@
 <div class="app-shell clean-shell">
   {% set active_menu = "documentation_triage" %}
   {% include "_sidebar.html" %}
-  <main class="content clean-content doc-arch-page visual-document-workbench">
+  <main class="content clean-content doc-arch-page{% if foundation_ui_enabled %} visual-document-workbench document-view-{{ document_view }}{% endif %}">
     {% set doc_nav = "triage" %}
     {% include "_clean_documentation_nav.html" %}
     <header class="doc-arch-header">
@@ -20,6 +20,11 @@
     {% if request.query_params.get("saved") %}<div class="doc-arch-notice success">Decisão guardada e auditada.</div>{% endif %}
     {% if request.query_params.get("error") %}<div class="doc-arch-notice danger">Não foi possível concluir a decisão: {{ request.query_params.get("error") }}.</div>{% endif %}
 
+    {% if foundation_ui_enabled %}
+    <nav class="visual-document-step-nav" aria-label="Etapas do processamento">
+      <a class="{% if document_view == 'queue' %}active{% endif %}" href="?q={{ q|urlencode }}&origin={{ origin|urlencode }}&confidence={{ confidence|urlencode }}&page={{ pagination.page }}&page_size={{ pagination.page_size }}&view=queue">Fila</a>
+      {% if selected_row %}<a class="{% if document_view == 'preview' %}active{% endif %}" href="?q={{ q|urlencode }}&origin={{ origin|urlencode }}&confidence={{ confidence|urlencode }}&page={{ pagination.page }}&page_size={{ pagination.page_size }}&selected={{ selected_row.document.id }}&view=preview">Pré-visualização</a><a class="{% if document_view == 'validation' %}active{% endif %}" href="?q={{ q|urlencode }}&origin={{ origin|urlencode }}&confidence={{ confidence|urlencode }}&page={{ pagination.page }}&page_size={{ pagination.page_size }}&selected={{ selected_row.document.id }}&view=validation">Validação</a>{% endif %}
+    </nav>
     <section class="visual-document-context" aria-label="Contexto do documento">
       <span><small>Fila</small><strong>Em validação</strong></span>
       <span><small>Documento</small><strong>{% if selected_row %}DOC-{{ selected_row.document.id }}{% else %}Sem seleção{% endif %}</strong></span>
@@ -48,19 +53,19 @@
         <header><div><h2>Fila de documentos</h2><p>{{ pagination.total }} documentos por decidir</p></div><button type="button" aria-label="Atualizar fila" onclick="location.reload()">↻</button></header>
         <div class="visual-document-queue-list">
           {% for row in rows %}
-            <a class="visual-document-row{% if selected_row and selected_row.document.id == row.document.id %} active{% endif %}" href="?q={{ q|urlencode }}&origin={{ origin|urlencode }}&confidence={{ confidence|urlencode }}&selected={{ row.document.id }}">
-              <span class="visual-document-status{% if (row.workflow.suggestion_confidence or 0) < 0.6 %} danger{% elif (row.workflow.suggestion_confidence or 0) >= 0.9 %} success{% endif %}"></span>
+            <a class="visual-document-row{% if selected_row and selected_row.document.id == row.document.id %} active{% endif %}" href="?q={{ q|urlencode }}&origin={{ origin|urlencode }}&confidence={{ confidence|urlencode }}&page={{ pagination.page }}&page_size={{ pagination.page_size }}&selected={{ row.document.id }}&view=preview">
+              <span class="visual-document-status{% if (row.workflow.suggestion_confidence or 0) < 0.6 %} danger{% elif (row.workflow.suggestion_confidence or 0) >= 0.9 %} success{% endif %}" aria-hidden="true"></span>
               <span><strong>{{ row.title }}</strong><small>DOC-{{ row.document.id }} · {{ row.origin }}</small></span>
-              <span><strong>{{ workflow_labels.get(row.workflow.suggested_invoice_nature, "Por reconhecer") }}</strong><small>{{ row.date_display }}</small></span>
+              <span><strong>{{ workflow_labels.get(row.workflow.suggested_invoice_nature, "Por reconhecer") }}</strong><small>{% if (row.workflow.suggestion_confidence or 0) < 0.6 %}Baixa confiança{% elif (row.workflow.suggestion_confidence or 0) >= 0.9 %}Alta confiança{% else %}Em validação{% endif %} · {{ row.date_display }}</small></span>
             </a>
           {% else %}<p class="doc-arch-empty">Nenhum documento corresponde aos filtros.</p>{% endfor %}
         </div>
-        <footer class="visual-document-pagination"><span>{{ pagination.page }} / {{ pagination.total_pages }} · {{ pagination.total }} registos</span>{% if pagination.has_next %}<a href="?page={{ pagination.next_page }}&page_size={{ pagination.page_size }}">Seguinte →</a>{% endif %}</footer>
+        <footer class="visual-document-pagination">{% if pagination.has_previous %}<a href="?q={{ q|urlencode }}&origin={{ origin|urlencode }}&confidence={{ confidence|urlencode }}&page={{ pagination.previous_page }}&page_size={{ pagination.page_size }}&view=queue">← Anterior</a>{% endif %}<span>{{ pagination.page }} / {{ pagination.total_pages }} · {{ pagination.total }} registos</span>{% if pagination.has_next %}<a href="?q={{ q|urlencode }}&origin={{ origin|urlencode }}&confidence={{ confidence|urlencode }}&page={{ pagination.next_page }}&page_size={{ pagination.page_size }}&view=queue">Seguinte →</a>{% endif %}</footer>
       </article>
 
       <article class="visual-document-preview" aria-label="Pré-visualização do documento">
         <header><div><h2>Pré-visualização</h2><p>{% if selected_row %}{{ selected_row.title }}{% else %}Selecione um documento{% endif %}</p></div>{% if selected_row %}<a class="button-link secondary-link" href="{{ selected_row.detail_href }}">Abrir detalhe</a>{% endif %}</header>
-        <div class="visual-document-toolbar" aria-label="Controlos de pré-visualização"><button type="button" aria-label="Página anterior">‹</button><span>1 / 1</span><button type="button" aria-label="Reduzir zoom">−</button><span>100%</span><button type="button" aria-label="Aumentar zoom">+</button></div>
+        <div class="visual-document-toolbar" aria-label="Estado da pré-visualização"><span>Página 1 / 1</span>{% if selected_row %}<a href="{{ selected_row.preview_href }}" target="_blank" rel="noopener">Abrir ficheiro original</a><a class="visual-document-next" href="?q={{ q|urlencode }}&origin={{ origin|urlencode }}&confidence={{ confidence|urlencode }}&page={{ pagination.page }}&page_size={{ pagination.page_size }}&selected={{ selected_row.document.id }}&view=validation">Validar →</a>{% endif %}</div>
         {% if selected_row %}<iframe title="Documento selecionado" src="{{ selected_row.preview_href }}"></iframe>{% else %}<div class="visual-document-empty">A fila está tratada.</div>{% endif %}
       </article>
 
@@ -100,6 +105,10 @@
       </aside>
     </section>
     <section class="visual-document-history"><div><h2>Histórico de alterações</h2><p>Receção, reconhecimento e decisões ficam registados na auditoria.</p></div>{% if selected_row %}<a class="button-link secondary-link" href="{{ selected_row.detail_href }}">Ver auditoria completa</a>{% endif %}</section>
+    {% else %}
+    <section class="doc-arch-card"><div class="doc-arch-table-wrap"><table class="doc-arch-table"><thead><tr><th>Entrada</th><th>Ficheiro</th><th>Origem</th><th>Sugestão</th><th>Associação</th><th>Destino</th><th>Ação</th></tr></thead><tbody>{% for row in rows %}<tr><td>{{ row.date_display }}</td><td><a href="{{ row.detail_href }}">{{ row.title }}</a></td><td>{{ row.origin }}</td><td>{{ workflow_labels.get(row.workflow.suggested_invoice_nature, "Por reconhecer") }}</td><td>{{ workflow_labels.get(row.workflow.association_status, row.workflow.association_status) }}</td><td>{{ workflow_labels.get(row.workflow.destination_status, row.workflow.destination_status) }}</td><td><a href="{{ row.detail_href }}">Abrir</a></td></tr>{% else %}<tr><td colspan="7" class="doc-arch-empty">Nenhum documento corresponde aos filtros.</td></tr>{% endfor %}</tbody></table></div></section>
+    <nav class="doc-arch-pagination">{% if pagination.has_previous %}<a href="?q={{ q|urlencode }}&origin={{ origin|urlencode }}&confidence={{ confidence|urlencode }}&page={{ pagination.previous_page }}&page_size={{ pagination.page_size }}">Anterior</a>{% endif %}<span>Página {{ pagination.page }} de {{ pagination.total_pages }} · {{ pagination.total }} registos</span>{% if pagination.has_next %}<a href="?q={{ q|urlencode }}&origin={{ origin|urlencode }}&confidence={{ confidence|urlencode }}&page={{ pagination.next_page }}&page_size={{ pagination.page_size }}">Seguinte</a>{% endif %}</nav>
+    {% endif %}
   </main>
 </div>
 {% endblock %}

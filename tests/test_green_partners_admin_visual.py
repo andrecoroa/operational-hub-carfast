@@ -62,6 +62,9 @@ def test_partner_context_nav_is_rbac_gated_and_keyboard_native():
     assert "nav_has_permission(request" in template
     assert "nav_can" not in template
     assert "'suppliers.read', 'suppliers.write', 'stock.read', 'stock.manage', 'admin.manage'" in template
+    assert "'admin.users.read', 'admin.users.manage'" in template
+    assert "'admin.roles.read', 'admin.roles.manage'" in template
+    assert "'service_desk.classifications.manage', 'classification.validate'" in template
     assert 'href="/v2-clean/admin/work-classification?view=channels"' in template
     assert "tabindex=\"0\"" in suppliers
     assert "scrollbar-width:none" in styles

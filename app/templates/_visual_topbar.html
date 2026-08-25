@@ -1,0 +1,13 @@
+{% if foundation_ui_enabled %}
+<header class="visual-topbar">
+  <div class="visual-mobile-brand">
+    <button class="visual-menu-button" type="button" aria-label="Abrir navegação" aria-controls="visual-sidebar">☰</button>
+    <strong>CarFast</strong>
+  </div>
+  <nav class="visual-breadcrumbs" aria-label="Breadcrumb">
+    <a href="/v2-clean">Início</a>
+    {% if visual_section %}<span aria-hidden="true">›</span><span>{{ visual_section }}</span>{% endif %}
+    {% if visual_page %}<span aria-hidden="true">›</span><strong aria-current="page">{{ visual_page }}</strong>{% endif %}
+  </nav>
+</header>
+{% endif %}

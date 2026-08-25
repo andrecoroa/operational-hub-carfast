@@ -30,7 +30,7 @@
     if (event.target.closest("a")) closeNavigation();
   });
   document.addEventListener("keydown", (event) => {
-    if (event.key === "Escape") closeNavigation();
+    if (event.key === "Escape" && document.body.classList.contains("visual-nav-open")) closeNavigation();
     if (event.key === "Tab" && document.body.classList.contains("visual-nav-open")) {
       const items = focusable();
       if (!items.length) return;

@@ -4,6 +4,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 TEMPLATE = ROOT / "app" / "templates" / "clean_task_center.html"
 CSS = ROOT / "app" / "static" / "css" / "visual-v2.css"
+VISUAL_JS = ROOT / "app" / "static" / "js" / "visual-v2.js"
 ROUTER = ROOT / "app" / "web" / "router.py"
 
 
@@ -45,6 +46,12 @@ def test_service_desk_drawer_traps_and_restores_focus() -> None:
         "first.focus()",
     ):
         assert contract in source
+
+
+def test_closed_navigation_does_not_steal_drawer_escape_focus() -> None:
+    source = VISUAL_JS.read_text(encoding="utf-8")
+
+    assert 'event.key === "Escape" && document.body.classList.contains("visual-nav-open")' in source
 
 
 def test_service_desk_responsive_contract_has_local_not_global_overflow() -> None:

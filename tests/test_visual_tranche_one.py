@@ -11,8 +11,8 @@ def test_visual_stylesheet_is_feature_gated() -> None:
     base = (TEMPLATES / "base.html").read_text(encoding="utf-8")
 
     assert "{% if foundation_ui_enabled %}" in base
-    assert "/static/css/visual-v2.css?v=20260825-dashboard-pilot3" in base
-    assert "/static/js/visual-v2.js?v=20260825-dashboard-pilot3" in base
+    assert "/static/css/visual-v2.css?v=20260825-dashboard-pilot4" in base
+    assert "/static/js/visual-v2.js?v=20260825-dashboard-pilot4" in base
 
 
 def test_priority_surfaces_share_the_canonical_topbar() -> None:
@@ -39,7 +39,7 @@ def test_visual_tokens_and_responsive_contract_are_present() -> None:
         "@media (max-width: 767px)",
         ":focus-visible",
         "prefers-reduced-motion: reduce",
-        '.clean-shell .sidebar > .sidebar-brand::before { display: flex; width: 42px;',
+        '.clean-shell .sidebar .visual-brand-mark { display: grid; top: 16px; left: 16px;',
         '.clean-shell .sidebar-collapse-toggle,.clean-shell .sidebar-logout { display: none;',
         '.clean-shell .sidebar-footer { grid-row: 3; align-self: end;',
         'grid-auto-rows: 48px;',
@@ -115,7 +115,8 @@ def test_brand_and_sidebar_use_one_accessible_icon_language() -> None:
     assert 'content: "◇"' not in css
     assert 'grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px;' in css
     assert 'content: "Deslize para ver mais →"' in css
-    assert 'height: 42px; padding: 0; justify-content: center; content: "CF"; color: #fff; background: transparent; border: 0;' in css
+    assert '.clean-shell .sidebar > .sidebar-brand::before { display: none;' in css
+    assert '.visual-nav-open .clean-shell .sidebar .sidebar-brand > .eyebrow { display: block;' in css
     assert '.visual-nav-open .clean-shell .sidebar-logout button { width: 48px; min-width: 48px; height: 48px; min-height: 48px; }' in css
 
 

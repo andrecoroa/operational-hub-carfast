@@ -5,7 +5,7 @@ from types import SimpleNamespace
 
 from sqlalchemy import select
 from openpyxl import load_workbook
-from PyPDF2 import PdfReader
+from pypdf import PdfReader
 
 import app.web.router as base_router
 from app.core.config import settings

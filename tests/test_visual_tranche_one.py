@@ -11,7 +11,8 @@ def test_visual_stylesheet_is_feature_gated() -> None:
     base = (TEMPLATES / "base.html").read_text(encoding="utf-8")
 
     assert "{% if foundation_ui_enabled %}" in base
-    assert "/static/css/visual-v2.css" in base
+    assert "/static/css/visual-v2.css?v=20260825-dashboard-pilot2" in base
+    assert "/static/js/visual-v2.js?v=20260825-dashboard-pilot2" in base
 
 
 def test_priority_surfaces_share_the_canonical_topbar() -> None:

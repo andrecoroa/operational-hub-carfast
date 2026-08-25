@@ -1,6 +1,6 @@
 # Matriz factual das superfícies v2-clean
 
-Base: `integration/modular-architecture@46166d8713bcff8222c7f954fa36ae1b0f6f18cc`
+Base: `integration/modular-architecture@84204d61ff44492560f6b5f292f1dc3975eba39c`
 
 Inventário: `scripts/check_visual_surface_inventory.py` — 53/53 rotas estáticas canónicas, incluindo o novo assistente `/v2-clean/admin/setup`.
 Shell: **PASS transversal em todas as 53 rotas** (asset, sidebar, topbar e composição de navegação). A coluna `Conteúdo` não herda esse PASS: descreve apenas a reconstrução da superfície funcional.
@@ -23,19 +23,19 @@ Shell: **PASS transversal em todas as 53 rotas** (asset, sidebar, topbar e compo
 | 13 | `/v2-clean/admin/users` | PASS | reconstruído pendente de captura | Utilizadores runtime PASS |
 | 14 | `/v2-clean/admin/work-classification` | PASS | reconstruído pendente de captura | Categorias/parametrização/Email runtime PASS |
 | 15 | `/v2-clean/admin/workshop-models` | PASS | parcial | Oficina/Configuração residual |
-| 16 | `/v2-clean/diagnostics` | PASS | parcial | Documentação por viatura/diagnósticos |
+| 16 | `/v2-clean/diagnostics` | PASS | reconstruído/aprovado | Documentação residual Green 84204d61 |
 | 17 | `/v2-clean/documentation` | PASS | reconstruído/aprovado | Workbench documental aprovado |
-| 18 | `/v2-clean/documentation/archive` | PASS | parcial | Documentação residual |
+| 18 | `/v2-clean/documentation/archive` | PASS | reconstruído/aprovado | Documentação residual Green 84204d61 |
 | 19 | `/v2-clean/documentation/by-vehicle` | PASS | reconstruído/aprovado | Runtime Green 8226c6e1 PASS |
-| 20 | `/v2-clean/documentation/extraction-models` | PASS | parcial | Documentação residual |
-| 21 | `/v2-clean/documentation/financial-plans` | PASS | legado | Documentação residual |
-| 22 | `/v2-clean/documentation/imports` | PASS | parcial | Documentação residual |
-| 23 | `/v2-clean/documentation/invoices` | PASS | parcial | Documentação residual |
+| 20 | `/v2-clean/documentation/extraction-models` | PASS | reconstruído/aprovado | Documentação residual Green 84204d61 |
+| 21 | `/v2-clean/documentation/financial-plans` | PASS | reconstruído/aprovado | Documentação residual Green 84204d61 |
+| 22 | `/v2-clean/documentation/imports` | PASS | reconstruído/aprovado | Documentação residual Green 84204d61 |
+| 23 | `/v2-clean/documentation/invoices` | PASS | reconstruído/aprovado | Documentação residual Green 84204d61 |
 | 24 | `/v2-clean/documentation/treatment` | PASS | reconstruído/aprovado | Workbench documental aprovado |
 | 25 | `/v2-clean/documentation/triage` | PASS | reconstruído/aprovado | Workbench documental aprovado |
-| 26 | `/v2-clean/documents` | PASS | parcial | Documentação residual |
-| 27 | `/v2-clean/documents/new` | PASS | legado | Documentação residual |
-| 28 | `/v2-clean/documents/ocr-validation` | PASS | parcial | OCR/matching aprovado no workbench; rota residual |
+| 26 | `/v2-clean/documents` | PASS | reconstruído/aprovado | Documentação residual Green 84204d61 |
+| 27 | `/v2-clean/documents/new` | PASS | reconstruído/aprovado | Documentação residual Green 84204d61 |
+| 28 | `/v2-clean/documents/ocr-validation` | PASS | reconstruído/aprovado | Documentação residual Green 84204d61 |
 | 29 | `/v2-clean/email` | PASS | reconstruído/aprovado | Email aprovado |
 | 30 | `/v2-clean/fleet` | PASS | reconstruído/aprovado | Frota aprovada |
 | 31 | `/v2-clean/fleet/financial-audit` | PASS | parcial | Frota residual |
@@ -61,11 +61,10 @@ Shell: **PASS transversal em todas as 53 rotas** (asset, sidebar, topbar e compo
 | 51 | `/v2-clean/workshop` | PASS | reconstruído/aprovado | Oficina aprovada |
 | 52 | `/v2-clean/workshop-entry` | PASS | reconstruído/aprovado | Oficina aprovada |
 
-## Superfícies ainda parcial ou legado (lista nominal fechada em 46166d87)
+## Superfícies ainda parcial ou legado (lista nominal fechada em 84204d61)
 
-1. **Documentação residual (tranche final A, ativa):** `/v2-clean/diagnostics` (auditoria técnica ainda isolada), `/v2-clean/documentation/archive` (lista sem contexto transversal), `/v2-clean/documentation/extraction-models` (área técnica isolada), `/v2-clean/documentation/financial-plans` (fluxo de importação antigo), `/v2-clean/documentation/imports` (hub sem percurso unificado), `/v2-clean/documentation/invoices` (monitor compatível, mas residual), `/v2-clean/documents` (centro histórico), `/v2-clean/documents/new` (formulário com estilos locais antigos) e `/v2-clean/documents/ocr-validation` (calibração fora da navegação canónica).
-2. **Administração residual (tranche final B):** `/v2-clean/admin/audit`, `/evolution`, `/integrations`, `/operations`, `/organization`, `/security`, `/settings` e `/workshop-models`; funcional, mas ainda sem composição final homogénea do assistente aprovado.
-3. **Resíduos operacionais (tranche final C):** `/v2-clean/fleet/financial-audit`, `/v2-clean/fleet/sales-access` e `/v2-clean/tasks/recurring`; superfícies especializadas ainda não fechadas pelo respetivo workbench.
+1. **Administração residual (tranche final B, ativa):** `/v2-clean/admin/audit`, `/evolution`, `/integrations`, `/operations`, `/organization`, `/security`, `/settings` e `/workshop-models`; funcional, em reconstrução composicional homogénea sem alterar o Setup aprovado.
+2. **Resíduos operacionais (tranche final C):** `/v2-clean/fleet/financial-audit`, `/v2-clean/fleet/sales-access` e `/v2-clean/tasks/recurring`; superfícies especializadas ainda não fechadas pelo respetivo workbench.
 
 As superfícies reconstruídas pendentes apenas de captura não constam desta lista, porque o bloqueio é de evidência da plataforma e não de conteúdo.
 

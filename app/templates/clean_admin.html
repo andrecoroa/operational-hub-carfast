@@ -22,6 +22,10 @@
       {% include "_clean_admin_directory.html" %}
     </header>
 
+    {% if admin_section in ['operations', 'organization', 'settings', 'evolution', 'audit', 'integrations', 'security'] %}
+      {% include "_clean_admin_residual_nav.html" %}
+    {% endif %}
+
     {% if request.query_params.get("error") %}
       <div class="alert clean-card-wide">Não foi possível concluir a operação: {{ request.query_params.get("error") }}.</div>
     {% endif %}
@@ -402,6 +406,8 @@
                   {% if can_manage %}<button type="submit">Guardar</button>{% endif %}
                 </form>
               </details>
+            {% else %}
+              <div class="clean-admin-empty-state" role="status"><strong>Sem áreas configuradas</strong><span>Crie a primeira área antes de associar equipas ou utilizadores.</span></div>
             {% endfor %}
           </div>
         </article>
@@ -418,6 +424,8 @@
                   {% if can_manage %}<button type="submit">Guardar</button>{% endif %}
                 </form>
               </details>
+            {% else %}
+              <div class="clean-admin-empty-state" role="status"><strong>Sem equipas configuradas</strong><span>As equipas surgem aqui depois de associadas a uma área.</span></div>
             {% endfor %}
           </div>
         </article>
@@ -484,6 +492,8 @@
               </details>
             {% endif %}
           </article>
+        {% else %}
+          <article class="clean-panel clean-admin-empty-state" role="status"><strong>Sem catálogos configurados</strong><span>Não existem parametrizações disponíveis para esta instalação.</span></article>
         {% endfor %}
       </section>
     {% endif %}
@@ -636,13 +646,24 @@ DEPOIS
   </main>
 </div>
 <script>
+  let lastAdminDialogTrigger = null;
   document.querySelectorAll("[data-dialog-open]").forEach((button) => {
-    button.addEventListener("click", () => document.getElementById(button.dataset.dialogOpen)?.showModal());
+    button.addEventListener("click", () => {
+      const dialog = document.getElementById(button.dataset.dialogOpen);
+      if (!dialog) return;
+      lastAdminDialogTrigger = button;
+      dialog.showModal();
+      dialog.querySelector("input:not([type='hidden']), select, textarea, button")?.focus();
+    });
   });
   document.querySelectorAll("[data-dialog-close]").forEach((button) => {
     button.addEventListener("click", () => button.closest("dialog")?.close());
   });
   document.querySelectorAll(".clean-admin-dialog").forEach((dialog) => {
+    dialog.addEventListener("close", () => {
+      lastAdminDialogTrigger?.focus();
+      lastAdminDialogTrigger = null;
+    });
     dialog.addEventListener("click", (event) => {
       if (event.target === dialog) dialog.close();
     });

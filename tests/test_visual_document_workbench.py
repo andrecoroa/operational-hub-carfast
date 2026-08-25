@@ -74,7 +74,7 @@ def test_document_workbench_responsive_contract() -> None:
 
 
 def test_document_asset_is_cache_busted() -> None:
-    assert "visual-v2.css?v=20260825-documents3" in BASE.read_text(encoding="utf-8")
+    assert "visual-v2.css?v={{ visual_asset_version }}" in BASE.read_text(encoding="utf-8")
 
 
 def test_document_views_preserve_return_context_and_scroll() -> None:

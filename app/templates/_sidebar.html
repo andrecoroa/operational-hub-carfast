@@ -26,7 +26,8 @@
       {% set can_nav_tasks = "navigation.tasks.access" in nav_perms and nav_has_permission(request, "tasks.read", "tasks.operational.read", "tasks.operational.write", "tasks.workshop.read", "tasks.workshop.write", "tasks.audit.read", "tasks.audit.write", "tasks.administration.read", "tasks.administration.write", "tasks.management.read", "tasks.management.create", "tasks.management.update", "tasks.management.close", "tasks.recurring.manage", "admin.manage") %}
       {% set can_nav_processes = "navigation.processes.access" in nav_perms and nav_has_permission(request, "management_center.read", "management_center.write", "admin.manage") %}
       {% set can_nav_workshop = "navigation.workshop.access" in nav_perms and nav_has_permission(request, "workshop.read", "workshop.write", "admin.manage") %}
-      {% set can_nav_fleet = "navigation.fleet.access" in nav_perms and nav_has_permission(request, "vehicles.read", "vehicles.write", "fleet.commerce.manage", "admin.manage") %}
+      {% set can_nav_fleet = "navigation.fleet.access" in nav_perms and nav_has_permission(request, "vehicles.read", "vehicles.write", "admin.manage") %}
+      {% set can_nav_sales = "navigation.fleet.access" in nav_perms and nav_has_permission(request, "fleet.commerce.manage", "vehicles.write", "admin.manage") %}
       {% set can_nav_stock = "navigation.stock.access" in nav_perms and nav_has_permission(request, "stock.read", "stock.operate", "stock.manage", "admin.manage") %}
       {% set can_nav_email = "navigation.email.access" in nav_perms and nav_has_permission(request, "email.read", "email.triage", "email.reply", "email.approve", "email.manage", "admin.manage") %}
       {% set can_nav_documentation = "navigation.documentation.access" in nav_perms and nav_has_permission(request, "documents.read", "documents.write", "admin.manage") %}
@@ -64,11 +65,26 @@
         <summary data-nav-icon="fleet" {% if fleet_menu_open %}class="active"{% endif %}>Frota</summary>
         <div class="sidebar-nav-children">
           {% if nav_has_permission(request, "vehicles.read", "vehicles.write", "admin.manage") %}<a class="sidebar-sub-link {% if active_menu == 'fleet' %}active{% endif %}" href="/v2-clean/fleet">Viaturas</a>{% endif %}
-          {% if nav_has_permission(request, "fleet.commerce.manage", "vehicles.write", "admin.manage") %}
-            <a class="sidebar-sub-link {% if active_menu == 'fleet_sales' %}active{% endif %}" href="/v2-clean/fleet/sales">Venda de viaturas</a>
+          {% if nav_has_permission(request, "vehicles.read", "vehicles.write", "admin.manage") %}<a class="sidebar-sub-link" href="/alerts">Alertas</a>{% endif %}
+          {% if nav_has_permission(request, "tasks.read", "tasks.operational.read", "tasks.operational.write", "admin.manage") %}<a class="sidebar-sub-link" href="/v2-clean/tasks?workspace=fleet">Ocorrências</a>{% endif %}
+          {% if nav_has_permission(request, "documents.read", "documents.write", "admin.manage") and nav_has_permission(request, "vehicles.read", "vehicles.write", "admin.manage") %}<a class="sidebar-sub-link" href="/v2-clean/documentation/by-vehicle">Documentos</a>{% endif %}
+          {% if can_nav_sales %}
+            <details class="sidebar-sub-group" {% if active_menu == 'fleet_sales' %}open{% endif %}>
+              <summary>Vendas</summary>
+              <div>
+                <a class="sidebar-sub-link {% if active_menu == 'fleet_sales' %}active{% endif %}" href="/v2-clean/fleet/sales">Pipeline</a>
+                <a class="sidebar-sub-link" href="/v2-clean/fleet/sales/proposals">Processos de venda</a>
+                <a class="sidebar-sub-link" href="/v2-clean/fleet/sales/opportunities">Clientes / comerciantes</a>
+                <a class="sidebar-sub-link" href="/v2-clean/fleet/sales?search=1">Publicações</a>
+              </div>
+            </details>
           {% endif %}
+          {% if nav_has_permission(request, "vehicles.write", "admin.manage") %}<a class="sidebar-sub-link" href="/v2-clean/admin?section=fleet">Configuração</a>{% endif %}
         </div>
       </details>{% endif %}
+      {% if can_nav_sales and not can_nav_fleet %}
+        <a href="/v2-clean/fleet/sales" {% if active_menu == "fleet_sales" %}class="active"{% endif %}>Vendas</a>
+      {% endif %}
       {% if can_nav_stock and not can_nav_workshop %}
         <a href="/v2-clean/stock" {% if active_menu == "stock" %}class="active"{% endif %}>Stock</a>
       {% endif %}

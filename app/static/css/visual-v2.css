@@ -350,6 +350,26 @@ dialog { border: 1px solid var(--cf-gray-200); border-radius: 12px; box-shadow: 
 .visual-sales-workbench-header > span { display: grid; min-width: 96px; padding: 8px 12px; color: var(--cf-gray-600); background: var(--cf-gray-050); border: 1px solid var(--cf-gray-200); border-radius: 8px; font-size: 10px; text-align: right; }
 .visual-sales-workbench-header > span strong { color: var(--cf-gray-950); font-size: 19px; }
 .visual-sales-workbench .sale-filter-grid { padding: 16px; }
+.visual-secondary-menu > summary { min-height: 40px; padding: 9px 16px; color: var(--cf-blue-700); background: #fff; border: 1px solid var(--cf-gray-300); border-radius: 8px; font-weight: 700; }
+.visual-secondary-menu > summary:hover { background: var(--cf-blue-050); border-color: var(--cf-blue-300); }
+.visual-secondary-menu > summary:focus-visible { outline: 3px solid rgb(47 91 211 / 24%); outline-offset: 2px; }
+.visual-sales-secondary-page .visual-sales-heading,
+.visual-sales-detail-page .visual-sales-heading { margin-bottom: 4px; }
+.visual-sales-secondary-filters { display: grid; grid-template-columns: minmax(260px,2fr) minmax(180px,1fr) auto; gap: 12px; padding: 16px 18px; align-items: end; border-bottom: 1px solid var(--cf-gray-200); }
+.visual-sales-secondary-filters label { display: grid; gap: 6px; color: var(--cf-gray-700); font-size: 11px; font-weight: 700; text-transform: uppercase; }
+.visual-sales-secondary-filters button { min-height: 40px; }
+.visual-sales-secondary-page .clean-doc-table-wrap { overflow-x: auto; scrollbar-gutter: stable; }
+.visual-sales-secondary-page .clean-doc-table { min-width: 840px; }
+.sale-authorized-documents { grid-column: 1 / -1; }
+.sale-authorized-documents > p { margin: 0 0 10px; color: var(--cf-gray-600); font-size: 12px; }
+.sale-document-choice-list { display: grid; gap: 8px; }
+.sale-document-choice-list label { display: flex; min-height: 48px; padding: 9px 11px; gap: 10px; align-items: center; background: var(--cf-gray-050); border: 1px solid var(--cf-gray-200); border-radius: 8px; }
+.sale-document-choice-list label > span { display: grid; gap: 2px; }
+.sale-document-choice-list small { color: var(--cf-gray-600); }
+.public-sale-documents { display: grid; grid-template-columns: minmax(240px,.8fr) minmax(0,1.2fr); gap: 24px; padding: 28px; background: #fff; border: 1px solid var(--cf-gray-200); border-radius: 12px; }
+.public-sale-documents ul { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.public-sale-documents li { display: grid; padding: 10px 12px; gap: 3px; background: var(--cf-gray-050); border-radius: 8px; }
+.public-sale-documents li span { color: var(--cf-gray-600); font-size: 12px; }
 .visual-fleet-sales .sale-list-form { border-radius: 9px; }
 .visual-fleet-sales .sale-table-panel { overflow: hidden; border-radius: 9px; }
 
@@ -375,6 +395,18 @@ dialog { border: 1px solid var(--cf-gray-200); border-radius: 12px; box-shadow: 
   .visual-sales-metrics { grid-template-columns: repeat(2,minmax(0,1fr)); }
   .visual-sales-metrics > a { min-height: 84px; }
   .visual-sales-workbench-header { align-items: flex-start; }
+  .visual-sales-secondary-filters { grid-template-columns: minmax(0,1fr) minmax(0,1fr); }
+  .visual-sales-secondary-filters button { grid-column: 1 / -1; }
+}
+
+@media (max-width: 640px) {
+  .visual-sales-context-nav { position: relative; display: flex; overflow-x: auto; padding-right: 34px; scroll-snap-type: x proximity; scrollbar-width: none; }
+  .visual-sales-context-nav::-webkit-scrollbar { display: none; }
+  .visual-sales-context-nav::after { position: sticky; right: 0; min-width: 28px; content: "›"; display: grid; place-items: center; color: var(--cf-blue-700); background: linear-gradient(90deg,transparent,#fff 45%); font-weight: 800; pointer-events: none; }
+  .visual-sales-context-nav a { flex: 0 0 auto; scroll-snap-align: start; }
+  .visual-sales-secondary-filters { grid-template-columns: 1fr; }
+  .visual-sales-secondary-filters button { grid-column: auto; }
+  .public-sale-documents { grid-template-columns: 1fr; padding: 18px; }
 }
 
 /* Workshop tranche — canonical process workbench */

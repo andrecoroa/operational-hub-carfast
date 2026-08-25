@@ -11,6 +11,7 @@ import app.web.router as base_router
 from app.core.config import settings
 from app.models import (
     AuditLog,
+    Document,
     Vehicle,
     VehicleExternalSnapshot,
     VehicleFinancialPlan,
@@ -911,6 +912,40 @@ def test_vehicle_sale_images_public_snapshot_and_leads(
     monkeypatch.setattr(settings, "vehicle_sale_media_root", str(tmp_path))
     base_router.EXTERNAL_PORTAL_RATE_LIMIT.clear()
     vehicle = create_sale_vehicle(db_session)
+    authorized_document = Document(
+        title="Certificado comercial autorizado",
+        document_type="certificate",
+        original_name="certificado.pdf",
+        file_name="certificado.pdf",
+        storage_provider="local",
+        storage_path="synthetic/certificado.pdf",
+        vehicle_id=vehicle.id,
+        archived=False,
+    )
+    db_session.add(authorized_document)
+    other_vehicle = Vehicle(plate="DOC-OTHER", active=True)
+    db_session.add(other_vehicle)
+    db_session.flush()
+    foreign_document = Document(
+        title="Documento de outra viatura",
+        original_name="foreign.pdf",
+        file_name="foreign.pdf",
+        storage_provider="local",
+        storage_path="synthetic/foreign.pdf",
+        vehicle_id=other_vehicle.id,
+        archived=False,
+    )
+    archived_document = Document(
+        title="Documento arquivado",
+        original_name="archived.pdf",
+        file_name="archived.pdf",
+        storage_provider="local",
+        storage_path="synthetic/archived.pdf",
+        vehicle_id=vehicle.id,
+        archived=True,
+    )
+    db_session.add_all([foreign_document, archived_document])
+    db_session.commit()
 
     saved = authenticated_client.post(
         f"/v2-clean/fleet/sales/{vehicle.id}",
@@ -957,6 +992,11 @@ def test_vehicle_sale_images_public_snapshot_and_leads(
             "audience": "retail",
             "expires_on": "2026-12-31",
             "image_ids": [str(image.id)],
+            "document_ids": [
+                str(authorized_document.id),
+                str(foreign_document.id),
+                str(archived_document.id),
+            ],
         },
         follow_redirects=False,
     )
@@ -967,6 +1007,16 @@ def test_vehicle_sale_images_public_snapshot_and_leads(
     )
     assert publication is not None
     assert publication.snapshot_json["sale"]["price"] == "24900.00"
+    assert publication.snapshot_json["documents"] == [
+        {
+            "id": authorized_document.id,
+            "title": "Certificado comercial autorizado",
+            "type": "certificate",
+            "date": None,
+        }
+    ]
+    assert "Documento de outra viatura" not in str(publication.snapshot_json)
+    assert "Documento arquivado" not in str(publication.snapshot_json)
     serialized_snapshot = str(publication.snapshot_json)
     assert "debt" not in serialized_snapshot
     assert "margin" not in serialized_snapshot
@@ -983,6 +1033,14 @@ def test_vehicle_sale_images_public_snapshot_and_leads(
     assert "Custo CarFast" not in public_page.text
     assert "Valor em dívida" not in public_page.text
     assert "Nota interna confidencial" not in public_page.text
+    assert "Certificado comercial autorizado" in public_page.text
+
+    publications_page = authenticated_client.get(
+        "/v2-clean/fleet/sales/publications"
+    )
+    assert publications_page.status_code == 200
+    assert "Relatórios comerciais publicados" in publications_page.text
+    assert vehicle.plate in publications_page.text
 
     archived_image = authenticated_client.post(
         f"/v2-clean/fleet/sales/{vehicle.id}/images/{image.id}/archive",

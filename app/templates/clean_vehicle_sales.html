@@ -5,12 +5,7 @@
   {% include "_sidebar.html" %}
   <main class="content clean-content sale-page{% if foundation_ui_enabled %} visual-fleet-sales{% endif %}">
     {% if foundation_ui_enabled %}{% set visual_section = "Frota" %}{% set visual_page = "Vendas" %}{% include "_visual_topbar.html" %}
-    <nav class="visual-fleet-context-nav visual-sales-context-nav" aria-label="Navegação de Vendas">
-      <a class="active" href="/v2-clean/fleet/sales">Pipeline</a>
-      <a href="/v2-clean/fleet/sales/proposals">Processos de venda</a>
-      <a href="/v2-clean/fleet/sales/opportunities">Clientes / comerciantes</a>
-      <a href="/v2-clean/fleet/sales?search=1">Publicações</a>
-    </nav>{% endif %}
+    {% set active_sales_view = "pipeline" %}{% include "_sales_context_nav.html" %}{% endif %}
     <header class="clean-workshop-header clean-workshop-header-final{% if foundation_ui_enabled %} visual-fleet-heading visual-sales-heading{% endif %}">
       <div>
         <p class="eyebrow">Frota / processo comercial</p>
@@ -19,7 +14,7 @@
       </div>
       <div class="clean-header-actions clean-header-actions-strong">
         <a class="button-link secondary-link" href="/v2-clean/fleet">Voltar à frota</a>
-        <details class="clean-header-more">
+        <details class="clean-header-more visual-secondary-menu">
           <summary>Mais</summary>
           <nav>
             <a href="/v2-clean/fleet/financial-audit">Auditoria financeira</a>

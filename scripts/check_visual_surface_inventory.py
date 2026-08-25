@@ -48,6 +48,7 @@ EXPECTED_STATIC_HTML_SURFACES = (
     "/v2-clean/fleet/sales-access",
     "/v2-clean/fleet/sales/opportunities",
     "/v2-clean/fleet/sales/proposals",
+    "/v2-clean/fleet/sales/publications",
     "/v2-clean/processes",
     "/v2-clean/stock",
     "/v2-clean/stock/articles",

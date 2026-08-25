@@ -148,10 +148,11 @@ def test_fleet_context_navigation_preserves_routes_and_sales_permission_gate():
 
 def test_sales_pipeline_is_a_composed_fleet_workbench():
     template = _read("app/templates/clean_vehicle_sales.html")
+    context_nav = _read("app/templates/_sales_context_nav.html")
 
     assert "visual-fleet-sales" in template
     assert '{% include "_visual_topbar.html" %}' in template
-    assert 'aria-label="Navegação de Vendas"' in template
+    assert 'aria-label="Navegação de Vendas"' in context_nav
     assert "visual-sales-metrics" in template
     assert "visual-sales-workbench" in template
     assert "data-sale-bulk-form" in template
@@ -160,9 +161,30 @@ def test_sales_pipeline_is_a_composed_fleet_workbench():
         "/v2-clean/fleet/sales",
         "/v2-clean/fleet/sales/proposals",
         "/v2-clean/fleet/sales/opportunities",
-        "/v2-clean/fleet/sales?search=1",
+        "/v2-clean/fleet/sales/publications",
     ):
-        assert f'href="{path}"' in template
+        assert f'href="{path}"' in template + context_nav
+
+
+def test_sales_secondary_surfaces_share_composition_and_document_authorization():
+    for path, marker in (
+        ("app/templates/clean_vehicle_sale_proposals.html", 'active_sales_view = "processes"'),
+        ("app/templates/clean_vehicle_sale_opportunities.html", 'active_sales_view = "customers"'),
+        ("app/templates/clean_vehicle_sale_publications.html", 'active_sales_view = "publications"'),
+    ):
+        template = _read(path)
+        assert "visual-sales-secondary-page" in template
+        assert '{% include "_visual_topbar.html" %}' in template
+        assert '{% include "_sales_context_nav.html" %}' in template
+        assert marker in template
+
+    detail = _read("app/templates/clean_vehicle_sale_detail.html")
+    public = _read("app/templates/public_vehicle_sale.html")
+    assert 'name="document_ids"' in detail
+    assert "Documentos autorizados para esta publicação" in detail
+    assert 'snapshot.get("documents", [])' in public
+    assert "Apenas os documentos selecionados explicitamente" in public
+    assert "visual-secondary-menu" in _read("app/templates/clean_vehicle_sales.html")
 
 
 def test_fleet_empty_diagnostics_state_remains_explicit_and_non_mutating(
@@ -236,6 +258,10 @@ def test_fleet_detail_documents_diagnostics_and_sales_have_true_flag_off_fallbac
         f"/v2-clean/fleet/{vehicle.id}/documents",
         f"/v2-clean/fleet/{vehicle.id}/diagnostics",
         "/v2-clean/fleet/sales",
+        "/v2-clean/fleet/sales/proposals",
+        "/v2-clean/fleet/sales/opportunities",
+        "/v2-clean/fleet/sales/publications",
+        f"/v2-clean/fleet/sales/{vehicle.id}",
     ):
         response = authenticated_client.get(path)
         assert response.status_code == 200

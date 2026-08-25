@@ -13374,6 +13374,7 @@ def clean_documentation_triage(
     q: str = "",
     origin: str = "",
     confidence: str = "",
+    selected: int | None = None,
     page: int = 1,
     page_size: int = 25,
 ):
@@ -13472,14 +13473,20 @@ def clean_documentation_triage(
                 or 0
             ),
         }
+        rows = [
+            _documentation_row(document, state)
+            for document, state in records
+        ]
+        selected_row = next(
+            (row for row in rows if row["document"].id == selected),
+            rows[0] if rows else None,
+        )
         return templates.TemplateResponse(
             request,
             "clean_documentation_triage.html",
             {
-                "rows": [
-                    _documentation_row(document, state)
-                    for document, state in records
-                ],
+                "rows": rows,
+                "selected_row": selected_row,
                 "counts": counts,
                 "pagination": _documentation_pagination(
                     total,

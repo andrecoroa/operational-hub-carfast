@@ -3,11 +3,11 @@
 <div class="app-shell clean-shell">
   {% set active_menu = "documentation_triage" %}
   {% include "_sidebar.html" %}
-  <main class="content clean-content doc-arch-page">
+  <main class="content clean-content doc-arch-page visual-document-workbench">
     {% set doc_nav = "triage" %}
     {% include "_clean_documentation_nav.html" %}
     <header class="doc-arch-header">
-      <div><p class="eyebrow">Documentação</p><h1>Triagem documental</h1><p>Classificar entradas sem destino seguro e definir o seu tratamento.</p></div>
+      <div class="visual-document-heading"><div><p class="eyebrow">Gestão documental</p><h1>Processamento de documento</h1><p>Validar reconhecimento, correspondências e associações sem perder o contexto da fila.</p></div></div>
       <a class="button-link secondary-link" href="/v2-clean/documents/ocr-validation">Reprocessar reconhecimento</a>
     </header>
 
@@ -20,44 +20,57 @@
     {% if request.query_params.get("saved") %}<div class="doc-arch-notice success">Decisão guardada e auditada.</div>{% endif %}
     {% if request.query_params.get("error") %}<div class="doc-arch-notice danger">Não foi possível concluir a decisão: {{ request.query_params.get("error") }}.</div>{% endif %}
 
-    <form class="doc-arch-filters" method="get">
-      <input name="q" value="{{ q }}" placeholder="Pesquisar documento, origem, viatura…">
-      <select name="origin">
+    <section class="visual-document-context" aria-label="Contexto do documento">
+      <span><small>Fila</small><strong>Em validação</strong></span>
+      <span><small>Documento</small><strong>{% if selected_row %}DOC-{{ selected_row.document.id }}{% else %}Sem seleção{% endif %}</strong></span>
+      <span><small>Recebido</small><strong>{% if selected_row %}{{ selected_row.date_display }}{% else %}—{% endif %}</strong></span>
+    </section>
+
+    <form class="doc-arch-filters visual-document-filters" method="get">
+      <label>Pesquisar<input name="q" value="{{ q }}" placeholder="Documento, origem, viatura…"></label>
+      <label>Origem<select name="origin">
         <option value="">Origem: todas</option>
         {% for value, label in [("upload", "Upload"), ("document_inbox", "Caixa de entrada"), ("email", "Email"), ("workshop", "Oficina")] %}
           <option value="{{ value }}" {% if origin == value %}selected{% endif %}>{{ label }}</option>
         {% endfor %}
-      </select>
-      <select name="confidence">
+      </select></label>
+      <label>Confiança<select name="confidence">
         <option value="">Confiança: todas</option>
         <option value="high" {% if confidence == "high" %}selected{% endif %}>Alta (≥ 90%)</option>
         <option value="medium" {% if confidence == "medium" %}selected{% endif %}>Média (60–89%)</option>
         <option value="low" {% if confidence == "low" %}selected{% endif %}>Baixa / desconhecida</option>
-      </select>
+      </select></label>
       <button type="submit">Filtrar</button>
     </form>
 
-    <section class="doc-arch-card">
-      <div class="doc-arch-table-wrap">
-        <table class="doc-arch-table">
-          <thead><tr><th>Entrada</th><th>Ficheiro</th><th>Origem</th><th>Sugestão</th><th>Associação</th><th>Destino</th><th>Ações</th></tr></thead>
-          <tbody>
-            {% for row in rows %}
-              <tr>
-                <td>{{ row.date_display }}</td>
-                <td><a href="{{ row.detail_href }}">{{ row.title }}</a></td>
-                <td>{{ row.origin }}</td>
-                <td>
-                  {% if row.workflow.suggested_invoice_nature %}
-                    <span class="doc-arch-badge warning">{{ workflow_labels.get(row.workflow.suggested_invoice_nature, row.workflow.suggested_invoice_nature) }} · {{ ((row.workflow.suggestion_confidence or 0) * 100)|round|int }}%</span>
-                  {% else %}<span class="doc-arch-badge neutral">Desconhecido</span>{% endif %}
-                </td>
-                <td>{{ workflow_labels.get(row.workflow.association_status, row.workflow.association_status) }}</td>
-                <td>{{ workflow_labels.get(row.workflow.destination_status, row.workflow.destination_status) }}</td>
-                <td>
-                  <details class="doc-arch-action-menu">
-                    <summary>Triar</summary>
-                    <form method="post" action="/v2-clean/documentation/triage/{{ row.document.id }}">
+    <section class="visual-document-grid">
+      <article class="visual-document-queue" aria-label="Fila de documentos">
+        <header><div><h2>Fila de documentos</h2><p>{{ pagination.total }} documentos por decidir</p></div><button type="button" aria-label="Atualizar fila" onclick="location.reload()">↻</button></header>
+        <div class="visual-document-queue-list">
+          {% for row in rows %}
+            <a class="visual-document-row{% if selected_row and selected_row.document.id == row.document.id %} active{% endif %}" href="?q={{ q|urlencode }}&origin={{ origin|urlencode }}&confidence={{ confidence|urlencode }}&selected={{ row.document.id }}">
+              <span class="visual-document-status{% if (row.workflow.suggestion_confidence or 0) < 0.6 %} danger{% elif (row.workflow.suggestion_confidence or 0) >= 0.9 %} success{% endif %}"></span>
+              <span><strong>{{ row.title }}</strong><small>DOC-{{ row.document.id }} · {{ row.origin }}</small></span>
+              <span><strong>{{ workflow_labels.get(row.workflow.suggested_invoice_nature, "Por reconhecer") }}</strong><small>{{ row.date_display }}</small></span>
+            </a>
+          {% else %}<p class="doc-arch-empty">Nenhum documento corresponde aos filtros.</p>{% endfor %}
+        </div>
+        <footer class="visual-document-pagination"><span>{{ pagination.page }} / {{ pagination.total_pages }} · {{ pagination.total }} registos</span>{% if pagination.has_next %}<a href="?page={{ pagination.next_page }}&page_size={{ pagination.page_size }}">Seguinte →</a>{% endif %}</footer>
+      </article>
+
+      <article class="visual-document-preview" aria-label="Pré-visualização do documento">
+        <header><div><h2>Pré-visualização</h2><p>{% if selected_row %}{{ selected_row.title }}{% else %}Selecione um documento{% endif %}</p></div>{% if selected_row %}<a class="button-link secondary-link" href="{{ selected_row.detail_href }}">Abrir detalhe</a>{% endif %}</header>
+        <div class="visual-document-toolbar" aria-label="Controlos de pré-visualização"><button type="button" aria-label="Página anterior">‹</button><span>1 / 1</span><button type="button" aria-label="Reduzir zoom">−</button><span>100%</span><button type="button" aria-label="Aumentar zoom">+</button></div>
+        {% if selected_row %}<iframe title="Documento selecionado" src="{{ selected_row.preview_href }}"></iframe>{% else %}<div class="visual-document-empty">A fila está tratada.</div>{% endif %}
+      </article>
+
+      <aside class="visual-document-review" aria-label="OCR e dados extraídos">
+        <header><h2>OCR e dados extraídos</h2><p>Confirme a classificação e o destino.</p></header>
+        {% if selected_row %}
+          <div class="visual-document-confidence"><span><small>Classificação</small><strong>{{ workflow_labels.get(selected_row.workflow.suggested_invoice_nature, "Por reconhecer") }}</strong></span><span><small>Confiança</small><strong>{{ ((selected_row.workflow.suggestion_confidence or 0) * 100)|round|int }}%</strong></span></div>
+          <section class="visual-document-matching"><h3>Correspondência</h3><dl><div><dt>Origem</dt><dd>{{ selected_row.origin }}</dd></div><div><dt>Associação</dt><dd>{{ workflow_labels.get(selected_row.workflow.association_status, selected_row.workflow.association_status) }}</dd></div><div><dt>Destino</dt><dd>{{ workflow_labels.get(selected_row.workflow.destination_status, selected_row.workflow.destination_status) }}</dd></div></dl></section>
+          <section class="visual-document-associate"><h3>Associar e decidir</h3>
+            <form method="post" action="/v2-clean/documentation/triage/{{ selected_row.document.id }}">
                       <input type="hidden" name="q" value="{{ q }}">
                       <input type="hidden" name="origin" value="{{ origin }}">
                       <input type="hidden" name="confidence" value="{{ confidence }}">
@@ -80,23 +93,13 @@
                         </select>
                       </label>
                       <label>Justificação<input name="decision_reason" placeholder="Motivo da decisão"></label>
-                      <button type="submit">Confirmar</button>
-                    </form>
-                  </details>
-                </td>
-              </tr>
-            {% else %}
-              <tr><td colspan="7" class="doc-arch-empty">Nenhum documento corresponde aos filtros.</td></tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
+                      <div class="visual-document-actions"><a class="button-link secondary-link" href="{{ selected_row.detail_href }}">Ver auditoria</a><button type="submit">Guardar decisão</button></div>
+            </form>
+          </section>
+        {% else %}<p class="doc-arch-empty">Sem documento selecionado.</p>{% endif %}
+      </aside>
     </section>
-    <nav class="doc-arch-pagination">
-      {% if pagination.has_previous %}<a href="?q={{ q|urlencode }}&origin={{ origin|urlencode }}&confidence={{ confidence|urlencode }}&page={{ pagination.previous_page }}&page_size={{ pagination.page_size }}">Anterior</a>{% endif %}
-      <span>Página {{ pagination.page }} de {{ pagination.total_pages }} · {{ pagination.total }} registos</span>
-      {% if pagination.has_next %}<a href="?q={{ q|urlencode }}&origin={{ origin|urlencode }}&confidence={{ confidence|urlencode }}&page={{ pagination.next_page }}&page_size={{ pagination.page_size }}">Seguinte</a>{% endif %}
-    </nav>
+    <section class="visual-document-history"><div><h2>Histórico de alterações</h2><p>Receção, reconhecimento e decisões ficam registados na auditoria.</p></div>{% if selected_row %}<a class="button-link secondary-link" href="{{ selected_row.detail_href }}">Ver auditoria completa</a>{% endif %}</section>
   </main>
 </div>
 {% endblock %}

@@ -11,15 +11,20 @@ def _read(relative: str) -> str:
 def test_workshop_process_uses_canonical_composition_not_css_only():
     template = _read("app/templates/clean_workshop_phase.html")
 
-    assert 'class="content clean-content visual-workshop-process"' in template
-    assert 'class="clean-stepper clean-stepper-seven visual-workshop-stepper"' in template
+    assert "visual-workshop-process" in template
+    assert "visual-workshop-stepper" in template
     assert 'class="visual-workshop-tabs"' in template
-    assert 'class="visual-workshop-layout"' in template
-    assert 'class="clean-workshop-final-grid visual-workshop-workbench"' in template
+    assert "visual-workshop-layout" in template
+    assert "visual-workshop-workbench" in template
     assert 'class="visual-workshop-summary"' in template
     assert "Trabalho da fase" in template
     assert "Documentos e fotografias" in template
     assert "Peças e custos" in template
+    assert 'id="workshop-documents"' in template
+    assert 'id="workshop-history"' in template
+    assert 'id="workshop-materials"' in template
+    assert "data-workshop-summary" in template
+    assert "carfast.workshop.summary.open" in template
 
 
 def test_workshop_preserves_real_routes_actions_and_return_context():
@@ -44,8 +49,24 @@ def test_stock_and_purchasing_is_composed_under_workshop_with_fallback():
     assert "Movimentos" in workshop_block
     assert "Compras / Encomendas" in workshop_block
     assert "Inventários" in workshop_block
+    assert 'active_menu in ["workshop", "stock"]' in sidebar
     assert "{% if can_nav_stock and not can_nav_workshop %}" in sidebar
     assert 'href="/v2-clean/stock"' in sidebar
+    for path in (
+        "/v2-clean/stock/movements",
+        "/v2-clean/stock/workshop-requests",
+        "/v2-clean/stock/orders",
+        "/v2-clean/stock/receipts",
+        "/v2-clean/stock/inventory",
+    ):
+        assert f'href="{path}"' in sidebar
+
+
+def test_visual_markup_is_fail_safe_when_foundation_flag_is_off():
+    template = _read("app/templates/clean_workshop_phase.html")
+    assert '{% if foundation_ui_enabled %}<nav class="visual-workshop-tabs"' in template
+    assert '{% if foundation_ui_enabled %}<details class="visual-workshop-summary"' in template
+    assert "{% if foundation_ui_enabled %} visual-workshop-process{% endif %}" in template
 
 
 def test_workshop_responsive_contract_has_local_not_global_overflow():

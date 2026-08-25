@@ -3,8 +3,8 @@
 <div class="app-shell clean-shell">
   {% set active_menu = "workshop" %}
   {% include "_sidebar.html" %}
-  <main class="content clean-content visual-workshop-process">
-    <header class="clean-header-shell clean-card-wide visual-workshop-header">
+  <main class="content clean-content{% if foundation_ui_enabled %} visual-workshop-process{% endif %}">
+    <header class="clean-header-shell clean-card-wide{% if foundation_ui_enabled %} visual-workshop-header{% endif %}">
       <div class="clean-header-topbar">
         <p class="eyebrow">Oficina / experiência nova{% if is_historical %} · processo histórico{% endif %}</p>
         <div class="clean-header-top-actions">
@@ -34,7 +34,7 @@
       </div>
     </header>
 
-    <section class="clean-context-action-shell clean-context-action-shell-single clean-workshop-action-strip clean-card-wide visual-workshop-quick-actions">
+    <section class="clean-context-action-shell clean-context-action-shell-single clean-workshop-action-strip clean-card-wide{% if foundation_ui_enabled %} visual-workshop-quick-actions{% endif %}">
       <article class="clean-context-action-group">
         <div class="clean-context-action-copy">
           <strong>Ações rápidas</strong>
@@ -52,7 +52,7 @@
       </article>
     </section>
 
-    <section class="clean-vehicle-header-card clean-vehicle-header-card-unified clean-vehicle-header-card-process clean-vehicle-header-card-workshop visual-workshop-vehicle-card">
+    <section class="clean-vehicle-header-card clean-vehicle-header-card-unified clean-vehicle-header-card-process clean-vehicle-header-card-workshop{% if foundation_ui_enabled %} visual-workshop-vehicle-card{% endif %}">
       <div class="clean-vehicle-header-main">
         <div class="clean-vehicle-identity">
           <p class="eyebrow">Viatura em processo</p>
@@ -96,23 +96,23 @@
       </section>
     {% endif %}
 
-    <section class="clean-stepper clean-stepper-seven visual-workshop-stepper" aria-label="Fases do processo">
+    <section class="clean-stepper clean-stepper-seven{% if foundation_ui_enabled %} visual-workshop-stepper{% endif %}" aria-label="Fases do processo">
       {% for step in workshop_steps %}
         <a class="{% if step.key == active_step %}active{% endif %}" href="{{ step.href }}"><b>{{ step.number }}</b>{{ step.label }}</a>
       {% endfor %}
     </section>
-    <nav class="visual-workshop-tabs" aria-label="Áreas do processo">
+    {% if foundation_ui_enabled %}<nav class="visual-workshop-tabs" aria-label="Áreas do processo">
       <a class="active" href="#workshop-phase-content">Trabalho da fase</a>
       <a href="#workshop-documents">Documentos e fotografias</a>
-      <a href="#workshop-history">Histórico</a>
+      <button type="button" data-history-preview-open>Histórico</button>
       {% if phase_key == "reparacao" %}<a href="#workshop-materials">Peças e custos</a>{% endif %}
-    </nav>
+    </nav>{% endif %}
     {% if phase_key in ["validacao", "diagnostico"] %}
       {% include "_clean_workshop_history_preview.html" %}
     {% endif %}
 
-    <div class="visual-workshop-layout" id="workshop-phase-content">
-    <form class="clean-workshop-final-grid visual-workshop-workbench" method="post" action="/v2-clean/workshop/{{ phase_key }}/save" enctype="multipart/form-data">
+    <div{% if foundation_ui_enabled %} class="visual-workshop-layout"{% endif %} id="workshop-phase-content">
+    <form class="clean-workshop-final-grid{% if foundation_ui_enabled %} visual-workshop-workbench{% endif %}" method="post" action="/v2-clean/workshop/{{ phase_key }}/save" enctype="multipart/form-data">
       {% if workshop_process %}<input type="hidden" name="process_id" value="{{ workshop_process.id }}">{% endif %}
       <input type="hidden" name="current_substep" value="">
       <input type="hidden" name="form_state_json" value="">
@@ -697,7 +697,7 @@
               <label>Pendência para validação<textarea name="repair_reserve_reason" rows="3" placeholder="O que fica pendente, se aplicável...">{{ phase_form.get("repair_reserve_reason", "") }}</textarea></label>
             </section>
           </div>
-          <details class="clean-workshop-materials">
+          <details class="clean-workshop-materials" id="workshop-materials">
             <summary>Material e pedidos ao Stock</summary>
             <p>Consulta o material previsto, regista referências e abre pedidos ao Stock quando necessário.</p>
             <div class="clean-repair-material-table">
@@ -1137,8 +1137,8 @@
         </div>
       </article>
     </form>
-    <aside class="visual-workshop-summary" aria-label="Resumo do processo">
-      <header><span><small>Resumo do processo</small><strong>{{ vehicle_context.process_ref }}</strong></span><span class="clean-status-pill ok">{{ phase.title }}</span></header>
+    {% if foundation_ui_enabled %}<details class="visual-workshop-summary" data-workshop-summary open>
+      <summary><span><small>Resumo do processo</small><strong>{{ vehicle_context.process_ref }}</strong></span><span class="clean-status-pill ok">{{ phase.title }}</span></summary>
       <dl>
         <div><dt>Viatura</dt><dd>{{ vehicle_context.plate }}</dd></div>
         <div><dt>Modelo</dt><dd>{{ vehicle_context.vehicle }}</dd></div>
@@ -1149,7 +1149,7 @@
       </dl>
       <a class="button-link secondary-link" href="{{ vehicle_detail_href }}">Abrir ficha da viatura</a>
       {% if workshop_process %}<a class="button-link secondary-link" href="/v2-clean/tasks?workspace=workshop&entity_type=workshop_phased_process&entity_id={{ workshop_process.id }}&return_url={{ request.url.path }}%3Fprocess_id%3D{{ workshop_process.id }}">Ver tarefas associadas</a>{% endif %}
-    </aside>
+    </details>{% endif %}
     </div>
     {% if workshop_process %}
       {% set photo_phased_process_id = workshop_process.id %}
@@ -1157,18 +1157,18 @@
       {% set photo_vehicle_id = workshop_process.vehicle_id %}
       {% set photo_entity_type = "workshop_phase" %}
       {% set photo_entity_id = phase_key %}
-      {% include "_photo_capture.html" %}
+      <div id="workshop-documents">{% include "_photo_capture.html" %}</div>
     {% endif %}
   </main>
 </div>
-<div class="clean-image-preview-modal" id="clean-history-preview-modal" hidden>
+<div class="clean-image-preview-modal" id="clean-history-preview-modal" data-workshop-history hidden>
   <div class="clean-image-preview-backdrop" data-history-preview-close></div>
   <section class="clean-image-preview-dialog clean-history-preview-dialog clean-preview-dialog" role="dialog" aria-modal="true">
     <header class="clean-preview-header">
       <span><strong>Histórico da viatura</strong><small>Processos, documentos e diagnósticos por data real</small></span>
       <button type="button" class="clean-preview-close" data-history-preview-close>Fechar preview</button>
     </header>
-    <div class="clean-history-preview-body">
+    <div class="clean-history-preview-body" id="workshop-history">
       {% include "_clean_workshop_history_content.html" %}
     </div>
   </section>
@@ -1316,6 +1316,16 @@
     });
   });
 </script>
+{% if foundation_ui_enabled %}<script>
+  (() => {
+    const panel = document.querySelector('[data-workshop-summary]');
+    if (!panel) return;
+    const key = 'carfast.workshop.summary.open';
+    const stored = window.localStorage.getItem(key);
+    panel.open = stored === null ? !window.matchMedia('(max-width: 1199px)').matches : stored === '1';
+    panel.addEventListener('toggle', () => window.localStorage.setItem(key, panel.open ? '1' : '0'));
+  })();
+</script>{% endif %}
 {% if workshop_admin.is_cancelled or workshop_admin.is_closed %}
 <script>
   document.querySelectorAll(".clean-workshop-final-grid input, .clean-workshop-final-grid select, .clean-workshop-final-grid textarea, .clean-workshop-final-grid button").forEach((control) => {

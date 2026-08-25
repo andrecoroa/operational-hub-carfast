@@ -63,7 +63,11 @@ Shell: **PASS transversal em todas as 53 rotas** (asset, sidebar, topbar e compo
 
 ## Superfícies ainda parcial ou legado
 
-Nenhuma das 53 rotas canónicas permanece classificada como conteúdo parcial ou legado após o fecho da Administração residual no deploy `56628566`.
+Não existem superfícies classificadas como `legado`. Permanecem três conteúdos `parcial`, todos fora do fecho de Administração residual:
+
+1. `/v2-clean/fleet/financial-audit` — auditoria financeira residual da Frota.
+2. `/v2-clean/fleet/sales-access` — parametrização de acesso residual de Vendas.
+3. `/v2-clean/tasks/recurring` — gestão residual de tarefas recorrentes.
 2. **Resíduos operacionais (tranche final C):** `/v2-clean/fleet/financial-audit`, `/v2-clean/fleet/sales-access` e `/v2-clean/tasks/recurring`; superfícies especializadas ainda não fechadas pelo respetivo workbench.
 
 As superfícies reconstruídas pendentes apenas de captura não constam desta lista, porque o bloqueio é de evidência da plataforma e não de conteúdo.

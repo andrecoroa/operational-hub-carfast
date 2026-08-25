@@ -33,7 +33,7 @@ def test_document_workbench_keeps_real_routes_data_and_decision_form() -> None:
     source = TEMPLATE.read_text(encoding="utf-8")
     assert 'src="{{ selected_row.preview_href }}"' in source
     assert 'href="{{ selected_row.detail_href }}"' in source
-    assert 'action="/v2-clean/documentation/triage/{{ selected_row.document.id }}"' in source
+    assert 'action="/v2-clean/documentation/triage/{{ row.document.id }}"' in source
     assert 'name="destination" required' in source
     assert 'name="decision_reason"' in source
     assert "foundation_ui_enabled" in source

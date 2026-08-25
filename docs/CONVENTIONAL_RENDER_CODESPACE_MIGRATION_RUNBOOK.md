@@ -1,0 +1,315 @@
+# Conventional Render-to-Green migration gate
+
+Status: **PRE-WINDOW NO-GO**. This runbook is the only permitted conventional
+path. It does not authorize a real capture. The custom Render transport and the
+preseed/delta implementation are historical and must not be used here.
+
+## Immutable scope
+
+- Blue service: `srv-d8145e7aqgkc73al90ig`, release `58a150c7`.
+- Green service: `srv-da5dk9bm8hqs73camds0`; release and database identity must
+  be read back immediately before action. PostgreSQL
+  `dpg-da6d4d2jnfac73e2cl40-a` is the future permanent Green database after a
+  tolerance-zero PASS. Existing PostgreSQL `dpg-da5dj0e417fc73f3uakg-a`
+  remains empty and untouched as the QA rollback database until a future gate.
+- Regional SSH endpoint: `ssh.frankfurt.render.com`, with a freshly read-back
+  pinned host-key fingerprint.
+- Relay: dedicated GitHub Codespace in Europe West. It pipes ciphertext only;
+  payload files, artifacts, ports, agent forwarding and payload logging are
+  forbidden.
+- PostgreSQL client/server major: 17. `pg_dump -Fc --no-owner --no-acl` and
+  `pg_restore --exit-on-error --no-owner --no-acl`; never `--clean` against the
+  permanent Green database.
+- Encryption: pinned static `age` 1.2.1, SHA-256
+  `7df45a6cc87d4da11cc03a539a7470c15b1041ab2b396af088fe9990f7c79d50`
+  for the official release archive. The identity exists only on Green, mode
+  0600; Blue receives only its recipient.
+- Hard stop: restore Blue writes before 60 minutes. Operational abort starts at
+  50 minutes, leaving ten minutes for recovery. No cutover, DNS or integrations.
+
+## Closed pre-window gate
+
+Every item must have machine-readable evidence and an independent PASS:
+
+1. Read back exact Blue/Green IDs, releases, region, mounted storage roots,
+   database hosts (host fingerprint only), and external-effect booleans.
+2. Verify `age`, `pg_dump`, `pg_restore`, `psql`, `tar`, `sha256sum`, `timeout`,
+   free bytes and free inodes on the exact instances and paths. No installation
+   is permitted during the window.
+3. Freeze nominal source and target manifests. Source must be exactly 162
+   application relations. Target contract is exactly 166 declared application
+   tables; `alembic_version` is one technical table and is excluded. Exact Green
+   read-back on 2026-08-25 proved `APPLICATION_TABLES=166` and
+   `TECHNICAL_TABLES=1 alembic_version`. Exact counts using
+   `scripts.check_clean_install` found rows only in its 16 versioned reference
+   tables and printed `OPERATIONAL_NONZERO=NONE`. This closes the earlier
+   167-vs-166 false discrepancy; the evidence must be repeated immediately before
+   a real window.
+4. Prove one Alembic head and the ordered source revision -> `ffae1f2a3b4c` ->
+   `fff37f8a9b0d` path, including the four additive relations, constraints,
+   indexes, sequences, ownership, grants, search path and allowed seeds.
+5. Read back the empty private PG17 database
+   `dpg-da6d4d2jnfac73e2cl40-a`, including Frankfurt region,
+   `Basic-256mb + 1 GB`, resource-level `ipAllowList: []`, private-only
+   connectivity, owner/grants/search path and capacity. Restore source 162
+   directly there, run Phase A tolerance-zero, and only then run Alembic to the
+   target contract. After PASS this same database becomes permanent; no
+   data-only promotion, second dump, truncate or restore into
+   `dpg-da5dj0e417fc73f3uakg-a` is permitted.
+6. Prove direct quiesce; Render Maintenance Mode is explicitly N/A by strategy
+   decision. Open and validate capture SSH first, start the monotonic clock and
+   watchdog, enforce database read-only and drain to zero write transactions,
+   atomically rename the exact storage root to a cutoff name on the same mount,
+   create the original pathname as mode 0555, and refuse capture while any
+   `/proc/*/fd` descriptor references the cutoff tree. DB and file write probes
+   must fail while reads pass. Record two identical manifests before setting
+   `CUTOFF_UTC`. The application may remain accessible in effective read-only.
+7. Rehearse the exact inverse operation before the window and install an
+   independent watchdog that restores application and database writes no later
+   than 60 minutes, even if the operator SSH session dies.
+8. Reject symlinks, devices, FIFOs, sockets, absolute paths, `..`, mount crossing
+   and unstable files. The storage snapshot records normalized path, size, mode,
+   mtime and SHA-256, and two consecutive manifests must match while quiesced.
+9. Prove capacity for DB ciphertext, storage ciphertext, decrypted restore and
+   storage staging concurrently, plus safety margin and inodes.
+10. Run the synthetic dry-run below on the same instances, users, binaries,
+    mounts, SSH options and paths. Project measured throughput to complete capture
+    and immutable validation before minute 50.
+11. Freeze the exact action-time command manifest and SHA-256 fingerprint it.
+    It contains service/database IDs, releases, hosts, storage roots, binaries,
+    options, table manifests, timeout values and rollback commands, but no
+    credentials. Sender and receiver must independently read back the same
+    fingerprint immediately before quiesce.
+12. Prove the complete DB+storage bundle path three consecutive times with one
+    bundle/cutoff per run. At least one run uses 1,256,277,934 storage bytes and
+    the real PG17 dump/restore/Alembic commands. Separate transport and database
+    proofs do not satisfy this gate.
+13. Measure peak bytes and inodes for DB ciphertext, storage ciphertext,
+    decrypted database restore and storage staging simultaneously. Require at
+    least 20% free-byte and 20% free-inode margin after the measured peak.
+14. Prove an authenticated `BUNDLE_CAPTURED` record only after both ciphertexts,
+    sizes, hashes, archive listings and the common cutoff validate. Prove the
+    inverse storage rename using recorded dir/inode/mode/owner, including a
+    failure after each capture and during restore.
+15. Obtain independent PASS against items 1-14 and repeat a non-consuming final
+    read-back immediately before the window. Any drift resets this gate to
+    NO-GO.
+
+Any failed item is a pre-window NO-GO. No role, read-only mode or real stream may
+be created or started.
+
+The single executable gate is:
+
+```bash
+python scripts/conventional_migration_gate.py manifest
+python scripts/conventional_migration_gate.py synthetic-gate
+```
+
+It emits a secret-free canonical command manifest and SHA-256 fingerprint, starts
+an independent watchdog process, begins its monotonic clock at the first mutation
+blocker, proves a single DB+storage bundle ACK, and runs atomic storage rollback
+three consecutive times. Its output is synthetic evidence only and can never
+authorize the real window. The full-volume capacity/throughput input is the prior
+exact 1,256,277,934-byte PASS; the three lifecycle runs intentionally use bounded
+fixtures to avoid repeating that payload.
+
+## Exact synthetic dry-run
+
+All variables are populated from read-back; secrets are never command arguments
+or output. `SSH_OPTS` always includes `IdentitiesOnly=yes`, `ForwardAgent=no`,
+`StrictHostKeyChecking=yes` and the dedicated pinned `UserKnownHostsFile`.
+
+```bash
+set -Eeuo pipefail
+umask 077
+BLUE=srv-d8145e7aqgkc73al90ig@ssh.frankfurt.render.com
+GREEN=srv-da5dk9bm8hqs73camds0@ssh.frankfurt.render.com
+: "${AGE_RECIPIENT:?read back from Green}"
+
+# Synthetic bytes are generated on Blue, encrypted before stdout leaves Blue,
+# piped by the relay, and persisted only as ciphertext in Green staging.
+timeout 900 ssh ${SSH_OPTS} "$BLUE" \
+  "set -Eeuo pipefail; python -c 'import sys; sys.stdout.buffer.write((b\"CarFastSynthetic\\0\"*1048576)[:16777216])' | /tmp/carfast-age -r '$AGE_RECIPIENT'" \
+| timeout 900 ssh ${SSH_OPTS} "$GREEN" \
+  'set -Eeuo pipefail; umask 077; mkdir -p /var/data/.migration-synthetic; cat > /var/data/.migration-synthetic/payload.age.partial; mv /var/data/.migration-synthetic/payload.age.partial /var/data/.migration-synthetic/payload.age'
+
+ssh ${SSH_OPTS} "$GREEN" \
+  'set -Eeuo pipefail; /tmp/carfast-age -d -i /tmp/carfast-integral.agekey /var/data/.migration-synthetic/payload.age | sha256sum; wc -c < /var/data/.migration-synthetic/payload.age'
+```
+
+The representative dry-run additionally uses synthetic PG17 source/staging
+databases and a synthetic storage tree at least as large as the observed combined
+footprint. It runs the real dump, encrypted transfer, `pg_restore`, Alembic,
+Phase A/Phase B manifests, storage validation and cleanup. Three consecutive
+runs are required; one must use full representative volume. Exit codes from both
+SSH endpoints and every pipeline stage are captured separately. Stdout is payload
+only; diagnostics go to sanitized stderr.
+
+The corrected 16 MiB transport probe on 2026-08-25 completed Blue -> Codespace ->
+Green in 33 seconds with both SSH endpoints RC 0. Green decrypted exactly
+16,777,216 bytes, every decrypt/hash/count stage returned RC 0, and the synthetic
+staging tree was absent after cleanup. A same-filesystem quiesce rehearsal proved
+open-FD detection, fail-closed replacement path, writer drain, atomic restoration
+and cleanup, all PASS. These bounded probes do not replace the required
+representative DB+storage dry-run or its throughput gate.
+
+### Quiesce reversal and watchdog contract
+
+The real storage operation is permitted only after the synthetic rehearsal has
+been repeated against the read-back parent mount and metadata (without touching
+the real root). The finally/watchdog sequence is fixed: stop capture; remove the
+0555 placeholder only if its inode matches the recorded placeholder; atomically
+rename the recorded cutoff inode back to the original path; restore its recorded
+mode/owner; disable database read-only; prove DB/filesystem writes and health. Any
+inode/path drift aborts automated renames and escalates without deleting either
+tree. The watchdog uses an independent session/control path and starts before
+database read-only; it must execute this reversal by minute 60 even if relay SSH dies.
+
+## Real action sequence (still gated)
+
+1. Arm watchdog and verify rollback channel; create ephemeral SELECT-only role for
+   the frozen 162-table list and prove writes/DDL/sequences denied.
+2. Set `WINDOW_START_UTC` and arm the 60-minute deadline immediately before the
+   first mutation blocker (database read-only). Then drain application/filesystem
+   writers and enforce the storage barrier. Set `CUTOFF_UTC` only
+   after both domains are proven quiescent; the window clock never resets.
+3. Capture encrypted DB and storage streams into `.partial` files on Green staging.
+   Bind sizes, ciphertext SHA-256, releases, bundle and cutoff in one manifest.
+4. Validate both ciphertexts are complete and decryptable; validate the DB archive
+   list and storage tar list without restoring. Only then emit the local
+   `BUNDLE_CAPTURED` ACK.
+5. Restore Blue writes immediately, record `WINDOW_END_UTC`, prove application
+   write capability and remove the temporary role. Do not wait for Green restore.
+6. Restore into the empty future Green database. Phase A proves source 162 unchanged;
+   Alembic creates the deterministic target; Phase B proves target relations,
+   sequences, FKs/orphans/counts/digests. Materialize storage into a separate tree
+   and compare path/size/mode/mtime/SHA-256 tolerance-zero.
+7. Promote neither connection nor storage unless both validations PASS. On PASS,
+   atomically promote the reconciled storage tree, then action-time switch only
+   the Web Green `DATABASE_URL` to the private URL of
+   `dpg-da6d4d2jnfac73e2cl40-a` and manually deploy the exact same Green release.
+   Auto-Deploy remains OFF. Health, Alembic head, manifests, permissions and all
+   external-effect OFF booleans must pass before Green is opened to QA. Blue is
+   not deployed and remains production; this is not cutover authorization.
+
+### Green database switch and rollback
+
+The switch is an action-time gate because it changes a live service secret and
+deploys Green. Before it, capture the current Green database host fingerprint,
+release SHA and external-effect booleans; prove the future database PASS and the
+old database healthy and unchanged. Apply the new private `DATABASE_URL` without
+logging it, trigger a manual deploy of the same release, and verify the running
+instance reads the expected private host fingerprint.
+
+Rollback changes `DATABASE_URL` back to `dpg-da5dj0e417fc73f3uakg-a`, manually
+deploys the same release, and proves health, clean-install state and effects OFF.
+Do not rename, move or delete either database before QA PASS and a later explicit
+gate. The old database is not a promotion target and must never be truncated.
+
+## Durable Green baseline and later cutover delta
+
+The successful integral migration is reusable state, not a disposable rehearsal.
+Persist a signed/versioned baseline report containing the common cutoff, Blue and
+Green releases, source-162 and target-166 manifests, DB aggregate digests, storage
+path/size/mode/mtime/SHA-256 manifest, Alembic path, reconciliation results and
+external-effect booleans. Do not retain credentials or plaintext export artifacts.
+
+At a separately authorized cutover, do **not** recopy the baseline storage. Quiesce
+Blue under a new short cutoff, create a fresh standard PG17 logical dump, and build
+a final Blue storage manifest with the same canonicalization rules. Compute:
+
+- `copy = final paths absent from baseline OR metadata/hash changed`;
+- `delete = baseline paths absent from final`;
+- unchanged paths are never transferred.
+
+Transfer copies with standard tar/age/SSH, materialize them into a clone/staging
+tree, apply deletes only there, and atomically promote only after its complete
+manifest equals final Blue tolerance-zero. Re-running the same copy/delete plan
+against the same baseline/final pair must be a no-op and produce the same manifest
+digest; interruption leaves only `.partial` files and is safely resumable. Renames
+are deterministic delete+copy unless identical content-addressed reuse is proven.
+The fresh DB restore and storage delta share the final cutoff and are promoted only
+after full reconciliation. DNS, domain and integrations remain separate gates.
+
+## Independent clean-installation output
+
+The same immutable release must also produce a separate reusable clean-install
+artifact exclusively through Alembic migrations, versioned reference/configuration
+seeds and first-run onboarding. It must never derive from deleting or anonymizing
+the migrated CarFast database.
+
+Automated clean-install gates must prove the frozen 166-relation contract, one
+Alembic head, bootstrap idempotence, module catalogue/selection and base permissions,
+while all operational tables are empty. In particular there must be zero CarFast
+vehicles, partners, processes, tasks, emails, documents/attachments, audit events,
+operational users/credentials or other tenant data, and the storage root must be
+empty. Only Core, the module catalogue, base permissions and strictly versioned
+reference data are permitted by an explicit seed allowlist. The artifact is a
+migration/seed manifest plus reproducible commands and evidence; creating another
+permanent environment is a later cost gate.
+
+## Rollback, stopping conditions and cleanup
+
+- Missing/drifting inventory, writer, unstable storage manifest, unexpected
+  relation/seed, non-zero pipeline RC, timeout, digest mismatch, insufficient
+  space/inodes or any external effect causes immediate NO-GO.
+- Failure after either capture restores writes via watchdog, removes partials and
+  drops the role. Failure during restore resets only the explicitly proven empty
+  future Green database before any connection switch; the existing rollback
+  database is never cleaned or overwritten.
+- In NO-GO, remove Green synthetic/staging material. In PASS, retain the
+  reconciled future Green database `dpg-da6d4d2jnfac73e2cl40-a`, promoted storage
+  baseline and non-secret evidence; remove all other staging/partial/export
+  material. In both outcomes remove age identity and
+  binaries, relay tmpfs material and repository public-key file; revoke only the
+  named Render key; delete the dedicated Codespace; prove Blue writable, Green
+  unchanged, temporary resources absent and ledger within the approved ceiling.
+
+## Current gate result
+
+Pre-window **NO-GO pending independent review and final read-back**. The 166 application + 1
+technical relation count and allowed reference-only Green rows are closed. The
+private future Green database, synthetic 162 -> 162 -> Alembic 166 path, same-mount
+quiesce mechanics and exact 1,256,277,934-byte encrypted full-volume transfer have
+passed. `scripts/conventional_migration_gate.py synthetic-gate` completed
+three common bounded lifecycle runs with independent watchdog RC 0, bundle ACK,
+atomic storage rollback and cleanup; canonical manifest fingerprint is
+`2a47529bd43c318022849d9ee7187ef296b1152410f73735c542512b4313eea0`.
+This is explicitly partial synthetic evidence and reports `NO_GO`; it does not
+claim that database read-only or action-time read-back has passed. Maintenance
+Mode is N/A and excluded from readiness by strategy decision.
+The superseded data-only promotion RC1 is not a gate and must not be retried.
+Only an independent PASS and the non-consuming action-time read-back may change
+this status. Blue remains writable and no real payload has started.
+
+## Frozen hold state — 2026-08-25
+
+Execution is deliberately paused before the Blue window while Render investigates
+Frankfurt SSH sessions that reach the gateway banner but time out with RC124 for
+both Blue `srv-d8145e7aqgkc73al90ig` and Green
+`srv-da5dk9bm8hqs73camds0`. No alternate transport or blind retry is permitted.
+The support conversation is identified by the subject **Frankfurt SSH gateway
+sessions time out for two services**.
+
+- Blue's last direct watchdog read-back was `off|off|t`: default transaction
+  read-only off, session read-only off, synthetic fixture absent. No later Blue
+  mutation occurred.
+- Green remained healthy (HTTP 200), with effects external to the environment off.
+- Future Green database `dpg-da6d4d2jnfac73e2cl40-a` remains private and preserved;
+  rollback database `dpg-da5dj0e417fc73f3uakg-a` remains untouched.
+- Codespace `musical-space-computing-machine-p7qq6gjr9j9h646g` is stopped, not
+  deleted. No required evidence depends on its `/dev/shm` contents.
+- The diagnostic and historical Render SSH keys were revoked. Any future key must
+  be new, operation-specific and revoked during cleanup.
+
+Resume only after Render confirms remediation:
+
+1. Recreate one ephemeral Render SSH key and verify its exact fingerprint.
+2. Wait at least 120 seconds, pin the Frankfurt host key, then run bounded marker
+   commands against the exact Blue and Green service IDs.
+3. If either marker returns RC124, stop and require a managed Render resolution;
+   do not change transport or application code.
+4. Re-run the single non-consuming Blue/Green preflight matrix and close the named
+   15/15 gates from direct command evidence.
+5. Only on independent 15/15 PASS may the single, watchdog-protected Blue window
+   begin under the already approved conventional capture runbook.

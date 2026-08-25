@@ -1,8 +1,8 @@
 # CarFast modular target architecture
 
-Status: **Phases 1–2 approved; Phase 3 visual/post-action slice in progress**
+Status: **Modular phases integrated; integral blue-green rehearsal preparation in progress**
 
-Baseline: `integration/modular-architecture` at `be2f5bce7ed6079e2135ce48111c209ed580760c`
+Baseline: `integration/modular-architecture` at `657b5dfbaa3aece57fbda394b11e376fc611a5ef`
 
 Production baseline: Render remains at `58a150c701221b64c43bd14fcb671683f3722ebe`
 
@@ -13,6 +13,7 @@ This specification translates the approved structural diagnosis into an incremen
 - [TARGET_ARCHITECTURE.md](TARGET_ARCHITECTURE.md): logical/technical architecture, module catalogue, composition, contracts, permissions, Administration, visual system and post-action behaviour.
 - [ENTITY_OWNERSHIP.md](ENTITY_OWNERSHIP.md): current table inventory, proposed ownership, dependencies and legacy classification.
 - [MIGRATION_AND_ROADMAP.md](MIGRATION_AND_ROADMAP.md): separate CarFast/clean-install paths, tests, reconciliation, phases, reversibility, risks and acceptance gates.
+- [INTEGRAL_BLUE_GREEN_REHEARSAL.md](INTEGRAL_BLUE_GREEN_REHEARSAL.md): accepted pilot evidence, 166-relation/storage reconciliation controls and the exact future real-Green gate.
 - [PHASE2_FOUNDATION.md](PHASE2_FOUNDATION.md): frozen baseline, compatibility APIs, additive catalogue and reversal path.
 - [PHASE3_VISUAL_FOUNDATION.md](PHASE3_VISUAL_FOUNDATION.md): gated visual primitives, signed ReturnContext, representative slice and migration gates.
 - [PHASE4_PARTNERS_BOUNDARY.md](PHASE4_PARTNERS_BOUNDARY.md): Partners ownership facade, stable references, compatibility adapters and reconciliation.

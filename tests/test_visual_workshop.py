@@ -27,6 +27,7 @@ def test_workshop_process_uses_canonical_composition_not_css_only():
     assert "/v2-clean/workshop/preferences/summary" in template
     assert "data-stored-open" in template
     assert "historyPreviewTrigger?.focus()" in template
+    assert 'querySelector("button[data-history-preview-close]")?.focus()' in template
     assert 'event.key === "Escape"' in template
 
 

@@ -50,6 +50,24 @@ def _same_owner_group(info: os.stat_result, uid: int, gid: int) -> bool:
     return os.name != "posix" or (info.st_uid, info.st_gid) == (uid, gid)
 
 
+def _safe_data_root_owner(info: os.stat_result) -> bool:
+    """Allow Render's root-owned, setgid, process-group-writable mount root."""
+
+    get_euid = getattr(os, "geteuid", None)
+    get_egid = getattr(os, "getegid", None)
+    if get_euid is None or get_egid is None:
+        return True
+    if info.st_uid == get_euid():
+        return True
+    mode = stat.S_IMODE(info.st_mode)
+    return (
+        info.st_uid == 0
+        and info.st_gid == get_egid()
+        and mode & stat.S_ISGID != 0
+        and mode & 0o070 == 0o070
+    )
+
+
 @dataclass(frozen=True)
 class RecoveryMarker:
     bundle_id: str
@@ -307,7 +325,7 @@ def arm_migration_window(bundle_id: str, *, data_root: Path = Path("/var/data"))
         else:
             raise RecoveryError("migration recovery marker already exists")
         parent = os.fstat(data_fd)
-        if not _owner_matches(parent) or not _safe_directory_mode(
+        if not _safe_data_root_owner(parent) or not _safe_directory_mode(
             stat.S_IMODE(parent.st_mode), _ALLOWED_PARENT_MODES
         ):
             raise RecoveryError("migration recovery data root permissions are unsafe")

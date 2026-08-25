@@ -4,6 +4,7 @@ import json
 import os
 import stat
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pytest
@@ -252,6 +253,26 @@ def test_suid_sticky_and_world_write_modes_fail_closed(
     write_marker(tmp_path, parent_mode=unsafe_mode)
     with pytest.raises(recovery.RecoveryError, match="mode value"):
         recovery.recover_migration_window("not-used", data_root=tmp_path)
+
+
+@pytest.mark.skipif(os.name != "posix", reason="Render ownership is Linux-specific")
+def test_render_root_owned_setgid_mount_is_limited_to_process_group() -> None:
+    safe = SimpleNamespace(
+        st_uid=0, st_gid=os.getegid(), st_mode=stat.S_IFDIR | 0o2775
+    )
+    wrong_group = SimpleNamespace(
+        st_uid=0, st_gid=os.getegid() + 1, st_mode=stat.S_IFDIR | 0o2775
+    )
+    no_setgid = SimpleNamespace(
+        st_uid=0, st_gid=os.getegid(), st_mode=stat.S_IFDIR | 0o0775
+    )
+    group_not_writable = SimpleNamespace(
+        st_uid=0, st_gid=os.getegid(), st_mode=stat.S_IFDIR | 0o2755
+    )
+    assert recovery._safe_data_root_owner(safe)  # noqa: SLF001
+    assert not recovery._safe_data_root_owner(wrong_group)  # noqa: SLF001
+    assert not recovery._safe_data_root_owner(no_setgid)  # noqa: SLF001
+    assert not recovery._safe_data_root_owner(group_not_writable)  # noqa: SLF001
 
 
 @pytest.mark.skipif(os.name != "posix", reason="ownership contract is Linux-specific")

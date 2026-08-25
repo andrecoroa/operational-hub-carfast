@@ -3,8 +3,9 @@
 <div class="app-shell clean-shell">
   {% set active_menu = "clean_tasks" %}
   {% include "_sidebar.html" %}
-  <main class="content clean-content">
-    <header class="clean-module-hero clean-task-hero">
+  <main class="content clean-content ui-foundation ui-page-shell visual-service-desk visual-final-closeout visual-task-recurrence">
+    {% set visual_section = "Operação" %}{% set visual_page = "Tarefas recorrentes" %}{% include "_visual_topbar.html" %}
+    <header class="clean-module-hero clean-task-hero ui-page-header visual-service-heading">
       <div>
         <p class="eyebrow">Centro de Tarefas</p>
         <h2>Tarefas recorrentes</h2>
@@ -25,8 +26,15 @@
       <div class="clean-alert-warning">Não foi possível guardar o modelo. Confirma os campos e permissões da fila.</div>
     {% endif %}
 
+    <section class="visual-final-metrics visual-recurrence-metrics" aria-label="Resumo dos modelos recorrentes">
+      <article><span>Modelos</span><strong>{{ models|length }}</strong><small>configurados</small></article>
+      <article><span>Ativos</span><strong>{{ models|selectattr('enabled')|list|length }}</strong><small>a gerar tarefas</small></article>
+      <article><span>Inativos</span><strong>{{ models|rejectattr('enabled')|list|length }}</strong><small>preservados</small></article>
+      <article><span>Geradas agora</span><strong>{{ generated_count or 0 }}</strong><small>ocorrências seguras</small></article>
+    </section>
+
     {% if workspace_options %}
-      <details class="clean-panel clean-card-wide clean-task-create-shell clean-recurrence-create" open>
+      <details class="clean-panel clean-card-wide clean-task-create-shell clean-recurrence-create visual-final-create" open>
         <summary><span><b>Novo modelo</b><small>Define a periodicidade e os dados da tarefa gerada.</small></span><span class="clean-task-summary-action">Criar</span></summary>
         <div class="clean-task-create-body">
           <form method="post" action="/v2-clean/tasks/recurring" class="clean-recurrence-form">
@@ -50,8 +58,8 @@
       </details>
     {% endif %}
 
-    <section class="clean-panel clean-card-wide clean-recurrence-list">
-      <div class="table-heading flat-heading"><div><h3>Modelos</h3><p>{{ models|length }} modelos configurados.</p></div></div>
+    <section class="clean-panel clean-card-wide clean-recurrence-list visual-final-workbench">
+      <div class="table-heading flat-heading visual-final-workbench-heading"><div><p class="eyebrow">Planeamento</p><h3>Modelos recorrentes</h3><p>Periodicidade, responsabilidade e ocorrências no mesmo contexto operacional.</p></div><span><strong>{{ models|length }}</strong> modelo{% if models|length != 1 %}s{% endif %}</span></div>
       <div class="clean-recurrence-grid">
         {% for model in models %}
           <article class="clean-recurrence-card {% if not model.enabled %}is-disabled{% endif %}">
@@ -82,10 +90,10 @@
             </details>
           </article>
 
-          <section class="clean-task-preview" id="recurrence-edit-{{ model.id }}" aria-hidden="true" role="dialog" aria-modal="true">
+          <section class="clean-task-preview" id="recurrence-edit-{{ model.id }}" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="recurrence-edit-title-{{ model.id }}" tabindex="-1">
             <div class="clean-task-preview-backdrop" data-recurrence-close></div>
             <article class="clean-task-preview-dialog clean-preview-dialog clean-recurrence-dialog">
-              <header class="clean-preview-header"><div><small>Modelo #{{ model.id }}</small><h2>Editar {{ model.name }}</h2></div><button class="button-link secondary-link" type="button" data-recurrence-close>Fechar</button></header>
+              <header class="clean-preview-header"><div><small>Modelo #{{ model.id }}</small><h2 id="recurrence-edit-title-{{ model.id }}">Editar {{ model.name }}</h2></div><button class="button-link secondary-link" type="button" data-recurrence-close>Fechar</button></header>
               <form method="post" action="/v2-clean/tasks/recurring/{{ model.id }}/update" class="clean-recurrence-form clean-recurrence-edit-form">
                 <label>Nome do modelo<input name="name" value="{{ model.name }}" required maxlength="200"></label>
                 <label>Título da tarefa<input name="task_title" value="{{ model.task_title }}" required maxlength="200"></label>
@@ -106,7 +114,7 @@
             </article>
           </section>
         {% else %}
-          <p class="clean-recurrence-empty">Ainda não existem modelos recorrentes.</p>
+          <div class="clean-recurrence-empty visual-final-empty"><strong>Sem modelos recorrentes</strong><span>Crie o primeiro modelo quando existir uma fila e um âmbito autorizados.</span></div>
         {% endfor %}
       </div>
     </section>
@@ -147,6 +155,8 @@ document.querySelectorAll('[data-recurrence-edit]').forEach((button) => button.a
     dialog.classList.add('is-open');
     dialog.setAttribute('aria-hidden', 'false');
     document.body.classList.add('clean-task-preview-open');
+    dialog.dataset.returnFocus = button.dataset.recurrenceEdit;
+    dialog.querySelector('input, select, textarea, button')?.focus();
   }
 }));
 document.querySelectorAll('[data-recurrence-close]').forEach((button) => button.addEventListener('click', () => {
@@ -155,7 +165,27 @@ document.querySelectorAll('[data-recurrence-close]').forEach((button) => button.
     dialog.classList.remove('is-open');
     dialog.setAttribute('aria-hidden', 'true');
     document.body.classList.remove('clean-task-preview-open');
+    document.querySelector(`[data-recurrence-edit="${dialog.id}"]`)?.focus();
   }
 }));
+document.addEventListener('keydown', (event) => {
+  const dialog = document.querySelector('.clean-task-preview.is-open');
+  if (!dialog) return;
+  if (event.key === 'Tab') {
+    const focusable = [...dialog.querySelectorAll('a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])')]
+      .filter((element) => element.getClientRects().length);
+    if (!focusable.length) { event.preventDefault(); dialog.focus(); return; }
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+    else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+    return;
+  }
+  if (event.key !== 'Escape') return;
+  dialog.classList.remove('is-open');
+  dialog.setAttribute('aria-hidden', 'true');
+  document.body.classList.remove('clean-task-preview-open');
+  document.querySelector(`[data-recurrence-edit="${dialog.id}"]`)?.focus();
+});
 </script>
 {% endblock %}

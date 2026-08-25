@@ -351,12 +351,14 @@ dialog { border: 1px solid var(--cf-gray-200); border-radius: 12px; box-shadow: 
 .visual-service-desk .visual-task-filters button,.visual-service-desk .clean-task-context-actions button,.visual-service-desk .clean-task-side-form button,.visual-service-desk .clean-task-inline-form button { color: #fff; background: var(--cf-blue-600); border: 1px solid var(--cf-blue-600); }
 .visual-service-desk .clean-task-side-form button.secondary { color: var(--cf-blue-600); background: #fff; border-color: var(--cf-gray-300); }
 .visual-service-desk .visual-task-filters button:hover,.visual-service-desk .clean-task-context-actions button:hover,.visual-service-desk .clean-task-side-form button:not(.secondary):hover,.visual-service-desk .clean-task-inline-form button:hover { background: var(--cf-blue-700); border-color: var(--cf-blue-700); }
+.visual-task-drawer .clean-task-context-actions button,.visual-task-drawer .clean-task-side-form button,.visual-task-drawer .clean-task-inline-form button,.visual-task-drawer .clean-task-edit-meta button { color: #fff; background: var(--cf-blue-600); border: 1px solid var(--cf-blue-600); }
+.visual-task-drawer .clean-task-side-form button.secondary,.visual-task-drawer .clean-task-edit-meta button.secondary { color: var(--cf-blue-600); background: #fff; border-color: var(--cf-gray-300); }
 .visual-task-drawer .clean-task-collaboration-state { display: grid; gap: 7px; margin: 10px 0 14px; }
 .visual-task-drawer .clean-task-collaboration-state > span { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 12px; align-items: center; color: var(--cf-gray-600); font-size: 12px; }
 .visual-task-drawer .clean-task-collaboration-state b { color: var(--cf-gray-700); }
 .visual-task-drawer .clean-task-collaboration-state em { min-width: 30px; color: var(--cf-gray-900); font-style: normal; font-weight: 750; text-align: right; }
 .visual-task-claim-check { display: flex !important; min-height: 40px; align-items: flex-start; gap: 8px; line-height: 1.35; }
-.visual-task-claim-check input { flex: 0 0 auto; margin-top: 2px; }
+.visual-task-claim-check input { flex: 0 0 18px; width: 18px !important; min-width: 18px; height: 18px; min-height: 18px; margin-top: 2px; padding: 0; }
 
 @media (max-width: 1199px) {
   .visual-service-metrics { grid-template-columns: repeat(3,minmax(0,1fr)); }

@@ -239,6 +239,7 @@ def test_render_setgid_modes_round_trip_arm_read_barrier_and_recover(
     assert marker.parent_mode == 0o2775
     assert marker.documents_mode == marker.email_mode == 0o2755
     recovery.activate_storage_barrier(BUNDLE, data_root=tmp_path)
+    assert stat.S_IMODE(tmp_path.stat().st_mode) == 0o2775
     monkeypatch.setattr(recovery, "_restore_database", Mock())
     assert recovery.recover_migration_window("postgresql://private", data_root=tmp_path)
     assert stat.S_IMODE(tmp_path.stat().st_mode) == 0o2775

@@ -475,7 +475,6 @@ def activate_storage_barrier(bundle_id: str, *, data_root: Path = Path("/var/dat
             frozen = f".cutoff-{bundle_id}-{root_name}"
             os.rename(root_name, frozen, src_dir_fd=data_fd, dst_dir_fd=data_fd)
             os.rename(placeholder_name, root_name, src_dir_fd=data_fd, dst_dir_fd=data_fd)
-        os.chmod(data_root, 0o555, follow_symlinks=False)
         os.fsync(data_fd)
     finally:
         os.close(data_fd)
@@ -556,9 +555,8 @@ def recover_migration_window(
         raise RecoveryError("migration recovery data root is missing")
     if not _same_owner_group(root_state, marker.parent_uid, marker.parent_gid):
         raise RecoveryError("migration recovery data root ownership drift")
-    if stat.S_IMODE(root_state.st_mode) not in {marker.parent_mode, 0o555}:
+    if stat.S_IMODE(root_state.st_mode) != marker.parent_mode:
         raise RecoveryError("migration recovery data root mode drift")
-    os.chmod(data_root, marker.parent_mode, follow_symlinks=False)
     data_fd = os.open(data_root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
     try:
         _restore_root_at(

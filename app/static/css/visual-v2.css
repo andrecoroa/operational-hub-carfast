@@ -119,7 +119,7 @@ dialog { border: 1px solid var(--cf-gray-200); border-radius: 12px; box-shadow: 
   .clean-shell { grid-template-columns: var(--visual-sidebar-collapsed) minmax(0,1fr); }
   .clean-shell .sidebar { width: var(--visual-sidebar-collapsed); padding-inline: 8px; }
   .clean-shell .sidebar h1,.clean-shell .sidebar nav,.clean-shell .sidebar-status,.clean-shell .sidebar-action-label { display: none; }
-  .clean-shell .sidebar > .sidebar-brand::before { width: 42px; min-width: 0; padding: 0; justify-content: center; content: "CF"; letter-spacing: 0; }
+  .clean-shell .sidebar > .sidebar-brand::before { display: flex; width: 42px; min-width: 0; padding: 0; justify-content: center; content: "CF"; letter-spacing: 0; }
   .clean-shell .sidebar .sidebar-brand > .eyebrow { display: none; }
   .clean-shell .sidebar-collapse-toggle,.clean-shell .sidebar-logout { display: none; }
   .clean-shell .sidebar-footer-actions { display: grid; justify-items: center; }

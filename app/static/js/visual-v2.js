@@ -1,4 +1,16 @@
 (() => {
+  const documentWorkbench = document.querySelector(".visual-document-workbench");
+  if (documentWorkbench) {
+    const view = new URLSearchParams(location.search).get("view") || "queue";
+    const documentViewKey = `carfast-document-scroll:${location.pathname}:${view}`;
+    const savedDocumentScroll = JSON.parse(sessionStorage.getItem(documentViewKey) || "null");
+    if (savedDocumentScroll && Date.now() - savedDocumentScroll.savedAt < 8 * 60 * 60 * 1000) {
+      requestAnimationFrame(() => scrollTo(0, Number(savedDocumentScroll.scrollY) || 0));
+    }
+    document.querySelectorAll("[data-document-view-link]").forEach((link) => {
+      link.addEventListener("click", () => sessionStorage.setItem(documentViewKey, JSON.stringify({ scrollY, savedAt: Date.now() })));
+    });
+  }
   const globalSearch = document.querySelector("[data-visual-global-search]");
   globalSearch?.addEventListener("submit", (event) => {
     event.preventDefault();

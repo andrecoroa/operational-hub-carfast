@@ -21,10 +21,21 @@ def write_marker(root: Path, **overrides: object) -> Path:
             return (1, 1)
         return (info.st_dev, info.st_ino)
 
+    def info(name: str) -> os.stat_result:
+        try:
+            return (root / name).stat()
+        except FileNotFoundError:
+            return root.stat()
+
     documents_source = identity(f".cutoff-{BUNDLE}-carfast_documents")
     documents_placeholder = identity("carfast_documents")
     email_source = identity(f".cutoff-{BUNDLE}-email")
     email_placeholder = identity("email")
+    parent_info = root.stat()
+    documents_info = info(f".cutoff-{BUNDLE}-carfast_documents")
+    email_info = info(f".cutoff-{BUNDLE}-email")
+    documents_placeholder_info = info("carfast_documents")
+    email_placeholder_info = info("email")
     value = {
         "schema": recovery.MARKER_SCHEMA,
         "blue_release": recovery.BLUE_RELEASE,
@@ -32,6 +43,16 @@ def write_marker(root: Path, **overrides: object) -> Path:
         "parent_mode": 0o755,
         "documents_mode": 0o755,
         "email_mode": 0o750,
+        "parent_uid": parent_info.st_uid,
+        "parent_gid": parent_info.st_gid,
+        "documents_uid": documents_info.st_uid,
+        "documents_gid": documents_info.st_gid,
+        "email_uid": email_info.st_uid,
+        "email_gid": email_info.st_gid,
+        "documents_placeholder_uid": documents_placeholder_info.st_uid,
+        "documents_placeholder_gid": documents_placeholder_info.st_gid,
+        "email_placeholder_uid": email_placeholder_info.st_uid,
+        "email_placeholder_gid": email_placeholder_info.st_gid,
         "documents_source_dev": documents_source[0],
         "documents_source_inode": documents_source[1],
         "documents_placeholder_dev": documents_placeholder[0],
@@ -196,6 +217,49 @@ def test_armed_storage_barrier_and_recovery_are_one_closed_path(
     assert not list((tmp_path / "email").iterdir())
     monkeypatch.setattr(recovery, "_restore_database", Mock())
     assert recovery.recover_migration_window("postgresql://private", data_root=tmp_path)
+
+
+@pytest.mark.skipif(os.name != "posix", reason="setgid contract is Linux-specific")
+def test_render_setgid_modes_round_trip_arm_read_barrier_and_recover(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    writable_tree(tmp_path)
+    tmp_path.chmod(0o2775)
+    (tmp_path / "carfast_documents").chmod(0o2755)
+    (tmp_path / "email").chmod(0o2755)
+
+    recovery.arm_migration_window(BUNDLE, data_root=tmp_path)
+    marker, _ = recovery._read_marker(tmp_path / recovery.MARKER_NAME)  # noqa: SLF001
+    assert marker.parent_mode == 0o2775
+    assert marker.documents_mode == marker.email_mode == 0o2755
+    recovery.activate_storage_barrier(BUNDLE, data_root=tmp_path)
+    monkeypatch.setattr(recovery, "_restore_database", Mock())
+    assert recovery.recover_migration_window("postgresql://private", data_root=tmp_path)
+    assert stat.S_IMODE(tmp_path.stat().st_mode) == 0o2775
+    assert stat.S_IMODE((tmp_path / "carfast_documents").stat().st_mode) == 0o2755
+    assert stat.S_IMODE((tmp_path / "email").stat().st_mode) == 0o2755
+
+
+@pytest.mark.parametrize("unsafe_mode", [0o4755, 0o1755, 0o2777])
+def test_suid_sticky_and_world_write_modes_fail_closed(
+    tmp_path: Path, unsafe_mode: int
+) -> None:
+    write_marker(tmp_path, parent_mode=unsafe_mode)
+    with pytest.raises(recovery.RecoveryError, match="mode value"):
+        recovery.recover_migration_window("not-used", data_root=tmp_path)
+
+
+@pytest.mark.skipif(os.name != "posix", reason="ownership contract is Linux-specific")
+@pytest.mark.parametrize("field", ["parent_uid", "parent_gid", "documents_uid", "documents_gid"])
+def test_owner_and_group_drift_fail_closed(tmp_path: Path, field: str) -> None:
+    interrupted_tree(tmp_path)
+    marker = write_marker(tmp_path)
+    value = json.loads(marker.read_text(encoding="utf-8"))
+    value[field] += 1
+    marker.write_text(json.dumps(value), encoding="utf-8")
+    marker.chmod(0o600)
+    with pytest.raises(recovery.RecoveryError, match="ownership|owner"):
+        recovery.recover_migration_window("not-used", data_root=tmp_path)
 
 
 @pytest.mark.skipif(os.name != "posix", reason="dirfd recovery is Linux-specific")

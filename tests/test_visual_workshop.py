@@ -24,7 +24,10 @@ def test_workshop_process_uses_canonical_composition_not_css_only():
     assert 'id="workshop-history"' in template
     assert 'id="workshop-materials"' in template
     assert "data-workshop-summary" in template
-    assert "carfast.workshop.summary.open" in template
+    assert "/v2-clean/workshop/preferences/summary" in template
+    assert "data-stored-open" in template
+    assert "historyPreviewTrigger?.focus()" in template
+    assert 'event.key === "Escape"' in template
 
 
 def test_workshop_preserves_real_routes_actions_and_return_context():
@@ -84,3 +87,11 @@ def test_workshop_responsive_contract_has_local_not_global_overflow():
 def test_workshop_asset_is_cache_busted():
     base = _read("app/templates/base.html")
     assert "/static/css/visual-v2.css?v=20260825-workshop1" in base
+
+
+def test_workshop_summary_preference_is_server_side_and_user_scoped():
+    router = _read("app/web/router.py")
+    assert '@web_router.post("/v2-clean/workshop/preferences/summary")' in router
+    assert 'code = f"workshop_summary_{user_id}"' in router
+    assert 'SettingsCatalog.code == "user_ui_preferences"' in router
+    assert '"workshop_summary_open": workshop_summary_open' in router

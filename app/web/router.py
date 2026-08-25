@@ -63,6 +63,7 @@ from app.models.management_center import (
 )
 from app.models.organization import OrganizationalUnit, Team, TeamMember, UserOrganizationalUnit
 from app.models.pilot import PilotFeedback
+from app.models.settings import SettingsCatalog, SettingsValue
 from app.models.stock import (
     StockArticle,
     StockArticleVehicleCompatibility,
@@ -22711,6 +22712,51 @@ def clean_workshop_entry(
 
 
 
+@web_router.post("/v2-clean/workshop/preferences/summary")
+def clean_workshop_summary_preference(request: Request, open: str = Form(...)):
+    denied = clean_experience_denied(request)
+    if denied:
+        return denied
+    user_id = get_web_user_id(request)
+    if not user_id or open not in {"0", "1"}:
+        return JSONResponse({"ok": False}, status_code=400)
+    with SessionLocal() as db:
+        catalog = db.scalar(
+            select(SettingsCatalog).where(SettingsCatalog.code == "user_ui_preferences")
+        )
+        if not catalog:
+            catalog = SettingsCatalog(
+                code="user_ui_preferences",
+                name="Preferências visuais por utilizador",
+                description="Preferências de apresentação sem impacto funcional.",
+                active=True,
+            )
+            db.add(catalog)
+            db.flush()
+        code = f"workshop_summary_{user_id}"
+        value = db.scalar(
+            select(SettingsValue).where(
+                SettingsValue.catalog_id == catalog.id,
+                SettingsValue.code == code,
+            )
+        )
+        if not value:
+            value = SettingsValue(
+                catalog_id=catalog.id,
+                code=code,
+                label="Resumo lateral da Oficina",
+                description="Aberto ou recolhido no detalhe de processo.",
+                active=True,
+                sort_order=0,
+                is_system=False,
+                metadata_json={},
+            )
+            db.add(value)
+        value.metadata_json = {"open": open == "1"}
+        db.commit()
+    return JSONResponse({"ok": True, "open": open == "1"})
+
+
 @web_router.get("/v2-clean/workshop/{phase}", response_class=HTMLResponse)
 def clean_workshop_phase(
     request: Request,
@@ -22763,6 +22809,7 @@ def clean_workshop_phase(
     stock_request_articles: list[dict[str, object]] = []
     stock_request_categories: list[StockCategory] = []
     stock_request_locations: list[StockLocation] = []
+    workshop_summary_open: bool | None = None
     with SessionLocal() as db:
         process = db.get(WorkshopPhasedProcess, process_id) if process_id else None
         if process:
@@ -22900,6 +22947,20 @@ def clean_workshop_phase(
                 vehicle_id=resolved_vehicle.id if resolved_vehicle else None,
             )
         workshop_admin = clean_workshop_admin_context(db, request, process)
+        user_id = get_web_user_id(request)
+        if user_id:
+            preference = db.scalar(
+                select(SettingsValue)
+                .join(SettingsCatalog, SettingsCatalog.id == SettingsValue.catalog_id)
+                .where(
+                    SettingsCatalog.code == "user_ui_preferences",
+                    SettingsValue.code == f"workshop_summary_{user_id}",
+                )
+            )
+            if preference and isinstance(preference.metadata_json, dict):
+                stored_open = preference.metadata_json.get("open")
+                if isinstance(stored_open, bool):
+                    workshop_summary_open = stored_open
     technical_reading_groups = clean_workshop_technical_reading_groups(technical_reports)
     saved_substeps = clean_workshop_saved_substeps(phase_data)
     phase_uploads = phase_data.get("uploads") if isinstance(phase_data.get("uploads"), list) else []
@@ -22926,6 +22987,7 @@ def clean_workshop_phase(
             "is_historical": historical,
             "workshop_process": process,
             "workshop_admin": workshop_admin,
+            "workshop_summary_open": workshop_summary_open,
             "active_step": phase,
             "phase_data": phase_data,
             "photo_phase_row": phase_row,

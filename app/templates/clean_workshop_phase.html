@@ -103,7 +103,7 @@
     </section>
     {% if foundation_ui_enabled %}<nav class="visual-workshop-tabs" aria-label="Áreas do processo">
       <a class="active" href="#workshop-phase-content">Trabalho da fase</a>
-      <a href="#workshop-documents">Documentos e fotografias</a>
+      {% if workshop_process %}<a href="#workshop-documents">Documentos e fotografias</a>{% endif %}
       <button type="button" data-history-preview-open>Histórico</button>
       {% if phase_key == "reparacao" %}<a href="#workshop-materials">Peças e custos</a>{% endif %}
     </nav>{% endif %}
@@ -1137,7 +1137,7 @@
         </div>
       </article>
     </form>
-    {% if foundation_ui_enabled %}<details class="visual-workshop-summary" data-workshop-summary open>
+    {% if foundation_ui_enabled %}<details class="visual-workshop-summary" data-workshop-summary data-stored-open="{{ '1' if workshop_summary_open is true else ('0' if workshop_summary_open is false else '') }}" {% if workshop_summary_open is not false %}open{% endif %}>
       <summary><span><small>Resumo do processo</small><strong>{{ vehicle_context.process_ref }}</strong></span><span class="clean-status-pill ok">{{ phase.title }}</span></summary>
       <dl>
         <div><dt>Viatura</dt><dd>{{ vehicle_context.plate }}</dd></div>
@@ -1245,19 +1245,43 @@
     });
   });
   const historyPreviewModal = document.getElementById("clean-history-preview-modal");
+  let historyPreviewTrigger = null;
+  const closeHistoryPreview = () => {
+    if (!historyPreviewModal) return;
+    historyPreviewModal.hidden = true;
+    document.body.classList.remove("clean-modal-open");
+    historyPreviewTrigger?.focus();
+  };
   document.querySelectorAll("[data-history-preview-open]").forEach((button) => {
     button.addEventListener("click", () => {
       if (!historyPreviewModal) return;
+      historyPreviewTrigger = button;
       historyPreviewModal.hidden = false;
       document.body.classList.add("clean-modal-open");
+      historyPreviewModal.querySelector("[data-history-preview-close]")?.focus();
     });
   });
   document.querySelectorAll("[data-history-preview-close]").forEach((button) => {
-    button.addEventListener("click", () => {
-      if (!historyPreviewModal) return;
-      historyPreviewModal.hidden = true;
-      document.body.classList.remove("clean-modal-open");
-    });
+    button.addEventListener("click", closeHistoryPreview);
+  });
+  historyPreviewModal?.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      closeHistoryPreview();
+      return;
+    }
+    if (event.key !== "Tab") return;
+    const focusable = Array.from(historyPreviewModal.querySelectorAll('a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'));
+    if (!focusable.length) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
   });
   document.querySelectorAll(".clean-service-validation-list").forEach((list) => {
   });
@@ -1320,10 +1344,17 @@
   (() => {
     const panel = document.querySelector('[data-workshop-summary]');
     if (!panel) return;
-    const key = 'carfast.workshop.summary.open';
-    const stored = window.localStorage.getItem(key);
-    panel.open = stored === null ? !window.matchMedia('(max-width: 1199px)').matches : stored === '1';
-    panel.addEventListener('toggle', () => window.localStorage.setItem(key, panel.open ? '1' : '0'));
+    const stored = panel.dataset.storedOpen;
+    if (stored === '') panel.open = !window.matchMedia('(max-width: 1199px)').matches;
+    panel.addEventListener('toggle', () => {
+      const payload = new URLSearchParams({ open: panel.open ? '1' : '0' });
+      fetch('/v2-clean/workshop/preferences/summary', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: payload,
+        keepalive: true,
+      }).catch(() => {});
+    });
   })();
 </script>{% endif %}
 {% if workshop_admin.is_cancelled or workshop_admin.is_closed %}

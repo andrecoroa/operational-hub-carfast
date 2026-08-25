@@ -67,7 +67,7 @@ body { color: var(--cf-gray-950); background: var(--cf-gray-050); font: 400 14px
 .clean-shell .sidebar-status { color: #dce6f2; background: rgb(255 255 255 / 7%); border-color: rgb(255 255 255 / 12%); }
 .clean-shell .content { min-width: 0; padding: 0 24px 96px; background: var(--cf-gray-050); }
 
-.visual-topbar { position: sticky; z-index: 30; top: 0; display: flex; min-height: var(--visual-topbar-height); margin: 0 -24px 24px; padding: 0 24px; align-items: center; justify-content: space-between; gap: 20px; background: rgb(255 255 255 / 96%); border-bottom: 1px solid var(--cf-gray-200); backdrop-filter: blur(10px); }
+.visual-topbar { position: sticky; z-index: 30; top: 0; display: flex; height: var(--visual-topbar-height); min-height: var(--visual-topbar-height); margin: 0 -24px 24px; padding: 0 24px; align-items: center; justify-content: space-between; gap: 20px; background: rgb(255 255 255 / 96%); border-bottom: 1px solid var(--cf-gray-200); backdrop-filter: blur(10px); }
 .visual-mobile-brand { display: none; }
 .visual-breadcrumbs { display: flex; min-width: 0; align-items: center; gap: 9px; color: var(--cf-gray-500); font-size: 13px; white-space: nowrap; }
 .visual-breadcrumbs a { color: var(--cf-blue-600); text-decoration: none; }
@@ -119,8 +119,11 @@ dialog { border: 1px solid var(--cf-gray-200); border-radius: 12px; box-shadow: 
   .clean-shell { grid-template-columns: var(--visual-sidebar-collapsed) minmax(0,1fr); }
   .clean-shell .sidebar { width: var(--visual-sidebar-collapsed); padding-inline: 8px; }
   .clean-shell .sidebar h1,.clean-shell .sidebar nav,.clean-shell .sidebar-status,.clean-shell .sidebar-action-label { display: none; }
-  .clean-shell .sidebar .eyebrow { overflow: hidden; width: 34px; font-size: 0; }
-  .clean-shell .sidebar .eyebrow::first-letter { font-size: 22px; }
+  .clean-shell .sidebar > .sidebar-brand::before { display: flex; width: 42px; min-width: 0; padding: 0; justify-content: center; content: "CF"; letter-spacing: 0; }
+  .clean-shell .sidebar .sidebar-brand > .eyebrow { display: none; }
+  .clean-shell .sidebar-collapse-toggle,.clean-shell .sidebar-logout { display: none; }
+  .clean-shell .sidebar-footer-actions { display: grid; justify-items: center; }
+  .clean-shell .sidebar-evolution-create,.clean-shell .sidebar a.sidebar-legacy-link { width: 42px; min-width: 42px; padding-inline: 0; }
   .visual-mobile-brand { display: flex; align-items: center; color: var(--cf-navy-950); }
   .visual-mobile-brand strong { display: none; }
   .visual-menu-button { display: inline-grid; place-items: center; color: var(--cf-navy-950); background: transparent; border: 1px solid var(--cf-gray-200); }
@@ -128,7 +131,8 @@ dialog { border: 1px solid var(--cf-gray-200); border-radius: 12px; box-shadow: 
   .visual-nav-open .clean-shell .sidebar { z-index: 60; width: min(320px,86vw); padding-inline: 12px; }
   .visual-nav-open .clean-shell .sidebar h1,.visual-nav-open .clean-shell .sidebar nav,.visual-nav-open .clean-shell .sidebar-status,.visual-nav-open .clean-shell .sidebar-action-label { display: initial; }
   .visual-nav-open .clean-shell .sidebar nav { display: flex; }
-  .visual-nav-open .clean-shell .sidebar .eyebrow { width: auto; font-size: 22px; }
+  .visual-nav-open .clean-shell .sidebar > .sidebar-brand::before { width: auto; min-width: 132px; padding: 0 16px; justify-content: flex-start; content: "CARFAST"; letter-spacing: .14em; }
+  .visual-nav-open .clean-shell .sidebar-logout { display: block; }
   .visual-nav-open::after { position: fixed; z-index: 50; inset: 0; content: ""; background: rgb(6 27 56 / 55%); }
 }
 
@@ -141,7 +145,7 @@ dialog { border: 1px solid var(--cf-gray-200); border-radius: 12px; box-shadow: 
   .clean-shell .sidebar .eyebrow { width: auto; font-size: 22px; }
   .visual-nav-open .clean-shell .sidebar { visibility: visible; transform: translateX(0); }
   .clean-shell .content { padding: 0 16px 112px; }
-  .visual-topbar { min-height: 64px; margin: 0 -16px 16px; padding: 0 16px; }
+  .visual-topbar { height: 64px; min-height: 64px; margin: 0 -16px 16px; padding: 0 16px; }
   .visual-mobile-brand { display: flex; align-items: center; gap: 10px; color: var(--cf-navy-950); font-size: 18px; }
   .visual-menu-button { display: inline-grid; place-items: center; color: var(--cf-navy-950); background: transparent; border: 1px solid var(--cf-gray-200); }
   .visual-breadcrumbs { display: none; }

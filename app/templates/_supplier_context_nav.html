@@ -1,5 +1,7 @@
 <nav class="partner-context-nav" aria-label="Parceiros e parametrização">
+  {% if nav_has_permission(request, 'suppliers.read', 'suppliers.write', 'stock.read', 'stock.manage', 'admin.manage') %}
   <a href="/v2-clean/suppliers"{% if partner_tab == 'directory' %} aria-current="page"{% endif %}>Parceiros</a>
+  {% endif %}
   {% if nav_has_permission(request, 'suppliers.configuration.manage', 'admin.manage') %}
     <a href="/v2-clean/admin/suppliers"{% if partner_tab == 'configuration' %} aria-current="page"{% endif %}>Tipos e modelos</a>
   {% endif %}

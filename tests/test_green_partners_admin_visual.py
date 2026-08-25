@@ -26,6 +26,12 @@ def test_partners_error_state_and_dialog_controls_are_explicit(authenticated_cli
     assert "showModal()" in response.text
     assert ".close()" in response.text
 
+    detail_template = (ROOT / "app/templates/clean_supplier_detail.html").read_text(
+        encoding="utf-8"
+    )
+    assert "request.query_params.get('error')" in detail_template
+    assert 'role="alert"' in detail_template
+
 
 def test_admin_context_selects_roles_categories_and_email(authenticated_client):
     roles = authenticated_client.get("/v2-clean/admin/roles")
@@ -55,6 +61,7 @@ def test_partner_context_nav_is_rbac_gated_and_keyboard_native():
 
     assert "nav_has_permission(request" in template
     assert "nav_can" not in template
+    assert "'suppliers.read', 'suppliers.write', 'stock.read', 'stock.manage', 'admin.manage'" in template
     assert 'href="/v2-clean/admin/work-classification?view=channels"' in template
     assert "tabindex=\"0\"" in suppliers
     assert "scrollbar-width:none" in styles
@@ -73,3 +80,13 @@ def test_native_dialogs_keep_escape_behavior_without_custom_key_traps():
         assert "showModal()" in template
         assert "keydown" not in template
         assert "preventDefault" not in template
+
+
+def test_supplier_admin_has_explicit_empty_states():
+    template = (ROOT / "app/templates/clean_suppliers_admin.html").read_text(
+        encoding="utf-8"
+    )
+
+    assert "Sem tipos configurados." in template
+    assert "Sem modelos configurados." in template
+    assert 'role="status"' in template

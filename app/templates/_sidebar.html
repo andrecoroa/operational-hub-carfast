@@ -2,7 +2,7 @@
 {% set is_clean_experience = request.url.path.startswith('/v2-clean') %}
 <aside class="sidebar" id="visual-sidebar">
   <div class="sidebar-brand">
-    <span class="visual-brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 2.7 20 6v5.6c0 5-3.2 8.1-8 9.7-4.8-1.6-8-4.7-8-9.7V6l8-3.3Z"/><path d="m8.2 12 2.2 2.2 5.4-5.4"/></svg></span>
+    {% if foundation_ui_enabled %}<span class="visual-brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 2.7 20 6v5.6c0 5-3.2 8.1-8 9.7-4.8-1.6-8-4.7-8-9.7V6l8-3.3Z"/><path d="m8.2 12 2.2 2.2 5.4-5.4"/></svg></span>{% endif %}
     <p class="eyebrow">CarFast</p>
     <h1>Operational Hub</h1>
     {% if is_clean_experience %}

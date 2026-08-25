@@ -212,7 +212,7 @@ dialog { border: 1px solid var(--cf-gray-200); border-radius: 12px; box-shadow: 
   .clean-shell { grid-template-columns: var(--visual-sidebar-collapsed) minmax(0,1fr); }
   .clean-shell .sidebar { width: var(--visual-sidebar-collapsed); padding-inline: 8px; }
   .clean-shell .sidebar h1,.clean-shell .sidebar nav,.clean-shell .sidebar-status,.clean-shell .sidebar-action-label { display: none; }
-  .clean-shell .sidebar > .sidebar-brand::before { display: flex; width: 42px; min-width: 0; padding: 0; justify-content: center; content: "CF"; letter-spacing: 0; }
+  .clean-shell .sidebar > .sidebar-brand::before { display: flex; width: 42px; min-width: 0; height: 42px; padding: 0; justify-content: center; content: "CF"; color: #fff; background: transparent; border: 0; border-radius: 0; box-shadow: none; letter-spacing: 0; }
   .clean-shell .sidebar .visual-brand-mark { display: none; }
   .clean-shell .sidebar .sidebar-brand > .eyebrow { display: none; }
   .clean-shell .sidebar-collapse-toggle,.clean-shell .sidebar-logout { display: none; }
@@ -249,6 +249,7 @@ dialog { border: 1px solid var(--cf-gray-200); border-radius: 12px; box-shadow: 
   .clean-shell .sidebar .eyebrow { width: auto; font-size: 22px; }
   .visual-nav-open .clean-shell .sidebar { visibility: visible; transform: translateX(0); }
   .visual-nav-open .clean-shell .sidebar-evolution-create,.visual-nav-open .clean-shell .sidebar a.sidebar-legacy-link { width: 48px; min-width: 48px; min-height: 48px; height: 48px; }
+  .visual-nav-open .clean-shell .sidebar-logout button { width: 48px; min-width: 48px; height: 48px; min-height: 48px; }
   .clean-shell .content { padding: 0 16px 112px; }
   .visual-topbar { height: 64px; min-height: 64px; margin: 0 -16px 16px; padding: 0 16px; }
   .visual-mobile-brand { display: flex; align-items: center; gap: 10px; color: var(--cf-navy-950); font-size: 18px; }

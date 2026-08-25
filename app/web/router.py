@@ -4251,21 +4251,28 @@ def clean_process_center_create(
             return RedirectResponse("/v2-clean/processes?error=invalid_model", status_code=303)
 
         active_categories = {
-            item.name
+            item.name: item.id
             for item in db.scalars(
                 select(WorkCategory).where(WorkCategory.active.is_(True))
             )
         }
         active_subcategories = {
-            item.name
+            item.name: item.category_id
             for item in db.scalars(
                 select(WorkSubcategory).where(WorkSubcategory.active.is_(True))
             )
         }
         clean_category = category.strip()
         clean_subcategory = subcategory.strip()
-        if (clean_category and clean_category not in active_categories) or (
-            clean_subcategory and clean_subcategory not in active_subcategories
+        if (
+            (clean_category and clean_category not in active_categories)
+            or (clean_subcategory and clean_subcategory not in active_subcategories)
+            or (clean_subcategory and not clean_category)
+            or (
+                clean_subcategory
+                and active_subcategories.get(clean_subcategory)
+                != active_categories.get(clean_category)
+            )
         ):
             return RedirectResponse("/v2-clean/processes?error=invalid_classification", status_code=303)
 

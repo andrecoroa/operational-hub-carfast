@@ -3,8 +3,8 @@
 <div class="app-shell clean-shell">
   {% set active_menu = "workshop" %}
   {% include "_sidebar.html" %}
-  <main class="content clean-content">
-    <header class="clean-header-shell clean-card-wide">
+  <main class="content clean-content visual-workshop-process">
+    <header class="clean-header-shell clean-card-wide visual-workshop-header">
       <div class="clean-header-topbar">
         <p class="eyebrow">Oficina / experiência nova{% if is_historical %} · processo histórico{% endif %}</p>
         <div class="clean-header-top-actions">
@@ -34,7 +34,7 @@
       </div>
     </header>
 
-    <section class="clean-context-action-shell clean-context-action-shell-single clean-workshop-action-strip clean-card-wide">
+    <section class="clean-context-action-shell clean-context-action-shell-single clean-workshop-action-strip clean-card-wide visual-workshop-quick-actions">
       <article class="clean-context-action-group">
         <div class="clean-context-action-copy">
           <strong>Ações rápidas</strong>
@@ -52,7 +52,7 @@
       </article>
     </section>
 
-    <section class="clean-vehicle-header-card clean-vehicle-header-card-unified clean-vehicle-header-card-process clean-vehicle-header-card-workshop">
+    <section class="clean-vehicle-header-card clean-vehicle-header-card-unified clean-vehicle-header-card-process clean-vehicle-header-card-workshop visual-workshop-vehicle-card">
       <div class="clean-vehicle-header-main">
         <div class="clean-vehicle-identity">
           <p class="eyebrow">Viatura em processo</p>
@@ -96,16 +96,23 @@
       </section>
     {% endif %}
 
-    <section class="clean-stepper clean-stepper-seven">
+    <section class="clean-stepper clean-stepper-seven visual-workshop-stepper" aria-label="Fases do processo">
       {% for step in workshop_steps %}
         <a class="{% if step.key == active_step %}active{% endif %}" href="{{ step.href }}"><b>{{ step.number }}</b>{{ step.label }}</a>
       {% endfor %}
     </section>
+    <nav class="visual-workshop-tabs" aria-label="Áreas do processo">
+      <a class="active" href="#workshop-phase-content">Trabalho da fase</a>
+      <a href="#workshop-documents">Documentos e fotografias</a>
+      <a href="#workshop-history">Histórico</a>
+      {% if phase_key == "reparacao" %}<a href="#workshop-materials">Peças e custos</a>{% endif %}
+    </nav>
     {% if phase_key in ["validacao", "diagnostico"] %}
       {% include "_clean_workshop_history_preview.html" %}
     {% endif %}
 
-    <form class="clean-workshop-final-grid" method="post" action="/v2-clean/workshop/{{ phase_key }}/save" enctype="multipart/form-data">
+    <div class="visual-workshop-layout" id="workshop-phase-content">
+    <form class="clean-workshop-final-grid visual-workshop-workbench" method="post" action="/v2-clean/workshop/{{ phase_key }}/save" enctype="multipart/form-data">
       {% if workshop_process %}<input type="hidden" name="process_id" value="{{ workshop_process.id }}">{% endif %}
       <input type="hidden" name="current_substep" value="">
       <input type="hidden" name="form_state_json" value="">
@@ -1130,6 +1137,20 @@
         </div>
       </article>
     </form>
+    <aside class="visual-workshop-summary" aria-label="Resumo do processo">
+      <header><span><small>Resumo do processo</small><strong>{{ vehicle_context.process_ref }}</strong></span><span class="clean-status-pill ok">{{ phase.title }}</span></header>
+      <dl>
+        <div><dt>Viatura</dt><dd>{{ vehicle_context.plate }}</dd></div>
+        <div><dt>Modelo</dt><dd>{{ vehicle_context.vehicle }}</dd></div>
+        <div><dt>Unidade</dt><dd>{{ vehicle_context.unit or "-" }}</dd></div>
+        <div><dt>KM entrada</dt><dd>{{ workshop_process.initial_km or "-" }}</dd></div>
+        <div><dt>Responsável</dt><dd>{{ workshop_admin.creator_name }}</dd></div>
+        <div><dt>Pendências</dt><dd>{{ workshop_admin.open_task_count }}</dd></div>
+      </dl>
+      <a class="button-link secondary-link" href="{{ vehicle_detail_href }}">Abrir ficha da viatura</a>
+      {% if workshop_process %}<a class="button-link secondary-link" href="/v2-clean/tasks?workspace=workshop&entity_type=workshop_phased_process&entity_id={{ workshop_process.id }}&return_url={{ request.url.path }}%3Fprocess_id%3D{{ workshop_process.id }}">Ver tarefas associadas</a>{% endif %}
+    </aside>
+    </div>
     {% if workshop_process %}
       {% set photo_phased_process_id = workshop_process.id %}
       {% set photo_phase_id = photo_phase_row.id if photo_phase_row else none %}

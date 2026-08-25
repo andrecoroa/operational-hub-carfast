@@ -41,8 +41,22 @@
       {% if can_nav_workshop %}<details class="sidebar-nav-group" {% if workshop_menu_open %}open{% endif %}>
         <summary data-nav-icon="workshop" {% if workshop_menu_open %}class="active"{% endif %}>Oficina</summary>
         <div class="sidebar-nav-children">
-          {% if nav_has_permission(request, "workshop.read", "workshop.write", "admin.manage") %}<a class="sidebar-sub-link" href="/v2-clean/workshop">Visão geral</a>{% endif %}
-          {% if nav_has_permission(request, "workshop.write", "admin.manage") %}<a class="sidebar-sub-link" href="/v2-clean/workshop-entry">Novo processo</a><a class="sidebar-sub-link" href="/v2-clean/workshop-entry?historical=1">Processo histórico</a>{% endif %}
+          {% if nav_has_permission(request, "workshop.read", "workshop.write", "admin.manage") %}<a class="sidebar-sub-link" href="/v2-clean/workshop">Processos</a>{% endif %}
+          {% if nav_has_permission(request, "workshop.write", "admin.manage") %}<a class="sidebar-sub-link" href="/v2-clean/workshop-entry">Receção</a><a class="sidebar-sub-link" href="/v2-clean/workshop?scope=open">Planeamento</a><a class="sidebar-sub-link" href="/v2-clean/workshop?scope=open&situation=in_progress">Em execução</a>{% endif %}
+          {% if can_nav_stock %}
+            <details class="sidebar-sub-group" {% if active_menu == "stock" %}open{% endif %}>
+              <summary>Stock e Compras</summary>
+              <div>
+                <a class="sidebar-sub-link {% if active_menu == 'stock' %}active{% endif %}" href="/v2-clean/stock">Stock</a>
+                <a class="sidebar-sub-link" href="/v2-clean/stock?view=movements">Movimentos</a>
+                <a class="sidebar-sub-link" href="/v2-clean/stock?view=requests">Pedidos</a>
+                <a class="sidebar-sub-link" href="/v2-clean/stock?view=purchases">Compras / Encomendas</a>
+                <a class="sidebar-sub-link" href="/v2-clean/stock?view=receipts">Receções</a>
+                <a class="sidebar-sub-link" href="/v2-clean/stock?view=inventory">Inventários</a>
+              </div>
+            </details>
+          {% endif %}
+          {% if nav_has_permission(request, "workshop.write", "admin.manage") %}<a class="sidebar-sub-link" href="/v2-clean/admin/workshop-models">Modelos / Configuração</a>{% endif %}
         </div>
       </details>{% endif %}
       {% set fleet_menu_open = active_menu in ["fleet", "fleet_sales"] or request.url.path.startswith('/v2-clean/fleet') %}
@@ -55,7 +69,7 @@
           {% endif %}
         </div>
       </details>{% endif %}
-      {% if can_nav_stock %}
+      {% if can_nav_stock and not can_nav_workshop %}
         <a href="/v2-clean/stock" {% if active_menu == "stock" %}class="active"{% endif %}>Stock</a>
       {% endif %}
       {% if nav_has_permission(request, "suppliers.read", "suppliers.write", "stock.read", "stock.manage", "admin.manage") %}

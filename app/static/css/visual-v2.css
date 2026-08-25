@@ -288,12 +288,12 @@ dialog { border: 1px solid var(--cf-gray-200); border-radius: 12px; box-shadow: 
 }
 
 /* Email tranche — approved visual system */
-.visual-email-center { --email-accent: var(--cf-blue-600); }
+.visual-email-center { width: 100%; max-width: none; min-width: 0; --email-accent: var(--cf-blue-600); }
 .visual-email-heading { display: flex; min-height: 112px; padding: 6px 0 20px; align-items: end; justify-content: space-between; gap: 24px; }
 .visual-email-heading h1 { margin: 2px 0 5px; font-size: 30px; line-height: 38px; }
 .visual-email-heading p:last-child { margin: 0; color: var(--cf-gray-600); }
 .visual-email-heading > button { min-width: 120px; }
-.visual-email-overview,.visual-email-workbench { margin-bottom: 16px; overflow: hidden; background: #fff; border: 1px solid var(--cf-gray-200); border-radius: 9px; box-shadow: 0 1px 2px rgb(16 24 40 / 4%); }
+.visual-email-overview,.visual-email-workbench { width: 100%; max-width: none; min-width: 0; margin-bottom: 16px; overflow: hidden; background: #fff; border: 1px solid var(--cf-gray-200); border-radius: 9px; box-shadow: 0 1px 2px rgb(16 24 40 / 4%); }
 .visual-email-overview > header,.visual-email-workbench-header { display: flex; min-height: 72px; padding: 14px 18px; align-items: center; justify-content: space-between; gap: 16px; border-bottom: 1px solid var(--cf-gray-200); }
 .visual-email-overview h2,.visual-email-workbench-header h2 { margin: 2px 0; font-size: 18px; line-height: 24px; }
 .visual-email-workbench-header p:last-child { margin: 0; color: var(--cf-gray-600); font-size: 12px; }
@@ -316,10 +316,10 @@ dialog { border: 1px solid var(--cf-gray-200); border-radius: 12px; box-shadow: 
 .visual-email-filters label { display: grid; min-width: 0; gap: 5px; color: var(--cf-gray-600); font-size: 10px; font-weight: 700; letter-spacing: .03em; text-transform: uppercase; }
 .visual-email-filters input,.visual-email-filters select { width: 100%; min-width: 0; height: 38px; min-height: 38px; font-size: 12px; text-transform: none; }
 .visual-email-filters button,.visual-email-filters .button-link { height: 38px; min-height: 38px; white-space: nowrap; }
-.visual-email-table-wrap { overflow-x: auto; border: 0; border-radius: 0; }
-.visual-email-table { min-width: 1180px; table-layout: fixed; }
-.visual-email-table th { height: 40px; padding: 0 10px; color: var(--cf-gray-500); background: var(--cf-gray-050); font-size: 10px; letter-spacing: .035em; text-transform: uppercase; }
-.visual-email-table td { height: 64px; padding: 9px 10px; font-size: 12px; vertical-align: middle; }
+.visual-email-table-wrap { width: 100%; max-width: none; min-width: 0; overflow-x: auto; border: 0; border-radius: 0; }
+.visual-email-table { width: 100%; min-width: 1180px; table-layout: fixed; }
+.visual-email-table th { height: 40px; padding: 0 10px; color: var(--cf-gray-500); background: var(--cf-gray-050); font-size: 11px; letter-spacing: .035em; text-transform: uppercase; }
+.visual-email-table td { height: 64px; padding: 9px 10px; font-size: 13px; vertical-align: middle; }
 .visual-email-table th:nth-child(1) { width: 12%; }
 .visual-email-table th:nth-child(2) { width: 20%; }
 .visual-email-table th:nth-child(3) { width: 15%; }
@@ -329,7 +329,7 @@ dialog { border: 1px solid var(--cf-gray-200); border-radius: 12px; box-shadow: 
 .visual-email-table th:nth-child(7) { width: 8%; }
 .visual-email-table th:nth-child(8) { width: 6%; }
 .visual-email-table td strong,.visual-email-table td small { display: block; overflow: hidden; text-overflow: ellipsis; }
-.visual-email-table td small { margin-top: 3px; color: var(--cf-gray-600); font-size: 10px; line-height: 14px; }
+.visual-email-table td small { margin-top: 3px; color: var(--cf-gray-600); font-size: 11px; line-height: 15px; }
 .visual-email-table tr:hover td,.visual-email-table tr:focus td { background: var(--cf-blue-050); }
 .visual-email-table [data-email-preview-trigger] { display: inline-flex; min-width: 60px; min-height: 32px; align-items: center; justify-content: center; white-space: nowrap; }
 .visual-email-preview { width: min(1120px,calc(100vw - 32px)); max-width: 1120px; max-height: calc(100vh - 32px); padding: 0; }

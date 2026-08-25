@@ -58,9 +58,12 @@ def test_email_responsive_contract_uses_local_overflow_and_full_screen_preview()
 
     for contract in (
         ".visual-email-metrics { display: grid;",
+        ".visual-email-center { width: 100%; max-width: none; min-width: 0;",
+        ".visual-email-overview,.visual-email-workbench { width: 100%; max-width: none; min-width: 0;",
         "grid-template-columns: repeat(5,minmax(0,1fr));",
-        ".visual-email-table-wrap { overflow-x: auto;",
-        ".visual-email-table { min-width: 1180px; table-layout: fixed;",
+        ".visual-email-table-wrap { width: 100%; max-width: none; min-width: 0; overflow-x: auto;",
+        ".visual-email-table { width: 100%; min-width: 1180px; table-layout: fixed;",
+        ".visual-email-table td { height: 64px; padding: 9px 10px; font-size: 13px;",
         ".visual-email-filters { grid-template-columns: repeat(2,minmax(0,1fr));",
         'content: "Deslize para ver todas as colunas →"',
         ".visual-email-preview,.visual-email-compose { width: 100vw;",

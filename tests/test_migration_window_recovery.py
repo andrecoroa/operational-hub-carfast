@@ -61,6 +61,13 @@ def interrupted_tree(tmp_path: Path, *, partial: bool = False) -> None:
         (tmp_path / "email").mkdir(mode=0o555)
 
 
+def writable_tree(tmp_path: Path) -> None:
+    (tmp_path / "carfast_documents").mkdir(mode=0o755)
+    (tmp_path / "carfast_documents" / "document.bin").write_bytes(b"doc")
+    (tmp_path / "email").mkdir(mode=0o750)
+    (tmp_path / "email" / "message.bin").write_bytes(b"mail")
+
+
 def test_no_marker_is_absolute_noop(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     database = Mock(side_effect=AssertionError("database must not be touched"))
     monkeypatch.setattr(recovery, "_restore_database", database)
@@ -148,6 +155,44 @@ def test_marker_is_retained_when_database_reset_fails(
     assert marker.exists()
     assert (tmp_path / "carfast_documents" / "document.bin").exists()
     assert (tmp_path / "email" / "message.bin").exists()
+
+
+@pytest.mark.parametrize("boundary", range(4))
+@pytest.mark.skipif(os.name != "posix", reason="dirfd recovery is Linux-specific")
+def test_durable_arm_recovers_every_pre_barrier_crash_boundary(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, boundary: int
+) -> None:
+    writable_tree(tmp_path)
+    recovery.arm_migration_window(BUNDLE, data_root=tmp_path)
+    if boundary >= 1:
+        (tmp_path / "carfast_documents").rename(
+            tmp_path / f".cutoff-{BUNDLE}-carfast_documents"
+        )
+    if boundary >= 2:
+        (tmp_path / f".placeholder-{BUNDLE}-carfast_documents").rename(
+            tmp_path / "carfast_documents"
+        )
+    if boundary >= 3:
+        (tmp_path / "email").rename(tmp_path / f".cutoff-{BUNDLE}-email")
+    monkeypatch.setattr(recovery, "_restore_database", Mock())
+    assert recovery.recover_migration_window("postgresql://private", data_root=tmp_path)
+    assert (tmp_path / "carfast_documents" / "document.bin").read_bytes() == b"doc"
+    assert (tmp_path / "email" / "message.bin").read_bytes() == b"mail"
+    assert not list(tmp_path.glob(".placeholder-*"))
+    assert not list(tmp_path.glob(".cutoff-*"))
+
+
+@pytest.mark.skipif(os.name != "posix", reason="dirfd recovery is Linux-specific")
+def test_armed_storage_barrier_and_recovery_are_one_closed_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    writable_tree(tmp_path)
+    recovery.arm_migration_window(BUNDLE, data_root=tmp_path)
+    recovery.activate_storage_barrier(BUNDLE, data_root=tmp_path)
+    assert not list((tmp_path / "carfast_documents").iterdir())
+    assert not list((tmp_path / "email").iterdir())
+    monkeypatch.setattr(recovery, "_restore_database", Mock())
+    assert recovery.recover_migration_window("postgresql://private", data_root=tmp_path)
 
 
 @pytest.mark.skipif(os.name != "posix", reason="dirfd recovery is Linux-specific")

@@ -8,11 +8,12 @@ needed to restore the two fixed CarFast storage roots.
 
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import re
 import stat
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from pathlib import Path
 
 import psycopg
@@ -157,8 +158,26 @@ def _same_inode(info: os.stat_result, expected: tuple[int, int]) -> bool:
     return (info.st_dev, info.st_ino) == expected
 
 
+def _placeholder_name(bundle_id: str, root_name: str) -> str:
+    return f".placeholder-{bundle_id}-{root_name}"
+
+
+def _remove_hidden_placeholder_at(
+    data_fd: int,
+    name: str,
+    expected: tuple[int, int],
+) -> None:
+    state = _directory_state_at(data_fd, name)
+    if state is None:
+        return
+    if not _same_inode(state, expected) or not _is_empty_at(data_fd, name):
+        raise RecoveryError("migration recovery hidden placeholder mismatch")
+    os.rmdir(name, dir_fd=data_fd)
+
+
 def _restore_root_at(
     data_fd: int,
+    bundle_id: str,
     original: str,
     frozen: str,
     mode: int,
@@ -166,11 +185,13 @@ def _restore_root_at(
     source_identity: tuple[int, int],
     placeholder_identity: tuple[int, int],
 ) -> None:
+    hidden = _placeholder_name(bundle_id, original)
     original_state = _directory_state_at(data_fd, original)
     frozen_state = _directory_state_at(data_fd, frozen)
     if frozen_state is None:
         if original_state is None or not _same_inode(original_state, source_identity):
             raise RecoveryError("migration recovery storage root is missing")
+        _remove_hidden_placeholder_at(data_fd, hidden, placeholder_identity)
         os.chmod(original, mode, dir_fd=data_fd, follow_symlinks=False)
         return
     if not _same_inode(frozen_state, source_identity):
@@ -185,11 +206,135 @@ def _restore_root_at(
         ):
             raise RecoveryError("migration recovery storage state is ambiguous")
         os.rmdir(original, dir_fd=data_fd)
+    else:
+        _remove_hidden_placeholder_at(data_fd, hidden, placeholder_identity)
     os.rename(frozen, original, src_dir_fd=data_fd, dst_dir_fd=data_fd)
     restored = _directory_state_at(data_fd, original)
     if restored is None or not _same_inode(restored, source_identity):
         raise RecoveryError("migration recovery storage rename mismatch")
     os.chmod(original, mode, dir_fd=data_fd, follow_symlinks=False)
+
+
+def arm_migration_window(bundle_id: str, *, data_root: Path = Path("/var/data")) -> RecoveryMarker:
+    """Durably arm recovery before any database or storage mutation."""
+
+    if not _BUNDLE_RE.fullmatch(bundle_id):
+        raise RecoveryError("migration recovery marker bundle mismatch")
+    data_fd = os.open(data_root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    created: list[str] = []
+    temporary = f"{MARKER_NAME}.{bundle_id}.tmp"
+    try:
+        try:
+            os.stat(MARKER_NAME, dir_fd=data_fd, follow_symlinks=False)
+        except FileNotFoundError:
+            pass
+        else:
+            raise RecoveryError("migration recovery marker already exists")
+        parent = os.fstat(data_fd)
+        roots: dict[str, os.stat_result] = {}
+        placeholders: dict[str, os.stat_result] = {}
+        for root_name in ("carfast_documents", "email"):
+            source = _directory_state_at(data_fd, root_name)
+            if source is None:
+                raise RecoveryError("migration recovery source root is missing")
+            roots[root_name] = source
+            placeholder = _placeholder_name(bundle_id, root_name)
+            os.mkdir(placeholder, 0o500, dir_fd=data_fd)
+            created.append(placeholder)
+            state = _directory_state_at(data_fd, placeholder)
+            if state is None:
+                raise RecoveryError("migration recovery placeholder creation failed")
+            placeholders[root_name] = state
+        marker = RecoveryMarker(
+            bundle_id=bundle_id,
+            parent_mode=stat.S_IMODE(parent.st_mode),
+            documents_mode=stat.S_IMODE(roots["carfast_documents"].st_mode),
+            email_mode=stat.S_IMODE(roots["email"].st_mode),
+            documents_source_dev=roots["carfast_documents"].st_dev,
+            documents_source_inode=roots["carfast_documents"].st_ino,
+            documents_placeholder_dev=placeholders["carfast_documents"].st_dev,
+            documents_placeholder_inode=placeholders["carfast_documents"].st_ino,
+            email_source_dev=roots["email"].st_dev,
+            email_source_inode=roots["email"].st_ino,
+            email_placeholder_dev=placeholders["email"].st_dev,
+            email_placeholder_inode=placeholders["email"].st_ino,
+        )
+        payload = {
+            "schema": MARKER_SCHEMA,
+            "blue_release": BLUE_RELEASE,
+            **asdict(marker),
+        }
+        encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
+        marker_fd = os.open(
+            temporary,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+            0o600,
+            dir_fd=data_fd,
+        )
+        try:
+            os.write(marker_fd, encoded)
+            os.fsync(marker_fd)
+        finally:
+            os.close(marker_fd)
+        os.rename(temporary, MARKER_NAME, src_dir_fd=data_fd, dst_dir_fd=data_fd)
+        os.fsync(data_fd)
+        return marker
+    except Exception:
+        try:
+            os.unlink(temporary, dir_fd=data_fd)
+        except FileNotFoundError:
+            pass
+        try:
+            os.stat(MARKER_NAME, dir_fd=data_fd, follow_symlinks=False)
+            marker_exists = True
+        except FileNotFoundError:
+            marker_exists = False
+        if not marker_exists:
+            for name in reversed(created):
+                try:
+                    os.rmdir(name, dir_fd=data_fd)
+                except FileNotFoundError:
+                    pass
+        raise
+    finally:
+        os.close(data_fd)
+
+
+def activate_storage_barrier(bundle_id: str, *, data_root: Path = Path("/var/data")) -> None:
+    """Atomically swap both roots only after the durable marker exists."""
+
+    marker_result = _read_marker(data_root / MARKER_NAME)
+    if marker_result is None or marker_result[0].bundle_id != bundle_id:
+        raise RecoveryError("migration recovery marker is not armed")
+    marker = marker_result[0]
+    data_fd = os.open(data_root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        for root_name, source_identity, placeholder_identity in (
+            (
+                "carfast_documents",
+                (marker.documents_source_dev, marker.documents_source_inode),
+                (marker.documents_placeholder_dev, marker.documents_placeholder_inode),
+            ),
+            (
+                "email",
+                (marker.email_source_dev, marker.email_source_inode),
+                (marker.email_placeholder_dev, marker.email_placeholder_inode),
+            ),
+        ):
+            source = _directory_state_at(data_fd, root_name)
+            placeholder_name = _placeholder_name(bundle_id, root_name)
+            placeholder = _directory_state_at(data_fd, placeholder_name)
+            if source is None or not _same_inode(source, source_identity):
+                raise RecoveryError("migration recovery source inode drift")
+            if placeholder is None or not _same_inode(placeholder, placeholder_identity):
+                raise RecoveryError("migration recovery placeholder inode drift")
+            frozen = f".cutoff-{bundle_id}-{root_name}"
+            os.rename(root_name, frozen, src_dir_fd=data_fd, dst_dir_fd=data_fd)
+            os.rename(placeholder_name, root_name, src_dir_fd=data_fd, dst_dir_fd=data_fd)
+        os.chmod(data_root, 0o555, follow_symlinks=False)
+        os.fsync(data_fd)
+    finally:
+        os.close(data_fd)
 
 
 def _restore_database(database_url: str) -> None:
@@ -270,6 +415,7 @@ def recover_migration_window(
     try:
         _restore_root_at(
             data_fd,
+            marker.bundle_id,
             "carfast_documents",
             f".cutoff-{marker.bundle_id}-carfast_documents",
             marker.documents_mode,
@@ -281,6 +427,7 @@ def recover_migration_window(
         )
         _restore_root_at(
             data_fd,
+            marker.bundle_id,
             "email",
             f".cutoff-{marker.bundle_id}-email",
             marker.email_mode,
@@ -295,3 +442,28 @@ def recover_migration_window(
     finally:
         os.close(data_fd)
     return True
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("action", choices=("arm", "barrier", "recover"))
+    parser.add_argument("--bundle-id")
+    parser.add_argument("--data-root", type=Path, default=Path("/var/data"))
+    args = parser.parse_args()
+    if args.action in {"arm", "barrier"} and not args.bundle_id:
+        parser.error("--bundle-id is required")
+    if args.action == "arm":
+        arm_migration_window(args.bundle_id, data_root=args.data_root)
+        print("migration_window_arm=complete")
+    elif args.action == "barrier":
+        activate_storage_barrier(args.bundle_id, data_root=args.data_root)
+        print("migration_window_barrier=complete")
+    else:
+        database_url = os.environ.get("DATABASE_URL", "")
+        recovered = recover_migration_window(database_url, data_root=args.data_root)
+        print(f"migration_window_recovery={'complete' if recovered else 'noop'}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

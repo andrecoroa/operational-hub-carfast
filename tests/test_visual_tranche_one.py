@@ -40,6 +40,8 @@ def test_visual_tokens_and_responsive_contract_are_present() -> None:
         "prefers-reduced-motion: reduce",
         '.clean-shell .sidebar > .sidebar-brand::before { display: flex; width: 42px;',
         '.clean-shell .sidebar-collapse-toggle,.clean-shell .sidebar-logout { display: none;',
+        '.clean-shell .sidebar-footer { grid-row: 3; align-self: end;',
+        'grid-auto-rows: 48px;',
     ):
         assert contract in css
 

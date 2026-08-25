@@ -3,7 +3,7 @@
 <div class="app-shell clean-shell">
   {% set active_menu = "clean_processes" %}
   {% include "_sidebar.html" %}
-  <main class="content clean-content ui-foundation ui-page-shell process-command-page">
+  <main class="content clean-content{% if foundation_ui_enabled %} ui-foundation ui-page-shell process-command-page{% endif %}">
     <header class="ui-page-header process-command-header">
       <div><p class="eyebrow">Operação / Centro de Processos</p><h2>Centro de Processos</h2><p>Priorize, acompanhe e abra o contexto operacional sem perder os filtros de trabalho.</p></div>
       <div class="clean-header-actions process-command-actions">

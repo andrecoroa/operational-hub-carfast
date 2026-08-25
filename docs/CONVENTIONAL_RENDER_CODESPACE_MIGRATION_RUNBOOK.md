@@ -56,17 +56,14 @@ Every item must have machine-readable evidence and an independent PASS:
    target contract. After PASS this same database becomes permanent; no
    data-only promotion, second dump, truncate or restore into
    `dpg-da5dj0e417fc73f3uakg-a` is permitted.
-6. Prove a single quiesce mechanism that blocks and drains web mutations,
-   uploads/filesystem writes, email, jobs, webhooks, portals and integrations.
-   The selected mechanism is: Render paid-service Maintenance Mode (public traffic
-   returns 503 while private networking and SSH remain available); drain in-flight
-   requests; enforce database read-only and drain write transactions; atomically
-   rename the exact storage root to a cutoff name on the same mount; create the
-   original pathname as mode 0555; scan `/proc/*/fd` and refuse capture while any
-   descriptor references the cutoff tree. Record two identical storage manifests
-   before setting `CUTOFF_UTC`. `default_transaction_read_only` alone is explicitly
-   insufficient. Maintenance Mode does not stop internal background jobs, so DB
-   denial, the storage barrier and zero-open-FD check remain mandatory.
+6. Prove direct quiesce; Render Maintenance Mode is explicitly N/A by strategy
+   decision. Open and validate capture SSH first, start the monotonic clock and
+   watchdog, enforce database read-only and drain to zero write transactions,
+   atomically rename the exact storage root to a cutoff name on the same mount,
+   create the original pathname as mode 0555, and refuse capture while any
+   `/proc/*/fd` descriptor references the cutoff tree. DB and file write probes
+   must fail while reads pass. Record two identical manifests before setting
+   `CUTOFF_UTC`. The application may remain accessible in effective read-only.
 7. Rehearse the exact inverse operation before the window and install an
    independent watchdog that restores application and database writes no later
    than 60 minutes, even if the operator SSH session dies.
@@ -163,18 +160,18 @@ been repeated against the read-back parent mount and metadata (without touching
 the real root). The finally/watchdog sequence is fixed: stop capture; remove the
 0555 placeholder only if its inode matches the recorded placeholder; atomically
 rename the recorded cutoff inode back to the original path; restore its recorded
-mode/owner; disable database read-only; disable Maintenance Mode; prove health and
-writes. Any inode/path drift aborts automated renames and escalates without deleting
-either tree. The watchdog uses an independent session/control path and starts before
-Maintenance Mode; it must execute this reversal by minute 60 even if relay SSH dies.
+mode/owner; disable database read-only; prove DB/filesystem writes and health. Any
+inode/path drift aborts automated renames and escalates without deleting either
+tree. The watchdog uses an independent session/control path and starts before
+database read-only; it must execute this reversal by minute 60 even if relay SSH dies.
 
 ## Real action sequence (still gated)
 
 1. Arm watchdog and verify rollback channel; create ephemeral SELECT-only role for
    the frozen 162-table list and prove writes/DDL/sequences denied.
 2. Set `WINDOW_START_UTC` and arm the 60-minute deadline immediately before the
-   first mutation blocker (Maintenance Mode). Then drain application/filesystem
-   writers, enforce DB read-only and the storage barrier. Set `CUTOFF_UTC` only
+   first mutation blocker (database read-only). Then drain application/filesystem
+   writers and enforce the storage barrier. Set `CUTOFF_UTC` only
    after both domains are proven quiescent; the window clock never resets.
 3. Capture encrypted DB and storage streams into `.partial` files on Green staging.
    Bind sizes, ciphertext SHA-256, releases, bundle and cutoff in one manifest.
@@ -279,8 +276,8 @@ three common bounded lifecycle runs with independent watchdog RC 0, bundle ACK,
 atomic storage rollback and cleanup; canonical manifest fingerprint is
 `2a47529bd43c318022849d9ee7187ef296b1152410f73735c542512b4313eea0`.
 This is explicitly partial synthetic evidence and reports `NO_GO`; it does not
-claim that Render Maintenance Mode, database read-only or action-time read-back
-has passed.
+claim that database read-only or action-time read-back has passed. Maintenance
+Mode is N/A and excluded from readiness by strategy decision.
 The superseded data-only promotion RC1 is not a gate and must not be retried.
 Only an independent PASS and the non-consuming action-time read-back may change
 this status. Blue remains writable and no real payload has started.

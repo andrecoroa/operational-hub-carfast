@@ -353,7 +353,7 @@ dialog { border: 1px solid var(--cf-gray-200); border-radius: 12px; box-shadow: 
 
 @media (max-width:767px) {
   .visual-workshop-header .clean-header-hero-main h2 { font-size: 21px; line-height: 27px; }
-  .visual-workshop-quick-actions .clean-context-action-group { align-items: flex-start; }
+  .visual-workshop-quick-actions .clean-context-action-group { grid-template-columns: minmax(0,1fr); align-items: flex-start; }
   .visual-workshop-quick-actions .clean-context-action-row { display: grid; width: 100%; grid-template-columns: repeat(2,minmax(0,1fr)); }
   .visual-workshop-quick-actions .clean-context-action-row > * { min-height: 44px; }
   .visual-workshop-vehicle-card .clean-vehicle-header-main { padding: 12px; }

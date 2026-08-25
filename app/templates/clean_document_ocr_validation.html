@@ -3,7 +3,7 @@
 <div class="app-shell clean-shell">
   {% set active_menu = "documents" %}
   {% include "_sidebar.html" %}
-  <main class="content clean-content doc-arch-page">
+  <main class="content clean-content doc-arch-page clean-doc-ocr-page">
     {% set doc_nav = "models" %}
     {% include "_clean_documentation_nav.html" %}
     <header class="clean-doc-page-header clean-card-wide clean-doc-center-header">
@@ -54,7 +54,7 @@
             <option value="technical_reports" {% if scope == "technical_reports" %}selected{% endif %}>Diagnósticos</option>
           </select>
         </label>
-        <button type="submit" class="button-link primary-link">Filtrar</button>
+        <button type="submit" class="ui-button ui-button--primary">Filtrar</button>
       </form>
     </section>
 

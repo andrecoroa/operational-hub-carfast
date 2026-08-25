@@ -59,7 +59,7 @@ def test_historical_document_centers_use_the_same_clean_workbench_context() -> N
     }
     for filename, active_contract in expected.items():
         source = (TEMPLATES / filename).read_text(encoding="utf-8")
-        assert 'class="content clean-content doc-arch-page"' in source
+        assert 'class="content clean-content doc-arch-page' in source
         assert active_contract in source
         assert '{% include "_clean_documentation_nav.html" %}' in source
 
@@ -79,7 +79,10 @@ def test_ocr_calibration_keeps_wide_tables_inside_local_scroll() -> None:
     assert "overflow-x: auto" in css
 
     template = (TEMPLATES / "clean_document_ocr_validation.html").read_text(encoding="utf-8")
-    assert '<button type="submit" class="button-link primary-link">Filtrar</button>' in template
+    assert 'clean-doc-ocr-page' in template
+    assert '<button type="submit" class="ui-button ui-button--primary">Filtrar</button>' in template
+    assert ".clean-doc-ocr-page" in css
+    assert "overflow-x: hidden" in css
 
 
 def test_route_matrix_is_frozen_at_admin_setup_release_and_lists_only_real_residuals() -> None:

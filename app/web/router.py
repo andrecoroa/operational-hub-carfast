@@ -292,6 +292,7 @@ from app.services.vehicle_document_history import (
     V2_CLEAN_DOCUMENT_SOURCES,
     V2_CLEAN_REMOVED_STATUSES,
     _build_global_structured_rows,
+    _build_timeline,
     add_quick_classification,
     attach_document_to_record,
     canonical_structured_import_kind,
@@ -15144,6 +15145,8 @@ def clean_documentation_treatment_audit_task(
 @web_router.get("/v2-clean/documentation/by-vehicle", response_class=HTMLResponse)
 def clean_documentation_by_vehicle(
     request: Request,
+    q: str = "",
+    attention: str = "",
     pending_page: int = 1,
     divergence_page: int = 1,
     services_page: int = 1,
@@ -15163,7 +15166,40 @@ def clean_documentation_by_vehicle(
         return rows[start : start + clean_page_size], pagination
 
     with SessionLocal() as db:
-        overview = documentation_by_vehicle_overview(db)
+        can_view_confidential_summary = can_view_management_documents(request)
+        overview = documentation_by_vehicle_overview(
+            db,
+            include_confidential=can_view_confidential_summary,
+        )
+        clean_q = q.strip().lower()
+        clean_attention = attention if attention in {"expired", "confidential", "missing"} else ""
+        vehicle_rows = overview["vehicles"]
+        vehicle_counts = {
+            "total": len(vehicle_rows),
+            "expired": sum(1 for row in vehicle_rows if row["expired"]),
+            "confidential": sum(1 for row in vehicle_rows if row["confidential"]),
+            "missing": sum(1 for row in vehicle_rows if row["missing"]),
+        }
+        if clean_q:
+            vehicle_rows = [
+                row
+                for row in vehicle_rows
+                if clean_q
+                in " ".join(
+                    filter(
+                        None,
+                        [
+                            row["vehicle"].plate,
+                            row["vehicle"].vin,
+                            row["vehicle"].rentway_unit_nr,
+                            row["vehicle"].brand,
+                            row["vehicle"].model,
+                        ],
+                    )
+                ).lower()
+            ]
+        if clean_attention:
+            vehicle_rows = [row for row in vehicle_rows if row[clean_attention]]
         pending_rows, pending_pagination = paged(
             overview["pending_invoices"],
             pending_page,
@@ -15176,10 +15212,21 @@ def clean_documentation_by_vehicle(
             overview["repeated_services"],
             services_page,
         )
+        return_context_token = issue_return_context(
+            settings.app_secret_key,
+            path="/v2-clean/documentation/by-vehicle",
+            query=request.url.query,
+            anchor="vehicle-document-list-title",
+        )
         return templates.TemplateResponse(
             request,
             "clean_documentation_by_vehicle.html",
             {
+                "vehicle_rows": vehicle_rows,
+                "vehicle_counts": vehicle_counts,
+                "q": q,
+                "attention": clean_attention,
+                "return_context_token": return_context_token,
                 "pending_rows": pending_rows,
                 "divergence_rows": divergence_rows,
                 "service_rows": service_rows,
@@ -15195,12 +15242,28 @@ def clean_documentation_by_vehicle(
     "/v2-clean/documentation/by-vehicle/{vehicle_id}",
     response_class=HTMLResponse,
 )
-def clean_documentation_vehicle_preview(request: Request, vehicle_id: int):
+def clean_documentation_vehicle_preview(
+    request: Request,
+    vehicle_id: int,
+    return_context: str = "",
+    selected: str = "",
+):
     denied = clean_experience_denied(request)
     if denied:
         return denied
     if not can_view_documentation(request) or not can_view_fleet(request):
         return RedirectResponse("/v2-clean?error=forbidden", status_code=303)
+    resolved_return = resolve_return_context(
+        settings.app_secret_key,
+        return_context,
+        allowed_prefixes=("/v2-clean/documentation/by-vehicle",),
+        max_age_seconds=8 * 60 * 60,
+    )
+    safe_return_to = (
+        resolved_return.url
+        if resolved_return
+        else "/v2-clean/documentation/by-vehicle"
+    )
     with SessionLocal() as db:
         vehicle = db.get(Vehicle, vehicle_id)
         if not vehicle:
@@ -15214,9 +15277,90 @@ def clean_documentation_vehicle_preview(request: Request, vehicle_id: int):
             materialize_sources=False,
             include_all_document_sources=True,
         )
+        archive_document_ids = {
+            int(row["id"])
+            for row in module_ctx["archive_rows"]
+            if row.get("kind") == "document" and row.get("id")
+        }
+        archive_record_ids = {
+            int(row["id"])
+            for row in module_ctx["archive_rows"]
+            if row.get("kind") == "pending_record" and row.get("id")
+        }
+        documents_by_id = (
+            {
+                document.id: document
+                for document in db.scalars(
+                    select(Document).where(Document.id.in_(archive_document_ids))
+                ).all()
+            }
+            if archive_document_ids
+            else {}
+        )
+        records_by_id = (
+            {
+                record.id: record
+                for record in db.scalars(
+                    select(VehicleDocumentRecord).where(
+                        VehicleDocumentRecord.id.in_(archive_record_ids)
+                    )
+                ).all()
+            }
+            if archive_record_ids
+            else {}
+        )
+        can_view_confidential = can_view_management_documents(request)
+        visible_archive_rows = []
+        for row in module_ctx["archive_rows"]:
+            document = documents_by_id.get(int(row["id"])) if row.get("kind") == "document" else None
+            record = records_by_id.get(int(row["id"])) if row.get("kind") == "pending_record" else None
+            if (
+                document
+                and document.confidentiality_level == "management"
+                and not can_view_confidential
+            ):
+                continue
+            validity_date = record.end_date if record else None
+            row["subtype"] = record.subtype if record and record.subtype else row.get("archive_label")
+            row["validity_date"] = validity_date
+            row["validity_state"] = (
+                "expired" if validity_date and validity_date < date.today() else "valid" if validity_date else "unregistered"
+            )
+            row["confidentiality"] = (
+                document.confidentiality_level if document and document.confidentiality_level else "internal"
+            )
+            row["visibility_label"] = (
+                "Confidencial — gestão" if row["confidentiality"] == "management" else "Interno"
+            )
+            row["sharing_label"] = "Não partilhado por omissão"
+            visible_archive_rows.append(row)
+        selected_row = next(
+            (
+                row
+                for row in visible_archive_rows
+                if selected == f"{row.get('kind')}:{row.get('id')}"
+            ),
+            visible_archive_rows[0] if visible_archive_rows else None,
+        )
+        visible_document_ids = {
+            int(row["id"])
+            for row in visible_archive_rows
+            if row.get("kind") == "document" and row.get("id")
+        }
+        comparison_rows = [
+            row
+            for row in module_ctx["comparison_rows"]
+            if not row.get("invoice")
+            or row["invoice"].get("kind") != "document"
+            or int(row["invoice"].get("id") or 0) in visible_document_ids
+        ]
+        timeline_events, _ticks, _segments, _board = _build_timeline(
+            module_ctx["structured_rows"],
+            visible_archive_rows,
+        )
         invoice_rows = [
             row
-            for row in module_ctx["archive_rows"]
+            for row in visible_archive_rows
             if row.get("archive_group") == "invoices"
         ]
         expected_rows = [
@@ -15236,12 +15380,12 @@ def clean_documentation_vehicle_preview(request: Request, vehicle_id: int):
         ]
         diagnostic_rows = [
             row
-            for row in module_ctx["archive_rows"]
+            for row in visible_archive_rows
             if row.get("archive_group") == "diagnostics"
         ]
         other_rows = [
             row
-            for row in module_ctx["archive_rows"]
+            for row in visible_archive_rows
             if row.get("archive_group") not in {"invoices", "diagnostics"}
         ]
         return templates.TemplateResponse(
@@ -15249,15 +15393,25 @@ def clean_documentation_vehicle_preview(request: Request, vehicle_id: int):
             "clean_documentation_vehicle_preview.html",
             {
                 "vehicle": vehicle,
+                "return_to": safe_return_to,
+                "return_context_token": return_context if resolved_return else "",
                 "module_ctx": module_ctx,
                 "real_invoice_rows": real_invoice_rows,
                 "expected_rows": expected_rows,
                 "work_order_rows": work_order_rows,
                 "diagnostic_rows": diagnostic_rows,
                 "other_rows": other_rows,
-                "comparison_rows": module_ctx["comparison_rows"],
-                "timeline_events": module_ctx["timeline_events"],
+                "comparison_rows": comparison_rows,
+                "timeline_events": timeline_events,
                 "can_manage_documents": can_manage_documentation(request),
+                "can_publish_documents": can_manage_carfast_fleet(request),
+                "can_email_documents": has_any_web_permission(
+                    request,
+                    "email.triage",
+                    "email.manage",
+                    "admin.manage",
+                ),
+                "selected_row": selected_row,
             },
         )
 

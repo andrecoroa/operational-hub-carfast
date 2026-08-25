@@ -32,7 +32,23 @@ def _vehicle_map(db: Session, vehicle_ids: set[int]) -> dict[int, Vehicle]:
     }
 
 
-def vehicles_with_pending_invoices(db: Session) -> list[dict[str, Any]]:
+def vehicles_with_pending_invoices(
+    db: Session,
+    *,
+    include_confidential: bool = True,
+) -> list[dict[str, Any]]:
+    document_conditions = [
+        Document.vehicle_id.is_not(None),
+        Document.document_type.in_(INVOICE_TYPES),
+        ~Document.status.in_({"classified", "archived", "removed", "deleted"}),
+    ]
+    if not include_confidential:
+        document_conditions.append(
+            or_(
+                Document.confidentiality_level.is_(None),
+                Document.confidentiality_level != "management",
+            )
+        )
     actual = {
         int(vehicle_id): int(count)
         for vehicle_id, count in db.execute(
@@ -41,11 +57,7 @@ def vehicles_with_pending_invoices(db: Session) -> list[dict[str, Any]]:
                 DocumentWorkflowState,
                 DocumentWorkflowState.document_id == Document.id,
             )
-            .where(
-                Document.vehicle_id.is_not(None),
-                Document.document_type.in_(INVOICE_TYPES),
-                ~Document.status.in_({"classified", "archived", "removed", "deleted"}),
-            )
+            .where(*document_conditions)
             .group_by(Document.vehicle_id)
         ).all()
     }
@@ -79,7 +91,11 @@ def vehicles_with_pending_invoices(db: Session) -> list[dict[str, Any]]:
     return rows
 
 
-def vehicle_work_order_invoice_divergence(db: Session) -> list[dict[str, Any]]:
+def vehicle_work_order_invoice_divergence(
+    db: Session,
+    *,
+    include_confidential: bool = True,
+) -> list[dict[str, Any]]:
     work_orders = {
         int(vehicle_id): int(count)
         for vehicle_id, count in db.execute(
@@ -92,15 +108,28 @@ def vehicle_work_order_invoice_divergence(db: Session) -> list[dict[str, Any]]:
             .group_by(VehicleDocumentRecord.vehicle_id)
         ).all()
     }
+    invoice_conditions = [
+        Document.vehicle_id.is_not(None),
+        Document.document_type.in_(INVOICE_TYPES),
+        ~Document.status.in_({"removed", "deleted"}),
+    ]
+    confirmed_conditions = [
+        Document.vehicle_id.is_not(None),
+        DocumentLink.entity_type == "vehicle_document_record",
+        DocumentLink.category == "invoice_work_order",
+    ]
+    if not include_confidential:
+        confidentiality_condition = or_(
+            Document.confidentiality_level.is_(None),
+            Document.confidentiality_level != "management",
+        )
+        invoice_conditions.append(confidentiality_condition)
+        confirmed_conditions.append(confidentiality_condition)
     invoices = {
         int(vehicle_id): int(count)
         for vehicle_id, count in db.execute(
             select(Document.vehicle_id, func.count())
-            .where(
-                Document.vehicle_id.is_not(None),
-                Document.document_type.in_(INVOICE_TYPES),
-                ~Document.status.in_({"removed", "deleted"}),
-            )
+            .where(*invoice_conditions)
             .group_by(Document.vehicle_id)
         ).all()
     }
@@ -109,11 +138,7 @@ def vehicle_work_order_invoice_divergence(db: Session) -> list[dict[str, Any]]:
         for vehicle_id, count in db.execute(
             select(Document.vehicle_id, func.count(func.distinct(DocumentLink.document_id)))
             .join(DocumentLink, DocumentLink.document_id == Document.id)
-            .where(
-                Document.vehicle_id.is_not(None),
-                DocumentLink.entity_type == "vehicle_document_record",
-                DocumentLink.category == "invoice_work_order",
-            )
+            .where(*confirmed_conditions)
             .group_by(Document.vehicle_id)
         ).all()
     }
@@ -163,7 +188,12 @@ def _service_label(category: str, value: str | None, free_text: str | None) -> s
     return f"{category_label}: {value_label}"
 
 
-def repeated_vehicle_services(db: Session, *, maximum_tags: int = 5000) -> list[dict[str, Any]]:
+def repeated_vehicle_services(
+    db: Session,
+    *,
+    maximum_tags: int = 5000,
+    include_confidential: bool = True,
+) -> list[dict[str, Any]]:
     tags = db.scalars(
         select(VehicleDocumentRecordTag)
         .where(
@@ -177,6 +207,17 @@ def repeated_vehicle_services(db: Session, *, maximum_tags: int = 5000) -> list[
         .limit(maximum_tags)
     ).all()
     document_ids = {tag.document_id for tag in tags if tag.document_id}
+    if document_ids and not include_confidential:
+        confidential_document_ids = set(
+            db.scalars(
+                select(Document.id).where(
+                    Document.id.in_(document_ids),
+                    Document.confidentiality_level == "management",
+                )
+            ).all()
+        )
+        tags = [tag for tag in tags if tag.document_id not in confidential_document_ids]
+        document_ids -= confidential_document_ids
     record_ids = {tag.record_id for tag in tags if tag.record_id}
     document_dates = (
         {
@@ -248,9 +289,105 @@ def repeated_vehicle_services(db: Session, *, maximum_tags: int = 5000) -> list[
     return rows
 
 
-def documentation_by_vehicle_overview(db: Session) -> dict[str, list[dict[str, Any]]]:
+def documentation_by_vehicle_overview(
+    db: Session,
+    *,
+    include_confidential: bool = True,
+) -> dict[str, list[dict[str, Any]]]:
     return {
-        "pending_invoices": vehicles_with_pending_invoices(db),
-        "divergence": vehicle_work_order_invoice_divergence(db),
-        "repeated_services": repeated_vehicle_services(db),
+        "vehicles": vehicle_document_inventory(
+            db,
+            include_confidential=include_confidential,
+        ),
+        "pending_invoices": vehicles_with_pending_invoices(
+            db,
+            include_confidential=include_confidential,
+        ),
+        "divergence": vehicle_work_order_invoice_divergence(
+            db,
+            include_confidential=include_confidential,
+        ),
+        "repeated_services": repeated_vehicle_services(
+            db,
+            include_confidential=include_confidential,
+        ),
     }
+
+
+def vehicle_document_inventory(
+    db: Session,
+    *,
+    include_confidential: bool = True,
+) -> list[dict[str, Any]]:
+    """Return one explainable, read-only documentation summary per vehicle."""
+
+    document_conditions = [
+        Document.vehicle_id.is_not(None),
+        Document.archived.is_(False),
+        ~Document.status.in_({"removed", "deleted"}),
+    ]
+    if not include_confidential:
+        document_conditions.append(
+            or_(
+                Document.confidentiality_level.is_(None),
+                Document.confidentiality_level != "management",
+            )
+        )
+    document_rows = db.execute(
+        select(
+            Document.vehicle_id,
+            func.count(Document.id),
+            func.count(Document.id).filter(Document.confidentiality_level == "management"),
+        )
+        .where(*document_conditions)
+        .group_by(Document.vehicle_id)
+    ).all()
+    record_rows = db.execute(
+        select(
+            VehicleDocumentRecord.vehicle_id,
+            func.count(VehicleDocumentRecord.id),
+            func.count(VehicleDocumentRecord.id).filter(
+                VehicleDocumentRecord.end_date < date.today()
+            ),
+            func.count(VehicleDocumentRecord.id).filter(
+                VehicleDocumentRecord.has_physical_file.is_(False)
+            ),
+        )
+        .where(
+            VehicleDocumentRecord.vehicle_id.is_not(None),
+            ~VehicleDocumentRecord.status.in_({"removed", "deleted"}),
+        )
+        .group_by(VehicleDocumentRecord.vehicle_id)
+    ).all()
+    documents = {
+        int(vehicle_id): {"documents": int(total), "confidential": int(confidential)}
+        for vehicle_id, total, confidential in document_rows
+    }
+    records = {
+        int(vehicle_id): {
+            "records": int(total),
+            "expired": int(expired),
+            "missing": int(missing),
+        }
+        for vehicle_id, total, expired, missing in record_rows
+    }
+    vehicle_ids = set(documents) | set(records)
+    vehicles = _vehicle_map(db, vehicle_ids)
+    rows: list[dict[str, Any]] = []
+    for vehicle_id in vehicle_ids:
+        vehicle = vehicles.get(vehicle_id)
+        if not vehicle:
+            continue
+        document_summary = documents.get(vehicle_id, {"documents": 0, "confidential": 0})
+        record_summary = records.get(vehicle_id, {"records": 0, "expired": 0, "missing": 0})
+        rows.append(
+            {
+                "vehicle": vehicle,
+                "vehicle_id": vehicle_id,
+                **document_summary,
+                **record_summary,
+                "total": document_summary["documents"] + record_summary["records"],
+            }
+        )
+    rows.sort(key=lambda row: (row["vehicle"].plate or row["vehicle"].vin or "", row["vehicle_id"]))
+    return rows

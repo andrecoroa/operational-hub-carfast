@@ -1342,6 +1342,9 @@ def email_thread(request: Request, thread_id: int):
     if not auth:
         return RedirectResponse("/login?next=/v2-clean/email", status_code=303)
     user_id, permissions = auth
+    return_context = request.query_params.get("return_context", "")
+    if not return_context.startswith("/v2-clean/email") or return_context.startswith("//"):
+        return_context = "/v2-clean/email"
     with SessionLocal() as db:
         thread = db.get(EmailThread, thread_id)
         if not thread or not _can_use_channel(
@@ -1465,6 +1468,8 @@ def email_thread(request: Request, thread_id: int):
                 ),
                 "outbound_enabled": settings.email_outbound_enabled,
                 "embedded": False,
+                "foundation_ui_enabled": settings.visual_foundation_enabled,
+                "return_context": return_context,
             },
         )
 

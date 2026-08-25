@@ -336,6 +336,10 @@ dialog { border: 1px solid var(--cf-gray-200); border-radius: 12px; box-shadow: 
 .visual-email-compose { width: min(720px,calc(100vw - 32px)); max-width: 720px; max-height: calc(100vh - 32px); }
 :is(.visual-email-preview,.visual-email-compose)::backdrop { background: rgb(6 27 56 / 58%); }
 .visual-email-thread-page .email-modal-shell { margin-top: 16px; border: 1px solid var(--cf-gray-200); border-radius: 9px; box-shadow: 0 1px 2px rgb(16 24 40 / 4%); }
+:is(.visual-email-preview,.visual-email-thread-page) .email-save-triage { color: #fff; background: var(--cf-blue-600); border-color: var(--cf-blue-600); }
+:is(.visual-email-preview,.visual-email-thread-page) .email-save-triage:hover { background: var(--cf-blue-700); border-color: var(--cf-blue-700); }
+:is(.visual-email-preview,.visual-email-thread-page) .email-conclude { color: #fff; background: var(--cf-teal-700); border-color: var(--cf-teal-700); }
+:is(.visual-email-preview,.visual-email-thread-page) .email-modal-footer .secondary { color: var(--cf-blue-700); background: #fff; border-color: var(--cf-gray-300); }
 
 @media (max-width: 1199px) {
   .visual-email-metrics { grid-template-columns: repeat(3,minmax(0,1fr)); }
@@ -358,6 +362,7 @@ dialog { border: 1px solid var(--cf-gray-200); border-radius: 12px; box-shadow: 
   .visual-email-table-wrap::before { display: block; padding: 7px 12px; content: "Deslize para ver todas as colunas →"; color: var(--cf-gray-600); background: var(--cf-gray-050); border-bottom: 1px solid var(--cf-gray-200); font-size: 10px; }
   .visual-email-table [data-email-preview-trigger] { min-height: 44px; }
   .visual-email-preview,.visual-email-compose { width: 100vw; max-width: 100vw; height: 100dvh; max-height: 100dvh; margin: 0; border-radius: 0; }
+  :is(.visual-email-preview,.visual-email-thread-page) .email-modal-footer button,:is(.visual-email-preview,.visual-email-thread-page) .email-modal-footer .button-link { min-height: 48px; }
 }
 
 @media (max-width: 420px) {

@@ -10265,12 +10265,14 @@ def clean_fleet_documents(
     ocr_lines: int | None = None,
     ocr_error: str | None = None,
     open_item: str = "",
+    return_to: str = "",
 ):
     denied = clean_experience_denied(request)
     if denied:
         return denied
     if not can_view_fleet(request):
         return RedirectResponse("/v2-clean?error=forbidden", status_code=303)
+    safe_return_to = _clean_v2_return_url(return_to, "/v2-clean/fleet")
     search = (q or "").strip().lower()
     clean_main_group = (main_group or doc_group or "").strip()
     clean_main_group = {
@@ -10608,6 +10610,8 @@ def clean_fleet_documents(
                 "ocr_lines": ocr_lines,
                 "ocr_error": ocr_error,
                 "open_item": open_item,
+                "return_to": safe_return_to,
+                "foundation_ui_enabled": settings.visual_foundation_enabled,
             },
         )
         db.commit()
@@ -11158,6 +11162,7 @@ def clean_fleet_diagnostics(
     status: str = "",
     selected: str = "",
     preview: int = 0,
+    return_to: str = "",
 ):
     denied = clean_experience_denied(request)
     if denied:
@@ -11165,6 +11170,7 @@ def clean_fleet_diagnostics(
     if not can_view_fleet(request):
         return RedirectResponse("/v2-clean?error=forbidden", status_code=303)
 
+    safe_return_to = _clean_v2_return_url(return_to, "/v2-clean/fleet")
     with SessionLocal() as db:
         vehicle = db.get(Vehicle, vehicle_id)
         if not vehicle:
@@ -11370,6 +11376,8 @@ def clean_fleet_diagnostics(
                 "extracted_count": sum(row["extraction_health"] == "Extraído" for row in rows),
                 "review_count": sum(row["status"] in {"pending", "needs_review", "pending_validation"} for row in rows),
                 "preview_mode": bool(preview),
+                "return_to": safe_return_to,
+                "foundation_ui_enabled": settings.visual_foundation_enabled,
                 "origin_options": [
                     ("document_archive", "Arquivo documental"),
                     ("workshop_process", "Processo de oficina"),

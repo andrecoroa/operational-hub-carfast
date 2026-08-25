@@ -281,3 +281,35 @@ Mode is N/A and excluded from readiness by strategy decision.
 The superseded data-only promotion RC1 is not a gate and must not be retried.
 Only an independent PASS and the non-consuming action-time read-back may change
 this status. Blue remains writable and no real payload has started.
+
+## Frozen hold state — 2026-08-25
+
+Execution is deliberately paused before the Blue window while Render investigates
+Frankfurt SSH sessions that reach the gateway banner but time out with RC124 for
+both Blue `srv-d8145e7aqgkc73al90ig` and Green
+`srv-da5dk9bm8hqs73camds0`. No alternate transport or blind retry is permitted.
+The support conversation is identified by the subject **Frankfurt SSH gateway
+sessions time out for two services**.
+
+- Blue's last direct watchdog read-back was `off|off|t`: default transaction
+  read-only off, session read-only off, synthetic fixture absent. No later Blue
+  mutation occurred.
+- Green remained healthy (HTTP 200), with effects external to the environment off.
+- Future Green database `dpg-da6d4d2jnfac73e2cl40-a` remains private and preserved;
+  rollback database `dpg-da5dj0e417fc73f3uakg-a` remains untouched.
+- Codespace `musical-space-computing-machine-p7qq6gjr9j9h646g` is stopped, not
+  deleted. No required evidence depends on its `/dev/shm` contents.
+- The diagnostic and historical Render SSH keys were revoked. Any future key must
+  be new, operation-specific and revoked during cleanup.
+
+Resume only after Render confirms remediation:
+
+1. Recreate one ephemeral Render SSH key and verify its exact fingerprint.
+2. Wait at least 120 seconds, pin the Frankfurt host key, then run bounded marker
+   commands against the exact Blue and Green service IDs.
+3. If either marker returns RC124, stop and require a managed Render resolution;
+   do not change transport or application code.
+4. Re-run the single non-consuming Blue/Green preflight matrix and close the named
+   15/15 gates from direct command evidence.
+5. Only on independent 15/15 PASS may the single, watchdog-protected Blue window
+   begin under the already approved conventional capture runbook.

@@ -3,66 +3,57 @@
 <div class="app-shell clean-shell">
   {% set active_menu = "clean_processes" %}
   {% include "_sidebar.html" %}
-  <main class="content clean-content{% if foundation_ui_enabled %} ui-foundation ui-page-shell{% endif %}">
-    <header class="clean-process-topbar{% if foundation_ui_enabled %} ui-page-header{% endif %}">
-        <div>
-          <p class="eyebrow">Nova experiencia / processos</p>
-          <h2>Centro de Processos</h2>
-          <p>Base limpa da nova experiência. Só mostra processos preparados para esta versão.</p>
-        </div>
-      <div class="clean-header-actions clean-header-actions-strong">
-        <a class="button-link secondary-link" href="/v2-clean">Inicio</a>
-        <a class="button-link secondary-link" href="/v2-clean/workshop">Oficina</a>
+  <main class="content clean-content ui-foundation ui-page-shell process-command-page">
+    <header class="ui-page-header process-command-header">
+      <div><p class="eyebrow">Operação / Centro de Processos</p><h2>Centro de Processos</h2><p>Priorize, acompanhe e abra o contexto operacional sem perder os filtros de trabalho.</p></div>
+      <div class="clean-header-actions process-command-actions">
+        <a class="button-link secondary-link" href="/v2-clean/tasks?workspace=management">Tarefas de gestão</a>
+        {% if nav_has_permission(request, "management_center.read", "management_center.write", "admin.manage") %}<a class="button-link primary-link" href="/management-center">Abrir gestão completa</a>{% endif %}
       </div>
     </header>
 
-    <section class="clean-process-kpi-row" aria-label="Indicadores do centro de processos">
-      <article><span>Areas</span><strong>{{ process_metrics.areas }}</strong><em>ativas</em></article>
-      <article><span>Abertos</span><strong>{{ process_metrics.open }}</strong><em>em acompanhamento</em></article>
-      <article><span>Criticos</span><strong>{{ process_metrics.critical }}</strong><em>a rever</em></article>
-      <article><span>Modelos</span><strong>{{ process_metrics.models }}</strong><em>previstos</em></article>
+    <section class="clean-process-kpi-row process-command-kpis" aria-label="Indicadores do centro de processos">
+      <a href="#process-workbench"><span>Em acompanhamento</span><strong>{{ process_metrics.open }}</strong><em>processos ativos</em></a>
+      <a href="#priority-critical"><span>Prioridade imediata</span><strong>{{ process_metrics.critical }}</strong><em>processos críticos</em></a>
+      <a href="#process-workbench"><span>Áreas operacionais</span><strong>{{ process_metrics.areas }}</strong><em>filas disponíveis</em></a>
+      <a href="#process-models"><span>Modelos ativos</span><strong>{{ process_metrics.models }}</strong><em>percursos configurados</em></a>
     </section>
 
-    <section class="clean-panel clean-card-wide clean-process-area-panel">
-      <div class="table-heading flat-heading">
-        <div>
-          <p class="eyebrow">Areas</p>
-          <h3>Escolher onde tratar o processo</h3>
-          <p>Cada área já fica preparada, mas sem puxar histórico antigo da app atual.</p>
+    <section class="clean-panel process-command-toolbar" aria-labelledby="process-filter-title">
+      <div><p class="eyebrow">Fila de trabalho</p><h3 id="process-filter-title">Encontrar e priorizar</h3></div>
+      <form method="get" action="/v2-clean/processes" role="search">
+        <label>Pesquisar <input type="search" name="q" placeholder="Referência, viatura ou responsável" autocomplete="off"></label>
+        <label>Estado <select name="status"><option value="">Todos</option><option value="open">Em aberto</option><option value="critical">Crítico</option></select></label>
+        <label>Área <select name="area"><option value="">Todas</option>{% for area in area_cards %}<option value="{{ area.code }}">{{ area.label }}</option>{% endfor %}</select></label>
+        <button type="submit">Aplicar filtros</button><a class="button-link secondary-link" href="/v2-clean/processes">Limpar</a>
+      </form>
+    </section>
+
+    <section class="process-command-layout" id="process-workbench">
+      <div class="clean-panel process-command-queue">
+        <header class="process-command-section-head"><div><p class="eyebrow">Visão operacional</p><h3>Filas por área</h3></div><span>{{ process_metrics.areas }} áreas</span></header>
+        <div class="process-command-table" role="region" aria-label="Filas de processos" tabindex="0">
+          <table><thead><tr><th>Área</th><th>Em aberto</th><th>Críticos</th><th>Modelos</th><th><span class="sr-only">Ação</span></th></tr></thead><tbody>
+          {% for area in area_cards %}
+            <tr{% if area.critical %} id="priority-critical"{% endif %}>
+              <td><span class="clean-area-code">{{ area.short }}</span><div><strong>{{ area.label }}</strong><small>{{ area.description }}</small></div></td>
+              <td><strong>{{ area.open }}</strong><small>{{ area.state }}</small></td>
+              <td>{% if area.critical %}<span class="process-priority-pill">{{ area.critical }} críticos</span>{% else %}<span class="process-state-pill">Sem críticos</span>{% endif %}</td>
+              <td><span>{{ area.models|length }}</span><small>{{ area.models|join(' · ') }}</small></td>
+              <td><a class="button-link secondary-link" href="{{ area.href }}">{{ area.action }}</a></td>
+            </tr>
+          {% endfor %}
+          </tbody></table>
         </div>
       </div>
 
-      <div class="clean-process-area-grid clean-process-area-grid-compact">
-        {% for area in area_cards %}
-          <article class="clean-process-area-card clean-process-area-card-compact" id="process-{{ area.code }}">
-            <div class="clean-process-area-head">
-              <span class="clean-area-code">{{ area.short }}</span>
-              <div>
-                <strong>{{ area.label }}</strong>
-                <small>{{ area.description }}</small>
-              </div>
-            </div>
-
-            <div class="clean-process-area-metrics">
-              <span><b>{{ area.open }}</b><em>Abertos</em></span>
-              <span><b>{{ area.critical }}</b><em>Criticos</em></span>
-            </div>
-
-            <div class="clean-model-chip-row" aria-label="Modelos previstos em {{ area.label }}">
-              {% for model in area.models %}
-                <span>{{ model }}</span>
-              {% endfor %}
-            </div>
-
-            <div class="clean-process-card-footer">
-              <em>{{ area.state }}</em>
-              <a href="{{ area.href }}">{{ area.action }}</a>
-            </div>
-          </article>
-        {% endfor %}
-      </div>
+      <aside class="clean-panel process-command-summary" id="process-models">
+        <p class="eyebrow">Contexto</p><h3>Resumo da operação</h3>
+        <dl><div><dt>Total em aberto</dt><dd>{{ process_metrics.open }}</dd></div><div><dt>A exigir revisão</dt><dd>{{ process_metrics.critical }}</dd></div><div><dt>Modelos disponíveis</dt><dd>{{ process_metrics.models }}</dd></div></dl>
+        <div class="process-command-guidance"><strong>Próxima ação</strong><p>Comece pelas filas críticas. O detalhe preserva o contexto e permite regressar a esta visão.</p></div>
+        <a class="button-link secondary-link" href="/v2-clean/tasks?workspace=management">Ver tarefas associadas</a>
+      </aside>
     </section>
-
   </main>
 </div>
 {% endblock %}

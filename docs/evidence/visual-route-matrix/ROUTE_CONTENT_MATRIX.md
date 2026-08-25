@@ -10,19 +10,19 @@ Shell: **PASS transversal em todas as 53 rotas** (asset, sidebar, topbar e compo
 | 1 | `/v2-clean` | PASS | reconstruído/aprovado | Dashboard aprovado |
 | 2 | `/v2-clean/admin` | PASS | reconstruído pendente de captura | Parceiros/Admin runtime PASS |
 | 2A | `/v2-clean/admin/setup` | PASS | reconstruído/aprovado | Green 46166d87; 9/9, RBAC e responsive PASS |
-| 3 | `/v2-clean/admin/audit` | PASS | parcial | Administração residual |
-| 4 | `/v2-clean/admin/evolution` | PASS | parcial | Administração residual |
-| 5 | `/v2-clean/admin/integrations` | PASS | parcial | Administração residual; efeitos externos OFF |
-| 6 | `/v2-clean/admin/operations` | PASS | parcial | Administração residual |
-| 7 | `/v2-clean/admin/organization` | PASS | parcial | Administração residual |
+| 3 | `/v2-clean/admin/audit` | PASS | reconstruído/aprovado | Administração residual |
+| 4 | `/v2-clean/admin/evolution` | PASS | reconstruído/aprovado | Administração residual |
+| 5 | `/v2-clean/admin/integrations` | PASS | reconstruído/aprovado | Administração residual; efeitos externos OFF |
+| 6 | `/v2-clean/admin/operations` | PASS | reconstruído/aprovado | Administração residual |
+| 7 | `/v2-clean/admin/organization` | PASS | reconstruído/aprovado | Administração residual |
 | 8 | `/v2-clean/admin/overview` | PASS | reconstruído pendente de captura | Parceiros/Admin runtime PASS |
 | 9 | `/v2-clean/admin/roles` | PASS | reconstruído pendente de captura | Perfis/RBAC runtime PASS |
-| 10 | `/v2-clean/admin/security` | PASS | parcial | Administração residual |
-| 11 | `/v2-clean/admin/settings` | PASS | parcial | Administração residual |
+| 10 | `/v2-clean/admin/security` | PASS | reconstruído/aprovado | Administração residual |
+| 11 | `/v2-clean/admin/settings` | PASS | reconstruído/aprovado | Administração residual |
 | 12 | `/v2-clean/admin/suppliers` | PASS | reconstruído pendente de captura | Tipos/subtipos/modelos runtime PASS |
 | 13 | `/v2-clean/admin/users` | PASS | reconstruído pendente de captura | Utilizadores runtime PASS |
 | 14 | `/v2-clean/admin/work-classification` | PASS | reconstruído pendente de captura | Categorias/parametrização/Email runtime PASS |
-| 15 | `/v2-clean/admin/workshop-models` | PASS | parcial | Oficina/Configuração residual |
+| 15 | `/v2-clean/admin/workshop-models` | PASS | reconstruído/aprovado | Oficina/Configuração residual |
 | 16 | `/v2-clean/diagnostics` | PASS | reconstruído/aprovado | Documentação residual Green 84204d61 |
 | 17 | `/v2-clean/documentation` | PASS | reconstruído/aprovado | Workbench documental aprovado |
 | 18 | `/v2-clean/documentation/archive` | PASS | reconstruído/aprovado | Documentação residual Green 84204d61 |
@@ -61,9 +61,9 @@ Shell: **PASS transversal em todas as 53 rotas** (asset, sidebar, topbar e compo
 | 51 | `/v2-clean/workshop` | PASS | reconstruído/aprovado | Oficina aprovada |
 | 52 | `/v2-clean/workshop-entry` | PASS | reconstruído/aprovado | Oficina aprovada |
 
-## Superfícies ainda parcial ou legado (lista nominal fechada em 84204d61)
+## Superfícies ainda parcial ou legado
 
-1. **Administração residual (tranche final B, ativa):** `/v2-clean/admin/audit`, `/evolution`, `/integrations`, `/operations`, `/organization`, `/security`, `/settings` e `/workshop-models`; funcional, em reconstrução composicional homogénea sem alterar o Setup aprovado.
+Nenhuma das 53 rotas canónicas permanece classificada como conteúdo parcial ou legado após o fecho da Administração residual no deploy `56628566`.
 2. **Resíduos operacionais (tranche final C):** `/v2-clean/fleet/financial-audit`, `/v2-clean/fleet/sales-access` e `/v2-clean/tasks/recurring`; superfícies especializadas ainda não fechadas pelo respetivo workbench.
 
 As superfícies reconstruídas pendentes apenas de captura não constam desta lista, porque o bloqueio é de evidência da plataforma e não de conteúdo.

@@ -1,7 +1,8 @@
 # Matriz factual das superfícies v2-clean
 
-Base: `integration/modular-architecture@5a5ff8ac7a0b946962cb7bd8334a368d5b730078`  
-Inventário: `scripts/check_visual_surface_inventory.py` — 52/52 rotas estáticas canónicas.  
+Base: `integration/modular-architecture@5a5ff8ac7a0b946962cb7bd8334a368d5b730078`
+
+Inventário: `scripts/check_visual_surface_inventory.py` — 52/52 rotas estáticas canónicas.
 Shell: **PASS transversal em todas as 52 rotas** (asset, sidebar, topbar e composição de navegação). A coluna `Conteúdo` não herda esse PASS: descreve apenas a reconstrução da superfície funcional.
 
 | # | Rota | Shell | Conteúdo | Evidência / próxima tranche |

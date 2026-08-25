@@ -133,7 +133,10 @@ def test_symlink_marker_and_ambiguous_roots_fail_closed(tmp_path: Path) -> None:
             recovery.recover_migration_window("not-used", data_root=tmp_path)
         (tmp_path / recovery.MARKER_NAME).unlink()
     interrupted_tree(tmp_path)
-    (tmp_path / "carfast_documents" / "unexpected").write_text("x", encoding="utf-8")
+    documents = tmp_path / "carfast_documents"
+    documents.chmod(0o755)
+    (documents / "unexpected").write_text("x", encoding="utf-8")
+    documents.chmod(0o555)
     write_marker(tmp_path)
     with pytest.raises(recovery.RecoveryError):
         recovery.recover_migration_window("not-used", data_root=tmp_path)

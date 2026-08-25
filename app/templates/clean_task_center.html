@@ -4,6 +4,7 @@
   {% set active_menu = "clean_tasks" %}
   {% include "_sidebar.html" %}
   <main class="content clean-content{% if foundation_ui_enabled %} ui-foundation ui-page-shell{% endif %}">
+    {% set visual_section = "Operação" %}{% set visual_page = "Service Desk" %}{% include "_visual_topbar.html" %}
     <header class="clean-module-hero clean-task-hero{% if foundation_ui_enabled %} ui-page-header{% endif %}">
       <div>
         <p class="eyebrow">Operação</p>
@@ -206,7 +207,7 @@
       <div class="clean-task-table-wrap">
         <table class="clean-doc-table clean-task-table">
           <colgroup><col class="task-col-main"><col class="task-col-context"><col class="task-col-owner"><col class="task-col-date"><col class="task-col-due"><col class="task-col-status"><col class="task-col-action"></colgroup>
-          <thead><tr><th>Tarefa</th><th>Hierarquia e contexto</th><th>Executor</th><th>Criada</th><th>Prazo</th><th>Estado</th><th><span class="sr-only">Ação</span></th></tr></thead>
+          <thead><tr><th>Tarefa</th><th>Hierarquia e contexto</th><th>Executor</th><th>Criada em</th><th>Prazo</th><th>Estado</th><th><span class="sr-only">Ação</span></th></tr></thead>
           <tbody>
           {% for task in tasks %}
             {% set task_workspace = "audit" if task.task_type in ["audit_task", "workshop_audit"] else "workshop" if task.task_type == "workshop_task" else "management" if task.task_type == "management_task" else "administration" if task.task_type == "administration_task" else "operational" %}

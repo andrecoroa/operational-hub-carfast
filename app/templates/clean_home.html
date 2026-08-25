@@ -11,6 +11,7 @@
   {% set home_can_fleet = "navigation.fleet.access" in home_nav_perms and nav_has_permission(request, "vehicles.read", "vehicles.write", "fleet.commerce.manage", "admin.manage") %}
   {% set home_can_documentation = "navigation.documentation.access" in home_nav_perms and nav_has_permission(request, "documents.read", "documents.write", "admin.manage") %}
   <main class="content clean-content">
+    {% set visual_section = "Operação" %}{% set visual_page = "Visão geral" %}{% include "_visual_topbar.html" %}
     <header class="clean-hero clean-home-hero clean-home-operational-hero">
       <div>
         <p class="eyebrow">Operação</p>

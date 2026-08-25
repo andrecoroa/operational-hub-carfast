@@ -16035,6 +16035,15 @@ button.clean-upload-preview-card {
   align-items: start;
 }
 
+.clean-doc-ocr-calibration-grid > * {
+  min-width: 0;
+}
+
+.clean-doc-ocr-calibration-card .clean-doc-table-wrap {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
 .clean-doc-ocr-preview-panel,
 .clean-doc-ocr-calibration-card,
 .clean-doc-ocr-calibration-feedback {

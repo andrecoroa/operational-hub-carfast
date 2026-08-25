@@ -2,6 +2,7 @@
 {% set is_clean_experience = request.url.path.startswith('/v2-clean') %}
 <aside class="sidebar" id="visual-sidebar">
   <div class="sidebar-brand">
+    <span class="visual-brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 2.7 20 6v5.6c0 5-3.2 8.1-8 9.7-4.8-1.6-8-4.7-8-9.7V6l8-3.3Z"/><path d="m8.2 12 2.2 2.2 5.4-5.4"/></svg></span>
     <p class="eyebrow">CarFast</p>
     <h1>Operational Hub</h1>
     {% if is_clean_experience %}
@@ -38,7 +39,7 @@
       {% if can_nav_processes %}<a href="/v2-clean/processes" {% if active_menu == "clean_processes" %}class="active"{% endif %}>Centro de Processos</a>{% endif %}
       {% set workshop_menu_open = active_menu == "workshop" or request.url.path.startswith('/v2-clean/workshop') %}
       {% if can_nav_workshop %}<details class="sidebar-nav-group" {% if workshop_menu_open %}open{% endif %}>
-        <summary {% if workshop_menu_open %}class="active"{% endif %}>Oficina</summary>
+        <summary data-nav-icon="workshop" {% if workshop_menu_open %}class="active"{% endif %}>Oficina</summary>
         <div class="sidebar-nav-children">
           {% if nav_has_permission(request, "workshop.read", "workshop.write", "admin.manage") %}<a class="sidebar-sub-link" href="/v2-clean/workshop">Visão geral</a>{% endif %}
           {% if nav_has_permission(request, "workshop.write", "admin.manage") %}<a class="sidebar-sub-link" href="/v2-clean/workshop-entry">Novo processo</a><a class="sidebar-sub-link" href="/v2-clean/workshop-entry?historical=1">Processo histórico</a>{% endif %}
@@ -46,7 +47,7 @@
       </details>{% endif %}
       {% set fleet_menu_open = active_menu in ["fleet", "fleet_sales"] or request.url.path.startswith('/v2-clean/fleet') %}
       {% if can_nav_fleet %}<details class="sidebar-nav-group" {% if fleet_menu_open %}open{% endif %}>
-        <summary {% if fleet_menu_open %}class="active"{% endif %}>Frota</summary>
+        <summary data-nav-icon="fleet" {% if fleet_menu_open %}class="active"{% endif %}>Frota</summary>
         <div class="sidebar-nav-children">
           {% if nav_has_permission(request, "vehicles.read", "vehicles.write", "admin.manage") %}<a class="sidebar-sub-link {% if active_menu == 'fleet' %}active{% endif %}" href="/v2-clean/fleet">Viaturas</a>{% endif %}
           {% if nav_has_permission(request, "fleet.commerce.manage", "vehicles.write", "admin.manage") %}
@@ -65,7 +66,7 @@
       {% endif %}
       {% set documentation_menu_open = active_menu in ["documentation_center", "documentation_triage", "documentation_treatment", "documentation_imports", "documentation_invoices", "documentation_diagnostics", "documentation_archive", "documentation_models", "documents", "documents_center"] %}
       {% if can_nav_documentation %}<details class="sidebar-nav-group" {% if documentation_menu_open %}open{% endif %}>
-        <summary {% if documentation_menu_open %}class="active"{% endif %}>Documentação</summary>
+        <summary data-nav-icon="documents" {% if documentation_menu_open %}class="active"{% endif %}>Documentação</summary>
         <div class="sidebar-nav-children">
           <a class="sidebar-sub-link" href="/v2-clean/documentation/triage">Triagem</a>
           <a class="sidebar-sub-link" href="/v2-clean/documentation/treatment">Tratamento</a>
@@ -134,7 +135,7 @@
         </button>
       {% endif %}
       <form class="sidebar-logout" method="post" action="/logout">
-        <button type="submit"><span class="sidebar-action-label">Terminar sessão</span></button>
+        <button type="submit" aria-label="Terminar sessão" title="Terminar sessão"><span class="sidebar-action-label">Terminar sessão</span></button>
       </form>
       {% if is_clean_experience and nav_has_permission(request, "experience.legacy.access") %}
         <a

@@ -24,16 +24,16 @@
     </header>
     <section class="visual-dashboard-metrics" aria-label="Indicadores principais">
       {% if home_can_fleet %}
-      <a class="visual-metric-card" href="/v2-clean/fleet"><span class="visual-metric-icon is-blue" aria-hidden="true">▱</span><span><small>Viaturas na frota</small><strong>{{ quick_metrics.vehicles }}</strong><em>Consultar frota</em></span></a>
+      <a class="visual-metric-card" href="/v2-clean/fleet"><span class="visual-metric-icon is-blue" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 15h16l-2-7H6l-2 7Zm2 0v3m12-3v3M8 18h8"/></svg></span><span><small>Viaturas na frota</small><strong>{{ quick_metrics.vehicles }}</strong><em>Consultar frota</em></span></a>
       {% endif %}
       {% if home_can_tasks %}
-      <a class="visual-metric-card" href="/v2-clean/tasks"><span class="visual-metric-icon is-violet" aria-hidden="true">✓</span><span><small>Tarefas abertas</small><strong>{{ quick_metrics.tasks }}</strong><em>Ver fila de trabalho</em></span></a>
+      <a class="visual-metric-card" href="/v2-clean/tasks"><span class="visual-metric-icon is-violet" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></svg></span><span><small>Tarefas abertas</small><strong>{{ quick_metrics.tasks }}</strong><em>Ver fila de trabalho</em></span></a>
       {% endif %}
       {% if home_can_workshop %}
-      <a class="visual-metric-card" href="/v2-clean/workshop"><span class="visual-metric-icon is-amber" aria-hidden="true">⌁</span><span><small>Alertas de oficina</small><strong>{{ quick_metrics.workshop_alerts }}</strong><em>Rever oficina</em></span></a>
+      <a class="visual-metric-card" href="/v2-clean/workshop"><span class="visual-metric-icon is-amber" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m14 6 4-4 4 4-4 4M3 21l9-9m-6 9-3-3 9-9"/></svg></span><span><small>Alertas de oficina</small><strong>{{ quick_metrics.workshop_alerts }}</strong><em>Rever oficina</em></span></a>
       {% endif %}
       {% if home_can_processes %}
-      <a class="visual-metric-card" href="/v2-clean/processes"><span class="visual-metric-icon is-green" aria-hidden="true">◎</span><span><small>Auditorias abertas</small><strong>{{ quick_metrics.audits }}</strong><em>Ver prioridades</em></span></a>
+      <a class="visual-metric-card" href="/v2-clean/processes"><span class="visual-metric-icon is-green" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="m8 12 3 3 5-6"/></svg></span><span><small>Auditorias abertas</small><strong>{{ quick_metrics.audits }}</strong><em>Ver prioridades</em></span></a>
       {% endif %}
     </section>
     <section class="visual-dashboard-grid">
@@ -64,20 +64,20 @@
           <header class="visual-card-header compact"><div><p class="visual-kicker">Atenção</p><h2>Prioridades de hoje</h2></div><span class="visual-count-badge">{{ (quick_metrics.workshop_alerts if home_can_workshop else 0) + (quick_metrics.audits if home_can_processes else 0) }}</span></header>
           <div class="visual-attention-list">
             {% if home_can_workshop %}
-            <a href="/v2-clean/workshop"><span class="visual-attention-icon is-amber" aria-hidden="true">!</span><span><strong>Oficina</strong><small>{{ quick_metrics.workshop_alerts }} alertas a rever</small></span><b aria-hidden="true">›</b></a>
+            <a href="/v2-clean/workshop"><span class="visual-attention-icon is-amber" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 7v6m0 4h.01"/></svg></span><span><strong>Oficina</strong><small>{{ quick_metrics.workshop_alerts }} alertas a rever</small></span><b aria-hidden="true">›</b></a>
             {% endif %}
             {% if home_can_processes %}
-            <a href="/v2-clean/processes"><span class="visual-attention-icon is-blue" aria-hidden="true">✓</span><span><strong>Auditorias</strong><small>{{ quick_metrics.audits }} registos abertos</small></span><b aria-hidden="true">›</b></a>
+            <a href="/v2-clean/processes"><span class="visual-attention-icon is-blue" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></svg></span><span><strong>Auditorias</strong><small>{{ quick_metrics.audits }} registos abertos</small></span><b aria-hidden="true">›</b></a>
             {% endif %}
           </div>
         </article>
         <article class="visual-card visual-quick-card">
           <header class="visual-card-header compact"><div><p class="visual-kicker">Acessos rápidos</p><h2>Operação diária</h2></div></header>
           <div class="visual-quick-grid">
-            {% if home_can_workshop %}<a href="/v2-clean/workshop"><span aria-hidden="true">⌁</span><strong>Oficina</strong><small>Dashboard</small></a>{% endif %}
-            {% if home_can_fleet %}<a href="/v2-clean/fleet"><span aria-hidden="true">▱</span><strong>Frota</strong><small>Viaturas</small></a>{% endif %}
-            {% if home_can_documentation %}<a href="/v2-clean/documentation"><span aria-hidden="true">□</span><strong>Documentos</strong><small>Triagem</small></a>{% endif %}
-            {% if home_can_tasks %}<a href="/v2-clean/tasks"><span aria-hidden="true">✓</span><strong>Tarefas</strong><small>Fila</small></a>{% endif %}
+            {% if home_can_workshop %}<a href="/v2-clean/workshop"><span aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m14 6 4-4 4 4-4 4M3 21l9-9"/></svg></span><strong>Oficina</strong><small>Dashboard</small></a>{% endif %}
+            {% if home_can_fleet %}<a href="/v2-clean/fleet"><span aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 15h16l-2-7H6l-2 7M7 18h10"/></svg></span><strong>Frota</strong><small>Viaturas</small></a>{% endif %}
+            {% if home_can_documentation %}<a href="/v2-clean/documentation"><span aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M6 2h8l4 4v16H6zM14 2v5h5M9 12h6M9 16h6"/></svg></span><strong>Documentos</strong><small>Triagem</small></a>{% endif %}
+            {% if home_can_tasks %}<a href="/v2-clean/tasks"><span aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></svg></span><strong>Tarefas</strong><small>Fila</small></a>{% endif %}
           </div>
         </article>
       </aside>

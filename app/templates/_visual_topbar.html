@@ -4,7 +4,7 @@
 <header class="visual-topbar">
   <div class="visual-mobile-brand">
     <button class="visual-menu-button" type="button" aria-label="Abrir navegação" aria-controls="visual-sidebar">☰</button>
-    <strong>CarFast</strong>
+    <span><strong>CarFast</strong><small>{{ visual_page or "Operação" }}</small></span>
   </div>
   <strong class="visual-topbar-title">{{ visual_page or "CarFast" }}</strong>
   <div class="visual-topbar-actions">
@@ -14,7 +14,7 @@
     </form>
     {% endif %}
     {% if "dashboard.read" in visual_topbar_perms %}
-    <a class="visual-icon-action" href="/alerts" aria-label="Notificações"><span aria-hidden="true">♢</span></a>
+    <a class="visual-icon-action" href="/alerts" aria-label="Notificações" title="Notificações"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/></svg></a>
     {% endif %}
   </div>
 </header>

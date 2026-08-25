@@ -535,6 +535,40 @@ def test_clean_task_context_is_editable_without_changing_management(authenticate
     assert "Tarefas e problemas" not in page.text
 
 
+def test_clean_task_update_supports_save_and_save_close(authenticated_client, db_session):
+    task = Task(
+        title="Validar ações do drawer",
+        source="v2_clean",
+        task_type="operational_task",
+        status="new",
+        priority="normal",
+    )
+    db_session.add(task)
+    db_session.commit()
+
+    common = {
+        "title": task.title,
+        "status": "in_execution",
+        "priority": "normal",
+        "return_url": "/v2-clean/tasks?workspace=all",
+    }
+    stay = authenticated_client.post(
+        f"/v2-clean/tasks/{task.id}/update",
+        data={**common, "post_action": "stay"},
+        follow_redirects=False,
+    )
+    close = authenticated_client.post(
+        f"/v2-clean/tasks/{task.id}/update",
+        data={**common, "post_action": "close"},
+        follow_redirects=False,
+    )
+
+    assert stay.status_code == 303
+    assert f"open_task={task.id}" in stay.headers["location"]
+    assert close.status_code == 303
+    assert "open_task=" not in close.headers["location"]
+
+
 def test_clean_task_center_paginates_without_hiding_total(authenticated_client, db_session):
     tasks = [
         Task(

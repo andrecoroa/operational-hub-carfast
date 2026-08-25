@@ -445,7 +445,7 @@ dialog { border: 1px solid var(--cf-gray-200); border-radius: 12px; box-shadow: 
   .visual-document-matching,.visual-document-associate { margin-top: 12px; }
 }
 
-@media (max-width:900px) {
+@media (max-width:1100px) {
   .visual-document-step-nav { display: flex; margin-bottom: 10px; gap: 4px; overflow-x: auto; }
   .visual-document-step-nav a { display: inline-flex; min-height: 44px; padding: 10px 14px; align-items: center; color: var(--cf-gray-600); background: #fff; border: 1px solid var(--cf-gray-200); border-radius: 7px; text-decoration: none; white-space: nowrap; }
   .visual-document-step-nav a.active { color: var(--cf-blue-700); background: var(--cf-blue-050); border-color: #b6c9eb; }
@@ -469,6 +469,7 @@ dialog { border: 1px solid var(--cf-gray-200); border-radius: 12px; box-shadow: 
   .visual-document-queue,.visual-document-preview,.visual-document-review { margin-bottom: 12px; }
   .visual-document-queue-list { height: 310px; }
   .visual-document-queue > header button { width: 44px; min-width: 44px; height: 44px; min-height: 44px; }
+  .visual-document-preview header .button-link,.visual-document-toolbar a,.visual-document-actions > * { min-height: 44px; height: auto; display: inline-flex; align-items: center; justify-content: center; }
   .visual-document-preview iframe { min-height: 470px; }
   .visual-document-review { display: block; }
   .visual-document-review > header { min-height: 60px; border-right: 0; border-bottom: 1px solid var(--cf-gray-200); }

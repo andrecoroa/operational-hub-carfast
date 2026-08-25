@@ -4,6 +4,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 TEMPLATE = ROOT / "app" / "templates" / "clean_documentation_triage.html"
 CSS = ROOT / "app" / "static" / "css" / "visual-v2.css"
+JS = ROOT / "app" / "static" / "js" / "visual-v2.js"
 ROUTER = ROOT / "app" / "web" / "router.py"
 BASE = ROOT / "app" / "templates" / "base.html"
 
@@ -37,6 +38,8 @@ def test_document_workbench_keeps_real_routes_data_and_decision_form() -> None:
     assert 'name="decision_reason"' in source
     assert "foundation_ui_enabled" in source
     assert "doc-arch-table" in source  # feature-flag OFF fallback remains usable
+    assert 'class="doc-arch-filters"' in source
+    assert "Triar documento selecionado" in source
 
 
 def test_document_selection_is_server_derived_and_defaults_to_first_row() -> None:
@@ -60,9 +63,21 @@ def test_document_workbench_responsive_contract() -> None:
         "@media (max-width:767px)",
         ".visual-document-grid { display: block; min-height: 0; }",
         ".visual-document-preview iframe { min-height: 470px; }",
+        "@media (max-width:1100px)",
+        ".visual-document-actions > * { min-height: 44px;",
     ):
         assert contract in css
 
 
 def test_document_asset_is_cache_busted() -> None:
     assert "visual-v2.css?v=20260825-documents1" in BASE.read_text(encoding="utf-8")
+
+
+def test_document_views_preserve_return_context_and_scroll() -> None:
+    template = TEMPLATE.read_text(encoding="utf-8")
+    script = JS.read_text(encoding="utf-8")
+    assert "return_context=queue" in template
+    assert "return_context=preview" in template
+    assert "data-document-view-link" in template
+    assert "carfast-document-scroll:" in script
+    assert "sessionStorage.setItem(documentViewKey" in script

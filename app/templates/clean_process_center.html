@@ -8,7 +8,7 @@
       <div><p class="eyebrow">Operação / Centro de Processos</p><h2>Centro de Processos</h2><p>Priorize, acompanhe e abra o contexto operacional sem perder os filtros de trabalho.</p></div>
       <div class="clean-header-actions process-command-actions">
         <a class="button-link secondary-link" href="/v2-clean/tasks?workspace=management">Tarefas de gestão</a>
-        {% if can_create_process %}<a class="button-link primary-link" href="/v2-clean/tasks?workspace=management&amp;open_create=1">Criar processo</a>{% endif %}
+        {% if can_create_process %}<a class="button-link primary-link" href="/v2-clean/tasks?workspace=management&amp;create=1">Criar processo</a>{% endif %}
         {% if not process_access_denied %}<a class="button-link secondary-link" href="/management-center">Abrir gestão completa</a>{% endif %}
       </div>
     </header>
@@ -54,7 +54,7 @@
             </tbody></table>
           </div>
         {% else %}
-          <div class="process-command-state" role="status"><strong>Sem processos nestes filtros</strong><p>Altere os filtros ou crie um processo, se tiver capacidade de Executor.</p>{% if can_create_process %}<a class="button-link primary-link" href="/v2-clean/tasks?workspace=management&amp;open_create=1">Criar processo</a>{% endif %}</div>
+          <div class="process-command-state" role="status"><strong>Sem processos nestes filtros</strong><p>Altere os filtros ou crie um processo, se tiver capacidade de Executor.</p>{% if can_create_process %}<a class="button-link primary-link" href="/v2-clean/tasks?workspace=management&amp;create=1">Criar processo</a>{% endif %}</div>
         {% endif %}
       </div>
 

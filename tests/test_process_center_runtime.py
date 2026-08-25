@@ -125,6 +125,7 @@ def test_executor_can_filter_open_create_and_return_to_the_same_queue(
     assert response.status_code == 200
     assert "SIN-TEST-001" in response.text
     assert "Criar processo" in response.text
+    assert "/v2-clean/tasks?workspace=management&amp;create=1" in response.text
     assert "Executor — pode criar e executar no seu âmbito." in response.text
     assert 'value="AA-00-AA"' in response.text
     token = html.unescape(re.search(r"return_context=([^\"]+)", response.text).group(1))

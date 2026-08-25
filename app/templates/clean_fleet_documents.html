@@ -1,9 +1,9 @@
 {% extends "base.html" %}
 {% block body %}
 <div class="app-shell clean-shell">
-  {% set active_menu = "documents" %}
+  {% set active_menu = "fleet" %}
   {% include "_sidebar.html" %}
-  <main class="content clean-content">
+  <main class="content clean-content visual-fleet-documents">
     {% set vehicle = ctx.vehicle %}
     {% set real_start_field = module_ctx.audit_fields.get("real_start_date") %}
     {% set maintenance_count_field = module_ctx.audit_fields.get("effective_maintenance_count") %}
@@ -633,6 +633,12 @@
         {% endif %}
       </div>
     {% endif %}
+    {% set visual_section = "Frota" %}{% set visual_page = "Documentos" %}{% include "_visual_topbar.html" %}
+    <nav class="visual-fleet-context-nav" aria-label="Contexto da viatura">
+      <a href="/v2-clean/fleet/{{ vehicle.id }}">Resumo</a>
+      <a class="active" href="/v2-clean/fleet/{{ vehicle.id }}/documents">Documentos</a>
+      <a href="/v2-clean/fleet/{{ vehicle.id }}/diagnostics">Diagnósticos</a>
+    </nav>
     {% if request.query_params.get("removed") == "1" or request.query_params.get("remove_error") %}
       <div class="alert {% if request.query_params.get('remove_error') %}warning{% else %}success{% endif %}">
         {% if request.query_params.get("remove_error") == "missing_reason" %}
@@ -645,7 +651,7 @@
       </div>
     {% endif %}
 
-    <section class="clean-vehicle-header-card clean-vehicle-header-card-unified clean-vehicle-header-card-process">
+    <section class="clean-vehicle-header-card clean-vehicle-header-card-unified clean-vehicle-header-card-process visual-fleet-vehicle-hero">
       <div class="clean-vehicle-header-main">
         <div class="clean-vehicle-identity">
           <strong>{{ ctx.identity.plate or "-" }}</strong>

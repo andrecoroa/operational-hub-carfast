@@ -1,5 +1,7 @@
 from pathlib import Path
 
+from app.models import Vehicle
+
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -46,7 +48,8 @@ def test_sales_is_composed_under_fleet_but_remains_independent():
     assert "/v2-clean/fleet/sales/opportunities" in fleet_block
     assert "Publicações" in fleet_block
     assert 'active_menu in ["fleet", "fleet_sales"]' in sidebar
-    assert 'nav_has_permission(request, "fleet.commerce.manage"' in fleet_block
+    assert "can_nav_sales" in fleet_block
+    assert 'nav_has_permission(request, "fleet.commerce.manage"' in sidebar
     assert '"/v2-clean/fleet/sales/opportunities"' in sales_router
     assert 'publication_status=published' not in fleet_block
 
@@ -87,6 +90,77 @@ def test_fleet_responsive_contract_uses_local_table_overflow():
     assert "@media (max-width:767px)" in css
 
 
-def test_fleet_asset_is_cache_busted():
+def test_fleet_uses_shared_convergence_asset_version():
     base = _read("app/templates/base.html")
-    assert "/static/css/visual-v2.css?v=20260825-fleet1" in base
+    runtime = _read("app/web/template_runtime.py")
+    assert "/static/css/visual-v2.css?v={{ visual_asset_version }}" in base
+    assert 'templates.env.globals["visual_asset_version"] = "20260825-convergence1"' in runtime
+
+
+def test_fleet_list_detail_documents_and_diagnostics_render_composed_surfaces(
+    authenticated_client,
+    db_session,
+    monkeypatch,
+):
+    from app.web import router
+
+    monkeypatch.setitem(router.templates.env.globals, "foundation_ui_enabled", True)
+    monkeypatch.setattr(router.settings, "visual_foundation_enabled", True)
+    vehicle = Vehicle(
+        plate="FX-25-GR",
+        vin="VF7SYNTHETICFLEET25",
+        rentway_unit_nr="FX25",
+        brand="Peugeot",
+        model="208",
+        active=True,
+        lifecycle_status="active",
+        operational_status="free",
+    )
+    db_session.add(vehicle)
+    db_session.commit()
+
+    pages = {
+        "/v2-clean/fleet": ("visual-fleet-workbench", "Inventário operacional"),
+        f"/v2-clean/fleet/{vehicle.id}": ("visual-fleet-detail-workbench", "Contexto da viatura"),
+        f"/v2-clean/fleet/{vehicle.id}/documents": ("visual-fleet-documents", "Comandos documentais"),
+        f"/v2-clean/fleet/{vehicle.id}/diagnostics": ("visual-fleet-diagnostics", "Linha cronológica"),
+    }
+    for path, markers in pages.items():
+        response = authenticated_client.get(path)
+        assert response.status_code == 200
+        assert "visual-v2.css?v=20260825-convergence1" in response.text
+        assert 'class="sidebar"' in response.text
+        assert all(marker in response.text for marker in markers)
+
+
+def test_fleet_context_navigation_preserves_routes_and_sales_permission_gate():
+    detail = _read("app/templates/clean_fleet_detail.html")
+    documents = _read("app/templates/clean_fleet_documents.html")
+    diagnostics = _read("app/templates/clean_fleet_diagnostics.html")
+
+    for template in (detail, documents, diagnostics):
+        assert 'aria-label="Contexto da viatura"' in template
+        assert "/documents" in template
+        assert "/diagnostics" in template
+    assert 'nav_has_permission(request, "fleet.commerce.manage", "vehicles.write", "admin.manage")' in detail
+    assert 'href="/v2-clean/fleet/sales/{{ vehicle.id }}"' in detail
+
+
+def test_fleet_empty_diagnostics_state_remains_explicit_and_non_mutating(
+    authenticated_client,
+    db_session,
+):
+    vehicle = Vehicle(
+        plate="EMPTY-25",
+        active=True,
+        lifecycle_status="active",
+        operational_status="free",
+    )
+    db_session.add(vehicle)
+    db_session.commit()
+
+    response = authenticated_client.get(f"/v2-clean/fleet/{vehicle.id}/diagnostics")
+
+    assert response.status_code == 200
+    assert "Não existem diagnósticos para os filtros selecionados." in response.text
+    assert "Seleciona um diagnóstico para consultar os dados técnicos." in response.text

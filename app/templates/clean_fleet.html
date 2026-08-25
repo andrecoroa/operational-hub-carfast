@@ -3,33 +3,55 @@
 <div class="app-shell clean-shell">
   {% set active_menu = "fleet" %}
   {% include "_sidebar.html" %}
-  <main class="content clean-content">
-    <header class="clean-workshop-header clean-workshop-header-final">
+  <main class="content clean-content{% if foundation_ui_enabled %} visual-fleet{% endif %}">
+    {% if foundation_ui_enabled %}
+    {% set visual_section = "Frota" %}{% set visual_page = "Viaturas" %}{% include "_visual_topbar.html" %}
+    <header class="visual-fleet-heading">
       <div>
-        <p class="eyebrow">Frota / experiência nova</p>
+        <p class="eyebrow">Operação de frota</p>
         <h2>Viaturas</h2>
-        <p>Tabela operacional Rentway, paginada e filtrada no servidor.</p>
+        <p>Estado operacional, alertas e contexto Rentway numa única vista de trabalho.</p>
       </div>
-      <div class="clean-header-actions clean-header-actions-strong">
+      <div class="visual-fleet-heading-actions">
         {% if nav_has_permission(request, "fleet.commerce.manage", "vehicles.write", "admin.manage") %}
-          <a class="button-link" href="/v2-clean/fleet/sales">Venda de viaturas</a>
+          <a class="button-link secondary-link" href="/v2-clean/fleet/sales">Abrir Vendas</a>
         {% endif %}
-        <a class="button-link secondary-link" href="/v2-clean">Início v2-clean</a>
+        {% if nav_has_permission(request, "vehicles.write", "admin.manage") %}<a class="button-link" href="/v2-clean/admin?section=fleet">Configuração</a>{% endif %}
       </div>
     </header>
 
+    <section class="visual-fleet-metrics" aria-label="Indicadores da frota">
+      <a href="/v2-clean/fleet?scope=active"><span>Ativas</span><strong>{{ counts.active }}</strong><em>Em operação</em></a>
+      <a href="/v2-clean/fleet/sales?sale_status=for_sale"><span>Para venda</span><strong>{{ counts.for_sale }}</strong><em>Pipeline comercial</em></a>
+      <a href="/v2-clean/fleet"><span>Bloqueio de venda</span><strong>{{ counts.blocked_sale }}</strong><em>Exigem decisão</em></a>
+      <a href="/v2-clean/fleet?scope=all"><span>Total</span><strong>{{ counts.total }}</strong><em>Inventário completo</em></a>
+    </section>
+    {% else %}
+    <header class="clean-workshop-header clean-workshop-header-final">
+      <div><p class="eyebrow">Frota / experiência nova</p><h2>Viaturas</h2><p>Tabela operacional Rentway, paginada e filtrada no servidor.</p></div>
+      <div class="clean-header-actions clean-header-actions-strong">
+        {% if nav_has_permission(request, "fleet.commerce.manage", "vehicles.write", "admin.manage") %}<a class="button-link" href="/v2-clean/fleet/sales">Venda de viaturas</a>{% endif %}
+        <a class="button-link secondary-link" href="/v2-clean">Início v2-clean</a>
+      </div>
+    </header>
     <section class="clean-metric-grid clean-fleet-metrics">
       <a href="/v2-clean/fleet?scope=active"><span>Ativas</span><strong>{{ counts.active }}</strong></a>
       <a href="/v2-clean/fleet/sales?sale_status=for_sale"><span>Para venda</span><strong>{{ counts.for_sale }}</strong></a>
       <a href="/v2-clean/fleet"><span>Bloqueio venda</span><strong>{{ counts.blocked_sale }}</strong></a>
       <a href="/v2-clean/fleet?scope=all"><span>Total</span><strong>{{ counts.total }}</strong></a>
     </section>
+    {% endif %}
 
-    <section class="clean-panel clean-card-wide clean-fleet-list-panel sale-filter-panel">
-      <div class="table-heading flat-heading">
-        <div><p class="eyebrow">Filtros de seleção</p><h3>Encontrar as viaturas certas</h3></div>
+    <section class="clean-panel clean-card-wide clean-fleet-list-panel sale-filter-panel{% if foundation_ui_enabled %} visual-fleet-workbench{% endif %}">
+      {% if foundation_ui_enabled %}
+      <div class="visual-fleet-workbench-header">
+        <div><p class="eyebrow">Centro de viaturas</p><h3>Inventário operacional</h3><p>Encontrar as viaturas certas e manter o contexto ao regressar à lista.</p></div>
+        <span><strong>{{ pagination.total }}</strong> resultado{% if pagination.total != 1 %}s{% endif %}</span>
       </div>
-      <form method="get" action="/v2-clean/fleet" class="sale-filter-grid" data-clean-fleet-search>
+      {% else %}
+      <div class="table-heading flat-heading"><div><p class="eyebrow">Filtros de seleção</p><h3>Encontrar as viaturas certas</h3></div></div>
+      {% endif %}
+      <form method="get" action="/v2-clean/fleet" class="sale-filter-grid{% if foundation_ui_enabled %} visual-fleet-filters{% endif %}" data-clean-fleet-search>
         <label class="sale-filter-wide">Matrícula, Unit, VIN, marca ou modelo
           <input type="search" name="q" value="{{ q }}" placeholder="Matrícula, Unit, VIN, marca ou modelo" autocomplete="off">
         </label>
@@ -60,12 +82,12 @@
         <div class="sale-filter-actions"><a class="button-link secondary-link" href="/v2-clean/fleet">Limpar</a><button type="submit">Aplicar filtros</button></div>
       </form>
 
-      <div class="clean-fleet-search-feedback" aria-live="polite">
+      <div class="clean-fleet-search-feedback{% if foundation_ui_enabled %} visual-fleet-search-feedback{% endif %}" aria-live="polite">
         <strong>{{ pagination.total }} viatura{% if pagination.total != 1 %}s{% endif %}</strong>
         {% if q %}<span>para “{{ q }}”</span>{% else %}<span>nos filtros selecionados</span>{% endif %}
       </div>
 
-      <div class="fleet-table-scroll">
+      <div class="fleet-table-scroll{% if foundation_ui_enabled %} visual-fleet-table-scroll{% endif %}">
         <table class="fleet-compact-table">
           <thead><tr><th>Viatura</th><th>Marca / modelo</th><th>Categoria</th><th>Combustível</th><th>Estado Rentway</th><th>Cliente</th><th>Devolução</th><th>IPO</th><th>Alertas</th></tr></thead>
           <tbody>

@@ -16017,6 +16017,16 @@ button.clean-upload-preview-card {
   grid-template-columns: repeat(6, minmax(0, 1fr));
 }
 
+.clean-doc-ocr-page,
+.clean-doc-ocr-page > * {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.clean-doc-ocr-page {
+  overflow-x: hidden;
+}
+
 .clean-doc-ocr-layout {
   margin-top: 14px;
 }

@@ -106,6 +106,7 @@ def test_recovery_handles_crash_and_partial_recovery(
 ) -> None:
     interrupted_tree(tmp_path)
     marker = write_marker(tmp_path)
+    marker_value = json.loads(marker.read_text(encoding="utf-8"))
     if partial:
         (tmp_path / "email").rmdir()
         (tmp_path / f".cutoff-{BUNDLE}-email").rename(tmp_path / "email")
@@ -119,8 +120,12 @@ def test_recovery_handles_crash_and_partial_recovery(
     assert not (tmp_path / f".cutoff-{BUNDLE}-carfast_documents").exists()
     assert not (tmp_path / f".cutoff-{BUNDLE}-email").exists()
     if os.name == "posix":
-        assert stat.S_IMODE((tmp_path / "carfast_documents").stat().st_mode) == 0o755
-        assert stat.S_IMODE((tmp_path / "email").stat().st_mode) == 0o750
+        assert stat.S_IMODE((tmp_path / "carfast_documents").stat().st_mode) == marker_value[
+            "documents_mode"
+        ]
+        assert stat.S_IMODE((tmp_path / "email").stat().st_mode) == marker_value[
+            "email_mode"
+        ]
     database.assert_called_once_with("postgresql://private")
     assert recovery.recover_migration_window("not-used", data_root=tmp_path) is False
 

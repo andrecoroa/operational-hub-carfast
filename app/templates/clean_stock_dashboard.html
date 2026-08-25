@@ -4,17 +4,17 @@
   {% set active_menu = "stock" %}{% include "_sidebar.html" %}
   <main class="content clean-content stock-page{% if foundation_ui_enabled %} ui-foundation ui-page-shell{% endif %}">
     {% set stock_nav = "summary" %}{% include "_clean_stock_nav.html" %}
-    <header class="stock-header compact-header{% if foundation_ui_enabled %} ui-page-header{% endif %}">
-      <div><p class="eyebrow">Operações</p><h1>Resumo de Stock</h1><p>Alertas e trabalho pendente que exigem atenção.</p></div>
+    <header class="stock-header compact-header{% if foundation_ui_enabled %} ui-page-header visual-stock-heading{% endif %}">
+      <div><p class="eyebrow">Operações</p>{% if foundation_ui_enabled %}<h1>Stock e Compras</h1><p>Disponibilidade, abastecimento e conferência numa visão operacional única.</p>{% else %}<h1>Resumo de Stock</h1><p>Alertas e trabalho pendente que exigem atenção.</p>{% endif %}</div>
       <a class="button-link" href="/v2-clean/stock/receipts">Nova receção</a>
     </header>
-    <section class="stock-kpis" aria-label="Indicadores Stock">
+    <section class="stock-kpis{% if foundation_ui_enabled %} visual-stock-metrics{% endif %}" aria-label="Indicadores Stock">
       <a class="warning" href="/v2-clean/stock/articles?low_stock=true"><span>Stock baixo</span><strong>{{ metrics.low }}</strong></a>
       <a href="/v2-clean/stock/orders"><span>Encomendas por receber</span><strong>{{ metrics.pending_orders }}</strong></a>
       <a href="/v2-clean/stock/invoices?status_filter=pending"><span>Faturas por conferir</span><strong>{{ metrics.pending_invoices }}</strong></a>
       <a href="/v2-clean/stock/inventory"><span>Inventários em curso</span><strong>{{ metrics.open_inventories }}</strong></a>
     </section>
-    <section class="stock-alert-card">
+    <section class="stock-alert-card{% if foundation_ui_enabled %} visual-stock-alerts{% endif %}">
       <div class="stock-card-heading"><div><p class="eyebrow">Atenção necessária</p><h2>Alertas operacionais</h2></div></div>
       <div class="stock-alert-list">
         {% for row in low_rows %}

@@ -2,16 +2,16 @@
 {% block body %}
 <div class="app-shell clean-shell">
   {% set active_menu="stock" %}{% include "_sidebar.html" %}
-  <main class="content clean-content stock-page">
+  <main class="content clean-content stock-page{% if foundation_ui_enabled %} ui-foundation ui-page-shell visual-stock-workbench{% endif %}">
     {% set stock_nav="receipts" %}{% include "_clean_stock_nav.html" %}
-    <header class="stock-header compact-header"><div><p class="eyebrow">Operação física</p><h1>Receções</h1><p>Só quantidades fisicamente aceites alteram stock.</p></div></header>
+    <header class="stock-header compact-header{% if foundation_ui_enabled %} ui-page-header visual-stock-heading{% endif %}"><div><p class="eyebrow">Operação física</p><h1>Receções</h1><p>{% if foundation_ui_enabled %}Só quantidades fisicamente aceites alteram stock; confirme documentos e divergências antes da entrada.{% else %}Só quantidades fisicamente aceites alteram stock.{% endif %}</p></div></header>
     {% if request.query_params.get('received') %}<div class="stock-notice success">Receção física registada e entradas imutáveis criadas.</div>{% endif %}
     {% if request.query_params.get('error') %}<div class="stock-notice danger">{{ request.query_params.get('error') }}</div>{% endif %}
-    <section class="stock-card flat-card">
+    <section class="stock-card flat-card{% if foundation_ui_enabled %} visual-stock-table-card{% endif %}">
       <div class="stock-card-heading"><div><h2>Faturas pendentes de receção</h2><p>Documentos já validados que ainda não têm entrada física associada.</p></div><span class="stock-counter">{{ pending_invoice_rows|length }}</span></div>
       <div class="stock-table-wrap"><table class="stock-table stock-table-compact"><thead><tr><th>Data</th><th>Fornecedor</th><th>Fatura</th><th>Linhas</th><th>Total</th><th>Ação</th></tr></thead><tbody>{% for invoice,supplier in pending_invoice_rows %}<tr><td>{{ invoice.invoice_date.strftime('%d/%m/%Y') if invoice.invoice_date else '-' }}</td><td>{{ supplier.name }}</td><td>{{ invoice.invoice_number or ('Documento #' ~ invoice.id) }}</td><td>{{ pending_line_counts.get(invoice.id, 0) }} artigos</td><td>{{ '%.2f €'|format(invoice.gross_total or 0) }}</td><td><a class="button-link secondary-link" href="/v2-clean/stock/invoices/{{ invoice.id }}#stock-receipt-lines">Validar artigos e receber</a></td></tr>{% else %}<tr><td colspan="6" class="stock-empty">Não existem faturas validadas a aguardar receção.</td></tr>{% endfor %}</tbody></table></div>
     </section>
-    <section class="stock-card flat-card"><div class="stock-card-heading"><div><h2>Nova receção física</h2><p>Seleciona primeiro fornecedor e local; só depois são carregados os documentos Stock pendentes desse fornecedor.</p></div></div>
+    <section class="stock-card flat-card{% if foundation_ui_enabled %} visual-stock-receipt-workbench{% endif %}"><div class="stock-card-heading"><div>{% if foundation_ui_enabled %}<p class="eyebrow">Workbench</p>{% endif %}<h2>Nova receção física</h2><p>{% if foundation_ui_enabled %}Selecione fornecedor e local; depois confira apenas os documentos pendentes dessa origem.{% else %}Seleciona primeiro fornecedor e local; só depois são carregados os documentos Stock pendentes desse fornecedor.{% endif %}</p></div></div>
       <form method="post" action="/v2-clean/stock/receipts" class="stock-review-form" id="receipt-form">
         <input type="hidden" name="idempotency_key" id="receipt-idempotency">
         <div class="stock-form-grid">

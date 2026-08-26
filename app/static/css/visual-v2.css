@@ -800,3 +800,63 @@ dialog { border: 1px solid var(--cf-gray-200); border-radius: 12px; box-shadow: 
 .vehicle-document-sharing-denied{padding:9px 10px;color:var(--cf-gray-600);background:var(--cf-gray-050);border:1px solid var(--cf-gray-200);border-radius:7px;font-size:11px}
 @media(max-width:1199px){.vehicle-document-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.vehicle-document-preview-grid{grid-template-columns:1fr}.vehicle-document-preview-pane iframe{min-height:460px}}
 @media(max-width:767px){.vehicle-document-workbench{gap:12px}.vehicle-document-workbench .doc-arch-nav a,.vehicle-document-workbench .doc-vehicle-preview-link,.vehicle-document-workbench .doc-arch-pagination a,.vehicle-document-workbench .vehicle-document-table td a{display:inline-flex;min-height:44px;align-items:center}.vehicle-document-header{display:grid;min-height:0;padding-top:2px}.vehicle-document-header>.button-link{width:100%;min-height:48px}.vehicle-document-header h1{font-size:26px;line-height:34px}.vehicle-document-header .doc-arch-header-actions{display:grid;grid-template-columns:1fr}.vehicle-document-header .doc-arch-header-actions>*{width:100%;min-height:48px}.vehicle-document-kpis{gap:8px}.vehicle-document-kpis>a{min-height:88px;padding:12px}.vehicle-document-filters{grid-template-columns:1fr}.vehicle-document-filters :is(input,select,button,.button-link){width:100%;height:48px;min-height:48px}.vehicle-document-table-wrap::before{display:block;padding:7px 12px;content:"Deslize para consultar todos os campos →";color:var(--cf-gray-600);background:var(--cf-gray-050);border-bottom:1px solid var(--cf-gray-200);font-size:10px}.vehicle-document-preview-pane>header{align-items:flex-start;flex-direction:column}.vehicle-document-preview-pane>header .button-link{width:100%;min-height:44px}.vehicle-document-preview-pane iframe{min-height:420px}.vehicle-document-control-pane dl>div{grid-template-columns:1fr;gap:3px}.vehicle-document-sharing .button-link{min-height:48px}}
+.visual-final-closeout {
+  min-width: 0;
+}
+
+.visual-final-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin: 0 0 16px;
+}
+
+.visual-final-metrics > article {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid var(--ui-border, #d9e2ec);
+  border-radius: 12px;
+  background: var(--ui-surface, #fff);
+}
+
+.visual-final-metrics span,
+.visual-final-metrics small { color: var(--ui-text-muted, #5f6b7a); }
+.visual-final-metrics strong { color: var(--ui-text, #12263a); font-size: 1.55rem; }
+
+.visual-final-workbench { min-width: 0; overflow: hidden; }
+.visual-final-workbench-heading { align-items: end; gap: 16px; }
+.visual-final-workbench-heading > span { white-space: nowrap; color: var(--ui-text-muted, #5f6b7a); }
+.visual-final-workbench-heading > span strong { color: var(--ui-text, #12263a); font-size: 1.2rem; }
+.visual-final-form-card { min-width: 0; }
+
+.visual-final-empty {
+  display: grid;
+  gap: 5px;
+  justify-items: start;
+  padding: 24px;
+  color: var(--ui-text-muted, #5f6b7a);
+  text-align: left;
+}
+.visual-final-empty strong { color: var(--ui-text, #12263a); font-size: 1rem; }
+
+.visual-sales-access-metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.visual-task-recurrence .clean-recurrence-card { border-color: var(--ui-border, #d9e2ec); box-shadow: none; }
+.visual-task-recurrence .clean-recurrence-card > header { gap: 16px; }
+.visual-task-recurrence .clean-recurrence-dialog { max-height: min(86vh, 820px); overflow: auto; }
+
+@media (max-width: 1024px) {
+  .visual-final-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .visual-financial-audit .clean-task-filter-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 640px) {
+  .visual-final-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .visual-final-metrics > article { padding: 12px; }
+  .visual-final-workbench-heading { align-items: start; flex-direction: column; }
+  .visual-financial-audit .clean-task-filter-row { grid-template-columns: 1fr; }
+  .visual-sales-access .portal-admin-grid { grid-template-columns: 1fr; }
+  .visual-task-recurrence .clean-recurrence-actions { align-items: stretch; flex-direction: column; }
+  .visual-task-recurrence .clean-recurrence-actions > * { width: 100%; }
+}

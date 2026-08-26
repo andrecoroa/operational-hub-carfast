@@ -1,0 +1,218 @@
+[
+  {
+    "slug": "financial-audit",
+    "label": "desktop",
+    "file": "financial-audit-desktop-1440x900.png",
+    "asset": [
+      "https://carfast-green.onrender.com/static/css/visual-v2.css?v=20260825-convergence1"
+    ],
+    "body": {
+      "clientWidth": 1425,
+      "scrollWidth": 1425
+    },
+    "fontSize": "14px",
+    "html": {
+      "clientWidth": 1425,
+      "scrollWidth": 1425
+    },
+    "title": "Operational Hub Carfast",
+    "url": "https://carfast-green.onrender.com/v2-clean/fleet/financial-audit",
+    "viewport": {
+      "height": 900,
+      "width": 1440
+    },
+    "zoom": "1"
+  },
+  {
+    "slug": "financial-audit",
+    "label": "tablet",
+    "file": "financial-audit-tablet-1024x900.png",
+    "asset": [
+      "https://carfast-green.onrender.com/static/css/visual-v2.css?v=20260825-convergence1"
+    ],
+    "body": {
+      "clientWidth": 1009,
+      "scrollWidth": 1009
+    },
+    "fontSize": "14px",
+    "html": {
+      "clientWidth": 1009,
+      "scrollWidth": 1009
+    },
+    "title": "Operational Hub Carfast",
+    "url": "https://carfast-green.onrender.com/v2-clean/fleet/financial-audit",
+    "viewport": {
+      "height": 900,
+      "width": 1024
+    },
+    "zoom": "1"
+  },
+  {
+    "slug": "financial-audit",
+    "label": "mobile",
+    "file": "financial-audit-mobile-390x844.png",
+    "asset": [
+      "https://carfast-green.onrender.com/static/css/visual-v2.css?v=20260825-convergence1"
+    ],
+    "body": {
+      "clientWidth": 375,
+      "scrollWidth": 375
+    },
+    "fontSize": "14px",
+    "html": {
+      "clientWidth": 375,
+      "scrollWidth": 375
+    },
+    "title": "Operational Hub Carfast",
+    "url": "https://carfast-green.onrender.com/v2-clean/fleet/financial-audit",
+    "viewport": {
+      "height": 844,
+      "width": 390
+    },
+    "zoom": "1"
+  },
+  {
+    "slug": "sales-access",
+    "label": "desktop",
+    "file": "sales-access-desktop-1440x900.png",
+    "asset": [
+      "https://carfast-green.onrender.com/static/css/visual-v2.css?v=20260825-convergence1"
+    ],
+    "body": {
+      "clientWidth": 1425,
+      "scrollWidth": 1425
+    },
+    "fontSize": "14px",
+    "html": {
+      "clientWidth": 1425,
+      "scrollWidth": 1425
+    },
+    "title": "Operational Hub Carfast",
+    "url": "https://carfast-green.onrender.com/v2-clean/fleet/sales-access",
+    "viewport": {
+      "height": 900,
+      "width": 1440
+    },
+    "zoom": "1"
+  },
+  {
+    "slug": "sales-access",
+    "label": "tablet",
+    "file": "sales-access-tablet-1024x900.png",
+    "asset": [
+      "https://carfast-green.onrender.com/static/css/visual-v2.css?v=20260825-convergence1"
+    ],
+    "body": {
+      "clientWidth": 1009,
+      "scrollWidth": 1009
+    },
+    "fontSize": "14px",
+    "html": {
+      "clientWidth": 1009,
+      "scrollWidth": 1009
+    },
+    "title": "Operational Hub Carfast",
+    "url": "https://carfast-green.onrender.com/v2-clean/fleet/sales-access",
+    "viewport": {
+      "height": 900,
+      "width": 1024
+    },
+    "zoom": "1"
+  },
+  {
+    "slug": "sales-access",
+    "label": "mobile",
+    "file": "sales-access-mobile-390x844.png",
+    "asset": [
+      "https://carfast-green.onrender.com/static/css/visual-v2.css?v=20260825-convergence1"
+    ],
+    "body": {
+      "clientWidth": 375,
+      "scrollWidth": 375
+    },
+    "fontSize": "14px",
+    "html": {
+      "clientWidth": 375,
+      "scrollWidth": 375
+    },
+    "title": "Operational Hub Carfast",
+    "url": "https://carfast-green.onrender.com/v2-clean/fleet/sales-access",
+    "viewport": {
+      "height": 844,
+      "width": 390
+    },
+    "zoom": "1"
+  },
+  {
+    "slug": "tasks-recurring",
+    "label": "desktop",
+    "file": "tasks-recurring-desktop-1440x900.png",
+    "asset": [
+      "https://carfast-green.onrender.com/static/css/visual-v2.css?v=20260825-convergence1"
+    ],
+    "body": {
+      "clientWidth": 1425,
+      "scrollWidth": 1425
+    },
+    "fontSize": "14px",
+    "html": {
+      "clientWidth": 1425,
+      "scrollWidth": 1425
+    },
+    "title": "Operational Hub Carfast",
+    "url": "https://carfast-green.onrender.com/v2-clean/tasks/recurring",
+    "viewport": {
+      "height": 900,
+      "width": 1440
+    },
+    "zoom": "1"
+  },
+  {
+    "slug": "tasks-recurring",
+    "label": "tablet",
+    "file": "tasks-recurring-tablet-1024x900.png",
+    "asset": [
+      "https://carfast-green.onrender.com/static/css/visual-v2.css?v=20260825-convergence1"
+    ],
+    "body": {
+      "clientWidth": 1009,
+      "scrollWidth": 1009
+    },
+    "fontSize": "14px",
+    "html": {
+      "clientWidth": 1009,
+      "scrollWidth": 1009
+    },
+    "title": "Operational Hub Carfast",
+    "url": "https://carfast-green.onrender.com/v2-clean/tasks/recurring",
+    "viewport": {
+      "height": 900,
+      "width": 1024
+    },
+    "zoom": "1"
+  },
+  {
+    "slug": "tasks-recurring",
+    "label": "mobile",
+    "file": "tasks-recurring-mobile-390x844.png",
+    "asset": [
+      "https://carfast-green.onrender.com/static/css/visual-v2.css?v=20260825-convergence1"
+    ],
+    "body": {
+      "clientWidth": 375,
+      "scrollWidth": 375
+    },
+    "fontSize": "14px",
+    "html": {
+      "clientWidth": 375,
+      "scrollWidth": 375
+    },
+    "title": "Operational Hub Carfast",
+    "url": "https://carfast-green.onrender.com/v2-clean/tasks/recurring",
+    "viewport": {
+      "height": 844,
+      "width": 390
+    },
+    "zoom": "1"
+  }
+]

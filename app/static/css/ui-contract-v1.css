@@ -184,7 +184,6 @@
   .ui-contract-v1 .process-command-kpis { grid-template-columns: repeat(2,minmax(0,1fr)); }
   .ui-contract-v1 .ui-email-list-preview { grid-template-columns: minmax(0,1fr); }
   .ui-contract-v1 .ui-context-preview { display: none; }
-  .ui-contract-v1 .ui-context-preview[open] { display: block; position: fixed; inset: 8vh 6vw; width: 88vw; height: 84vh; }
   .ui-contract-v1 .admin-model-columns { grid-template-columns: repeat(2,minmax(0,1fr)); }
   .ui-contract-v1 .admin-model-detail { grid-column: 1 / -1; }
 }
@@ -203,7 +202,6 @@
   .ui-contract-v1 .visual-service-desk .visual-service-metrics { grid-template-columns: repeat(2,minmax(0,1fr)); }
   .ui-contract-v1 .visual-service-desk .visual-service-metrics > :is(article,a) { min-height: 52px; }
   .ui-contract-v1 .visual-email-metrics { grid-template-columns: repeat(2,minmax(0,1fr)); }
-  .ui-contract-v1 .ui-context-preview[open] { inset: 0; width: 100vw; height: 100dvh; }
   .ui-contract-v1 .ui-list-preview-workbench,
   .ui-contract-v1 .admin-model-columns,
   .ui-contract-v1 .clean-admin-role-workspace { grid-template-columns: minmax(0,1fr); }

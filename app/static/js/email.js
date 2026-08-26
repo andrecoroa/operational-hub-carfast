@@ -1,5 +1,6 @@
 (() => {
   const dialog = document.getElementById("email-preview-dialog");
+  const previewPanel = document.getElementById("email-preview-panel");
   let previewTrigger = null;
   const bindWorkHierarchy = (root) => {
     const source = root.querySelector("[data-email-work-hierarchy]");
@@ -224,22 +225,25 @@
   };
   const openPreview = async (threadId, trigger = null) => {
     if (!dialog || !threadId) return;
+    const usePanel = Boolean(previewPanel && window.matchMedia("(min-width: 1025px)").matches);
+    const previewRoot = usePanel ? previewPanel : dialog;
     previewTrigger = trigger || document.activeElement;
-    const previousShell = dialog.querySelector("[data-email-thread-id]");
+    const previousShell = previewRoot.querySelector("[data-email-thread-id]");
     const previousConversationScroll = previousShell?.querySelector(".email-conversation")?.scrollTop || 0;
     const previousTriageScroll = previousShell?.querySelector(".email-triage-pane")?.scrollTop || 0;
-    dialog.innerHTML = '<div class="email-preview-loading">A abrir conversa…</div>';
-    if (!dialog.open && document.body.classList.contains("ui-contract-v1") && window.matchMedia("(min-width: 1025px)").matches) dialog.show();
-    if (!dialog.open) dialog.showModal();
+    previewRoot.innerHTML = '<div class="email-preview-loading">A abrir conversa…</div>';
+    if (!usePanel) {
+      if (!dialog.open) dialog.showModal();
+    }
     const response = await fetch(`/v2-clean/email/${threadId}/preview`, {headers: {"X-Requested-With": "fetch"}});
-    dialog.innerHTML = await response.text();
-    bindThread(dialog);
-    const fullPageLink = dialog.querySelector(".email-open-full");
+    previewRoot.innerHTML = await response.text();
+    bindThread(previewRoot);
+    const fullPageLink = previewRoot.querySelector(".email-open-full");
     if (fullPageLink) fullPageLink.href = `${fullPageLink.pathname}?return_context=${encodeURIComponent(location.pathname + location.search)}`;
-    dialog.querySelector("[data-email-modal-close], button, a, input, select, textarea")?.focus();
+    previewRoot.querySelector("[data-email-modal-close], button, a, input, select, textarea")?.focus();
     requestAnimationFrame(() => {
-      const conversation = dialog.querySelector(".email-conversation");
-      const triage = dialog.querySelector(".email-triage-pane");
+      const conversation = previewRoot.querySelector(".email-conversation");
+      const triage = previewRoot.querySelector(".email-triage-pane");
       if (conversation) conversation.scrollTop = previousConversationScroll;
       if (triage) triage.scrollTop = previousTriageScroll;
     });

@@ -14,8 +14,9 @@ def test_email_uses_same_page_list_preview_contract() -> None:
     assert "ui-email-list-preview" in EMAIL
     assert "ui-context-preview" in EMAIL
     assert "id=\"email-preview-dialog\"" in EMAIL
-    assert "dialog.show();" in EMAIL_JS
     assert "dialog.showModal();" in EMAIL_JS
+    assert "const previewRoot = usePanel ? previewPanel : dialog" in EMAIL_JS
+    assert "<dialog" in EMAIL and "<dialog" not in EMAIL.split("ui-email-list-preview", 1)[1].split("</div>{% if foundation_ui_enabled %}</section>", 1)[0]
     assert ".ui-email-list-preview { display: grid;" in CSS
 
 
@@ -40,6 +41,7 @@ def test_dashboard_and_partner_density_are_shared_not_route_local() -> None:
 
 
 def test_responsive_preview_and_master_detail_collapse() -> None:
-    assert ".ui-context-preview[open] { display: block; position: fixed;" in CSS
+    assert ".ui-context-preview { display: none; }" in CSS
+    assert ".ui-context-preview[open]" not in CSS
     assert ".admin-model-columns { grid-template-columns: repeat(2,minmax(0,1fr)); }" in CSS
     assert ".clean-admin-role-workspace { grid-template-columns: minmax(0,1fr); }" in CSS

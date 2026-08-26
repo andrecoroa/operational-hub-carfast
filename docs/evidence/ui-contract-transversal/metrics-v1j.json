@@ -1,0 +1,924 @@
+[
+  {
+    "clientWidth": 1425,
+    "overflowGlobal": false,
+    "page": "dashboard",
+    "rows": 3,
+    "scrollHeight": 881,
+    "scrollWidth": 1425,
+    "sidebar": {
+      "height": 731,
+      "width": 208,
+      "x": 0,
+      "y": 0
+    },
+    "topbar": {
+      "height": 52,
+      "width": 1217,
+      "x": 208,
+      "y": 0
+    },
+    "viewport": {
+      "height": 731,
+      "name": "1440x731",
+      "width": 1440
+    },
+    "zones": {
+      "catalog": null,
+      "context": null,
+      "conversation": null,
+      "detail": null,
+      "list": null,
+      "master": null,
+      "preview": null,
+      "queue": null,
+      "review": null,
+      "triage": null
+    }
+  },
+  {
+    "clientWidth": 1009,
+    "overflowGlobal": false,
+    "page": "dashboard",
+    "rows": 3,
+    "scrollHeight": 1003,
+    "scrollWidth": 1009,
+    "sidebar": {
+      "height": 900,
+      "width": 56,
+      "x": 0,
+      "y": 0
+    },
+    "topbar": {
+      "height": 52,
+      "width": 953,
+      "x": 56,
+      "y": 0
+    },
+    "viewport": {
+      "height": 900,
+      "name": "1024x900",
+      "width": 1024
+    },
+    "zones": {
+      "catalog": null,
+      "context": null,
+      "conversation": null,
+      "detail": null,
+      "list": null,
+      "master": null,
+      "preview": null,
+      "queue": null,
+      "review": null,
+      "triage": null
+    }
+  },
+  {
+    "clientWidth": 375,
+    "overflowGlobal": false,
+    "page": "dashboard",
+    "rows": 3,
+    "scrollHeight": 1359,
+    "scrollWidth": 375,
+    "sidebar": {
+      "height": 844,
+      "width": 25,
+      "x": -25.5,
+      "y": 0
+    },
+    "topbar": {
+      "height": 52,
+      "width": 391,
+      "x": -8,
+      "y": 0
+    },
+    "viewport": {
+      "height": 844,
+      "name": "390x844",
+      "width": 390
+    },
+    "zones": {
+      "catalog": null,
+      "context": null,
+      "conversation": null,
+      "detail": null,
+      "list": null,
+      "master": null,
+      "preview": null,
+      "queue": null,
+      "review": null,
+      "triage": null
+    }
+  },
+  {
+    "clientWidth": 1440,
+    "overflowGlobal": false,
+    "page": "tasks",
+    "rows": 6,
+    "scrollHeight": 731,
+    "scrollWidth": 1440,
+    "sidebar": {
+      "height": 731,
+      "width": 208,
+      "x": 0,
+      "y": 0
+    },
+    "topbar": {
+      "height": 52,
+      "width": 1232,
+      "x": 208,
+      "y": 0
+    },
+    "viewport": {
+      "height": 731,
+      "name": "1440x731",
+      "width": 1440
+    },
+    "zones": {
+      "catalog": null,
+      "context": null,
+      "conversation": null,
+      "detail": null,
+      "list": null,
+      "master": null,
+      "preview": null,
+      "queue": null,
+      "review": null,
+      "triage": null
+    }
+  },
+  {
+    "clientWidth": 1024,
+    "overflowGlobal": false,
+    "page": "tasks",
+    "rows": 6,
+    "scrollHeight": 900,
+    "scrollWidth": 1024,
+    "sidebar": {
+      "height": 900,
+      "width": 56,
+      "x": 0,
+      "y": 0
+    },
+    "topbar": {
+      "height": 52,
+      "width": 968,
+      "x": 56,
+      "y": 0
+    },
+    "viewport": {
+      "height": 900,
+      "name": "1024x900",
+      "width": 1024
+    },
+    "zones": {
+      "catalog": null,
+      "context": null,
+      "conversation": null,
+      "detail": null,
+      "list": null,
+      "master": null,
+      "preview": null,
+      "queue": null,
+      "review": null,
+      "triage": null
+    }
+  },
+  {
+    "clientWidth": 375,
+    "overflowGlobal": false,
+    "page": "tasks",
+    "rows": 6,
+    "scrollHeight": 997,
+    "scrollWidth": 375,
+    "sidebar": {
+      "height": 844,
+      "width": 25,
+      "x": -25.5,
+      "y": 0
+    },
+    "topbar": {
+      "height": 52,
+      "width": 391,
+      "x": -8,
+      "y": 0
+    },
+    "viewport": {
+      "height": 844,
+      "name": "390x844",
+      "width": 390
+    },
+    "zones": {
+      "catalog": null,
+      "context": null,
+      "conversation": null,
+      "detail": null,
+      "list": null,
+      "master": null,
+      "preview": null,
+      "queue": null,
+      "review": null,
+      "triage": null
+    }
+  },
+  {
+    "clientWidth": 1425,
+    "overflowGlobal": false,
+    "page": "processes",
+    "rows": 0,
+    "scrollHeight": 996,
+    "scrollWidth": 1425,
+    "sidebar": {
+      "height": 731,
+      "width": 208,
+      "x": 0,
+      "y": 0
+    },
+    "topbar": {
+      "height": 52,
+      "width": 1217,
+      "x": 208,
+      "y": 0
+    },
+    "viewport": {
+      "height": 731,
+      "name": "1440x731",
+      "width": 1440
+    },
+    "zones": {
+      "catalog": {
+        "height": 595.3203125,
+        "width": 260,
+        "x": 228,
+        "y": 381
+      },
+      "context": {
+        "height": 595.3203125,
+        "width": 300,
+        "x": 1105,
+        "y": 381
+      },
+      "conversation": null,
+      "detail": null,
+      "list": null,
+      "master": null,
+      "preview": null,
+      "queue": null,
+      "review": null,
+      "triage": null
+    }
+  },
+  {
+    "clientWidth": 1009,
+    "overflowGlobal": false,
+    "page": "processes",
+    "rows": 0,
+    "scrollHeight": 1274,
+    "scrollWidth": 1009,
+    "sidebar": {
+      "height": 900,
+      "width": 56,
+      "x": 0,
+      "y": 0
+    },
+    "topbar": {
+      "height": 52,
+      "width": 953,
+      "x": 56,
+      "y": 0
+    },
+    "viewport": {
+      "height": 900,
+      "name": "1024x900",
+      "width": 1024
+    },
+    "zones": {
+      "catalog": {
+        "height": 304.8359375,
+        "width": 260,
+        "x": 76,
+        "y": 509.3984375
+      },
+      "context": {
+        "height": 431.6796875,
+        "width": 913,
+        "x": 76,
+        "y": 822.234375
+      },
+      "conversation": null,
+      "detail": null,
+      "list": null,
+      "master": null,
+      "preview": null,
+      "queue": null,
+      "review": null,
+      "triage": null
+    }
+  },
+  {
+    "clientWidth": 375,
+    "overflowGlobal": false,
+    "page": "processes",
+    "rows": 0,
+    "scrollHeight": 2013,
+    "scrollWidth": 375,
+    "sidebar": {
+      "height": 844,
+      "width": 25,
+      "x": -25.5,
+      "y": 0
+    },
+    "topbar": {
+      "height": 52,
+      "width": 391,
+      "x": -8,
+      "y": 0
+    },
+    "viewport": {
+      "height": 844,
+      "name": "390x844",
+      "width": 390
+    },
+    "zones": {
+      "catalog": {
+        "height": 225.1328125,
+        "width": 351,
+        "x": 12,
+        "y": 875.3984375
+      },
+      "context": {
+        "height": 575.8203125,
+        "width": 351,
+        "x": 12,
+        "y": 1421.3671875
+      },
+      "conversation": null,
+      "detail": null,
+      "list": null,
+      "master": null,
+      "preview": null,
+      "queue": null,
+      "review": null,
+      "triage": null
+    }
+  },
+  {
+    "clientWidth": 1440,
+    "overflowGlobal": false,
+    "page": "email",
+    "rows": 1,
+    "scrollHeight": 731,
+    "scrollWidth": 1440,
+    "sidebar": {
+      "height": 731,
+      "width": 208,
+      "x": 0,
+      "y": 0
+    },
+    "topbar": {
+      "height": 52,
+      "width": 1232,
+      "x": 208,
+      "y": 0
+    },
+    "viewport": {
+      "height": 731,
+      "name": "1440x731",
+      "width": 1440
+    },
+    "zones": {
+      "catalog": null,
+      "context": null,
+      "conversation": {
+        "height": 241.7578125,
+        "width": 590,
+        "x": 479,
+        "y": 368.84375
+      },
+      "detail": null,
+      "list": {
+        "height": 361,
+        "width": 250,
+        "x": 229,
+        "y": 298
+      },
+      "master": null,
+      "preview": null,
+      "queue": null,
+      "review": null,
+      "triage": {
+        "height": 241.7578125,
+        "width": 350,
+        "x": 1069,
+        "y": 368.84375
+      }
+    }
+  },
+  {
+    "clientWidth": 1009,
+    "overflowGlobal": false,
+    "page": "email",
+    "rows": 1,
+    "scrollHeight": 930,
+    "scrollWidth": 1009,
+    "sidebar": {
+      "height": 900,
+      "width": 56,
+      "x": 0,
+      "y": 0
+    },
+    "topbar": {
+      "height": 52,
+      "width": 953,
+      "x": 56,
+      "y": 0
+    },
+    "viewport": {
+      "height": 900,
+      "name": "1024x900",
+      "width": 1024
+    },
+    "zones": {
+      "catalog": null,
+      "context": null,
+      "conversation": {
+        "height": 352.890625,
+        "width": 381,
+        "x": 297,
+        "y": 492.3125
+      },
+      "detail": null,
+      "list": {
+        "height": 530,
+        "width": 220,
+        "x": 77,
+        "y": 379
+      },
+      "master": null,
+      "preview": null,
+      "queue": null,
+      "review": null,
+      "triage": {
+        "height": 352.890625,
+        "width": 310,
+        "x": 678,
+        "y": 492.3125
+      }
+    }
+  },
+  {
+    "clientWidth": 375,
+    "overflowGlobal": false,
+    "page": "email",
+    "rows": 1,
+    "scrollHeight": 2172,
+    "scrollWidth": 375,
+    "sidebar": {
+      "height": 844,
+      "width": 25,
+      "x": -25.5,
+      "y": 0
+    },
+    "topbar": {
+      "height": 52,
+      "width": 391,
+      "x": -8,
+      "y": 0
+    },
+    "viewport": {
+      "height": 844,
+      "name": "390x844",
+      "width": 390
+    },
+    "zones": {
+      "catalog": null,
+      "context": null,
+      "conversation": {
+        "height": 649,
+        "width": 349,
+        "x": 13,
+        "y": 340.921875
+      },
+      "detail": null,
+      "list": {
+        "height": 169,
+        "width": 349,
+        "x": 13,
+        "y": 109
+      },
+      "master": null,
+      "preview": null,
+      "queue": null,
+      "review": null,
+      "triage": {
+        "height": 1043.8359375,
+        "width": 349,
+        "x": 13,
+        "y": 989.921875
+      }
+    }
+  },
+  {
+    "clientWidth": 1425,
+    "overflowGlobal": false,
+    "page": "documents",
+    "rows": 0,
+    "scrollHeight": 1355,
+    "scrollWidth": 1425,
+    "sidebar": {
+      "height": 731,
+      "width": 208,
+      "x": 0,
+      "y": 0
+    },
+    "topbar": {
+      "height": 52,
+      "width": 1217,
+      "x": 208,
+      "y": 0
+    },
+    "viewport": {
+      "height": 731,
+      "name": "1440x731",
+      "width": 1440
+    },
+    "zones": {
+      "catalog": null,
+      "context": null,
+      "conversation": null,
+      "detail": null,
+      "list": null,
+      "master": null,
+      "preview": {
+        "height": 1105.5234375,
+        "width": 561,
+        "x": 486,
+        "y": 132
+      },
+      "queue": {
+        "height": 1105.5234375,
+        "width": 250,
+        "x": 228,
+        "y": 132
+      },
+      "review": {
+        "height": 1105.5234375,
+        "width": 350,
+        "x": 1055,
+        "y": 132
+      },
+      "triage": null
+    }
+  },
+  {
+    "clientWidth": 1009,
+    "overflowGlobal": false,
+    "page": "documents",
+    "rows": 0,
+    "scrollHeight": 2565,
+    "scrollWidth": 1009,
+    "sidebar": {
+      "height": 900,
+      "width": 56,
+      "x": 0,
+      "y": 0
+    },
+    "topbar": {
+      "height": 52,
+      "width": 953,
+      "x": 56,
+      "y": 0
+    },
+    "viewport": {
+      "height": 900,
+      "name": "1024x900",
+      "width": 1024
+    },
+    "zones": {
+      "catalog": null,
+      "context": null,
+      "conversation": null,
+      "detail": null,
+      "list": null,
+      "master": null,
+      "preview": {
+        "height": 624,
+        "width": 913,
+        "x": 76,
+        "y": 756
+      },
+      "queue": {
+        "height": 624,
+        "width": 913,
+        "x": 76,
+        "y": 132
+      },
+      "review": {
+        "height": 1067.5234375,
+        "width": 913,
+        "x": 76,
+        "y": 1380
+      },
+      "triage": null
+    }
+  },
+  {
+    "clientWidth": 375,
+    "overflowGlobal": false,
+    "page": "documents",
+    "rows": 0,
+    "scrollHeight": 2461,
+    "scrollWidth": 375,
+    "sidebar": {
+      "height": 844,
+      "width": 25,
+      "x": -25.5,
+      "y": 0
+    },
+    "topbar": {
+      "height": 52,
+      "width": 391,
+      "x": -8,
+      "y": 0
+    },
+    "viewport": {
+      "height": 844,
+      "name": "390x844",
+      "width": 390
+    },
+    "zones": {
+      "catalog": null,
+      "context": null,
+      "conversation": null,
+      "detail": null,
+      "list": null,
+      "master": null,
+      "preview": {
+        "height": 575.5,
+        "width": 351,
+        "x": 12,
+        "y": 574
+      },
+      "queue": {
+        "height": 390,
+        "width": 351,
+        "x": 12,
+        "y": 164
+      },
+      "review": {
+        "height": 1107.5234375,
+        "width": 351,
+        "x": 12,
+        "y": 1169.5
+      },
+      "triage": null
+    }
+  },
+  {
+    "clientWidth": 1440,
+    "overflowGlobal": false,
+    "page": "admin",
+    "rows": 16,
+    "scrollHeight": 731,
+    "scrollWidth": 1440,
+    "sidebar": {
+      "height": 731,
+      "width": 208,
+      "x": 0,
+      "y": 0
+    },
+    "topbar": {
+      "height": 52,
+      "width": 1232,
+      "x": 208,
+      "y": 0
+    },
+    "viewport": {
+      "height": 731,
+      "name": "1440x731",
+      "width": 1440
+    },
+    "zones": {
+      "catalog": null,
+      "context": null,
+      "conversation": null,
+      "detail": {
+        "height": 561,
+        "width": 1192,
+        "x": 228,
+        "y": 60
+      },
+      "list": null,
+      "master": {
+        "height": 461,
+        "width": 280,
+        "x": 229,
+        "y": 141
+      },
+      "preview": null,
+      "queue": null,
+      "review": null,
+      "triage": null
+    }
+  },
+  {
+    "clientWidth": 1024,
+    "overflowGlobal": false,
+    "page": "admin",
+    "rows": 16,
+    "scrollHeight": 900,
+    "scrollWidth": 1024,
+    "sidebar": {
+      "height": 900,
+      "width": 56,
+      "x": 0,
+      "y": 0
+    },
+    "topbar": {
+      "height": 52,
+      "width": 968,
+      "x": 56,
+      "y": 0
+    },
+    "viewport": {
+      "height": 900,
+      "name": "1024x900",
+      "width": 1024
+    },
+    "zones": {
+      "catalog": null,
+      "context": null,
+      "conversation": null,
+      "detail": {
+        "height": 730,
+        "width": 928,
+        "x": 76,
+        "y": 60
+      },
+      "list": null,
+      "master": {
+        "height": 630,
+        "width": 280,
+        "x": 77,
+        "y": 141
+      },
+      "preview": null,
+      "queue": null,
+      "review": null,
+      "triage": null
+    }
+  },
+  {
+    "clientWidth": 375,
+    "overflowGlobal": false,
+    "page": "admin",
+    "rows": 16,
+    "scrollHeight": 991,
+    "scrollWidth": 375,
+    "sidebar": {
+      "height": 844,
+      "width": 29,
+      "x": -29.579999923706055,
+      "y": 0
+    },
+    "topbar": {
+      "height": 52,
+      "width": 391,
+      "x": -8,
+      "y": 0
+    },
+    "viewport": {
+      "height": 844,
+      "name": "390x844",
+      "width": 390
+    },
+    "zones": {
+      "catalog": null,
+      "context": null,
+      "conversation": null,
+      "detail": null,
+      "list": null,
+      "master": {
+        "height": 915,
+        "width": 351,
+        "x": 12,
+        "y": 60
+      },
+      "preview": null,
+      "queue": null,
+      "review": null,
+      "triage": null
+    }
+  },
+  {
+    "clientWidth": 1440,
+    "overflowGlobal": false,
+    "page": "partners",
+    "rows": 1,
+    "scrollHeight": 731,
+    "scrollWidth": 1440,
+    "sidebar": {
+      "height": 731,
+      "width": 208,
+      "x": 0,
+      "y": 0
+    },
+    "topbar": {
+      "height": 52,
+      "width": 1232,
+      "x": 208,
+      "y": 0
+    },
+    "viewport": {
+      "height": 731,
+      "name": "1440x731",
+      "width": 1440
+    },
+    "zones": {
+      "catalog": null,
+      "context": null,
+      "conversation": null,
+      "detail": null,
+      "list": null,
+      "master": null,
+      "preview": null,
+      "queue": null,
+      "review": null,
+      "triage": null
+    }
+  },
+  {
+    "clientWidth": 1024,
+    "overflowGlobal": false,
+    "page": "partners",
+    "rows": 1,
+    "scrollHeight": 900,
+    "scrollWidth": 1024,
+    "sidebar": {
+      "height": 900,
+      "width": 56,
+      "x": 0,
+      "y": 0
+    },
+    "topbar": {
+      "height": 52,
+      "width": 968,
+      "x": 56,
+      "y": 0
+    },
+    "viewport": {
+      "height": 900,
+      "name": "1024x900",
+      "width": 1024
+    },
+    "zones": {
+      "catalog": null,
+      "context": null,
+      "conversation": null,
+      "detail": null,
+      "list": null,
+      "master": null,
+      "preview": null,
+      "queue": null,
+      "review": null,
+      "triage": null
+    }
+  },
+  {
+    "clientWidth": 390,
+    "overflowGlobal": false,
+    "page": "partners",
+    "rows": 1,
+    "scrollHeight": 844,
+    "scrollWidth": 390,
+    "sidebar": {
+      "height": 844,
+      "width": 25,
+      "x": -25.5,
+      "y": 0
+    },
+    "topbar": {
+      "height": 52,
+      "width": 406,
+      "x": -8,
+      "y": 0
+    },
+    "viewport": {
+      "height": 844,
+      "name": "390x844",
+      "width": 390
+    },
+    "zones": {
+      "catalog": null,
+      "context": null,
+      "conversation": null,
+      "detail": null,
+      "list": null,
+      "master": null,
+      "preview": null,
+      "queue": null,
+      "review": null,
+      "triage": null
+    }
+  }
+]

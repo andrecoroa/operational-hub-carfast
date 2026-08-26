@@ -70,9 +70,13 @@
 .ui-contract-v1 .clean-shell .sidebar-nav-children { box-sizing: border-box; width: calc(100% - 28px); min-width: 0; margin-left: 28px; }
 .ui-contract-v1 .clean-shell .sidebar-sub-link { min-height: 32px; padding-block: 6px; }
 
-.ui-contract-v1 .visual-topbar { height: 52px; min-height: 52px; }
+.ui-contract-v1 .visual-topbar { box-sizing: border-box; width: auto; height: 52px; min-height: 52px; margin: 0 -20px; border-bottom: 0; }
 .ui-contract-v1 .visual-topbar-title { font-size: 16px; }
 .ui-contract-v1 .visual-global-search { height: var(--ui-control-compact); }
+.ui-contract-v1 .visual-topbar-actions { margin-left: auto; padding-right: 20px; }
+.ui-contract-v1 .visual-global-search { width: 250px; }
+.ui-contract-v1 .visual-global-search > span { display: none; }
+.ui-contract-v1 .visual-global-search input { padding-inline: 12px; }
 .ui-contract-v1 .visual-icon-action { width: var(--ui-control-compact); height: var(--ui-control-compact); }
 .ui-contract-v1 .visual-breadcrumbs { padding: 8px 0 4px; font-size: 12px; }
 .ui-contract-v1 .visual-breadcrumbs { display: none; }
@@ -231,6 +235,12 @@
 .ui-contract-v1 .visual-email-workbench-header { min-height: 40px; padding: 4px 12px; }
 .ui-contract-v1 .visual-email-workbench-header h2 { margin: 0; font-size: 16px; }
 .ui-contract-v1 .visual-email-workbench-header p { display: none; }
+.ui-contract-v1 .visual-email-metrics,
+.ui-contract-v1 .visual-email-statuses,
+.ui-contract-v1 .visual-email-workbench-header,
+.ui-contract-v1 .visual-email-filters { display: none; }
+.ui-contract-v1 .visual-email-overview { padding: 0; border: 0; background: transparent; }
+.ui-contract-v1 .visual-email-mailboxes { height: 36px; min-height: 36px; }
 .ui-contract-v1 .visual-email-filters { min-height: 48px; padding: 4px 10px; gap: 7px; }
 .ui-contract-v1 .visual-email-filters label { gap: 2px; font-size: 9px; }
 .ui-contract-v1 .visual-email-filters :is(input,select,button,.button-link) { min-height: 32px; height: 32px; }
@@ -447,6 +457,9 @@
 }
 .ui-contract-v1 .visual-document-filters { height: 44px; min-height: 44px; }
 .ui-contract-v1 .visual-document-actions { position: sticky; bottom: 0; padding-block: 8px; background: var(--ui-color-surface); }
+.ui-contract-v1 .visual-document-workbench :is(.doc-arch-nav,.doc-arch-kpis,.visual-document-step-nav,.visual-document-context,.visual-document-filters) { display: none; }
+.ui-contract-v1 .visual-document-workbench .doc-arch-header { min-height: 64px; padding: 6px 0; }
+.ui-contract-v1 .visual-document-workbench .doc-arch-header .eyebrow { display: none; }
 
 /* Administration is one master-detail workspace, never a directory of cards. */
 .ui-contract-v1 .admin-contract-workspace { display: grid; height: calc(100vh - 170px); min-height: 520px; grid-template-columns: 280px minmax(0,1fr); gap: 8px; overflow: hidden; }
@@ -478,6 +491,9 @@
 .ui-contract-v1 .admin-section-overview .clean-admin-metrics,
 .ui-contract-v1 .admin-section-overview .clean-admin-overview-strip { display: none; }
 .ui-contract-v1 .admin-section-roles .clean-admin-role-overview { display: none; }
+.ui-contract-v1 .admin-section-roles > .admin-context-nav,
+.ui-contract-v1 .admin-section-roles .clean-admin-section-heading,
+.ui-contract-v1 .admin-section-roles .clean-admin-create-disclosure { display: none; }
 .ui-contract-v1 .admin-section-roles .admin-contract-workspace { grid-template-columns: minmax(0,1fr); }
 .ui-contract-v1 .admin-section-roles .admin-contract-workspace > .admin-contract-master { display: none; }
 .ui-contract-v1 .admin-section-roles .clean-admin-section-heading { min-height: 56px; padding: 6px 0; }

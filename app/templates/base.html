@@ -1,20 +1,22 @@
 <!doctype html>
 <html lang="pt">
+  {% set contract_ui_enabled = foundation_ui_enabled or request.url.path.startswith('/v2-clean') %}
+  {% set foundation_ui_enabled = contract_ui_enabled %}
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{{ title or "Operational Hub Carfast" }}</title>
     <link rel="stylesheet" href="/static/css/app.css?v=20260821-email-triage-preview">
-    {% if foundation_ui_enabled %}
+    {% if contract_ui_enabled %}
       <link rel="stylesheet" href="/static/css/foundation.css?v=20260822-phase3">
     <link rel="stylesheet" href="/static/css/visual-v2.css?v={{ visual_asset_version }}">
-    <link rel="stylesheet" href="/static/css/ui-contract-v1.css?v=20260826-contract-v1h">
+    <link rel="stylesheet" href="/static/css/ui-contract-v1.css?v=20260826-contract-v1j">
     {% endif %}
   </head>
-  <body{% if foundation_ui_enabled %} class="ui-contract-v1"{% endif %}>
+  <body{% if contract_ui_enabled %} class="ui-contract-v1"{% endif %}>
     {% block body %}{% endblock %}
     <script src="/static/js/photo_capture.js?v=20260821" defer></script>
     <script src="/static/js/classification_proposals.js?v=20260821"></script>
-    {% if foundation_ui_enabled %}<script src="/static/js/visual-v2.js?v={{ visual_asset_version }}" defer></script>{% endif %}
+    {% if contract_ui_enabled %}<script src="/static/js/visual-v2.js?v={{ visual_asset_version }}" defer></script>{% endif %}
   </body>
 </html>

@@ -101,6 +101,42 @@ def test_inventory_covers_dynamic_overlays_adapters_and_blocked_legacy_surfaces(
     assert resolved == sum(1 for row in artifact["surfaces"] if row["classification"] != "legacy_blocked")
 
 
+def test_all_nonlegacy_surfaces_execute_nominal_http_smoke(authenticated_client, db_session, monkeypatch):
+    """Execute every inventoried HTML handler; missing fixture IDs may 404, never 5xx."""
+    import json
+    import re
+    from app.core.config import settings
+    from app.web import email as email_web
+    from sqlalchemy.orm import sessionmaker
+
+    monkeypatch.setattr(settings, "visual_foundation_enabled", True)
+    monkeypatch.setattr(
+        email_web,
+        "SessionLocal",
+        sessionmaker(bind=db_session.get_bind(), autoflush=False, autocommit=False),
+    )
+    artifact = json.loads(_read("docs/architecture/HTML_SURFACE_INVENTORY.json"))
+    results = []
+    for surface in artifact["surfaces"]:
+        if surface["classification"] == "legacy_blocked":
+            continue
+        sample_path = re.sub(r"\{[^}]+\}", "1", surface["path"])
+        response = authenticated_client.get(sample_path, follow_redirects=False)
+        results.append((surface["path"], response.status_code))
+        assert response.status_code < 500, (surface, sample_path, response.status_code, response.text[:240])
+        if (
+            sample_path.startswith("/v2-clean")
+            and response.status_code == 200
+            and "text/html" in response.headers.get("content-type", "")
+        ):
+            assert (
+                "ui-contract-v1" in response.text
+                or "ui-contract-v1.css" in response.text
+                or surface["classification"] in {"portal", "adapter"}
+            ), surface
+    assert len(results) == 125
+
+
 def test_tasks_keep_operational_context_visible_at_dense_desktop_height():
     css = _read("app/static/css/ui-contract-v1.css")
     assert ".clean-task-table td > small {\n    display: inline;" in css

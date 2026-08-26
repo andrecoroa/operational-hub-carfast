@@ -4,6 +4,7 @@
   {% set active_menu = "clean_processes" %}
   {% include "_sidebar.html" %}
   <main class="content clean-content{% if foundation_ui_enabled %} ui-foundation ui-page-shell process-command-page{% endif %}">
+    {% set visual_section = "Operação" %}{% set visual_page = "Centro de Processos" %}{% include "_visual_topbar.html" %}
     <header class="ui-page-header process-command-header">
       <div><p class="eyebrow">Operação / Centro de Processos</p><h2>Centro de Processos</h2><p>Priorize, acompanhe e abra o contexto operacional sem perder os filtros de trabalho.</p></div>
       <div class="clean-header-actions process-command-actions">
@@ -18,10 +19,10 @@
     {% if process_created %}<section class="notice-inline" role="status"><strong>Processo {{ process_created }} criado.</strong> A tarefa de execução e o histórico foram associados atomicamente.</section>{% endif %}
     {% if process_error %}<section class="notice-inline warning" role="alert"><strong>Não foi possível concluir a ação.</strong> {% if process_error == 'manager_justification_required' %}A execução excecional do Gestor exige uma justificação com pelo menos 12 caracteres.{% elif process_error == 'invalid_classification' %}A categoria/subcategoria não pertence ao catálogo ativo.{% elif process_error == 'invalid_model' %}O modelo selecionado não está ativo.{% elif process_error == 'forbidden' %}O utilizador não tem capacidade operacional para esta ação.{% else %}Reveja os campos e tente novamente.{% endif %}</section>{% endif %}
     <section class="clean-process-kpi-row process-command-kpis" aria-label="Indicadores do centro de processos">
-      <a href="#process-workbench"><span>Em acompanhamento</span><strong>{{ process_metrics.open }}</strong><em>processos ativos</em></a>
-      <a href="#priority-critical"><span>Prioridade imediata</span><strong>{{ process_metrics.critical }}</strong><em>processos críticos</em></a>
-      <a href="#process-workbench"><span>Áreas operacionais</span><strong>{{ process_metrics.areas }}</strong><em>filas disponíveis</em></a>
-      <a href="#process-models"><span>Modelos ativos</span><strong>{{ process_metrics.models }}</strong><em>percursos configurados</em></a>
+      <a href="#process-workbench"><svg class="ui-contract-icon" aria-hidden="true"><use href="/static/icons/lucide-v3.svg#inbox"></use></svg><span>Em acompanhamento</span><strong>{{ process_metrics.open }}</strong><em>processos ativos</em></a>
+      <a href="#priority-critical"><svg class="ui-contract-icon" aria-hidden="true"><use href="/static/icons/lucide-v3.svg#triangle-alert"></use></svg><span>Prioridade imediata</span><strong>{{ process_metrics.critical }}</strong><em>processos críticos</em></a>
+      <a href="#process-workbench"><svg class="ui-contract-icon" aria-hidden="true"><use href="/static/icons/lucide-v3.svg#user-round"></use></svg><span>Áreas operacionais</span><strong>{{ process_metrics.areas }}</strong><em>filas disponíveis</em></a>
+      <a href="#process-models"><svg class="ui-contract-icon" aria-hidden="true"><use href="/static/icons/lucide-v3.svg#circle-check"></use></svg><span>Modelos ativos</span><strong>{{ process_metrics.models }}</strong><em>percursos configurados</em></a>
     </section>
 
     {% if can_create_process %}

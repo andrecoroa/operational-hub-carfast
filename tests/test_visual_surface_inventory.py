@@ -10,8 +10,8 @@ from scripts.check_visual_surface_inventory import static_html_surface_paths
 from scripts.check_visual_surface_inventory import EXPECTED_STATIC_HTML_SURFACES
 
 
-CANONICAL_ASSET = "/static/css/visual-v2.css?v=20260825-convergence1"
-CANONICAL_SCRIPT = "/static/js/visual-v2.js?v=20260825-convergence1"
+CANONICAL_ASSET = "/static/css/visual-v2.css?v=20260826-elevation-v3"
+CANONICAL_SCRIPT = "/static/js/visual-v2.js?v=20260826-elevation-v3"
 CANONICAL_SIDEBAR = 'id="visual-sidebar"'
 
 
@@ -37,7 +37,7 @@ def visual_runtime_enabled():
 def test_every_jinja_runtime_has_global_visual_contract():
     for environment in (router.templates.env, email.templates.env, clean_admin.templates.env):
         assert "foundation_ui_enabled" in environment.globals
-        assert environment.globals["visual_asset_version"] == "20260825-convergence1"
+        assert environment.globals["visual_asset_version"] == "20260826-elevation-v3"
 
 
 def test_static_v2_clean_html_inventory_is_complete_and_stable():

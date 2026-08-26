@@ -13,5 +13,5 @@ def configure_visual_template_runtime(templates: Jinja2Templates) -> Jinja2Templ
     """
 
     templates.env.globals["foundation_ui_enabled"] = settings.visual_foundation_enabled
-    templates.env.globals["visual_asset_version"] = "20260825-convergence1"
+    templates.env.globals["visual_asset_version"] = "20260826-elevation-v3"
     return templates

@@ -929,6 +929,8 @@ dialog { border: 1px solid var(--cf-gray-200); border-radius: 12px; box-shadow: 
   .v3-context-preview { position: relative; top: auto; }
 }
 @media (max-width: 767px) {
+  .clean-shell:has(> .v3-pilot) > .sidebar { position: fixed; inset: 0 auto 0 0; display: block; width: min(320px,86vw); visibility: hidden; transform: translateX(-102%); }
+  .visual-nav-open .clean-shell:has(> .v3-pilot) > .sidebar { visibility: visible; transform: translateX(0); }
   .v3-stock-pilot .visual-stock-toolbar .stock-filters { grid-template-columns: 1fr; }
   .v3-stock-workspace { gap: 12px; }
   .v3-context-preview { border-radius: var(--v3-radius-lg); }

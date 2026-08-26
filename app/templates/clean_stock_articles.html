@@ -2,7 +2,7 @@
 {% block body %}
 <div class="app-shell clean-shell">
   {% set active_menu="stock" %}{% include "_sidebar.html" %}
-  <main class="content clean-content stock-page{% if foundation_ui_enabled %} ui-foundation ui-page-shell visual-stock-workbench{% endif %}">
+  <main class="content clean-content stock-page{% if foundation_ui_enabled %} ui-foundation ui-page-shell visual-stock-workbench v3-pilot v3-stock-pilot{% endif %}">
     {% set stock_nav="articles" %}{% include "_clean_stock_nav.html" %}
     <header class="stock-header compact-header{% if foundation_ui_enabled %} ui-page-header visual-stock-heading{% endif %}">
       <div><p class="eyebrow">Stock</p><h1>Artigos e existências</h1><p>Catálogo e disponibilidade confirmada numa única consulta.</p></div>
@@ -22,11 +22,12 @@
       <label class="stock-check"><input type="checkbox" name="low_stock" value="true" {% if filters.low_stock %}checked{% endif %}> Abaixo do mínimo</label>
       <button type="submit">Filtrar</button><a class="button-link secondary-link" href="/v2-clean/stock/articles">Limpar</a>
     </form>{% if foundation_ui_enabled %}</section>{% endif %}
+    <div class="v3-stock-workspace">
     <section class="stock-card flat-card{% if foundation_ui_enabled %} visual-stock-table-card{% endif %}">{% if foundation_ui_enabled %}<header class="visual-stock-section-head"><div><p class="eyebrow">Existências</p><h2>Stock atual</h2></div><span>{{ rows|length }} artigos visíveis</span></header>{% endif %}<form method="post" action="/v2-clean/stock/articles/bulk-category" id="stock-bulk-category">
       {% if can_operate_stock %}<div class="stock-actions stock-bulk-actions"><strong><span id="stock-selected-count">0</span> selecionados</strong><select name="category_id" aria-label="Categoria a aplicar"><option value="">Sem categoria</option>{% for item in active_categories %}<option value="{{ item.id }}">{{ item.name }}</option>{% endfor %}</select><button type="submit" disabled id="stock-apply-category">Aplicar categoria</button></div>{% endif %}
       <div class="stock-table-wrap"><table class="stock-table stock-table-compact stock-article-table{% if tyre_view %} is-tyre-view{% endif %}">
         <thead><tr>{% if can_operate_stock %}<th class="stock-select-column"><input type="checkbox" id="stock-select-all" aria-label="Selecionar todos"></th>{% endif %}<th class="stock-reference-column">Referência</th>{% if tyre_view %}<th class="stock-tyre-measure-column">Medida</th><th>Marca / modelo</th>{% else %}<th>Designação curta</th><th>Categoria</th>{% endif %}<th>Fornecedor</th><th>Disponível</th><th>Estado</th></tr></thead>
-        <tbody>{% for row in rows %}<tr>
+        <tbody>{% for row in rows %}<tr class="v3-stock-row{% if loop.first %} is-previewed{% endif %}" tabindex="0" data-v3-stock-row data-id="{{ row.article.id }}" data-reference="{{ row.article.internal_ref }}" data-name="{{ row.article.name }}" data-category="{{ row.category.name if row.category else 'Sem categoria' }}" data-supplier="{{ row.supplier.name if row.supplier else 'Sem fornecedor' }}" data-available="{{ row.display_available|default(row.available)|int }} {{ row.article.unit }}" data-status="{{ {'active':'Ativo','inactive':'Inativo','discontinued':'Descontinuado'}.get(row.article.status, 'Ativo' if row.article.active else 'Inativo') }}">
           {% if can_operate_stock %}<td class="stock-select-column"><input type="checkbox" name="article_ids" value="{{ row.article.id }}" class="stock-row-select" aria-label="Selecionar {{ row.article.internal_ref }}"></td>{% endif %}
           <td class="stock-reference-column"><a href="/v2-clean/stock/articles/{{ row.article.id }}">{{ row.article.internal_ref }}</a></td>
           {% if tyre_view %}<td class="stock-tyre-measure-column"><strong>{{ row.tyre.measure or 'Por identificar' }}</strong></td><td class="stock-short-name" title="{{ row.article.name }}">{{ row.tyre.brand_model }}</td>{% else %}<td class="stock-short-name" title="{{ row.article.name }}">{{ row.article.name }}</td><td>{{ row.category.name if row.category else '-' }}</td>{% endif %}
@@ -36,6 +37,18 @@
         </tr>{% else %}<tr><td colspan="{{ 7 if can_operate_stock else 6 }}" class="stock-empty">Sem artigos para estes filtros.</td></tr>{% endfor %}</tbody>
       </table></div>
     </form></section>
+    <aside class="v3-context-preview v3-stock-preview" aria-labelledby="v3-stock-preview-title"{% if not rows %} hidden{% endif %}>
+      {% set preview = rows[0] if rows else none %}
+      <header><div><p class="eyebrow">Pré-visualização do artigo</p><h2 id="v3-stock-preview-title" data-v3-preview-reference>{{ preview.article.internal_ref if preview else '' }}</h2></div><button type="button" class="v3-icon-button" data-v3-preview-close aria-label="Fechar pré-visualização"><svg class="v3-icon" aria-hidden="true"><use href="/static/icons/lucide-v3.svg#x"></use></svg></button></header>
+      <div class="v3-preview-identity"><span class="v3-preview-icon"><svg class="v3-icon" aria-hidden="true"><use href="/static/icons/lucide-v3.svg#package"></use></svg></span><div><strong data-v3-preview-name>{{ preview.article.name if preview else '' }}</strong><span class="stock-badge {{ 'warning' if preview and preview.low else 'success' }}" data-v3-preview-status>{{ {'active':'Ativo','inactive':'Inativo','discontinued':'Descontinuado'}.get(preview.article.status, 'Ativo' if preview and preview.article.active else 'Inativo') if preview else '' }}</span></div></div>
+      <dl class="v3-preview-facts">
+        <div><dt>Categoria</dt><dd data-v3-preview-category>{{ preview.category.name if preview and preview.category else 'Sem categoria' }}</dd></div>
+        <div><dt>Disponível</dt><dd data-v3-preview-available>{{ (preview.display_available|default(preview.available)|int)|string ~ ' ' ~ preview.article.unit if preview else '' }}</dd></div>
+        <div><dt>Fornecedor</dt><dd data-v3-preview-supplier>{{ preview.supplier.name if preview and preview.supplier else 'Sem fornecedor' }}</dd></div>
+      </dl>
+      <div class="v3-preview-actions"><a class="button-link" data-v3-preview-detail href="/v2-clean/stock/articles/{{ preview.article.id if preview else '' }}"><svg class="v3-icon" aria-hidden="true"><use href="/static/icons/lucide-v3.svg#arrow-right"></use></svg>Ver detalhe</a></div>
+    </aside>
+    </div>
     {% if can_operate_stock %}<dialog id="new-article" class="stock-dialog"><form method="post" action="/v2-clean/stock/articles">
       <h2>Novo artigo</h2>
       <label>Referência interna<input name="internal_ref" required></label>
@@ -68,5 +81,5 @@
     </dialog>{% endif %}
   </main>
 </div>
-<script>(()=>{const all=document.getElementById('stock-select-all'),rows=[...document.querySelectorAll('.stock-row-select')],count=document.getElementById('stock-selected-count'),apply=document.getElementById('stock-apply-category');if(!rows.length)return;const sync=()=>{const n=rows.filter(item=>item.checked).length;if(count)count.textContent=n;if(apply)apply.disabled=!n;if(all){all.checked=n===rows.length;all.indeterminate=n>0&&n<rows.length}};all?.addEventListener('change',()=>{rows.forEach(item=>item.checked=all.checked);sync()});rows.forEach(item=>item.addEventListener('change',sync));sync()})();</script>
+<script>(()=>{const all=document.getElementById('stock-select-all'),checks=[...document.querySelectorAll('.stock-row-select')],count=document.getElementById('stock-selected-count'),apply=document.getElementById('stock-apply-category');const sync=()=>{const n=checks.filter(item=>item.checked).length;if(count)count.textContent=n;if(apply)apply.disabled=!n;if(all){all.checked=n===checks.length;all.indeterminate=n>0&&n<checks.length}};all?.addEventListener('change',()=>{checks.forEach(item=>item.checked=all.checked);sync()});checks.forEach(item=>item.addEventListener('change',sync));sync();const rows=[...document.querySelectorAll('[data-v3-stock-row]')],preview=document.querySelector('.v3-stock-preview');if(!preview)return;const fields={reference:preview.querySelector('[data-v3-preview-reference]'),name:preview.querySelector('[data-v3-preview-name]'),category:preview.querySelector('[data-v3-preview-category]'),supplier:preview.querySelector('[data-v3-preview-supplier]'),available:preview.querySelector('[data-v3-preview-available]'),status:preview.querySelector('[data-v3-preview-status]'),detail:preview.querySelector('[data-v3-preview-detail]')};const select=row=>{rows.forEach(item=>item.classList.toggle('is-previewed',item===row));Object.keys(fields).forEach(key=>{if(key==='detail')fields.detail.href='/v2-clean/stock/articles/'+row.dataset.id;else if(fields[key])fields[key].textContent=row.dataset[key]||''});preview.hidden=false};rows.forEach(row=>{row.addEventListener('click',event=>{if(event.target.closest('a,input,button'))return;select(row)});row.addEventListener('keydown',event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();select(row)}})});preview.querySelector('[data-v3-preview-close]')?.addEventListener('click',()=>{preview.hidden=true;rows.forEach(item=>item.classList.remove('is-previewed'))})})();</script>
 {% endblock %}

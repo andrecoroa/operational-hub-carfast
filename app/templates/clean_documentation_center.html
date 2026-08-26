@@ -4,6 +4,7 @@
   {% set active_menu = "documentation_center" %}
   {% include "_sidebar.html" %}
   <main class="content clean-content doc-arch-page{% if foundation_ui_enabled %} ui-foundation ui-page-shell{% endif %}">
+    {% set visual_section = "Operações de negócio" %}{% set visual_page = "Documentação" %}{% include "_visual_topbar.html" %}
     {% set doc_nav = "center" %}
     {% include "_clean_documentation_nav.html" %}
 
@@ -27,7 +28,7 @@
       <a class="danger" href="/v2-clean/documentation/triage"><strong>{{ counts.errors }}</strong><span>Com erro</span></a>
     </section>
 
-    <section class="doc-arch-center-grid">
+    <section class="doc-arch-center-grid{% if foundation_ui_enabled %} ui-list-preview-workbench{% endif %}">
       <article class="doc-arch-card">
         <div class="doc-arch-card-heading">
           <div><h2>Caixa de entrada</h2><p>Documentos sem destino seguro ou que precisam de confirmação.</p></div>

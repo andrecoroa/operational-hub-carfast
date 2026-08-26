@@ -1,6 +1,14 @@
 (() => {
   const dialog = document.getElementById("email-preview-dialog");
+  const previewPanel = document.getElementById("email-preview-panel");
   let previewTrigger = null;
+  const resetPreviewPanel = () => {
+    if (!previewPanel) return;
+    previewPanel.innerHTML = '<div class="email-preview-loading"><strong>Pré-visualização</strong><span>Selecione uma conversa para triar, classificar e responder sem perder a fila.</span></div>';
+    document.querySelectorAll("[data-email-preview]").forEach((row) => row.classList.remove("is-selected"));
+    if (previewTrigger instanceof HTMLElement && previewTrigger.isConnected) previewTrigger.focus();
+    previewTrigger = null;
+  };
   const bindWorkHierarchy = (root) => {
     const source = root.querySelector("[data-email-work-hierarchy]");
     const container = root.querySelector("[data-work-hierarchy]");
@@ -145,7 +153,10 @@
     bindBodyViews(root);
     bindPanelSwitch(root);
     bindLinkKinds(root);
-    root.querySelectorAll("[data-email-modal-close]").forEach((button) => button.addEventListener("click", () => dialog?.close()));
+    root.querySelectorAll("[data-email-modal-close]").forEach((button) => button.addEventListener("click", () => {
+      if (button.closest("#email-preview-panel")) resetPreviewPanel();
+      else dialog?.close();
+    }));
     root.querySelectorAll("[data-email-show-images]").forEach((button) => button.addEventListener("click", () => {
       const frame = document.getElementById(button.dataset.emailShowImages);
       frame?.contentDocument?.querySelectorAll("img[data-email-src]").forEach((image) => { image.src = image.dataset.emailSrc; image.style.display = "inline-block"; });
@@ -202,7 +213,8 @@
     }));
     root.querySelectorAll("form").forEach((form) => form.addEventListener("submit", async (event) => {
       if (event.submitter?.matches("[data-email-approve]")) return;
-      if (!dialog || !dialog.open || !form.closest("#email-preview-dialog")) return;
+      const formPreviewRoot = form.closest("#email-preview-dialog, #email-preview-panel");
+      if (!formPreviewRoot || (formPreviewRoot === dialog && !dialog.open)) return;
       event.preventDefault();
       const submitter = event.submitter;
       if (submitter) submitter.disabled = true;
@@ -224,21 +236,25 @@
   };
   const openPreview = async (threadId, trigger = null) => {
     if (!dialog || !threadId) return;
+    const usePanel = Boolean(previewPanel && window.matchMedia("(min-width: 1025px)").matches);
+    const previewRoot = usePanel ? previewPanel : dialog;
     previewTrigger = trigger || document.activeElement;
-    const previousShell = dialog.querySelector("[data-email-thread-id]");
+    const previousShell = previewRoot.querySelector("[data-email-thread-id]");
     const previousConversationScroll = previousShell?.querySelector(".email-conversation")?.scrollTop || 0;
     const previousTriageScroll = previousShell?.querySelector(".email-triage-pane")?.scrollTop || 0;
-    dialog.innerHTML = '<div class="email-preview-loading">A abrir conversa…</div>';
-    if (!dialog.open) dialog.showModal();
+    previewRoot.innerHTML = '<div class="email-preview-loading">A abrir conversa…</div>';
+    if (!usePanel) {
+      if (!dialog.open) dialog.showModal();
+    }
     const response = await fetch(`/v2-clean/email/${threadId}/preview`, {headers: {"X-Requested-With": "fetch"}});
-    dialog.innerHTML = await response.text();
-    bindThread(dialog);
-    const fullPageLink = dialog.querySelector(".email-open-full");
+    previewRoot.innerHTML = await response.text();
+    bindThread(previewRoot);
+    const fullPageLink = previewRoot.querySelector(".email-open-full");
     if (fullPageLink) fullPageLink.href = `${fullPageLink.pathname}?return_context=${encodeURIComponent(location.pathname + location.search)}`;
-    dialog.querySelector("[data-email-modal-close], button, a, input, select, textarea")?.focus();
+    previewRoot.querySelector("[data-email-modal-close], button, a, input, select, textarea")?.focus();
     requestAnimationFrame(() => {
-      const conversation = dialog.querySelector(".email-conversation");
-      const triage = dialog.querySelector(".email-triage-pane");
+      const conversation = previewRoot.querySelector(".email-conversation");
+      const triage = previewRoot.querySelector(".email-triage-pane");
       if (conversation) conversation.scrollTop = previousConversationScroll;
       if (triage) triage.scrollTop = previousTriageScroll;
     });

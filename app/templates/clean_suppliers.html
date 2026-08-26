@@ -2,7 +2,7 @@
 {% block body %}
 <div class="app-shell clean-shell">
   {% set active_menu = "suppliers" %}{% include "_sidebar.html" %}
-  <main class="content clean-content supplier-page{% if foundation_ui_enabled %} ui-foundation{% endif %}">
+  <main class="content clean-content supplier-page{% if foundation_ui_enabled %} ui-foundation ui-partner-directory{% endif %}">
     {% set visual_section = "Parceiros" %}{% set visual_page = "Diretório" %}{% include "_visual_topbar.html" %}
     {% set partner_tab = "directory" %}{% include "_supplier_context_nav.html" %}
     <header class="supplier-hero{% if foundation_ui_enabled %} ui-page-header ui-surface{% endif %}">

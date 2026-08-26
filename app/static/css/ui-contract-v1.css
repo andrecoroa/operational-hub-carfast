@@ -118,6 +118,60 @@
 .ui-contract-v1 .process-command-table :is(th,td) { height: var(--ui-row-height); padding-block: 6px; }
 .ui-contract-v1 .process-create-panel > summary { min-height: 36px; padding-inline: 12px; }
 
+/* Core workspaces: one dense list -> preview -> treatment grammar. */
+.ui-contract-v1 :is(.visual-email-heading,.doc-arch-header,.supplier-hero,.clean-admin-header,.visual-dashboard-heading) {
+  min-height: 0;
+  margin: 0;
+  padding-block: 8px;
+}
+.ui-contract-v1 :is(.visual-email-heading,.doc-arch-header,.supplier-hero,.clean-admin-header,.visual-dashboard-heading) h1,
+.ui-contract-v1 :is(.visual-email-heading,.doc-arch-header,.supplier-hero,.clean-admin-header,.visual-dashboard-heading) h2 { margin-block: 0 2px; font-size: 22px; line-height: 28px; }
+.ui-contract-v1 :is(.visual-email-heading,.doc-arch-header,.supplier-hero,.clean-admin-header,.visual-dashboard-heading) p { margin-block: 1px; font-size: 12px; line-height: 16px; }
+.ui-contract-v1 :is(.visual-email-heading,.doc-arch-header,.supplier-hero,.clean-admin-header,.visual-dashboard-heading) :is(button,.button-link,.visual-button) { min-height: 32px; height: 32px; }
+
+.ui-contract-v1 .visual-email-overview { margin: 0; padding: 8px 10px; }
+.ui-contract-v1 .visual-email-overview > header { min-height: 36px; }
+.ui-contract-v1 .visual-email-mailboxes,
+.ui-contract-v1 .visual-email-statuses { min-height: 32px; }
+.ui-contract-v1 .visual-email-metrics { grid-template-columns: repeat(5,minmax(0,1fr)); gap: 8px; }
+.ui-contract-v1 .visual-email-metrics > a { min-height: 52px; padding: 6px 9px; }
+.ui-contract-v1 .visual-email-workbench { margin: 0; }
+.ui-contract-v1 .visual-email-workbench-header { min-height: 40px; padding: 4px 12px; }
+.ui-contract-v1 .visual-email-workbench-header h2 { margin: 0; font-size: 16px; }
+.ui-contract-v1 .visual-email-workbench-header p { display: none; }
+.ui-contract-v1 .visual-email-filters { min-height: 48px; padding: 4px 10px; gap: 7px; }
+.ui-contract-v1 .visual-email-filters label { gap: 2px; font-size: 9px; }
+.ui-contract-v1 .visual-email-filters :is(input,select,button,.button-link) { min-height: 32px; height: 32px; }
+.ui-contract-v1 .ui-email-list-preview { display: grid; grid-template-columns: minmax(0,2fr) minmax(300px,1fr); min-height: 430px; }
+.ui-contract-v1 .ui-email-list-preview > .visual-email-table-wrap { min-width: 0; border-right: 1px solid var(--ui-color-border); }
+.ui-contract-v1 .ui-context-preview { position: static; inset: auto; box-sizing: border-box; width: 100%; max-width: none; height: 100%; max-height: none; margin: 0; padding: 0; border: 0; border-radius: 0; background: var(--ui-color-surface); }
+.ui-contract-v1 .ui-context-preview::backdrop { display: none; }
+.ui-contract-v1 .ui-context-preview .email-preview-loading { display: grid; min-height: 100%; padding: 24px; place-content: center; gap: 6px; color: var(--ui-color-text-muted); text-align: center; }
+
+.ui-contract-v1 .doc-arch-kpis { gap: 8px; }
+.ui-contract-v1 .doc-arch-kpis > a { min-height: 56px; padding: 8px 12px; }
+.ui-contract-v1 .ui-list-preview-workbench { grid-template-columns: minmax(0,2fr) minmax(280px,1fr); gap: 12px; }
+.ui-contract-v1 .ui-list-preview-workbench .doc-arch-card { min-width: 0; }
+
+.ui-contract-v1 .clean-admin-directory,
+.ui-contract-v1 .clean-admin-residual-nav { margin: 0; }
+.ui-contract-v1 .admin-model-workbench { padding: 0; overflow: hidden; }
+.ui-contract-v1 .admin-model-workbench > .table-heading { min-height: 52px; padding: 8px 12px; }
+.ui-contract-v1 .admin-model-columns { display: grid; grid-template-columns: minmax(190px,.7fr) minmax(190px,.7fr) minmax(320px,1.4fr); min-height: 440px; gap: 0; }
+.ui-contract-v1 .admin-model-master { padding: 12px; border-right: 1px solid var(--ui-color-border); }
+.ui-contract-v1 .admin-model-detail { padding: 16px; background: var(--ui-color-surface-muted); }
+.ui-contract-v1 .admin-model-row { min-height: 44px; }
+.ui-contract-v1 .clean-admin-role-workspace { display: grid; grid-template-columns: minmax(220px,.75fr) minmax(0,2fr); gap: 12px; }
+.ui-contract-v1 .clean-admin-role-workspace-head { align-content: start; }
+
+.ui-contract-v1 .visual-dashboard-metrics { gap: 8px; }
+.ui-contract-v1 .visual-dashboard-metrics .visual-metric-card { min-height: 60px; padding: 8px 10px; }
+.ui-contract-v1 .visual-dashboard-grid { gap: 12px; }
+.ui-contract-v1 .visual-work-table :is(th,td),
+.ui-contract-v1 .supplier-table :is(th,td) { height: 40px; padding-block: 6px; }
+.ui-contract-v1 .supplier-filter { min-height: 48px; padding: 4px 10px; }
+.ui-contract-v1 .supplier-filter :is(input,select,button) { min-height: 32px; height: 32px; }
+
 @media (max-width: 1024px) {
   .ui-contract-v1 { --visual-sidebar-width: var(--visual-sidebar-collapsed); }
   .ui-contract-v1.visual-nav-open .clean-shell .sidebar,
@@ -128,6 +182,10 @@
   .ui-contract-v1.visual-nav-open #visual-sidebar .nav-section-label { display: block; width: auto; min-height: 0; font-size: 10px; }
   .ui-contract-v1 .visual-service-desk .visual-service-metrics { grid-template-columns: repeat(3,minmax(0,1fr)); }
   .ui-contract-v1 .process-command-kpis { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .ui-contract-v1 .ui-email-list-preview { grid-template-columns: minmax(0,1fr); }
+  .ui-contract-v1 .ui-context-preview { display: none; }
+  .ui-contract-v1 .admin-model-columns { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .ui-contract-v1 .admin-model-detail { grid-column: 1 / -1; }
 }
 @media (max-width: 640px) {
   .ui-contract-v1 { --visual-sidebar-width: 0px; }
@@ -143,4 +201,9 @@
   .ui-contract-v1 .visual-service-desk .clean-task-hero { align-items: start; }
   .ui-contract-v1 .visual-service-desk .visual-service-metrics { grid-template-columns: repeat(2,minmax(0,1fr)); }
   .ui-contract-v1 .visual-service-desk .visual-service-metrics > :is(article,a) { min-height: 52px; }
+  .ui-contract-v1 .visual-email-metrics { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .ui-contract-v1 .ui-list-preview-workbench,
+  .ui-contract-v1 .admin-model-columns,
+  .ui-contract-v1 .clean-admin-role-workspace { grid-template-columns: minmax(0,1fr); }
+  .ui-contract-v1 .admin-model-detail { grid-column: auto; }
 }

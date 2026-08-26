@@ -16,15 +16,17 @@ def test_contract_asset_is_global_for_foundation_surfaces() -> None:
 
 def test_shell_alignment_and_compact_first_fold_are_measurable() -> None:
     for contract in (
-        "--visual-sidebar-width: 240px",
-        "--visual-topbar-height: 48px",
+        "--visual-sidebar-width: 208px",
+        "--visual-sidebar-collapsed: 56px",
+        "--visual-topbar-height: 52px",
+        "--ui-control-compact: 32px",
         "white-space: nowrap",
         "min-height: 56px",
-        "min-height: 34px",
-        "--ui-row-height: 44px",
+        "--ui-row-height: 40px",
     ):
         assert contract in CSS
     assert "grid-template-columns: 18px minmax(0,1fr)" in CSS
+    assert ".ui-contract-v1.visual-nav-open #visual-sidebar { width: min(320px,88vw); }" in CSS
 
 
 def test_task_center_uses_canonical_language_and_lucide_family() -> None:
@@ -39,6 +41,8 @@ def test_process_center_uses_global_shell_and_compact_workspace() -> None:
     assert '{% include "_visual_topbar.html" %}' in PROCESSES
     assert 'visual_page = "Centro de Processos"' in PROCESSES
     assert "process-command-kpis" in CSS
+    assert ".process-command-kpis > a { display: grid;" in CSS
+    assert ".visual-service-kpi-icon { position: static;" in CSS
     assert "process-command-toolbar { min-height: 64px" in CSS
     for icon in ("inbox", "triangle-alert", "user-round", "circle-check"):
         assert f'lucide-v3.svg#{icon}' in PROCESSES

@@ -48,6 +48,7 @@ from app.models.organization import (
 )
 from app.models.settings import SettingsCatalog, SettingsValue
 from app.models.tasks import Task, TaskDocument, TaskHistory
+from app.models.task_templates import ProcessModel, ProcessModelVersion, TaskTemplate, TaskTemplateVersion
 from app.models.work_hierarchy import (
     RoleWorkScope,
     ServiceDeskCategoryExecutor,
@@ -270,6 +271,18 @@ ADMIN_NAV = (
             "admin.workshop_models.read",
             "admin.workshop_models.manage",
             "settings.manage",
+            "admin.manage",
+        ),
+    ),
+    (
+        "task_process_models",
+        "Tarefas-tipo e Processos-modelo",
+        "/v2-clean/admin/task-process-models",
+        (
+            "tasks.templates.read",
+            "tasks.templates.manage",
+            "process.models.read",
+            "process.models.manage",
             "admin.manage",
         ),
     ),
@@ -898,6 +911,41 @@ def clean_admin_setup(request: Request):
             setup_total=len(setup_steps),
             setup_first_pending=first_pending,
             setup_audit_count=counts["audit"],
+        )
+    return templates.TemplateResponse(request, "clean_admin.html", context)
+
+
+@clean_admin_router.get("/v2-clean/admin/task-process-models", response_class=HTMLResponse)
+def clean_admin_task_process_models(request: Request):
+    access = _authorized(
+        request,
+        "tasks.templates.read",
+        "tasks.templates.manage",
+        "process.models.read",
+        "process.models.manage",
+        "admin.manage",
+    )
+    if not access:
+        return _denied(request)
+    user_id, permissions = access
+    with SessionLocal() as db:
+        task_rows = db.execute(
+            select(TaskTemplate, TaskTemplateVersion)
+            .join(TaskTemplateVersion, TaskTemplateVersion.template_id == TaskTemplate.id)
+            .order_by(TaskTemplate.name, TaskTemplateVersion.version.desc())
+        ).all()
+        process_rows = db.execute(
+            select(ProcessModel, ProcessModelVersion)
+            .join(ProcessModelVersion, ProcessModelVersion.model_id == ProcessModel.id)
+            .order_by(ProcessModel.name, ProcessModelVersion.version.desc())
+        ).all()
+        context = _layout_context(
+            db,
+            user_id,
+            permissions,
+            "task_process_models",
+            task_model_rows=task_rows,
+            process_model_rows=process_rows,
         )
     return templates.TemplateResponse(request, "clean_admin.html", context)
 

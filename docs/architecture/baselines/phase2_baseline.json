@@ -11,18 +11,18 @@
     "effective_permission_semantics": "legacy_set_membership",
     "legacy_composer_default": true,
     "operational_data_read": false,
-    "sqlalchemy_table_count_after_additive_catalogue": 166
+    "sqlalchemy_table_count_after_additive_catalogue": 173
   },
   "permissions": {
     "legacy_alias_roots": 14,
     "legacy_aliases_sha256": "834782c0abf9dc45c6f16cfeb58bccad57a1907d2d1f0d9e23a4e7b8dc34cd24",
     "web_rule_groups": 20,
-    "web_rules_sha256": "04000844df8df7432d91ead212609bb982db16c43a29ff0508f7b67c0490bc65"
+    "web_rules_sha256": "b0bb7c56bffd2234deda7cd72eec85f561094b978af64bfff15a18b13ae43a40"
   },
   "post_actions": {
-    "form_action_count": 551,
-    "form_action_occurrence_count": 722,
-    "form_actions_sha256": "1d393ca80db446d0a8aaf369b03d8edb15a63377b628353c1d50ade8ee64d6d4",
+    "form_action_count": 555,
+    "form_action_occurrence_count": 726,
+    "form_actions_sha256": "e8e1f89bbfb5de5b6c856191240d6aae3d1a95fb5412667f4e79b55610c5a05f",
     "redirect_destination_count": 409,
     "redirect_destinations_sha256": "9011debc61daf945bb673dbea1e11bff67f02d52b32a7e4b1f14db6daae7b9dc",
     "redirect_occurrence_count": 904
@@ -30,12 +30,12 @@
   "routes": {
     "by_method": {
       "DELETE": 2,
-      "GET": 42,
+      "GET": 43,
       "PATCH": 8,
-      "POST": 52
+      "POST": 63
     },
-    "count": 104,
-    "sha256": "c3d21917f9ca6217a49e6233793953ec247eb9670f9f38ffc7e303216b21cf9f"
+    "count": 116,
+    "sha256": "158004af3bad6055757934539486b80d9a88f2914f9e82c7a328724dc9981fe2"
   },
   "schema_version": 1,
   "source_base": "integration/modular-architecture@0491b84d"

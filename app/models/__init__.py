@@ -123,6 +123,15 @@ from app.models.tasks import (
     TaskRecurrenceTemplate,
     TaskSlaEvent,
 )
+from app.models.task_templates import (
+    ProcessInstance,
+    ProcessInstanceEvent,
+    ProcessModel,
+    ProcessModelVersion,
+    TaskTemplate,
+    TaskTemplateUsage,
+    TaskTemplateVersion,
+)
 from app.models.vehicle_history_audit import (
     VehicleHistoryAudit,
     VehicleHistoryAuditDocument,
@@ -300,6 +309,13 @@ __all__ = [
     "TaskRecurrenceOccurrence",
     "TaskRecurrenceTemplate",
     "TaskSlaEvent",
+    "TaskTemplate",
+    "TaskTemplateVersion",
+    "TaskTemplateUsage",
+    "ProcessModel",
+    "ProcessModelVersion",
+    "ProcessInstance",
+    "ProcessInstanceEvent",
     "Team",
     "TeamMember",
     "User",

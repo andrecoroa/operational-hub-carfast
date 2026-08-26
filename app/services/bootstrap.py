@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -6,6 +8,7 @@ from app.models.admin import Permission, Role, RolePermission
 from app.models.email import EmailChannel, EmailChannelAlias
 from app.models.organization import OrganizationalUnit, Team
 from app.models.settings import SettingsCatalog, SettingsValue
+from app.models.task_templates import ProcessModel, ProcessModelVersion, TaskTemplate, TaskTemplateVersion
 from app.models.suppliers import SupplierType, SupplierTypeAssignment
 from app.models.work_hierarchy import (
     ServiceDeskCategoryPolicy,
@@ -22,6 +25,7 @@ from app.services.navigation import (
 )
 from app.services.photo_capture import ensure_photo_action_defaults
 from app.services.stock import ensure_stock_defaults
+from app.services.task_templates import USED_VEHICLE_SALE_DEFINITION, canonical_snapshot
 from app.services.workshop_configuration import ensure_workshop_configuration_defaults
 
 INITIAL_PERMISSIONS = [
@@ -77,6 +81,15 @@ INITIAL_PERMISSIONS = [
     ("tasks.management.update", "Alterar tarefas na fila Gestão"),
     ("tasks.management.close", "Fechar e reabrir tarefas na fila Gestão"),
     ("tasks.recurring.manage", "Gerir modelos de tarefas recorrentes"),
+    ("tasks.templates.read", "Consultar Tarefas-tipo"),
+    ("tasks.templates.manage", "Gerir Tarefas-tipo"),
+    ("tasks.templates.publish", "Publicar Tarefas-tipo"),
+    ("process.models.read", "Consultar Processos-modelo"),
+    ("process.models.manage", "Gerir Processos-modelo"),
+    ("process.models.publish", "Publicar Processos-modelo"),
+    ("process.instances.start", "Iniciar processos autorizados"),
+    ("process.instances.execute", "Executar processos autorizados"),
+    ("vehicle_sales.process.create", "Iniciar Venda de Viatura Usada a Comerciante"),
     ("service_desk.read", "Consultar tickets do Service Desk"),
     ("service_desk.create", "Criar tickets do Service Desk"),
     ("service_desk.assume", "Assumir tickets elegíveis"),
@@ -183,6 +196,12 @@ DEFAULT_ROLE_PERMISSIONS = {
         "classification.validate",
         "classification.merge_reclassify",
         "classification.catalog.manage",
+        "tasks.templates.read",
+        "tasks.templates.manage",
+        "tasks.templates.publish",
+        "process.models.read",
+        "process.models.manage",
+        "process.models.publish",
         "stock.read",
         "stock.manage",
         "stock.compatibility.manage",
@@ -239,6 +258,11 @@ DEFAULT_ROLE_PERMISSIONS = {
         "tasks.management.update",
         "tasks.management.close",
         "tasks.recurring.manage",
+        "tasks.templates.read",
+        "process.models.read",
+        "process.instances.start",
+        "process.instances.execute",
+        "vehicle_sales.process.create",
         "service_desk.read",
         "service_desk.create",
         "service_desk.assume",
@@ -283,6 +307,11 @@ DEFAULT_ROLE_PERMISSIONS = {
         "tasks.audit.read",
         "tasks.audit.write",
         "tasks.assign.peer",
+        "tasks.templates.read",
+        "process.models.read",
+        "process.instances.start",
+        "process.instances.execute",
+        "vehicle_sales.process.create",
         "service_desk.read",
         "service_desk.create",
         "service_desk.assume",
@@ -319,6 +348,14 @@ DEFAULT_ROLE_PERMISSIONS = {
         "stock.read",
         "photos.read",
     },
+}
+
+# Administrators configure the system but do not implicitly execute operational
+# work. These capabilities must be granted through an explicit operational role.
+ADMIN_EXCLUDED_OPERATIONAL_PERMISSIONS = {
+    "process.instances.start",
+    "process.instances.execute",
+    "vehicle_sales.process.create",
 }
 
 INITIAL_UNITS = [
@@ -397,12 +434,97 @@ def seed_initial_data(db: Session) -> None:
     seed_work_hierarchy(db)
     seed_service_desk(db)
     seed_email_channels(db)
+    seed_task_template_library(db)
+    seed_process_model_library(db)
     ensure_management_defaults(db)
     ensure_workshop_configuration_defaults(db)
     ensure_photo_action_defaults(db)
     ensure_stock_defaults(db)
     seed_supplier_types(db)
     db.commit()
+
+
+def seed_process_model_library(db: Session) -> None:
+    """Install an inert, versioned solution template; never create instances/effects."""
+    code = USED_VEHICLE_SALE_DEFINITION["code"]
+    model = db.scalar(select(ProcessModel).where(ProcessModel.code == code))
+    if model is None:
+        model = ProcessModel(code=code, name="Venda de Viatura Usada a Comerciante", active=True)
+        db.add(model)
+        db.flush()
+    version = db.scalar(select(ProcessModelVersion).where(ProcessModelVersion.model_id == model.id, ProcessModelVersion.version == 1))
+    if version is None:
+        snapshot, digest = canonical_snapshot(USED_VEHICLE_SALE_DEFINITION)
+        db.add(ProcessModelVersion(model_id=model.id, version=1, status="draft", definition_json=snapshot, definition_digest=digest))
+
+
+TASK_TEMPLATE_LIBRARY = (
+    ("request_information", "Pedir informação", "information_request", "tasks.write", "Pedir informação"),
+    ("register_incident", "Registar incidente", "incident", "service_desk.create", "Registar incidente"),
+    ("create_operational_task", "Criar tarefa operacional", "operational_task", "tasks.write", "Nova tarefa operacional"),
+    ("create_process_task", "Criar tarefa do processo", "process_task", "tasks.write", "Nova tarefa do processo"),
+    ("create_ticket", "Criar ticket", "ticket", "service_desk.create", "Novo ticket"),
+)
+
+
+def seed_task_template_library(db: Session) -> None:
+    for code, name, task_type, permission, title in TASK_TEMPLATE_LIBRARY:
+        model = db.scalar(select(TaskTemplate).where(TaskTemplate.code == code))
+        if model is None:
+            model = TaskTemplate(code=code, name=name, active=True)
+            db.add(model); db.flush()
+        if db.scalar(select(TaskTemplateVersion).where(TaskTemplateVersion.template_id == model.id, TaskTemplateVersion.version == 1)):
+            continue
+        definition = {
+            "task_type": task_type,
+            "classification": {},
+            "required_create_permissions": [permission],
+            "allowed_role_codes": ["operator", "manager"],
+            "allowed_context_types": ["vehicle", "process", "document", "email", "supplier"],
+            "defaults": {"title": title, "priority": "normal"},
+            "preview": {"label": name, "description": "Criação revalidada no âmbito atual."},
+            "checklist": [],
+            "conditional_fields": [],
+            "documents": {"selection": "explicit_only"},
+        }
+        snapshot, digest = canonical_snapshot(definition)
+        db.add(TaskTemplateVersion(template_id=model.id, version=1, status="published", definition_json=snapshot, definition_digest=digest, published_at=datetime.now(timezone.utc)))
+    process_task_labels = {
+        "select_vehicles": "Selecionar viaturas",
+        "select_documents": "Selecionar documentos autorizados",
+        "prepare_merchant_ticket": "Preparar ticket do comerciante",
+        "validate_vehicle_state": "Validar estado operacional",
+        "validate_document_set": "Validar conjunto documental",
+        "review_email": "Rever email ao comerciante",
+        "preview_portal": "Rever preview do portal",
+        "confirm_delivery": "Confirmar entrega",
+        "validate_amounts": "Validar valores financeiros",
+        "confirm_settlement": "Confirmar liquidação",
+        "reconcile_evidence": "Reconciliar evidências",
+        "close_sale": "Fechar venda",
+    }
+    for code, contract in USED_VEHICLE_SALE_DEFINITION["tasks"].items():
+        model = db.scalar(select(TaskTemplate).where(TaskTemplate.code == code))
+        if model is None:
+            model = TaskTemplate(code=code, name=process_task_labels[code], active=True)
+            db.add(model); db.flush()
+        if db.scalar(select(TaskTemplateVersion).where(TaskTemplateVersion.template_id == model.id, TaskTemplateVersion.version == 1)):
+            continue
+        definition = {
+            "task_type": "process_task",
+            "process_only": True,
+            "classification": {},
+            "required_create_permissions": ["vehicle_sales.process.create", "process.instances.execute"],
+            "allowed_role_codes": ["operator", "manager"],
+            "allowed_context_types": [],
+            "defaults": {"title": process_task_labels[code], "priority": "normal"},
+            "preview": {"label": process_task_labels[code]},
+            "checklist": contract,
+            "conditional_fields": [],
+            "documents": {"selection": "explicit_only"},
+        }
+        snapshot, digest = canonical_snapshot(definition)
+        db.add(TaskTemplateVersion(template_id=model.id, version=1, status="published", definition_json=snapshot, definition_digest=digest, published_at=datetime.now(timezone.utc)))
 
 
 SUPPLIER_TYPE_DEFINITIONS = (
@@ -679,6 +801,8 @@ def seed_roles(db: Session) -> None:
     permissions = db.scalars(select(Permission)).all()
     permissions_by_code = {permission.code: permission for permission in permissions}
     for permission in permissions:
+        if permission.code in ADMIN_EXCLUDED_OPERATIONAL_PERMISSIONS:
+            continue
         exists = db.scalar(
             select(RolePermission).where(
                 RolePermission.role_id == admin.id,

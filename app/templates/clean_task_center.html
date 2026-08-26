@@ -78,6 +78,49 @@
           <span class="clean-task-summary-action">Criar</span>
         </summary>
         <div class="clean-task-create-body">
+          <div class="task-template-picker" aria-labelledby="task-template-picker-title">
+            <div><strong id="task-template-picker-title">Criar tarefa</strong><small>Favoritas, recentes e disponíveis no seu âmbito atual.</small></div>
+            <div class="task-template-picker-list">
+              {% for version, model, usage in task_template_options %}
+                <button type="button" class="task-template-choice" data-task-template-version="{{ version.id }}" data-task-template-title="{{ version.definition_json.get('defaults', {}).get('title', model.name) }}">
+                  <span>{% if usage and usage.favorite %}★ {% endif %}{{ model.name }}</span><small>v{{ version.version }} · {{ version.definition_json.get('task_type', 'tarefa operacional') }}</small>
+                </button>
+              {% else %}<span class="empty-state">Sem Tarefas-tipo autorizadas neste âmbito. Pode continuar com criação manual.</span>{% endfor %}
+            </div>
+            <p class="clean-task-field-help">“Iniciar processo” cria uma instância de Processo-modelo. “Criar tarefa do processo” apenas adiciona trabalho a um processo existente.</p>
+            <form class="task-template-quick-create" data-task-template-create hidden>
+              <input type="hidden" data-task-template-selected>
+              <label>Título<input data-task-template-title-input required minlength="2"></label>
+              <button type="submit">Criar a partir do modelo</button>
+              <output data-task-template-result aria-live="polite"></output>
+            </form>
+          </div>
+          <script>
+            (() => {
+              const root = document.currentScript.previousElementSibling;
+              if (!root) return;
+              const form = root.querySelector('[data-task-template-create]');
+              const selected = root.querySelector('[data-task-template-selected]');
+              const title = root.querySelector('[data-task-template-title-input]');
+              const result = root.querySelector('[data-task-template-result]');
+              root.querySelectorAll('[data-task-template-version]').forEach((button) => button.addEventListener('click', () => {
+                root.querySelectorAll('[data-task-template-version]').forEach((item) => item.classList.toggle('is-selected', item === button));
+                selected.value = button.dataset.taskTemplateVersion;
+                title.value = button.dataset.taskTemplateTitle || '';
+                form.hidden = false;
+                title.focus();
+              }));
+              form.addEventListener('submit', async (event) => {
+                event.preventDefault(); result.value = 'A validar permissões e âmbito…';
+                const response = await fetch(`/api/task-design/task-templates/${selected.value}/tasks`, {
+                  method: 'POST', credentials: 'same-origin', headers: {'Content-Type': 'application/json'},
+                  body: JSON.stringify({overrides: {title: title.value}}),
+                });
+                if (!response.ok) { result.value = 'Criação bloqueada. Atualize as opções e confirme o seu âmbito.'; return; }
+                const created = await response.json(); window.location.assign(`/v2-clean/tasks?created=${created.id}`);
+              });
+            })();
+          </script>
           <form method="post" action="/v2-clean/tasks" class="clean-task-create-form" enctype="multipart/form-data">
             <input type="hidden" name="classification_version" value="3">
             <input type="hidden" name="entity_type" value="{{ prefill.entity_type }}">

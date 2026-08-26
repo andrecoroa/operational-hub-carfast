@@ -27,7 +27,7 @@ from app.services.task_templates import (
     start_process,
     workshop_parity_supported,
 )
-from app.services.bootstrap import seed_permissions, seed_process_model_library, seed_roles
+from app.services.bootstrap import seed_permissions, seed_process_model_library, seed_roles, seed_task_template_library
 from app.api.routes.task_templates import TemplateTaskRequest, create_template_task
 
 
@@ -160,6 +160,15 @@ def test_sale_process_library_seed_is_idempotent_and_inert(db):
     assert len(db.scalars(select(ProcessModel)).all()) == 1
     versions = db.scalars(select(ProcessModelVersion)).all()
     assert len(versions) == 1 and versions[0].status == "draft"
+    assert db.scalars(select(Task)).all() == []
+
+
+def test_clean_install_libraries_are_idempotent_and_create_no_instances(db):
+    seed_task_template_library(db); seed_process_model_library(db); db.flush()
+    seed_task_template_library(db); seed_process_model_library(db); db.flush()
+    assert len(db.scalars(select(TaskTemplate)).all()) == 17
+    assert len(db.scalars(select(TaskTemplateVersion)).all()) == 17
+    assert len(db.scalars(select(ProcessModel)).all()) == 1
     assert db.scalars(select(Task)).all() == []
 
 

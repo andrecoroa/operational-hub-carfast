@@ -50,9 +50,8 @@ def test_final_closeout_css_contains_responsive_local_layouts() -> None:
     assert ".visual-financial-audit .clean-task-filter-row" in css
 
 
-def test_matrix_keeps_residuals_explicit_until_runtime_gate() -> None:
+def test_matrix_closes_residuals_after_runtime_gate() -> None:
     source = MATRIX.read_text(encoding="utf-8")
-    assert source.count("| parcial |") == 3
-    assert "`/v2-clean/fleet/financial-audit`" in source
-    assert "`/v2-clean/fleet/sales-access`" in source
-    assert "`/v2-clean/tasks/recurring`" in source
+    assert source.count("| parcial |") == 0
+    assert source.count("| legado |") == 0
+    assert source.count("Green 4161572a;") == 3

@@ -87,11 +87,9 @@ def test_ocr_calibration_keeps_wide_tables_inside_local_scroll() -> None:
 
 def test_route_matrix_records_final_closeout_and_names_remaining_residuals() -> None:
     source = MATRIX.read_text(encoding="utf-8")
-    assert "84204d61ff44492560f6b5f292f1dc3975eba39c" in source
+    assert "4161572a899289d27ca7636e64bf623c25c419b8" in source
     assert "Green 46166d87; 9/9, RBAC e responsive PASS" in source
-    assert "Não existem superfícies classificadas como `legado`" in source
-    assert source.count("| parcial |") == 3
-    assert "`/v2-clean/fleet/financial-audit`" in source
-    assert "`/v2-clean/fleet/sales-access`" in source
-    assert "`/v2-clean/tasks/recurring`" in source
+    assert "Não existem superfícies classificadas como `parcial` ou `legado`" in source
+    assert source.count("| parcial |") == 0
+    assert source.count("Green 4161572a;") == 3
     assert "| legado |" not in source

@@ -1,6 +1,6 @@
 # Matriz factual das superfícies v2-clean
 
-Base: `integration/modular-architecture@84204d61ff44492560f6b5f292f1dc3975eba39c`
+Base: `integration/modular-architecture@4161572a899289d27ca7636e64bf623c25c419b8`
 
 Inventário: `scripts/check_visual_surface_inventory.py` — 53/53 rotas estáticas canónicas, incluindo o novo assistente `/v2-clean/admin/setup`.
 Shell: **PASS transversal em todas as 53 rotas** (asset, sidebar, topbar e composição de navegação). A coluna `Conteúdo` não herda esse PASS: descreve apenas a reconstrução da superfície funcional.
@@ -38,9 +38,9 @@ Shell: **PASS transversal em todas as 53 rotas** (asset, sidebar, topbar e compo
 | 28 | `/v2-clean/documents/ocr-validation` | PASS | reconstruído/aprovado | Documentação residual Green 84204d61 |
 | 29 | `/v2-clean/email` | PASS | reconstruído/aprovado | Email aprovado |
 | 30 | `/v2-clean/fleet` | PASS | reconstruído/aprovado | Frota aprovada |
-| 31 | `/v2-clean/fleet/financial-audit` | PASS | parcial | Frota residual |
+| 31 | `/v2-clean/fleet/financial-audit` | PASS | reconstruído/aprovado | Green 4161572a; runtime, ReturnContext e responsive PASS |
 | 32 | `/v2-clean/fleet/sales` | PASS | reconstruído/aprovado | Pipeline aprovado |
-| 33 | `/v2-clean/fleet/sales-access` | PASS | parcial | Vendas residual |
+| 33 | `/v2-clean/fleet/sales-access` | PASS | reconstruído/aprovado | Green 4161572a; runtime, RBAC e responsive PASS |
 | 34 | `/v2-clean/fleet/sales/opportunities` | PASS | reconstruído pendente de captura | Runtime funcional PASS |
 | 35 | `/v2-clean/fleet/sales/proposals` | PASS | reconstruído pendente de captura | Runtime funcional PASS |
 | 36 | `/v2-clean/fleet/sales/publications` | PASS | reconstruído pendente de captura | Runtime funcional PASS |
@@ -57,18 +57,13 @@ Shell: **PASS transversal em todas as 53 rotas** (asset, sidebar, topbar e compo
 | 47 | `/v2-clean/stock/workshop-requests` | PASS | reconstruído pendente de captura | Stock/Compras runtime PASS |
 | 48 | `/v2-clean/suppliers` | PASS | reconstruído pendente de captura | Parceiros runtime PASS |
 | 49 | `/v2-clean/tasks` | PASS | reconstruído/aprovado | Service Desk aprovado |
-| 50 | `/v2-clean/tasks/recurring` | PASS | parcial | Service Desk residual |
+| 50 | `/v2-clean/tasks/recurring` | PASS | reconstruído/aprovado | Green 4161572a; modal, teclado e responsive PASS |
 | 51 | `/v2-clean/workshop` | PASS | reconstruído/aprovado | Oficina aprovada |
 | 52 | `/v2-clean/workshop-entry` | PASS | reconstruído/aprovado | Oficina aprovada |
 
 ## Superfícies ainda parcial ou legado
 
-Não existem superfícies classificadas como `legado`. Permanecem três conteúdos `parcial`, todos fora do fecho de Administração residual:
-
-1. `/v2-clean/fleet/financial-audit` — auditoria financeira residual da Frota.
-2. `/v2-clean/fleet/sales-access` — parametrização de acesso residual de Vendas.
-3. `/v2-clean/tasks/recurring` — gestão residual de tarefas recorrentes.
-2. **Resíduos operacionais (tranche final C):** `/v2-clean/fleet/financial-audit`, `/v2-clean/fleet/sales-access` e `/v2-clean/tasks/recurring`; superfícies especializadas ainda não fechadas pelo respetivo workbench.
+Não existem superfícies classificadas como `parcial` ou `legado` após o fecho runtime da tranche final no Green `4161572a`.
 
 As superfícies reconstruídas pendentes apenas de captura não constam desta lista, porque o bloqueio é de evidência da plataforma e não de conteúdo.
 

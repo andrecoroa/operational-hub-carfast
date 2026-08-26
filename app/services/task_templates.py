@@ -341,7 +341,16 @@ class ProcessExecutionCapabilityResolver:
         if instance.organizational_unit_code not in get_user_authorized_unit_codes(self.db, user):
             raise CreationDenied("process_instance_scope_denied")
         roles = set(self.db.scalars(select(Role.code).join(UserRole, UserRole.role_id == Role.id).where(UserRole.user_id == user.id, Role.active.is_(True))))
-        if not roles.intersection({"operator", "manager"}):
+        # The persisted role catalogue deliberately keeps the legacy internal
+        # codes ``operator`` and ``manager``.  The UI maps these to the approved
+        # Executor/coordinator profiles; administrators never inherit either
+        # operational role.  Permission and authorized-unit checks above remain
+        # mandatory for every mapped profile.
+        operational_role_profiles = {
+            "operator": "executor_or_coordinator",
+            "manager": "manager_exception",
+        }
+        if not roles.intersection(operational_role_profiles):
             raise CreationDenied("process_execute_role_denied")
 
 
@@ -355,7 +364,16 @@ def _phase_tasks_complete(db: Session, instance: ProcessInstance, phase: dict) -
         .join(TaskTemplate, TaskTemplate.id == TaskTemplateVersion.template_id)
         .where(Task.process_instance_id == instance.id, Task.process_step_code == phase.get("code"))
     ).all()
-    completed_codes = {template.code for task, template in rows if task.status in {"resolved", "closed", "execution_done", "ready_validation"}}
+    task_contracts = instance.model_snapshot_json.get("tasks") or {}
+    completed_codes = set()
+    for task, template in rows:
+        contract = task_contracts.get(template.code) or {}
+        # Required work is terminal only after resolution/closure.  A model may
+        # narrow or explicitly extend terminal states, but intermediate workflow
+        # states are never accepted implicitly.
+        terminal_statuses = set(contract.get("terminal_statuses") or {"resolved", "closed"})
+        if task.status in terminal_statuses:
+            completed_codes.add(template.code)
     return required_codes.issubset(completed_codes)
 
 

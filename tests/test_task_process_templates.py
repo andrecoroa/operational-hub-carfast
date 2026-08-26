@@ -193,6 +193,10 @@ def test_process_task_requires_instance_scope_current_phase_and_model_mapping(db
         advance_process_phase(db, user=user, instance=instance)
     with pytest.raises(CreationDenied, match="process_checkpoint_not_allowed"):
         complete_process_checkpoint(db, user=user, instance=instance, checkpoint_code="select_vehicles")
+    for intermediate_status in ("execution_done", "ready_validation"):
+        task.status = intermediate_status; db.flush()
+        with pytest.raises(CreationDenied, match="process_gate_evidence_incomplete"):
+            complete_process_checkpoint(db, user=user, instance=instance, checkpoint_code="explicit_documents_selected")
     task.status="resolved";db.flush()
     complete_process_checkpoint(db, user=user, instance=instance, checkpoint_code="explicit_documents_selected")
     advance_process_phase(db, user=user, instance=instance)
@@ -200,6 +204,25 @@ def test_process_task_requires_instance_scope_current_phase_and_model_mapping(db
     instance.organizational_unit_code = "south"
     with pytest.raises(CreationDenied, match="process_instance_scope_denied"):
         create_task_for_process(db, user=user, instance=instance, template_version_id=version.id, process_step_code="preparation")
+
+
+def test_process_execution_internal_roles_map_fail_closed(db):
+    """Only operator/manager are operational aliases; admin stays default-deny."""
+    user, version, _ = setup_template(db, permission="tasks.explicit.create")
+    template = db.get(TaskTemplate, version.template_id); template.code = "select_vehicles"
+    unit = OrganizationalUnit(code="roles", name="Perfis", unit_type="location", active=True); db.add(unit); db.flush()
+    db.add(UserOrganizationalUnit(user_id=user.id, organizational_unit_id=unit.id))
+    for code in ("process.instances.execute",):
+        permission = Permission(code=code, name=code); db.add(permission); db.flush()
+        role_id = db.scalar(select(UserRole.role_id).where(UserRole.user_id == user.id)); db.add(RolePermission(role_id=role_id, permission_id=permission.id))
+    model = ProcessModel(code="role_contract", name="Contrato de perfis"); db.add(model); db.flush()
+    definition = deepcopy(USED_VEHICLE_SALE_DEFINITION); definition["phases"][0]["tasks"] = ["select_vehicles"]
+    snapshot, digest = canonical_snapshot(definition)
+    model_version = ProcessModelVersion(model_id=model.id, version=1, status="published", definition_json=snapshot, definition_digest=digest); db.add(model_version); db.flush()
+    from app.models.task_templates import ProcessInstance
+    instance = ProcessInstance(model_version_id=model_version.id, title="Perfis", status="active", organizational_unit_code="roles", model_snapshot_json=snapshot, model_snapshot_digest=digest, context_json={"current_phase_code":"preparation","completed_checkpoints":[],"document_ids":[1]}, created_by_id=user.id); db.add(instance); db.flush()
+    with pytest.raises(CreationDenied, match="process_execute_role_denied"):
+        complete_process_checkpoint(db, user=user, instance=instance, checkpoint_code="explicit_documents_selected")
 
 
 def test_api_denial_persists_sanitized_audit_and_no_task(db):

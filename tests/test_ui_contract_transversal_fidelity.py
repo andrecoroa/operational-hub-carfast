@@ -9,6 +9,32 @@ def _read(path: str) -> str:
     return (ROOT / path).read_text(encoding="utf-8")
 
 
+def _synthetic_preview_pdf() -> bytes:
+    """Small valid PDF so browser evidence exercises a real rendered preview."""
+    stream = b"BT /F1 18 Tf 72 760 Td (Documento sintetico) Tj ET"
+    objects = [
+        b"<< /Type /Catalog /Pages 2 0 R >>",
+        b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>",
+        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+        b"<< /Length " + str(len(stream)).encode() + b" >>\nstream\n" + stream + b"\nendstream",
+    ]
+    payload = bytearray(b"%PDF-1.4\n")
+    offsets = [0]
+    for index, obj in enumerate(objects, 1):
+        offsets.append(len(payload))
+        payload.extend(f"{index} 0 obj\n".encode() + obj + b"\nendobj\n")
+    xref = len(payload)
+    payload.extend(f"xref\n0 {len(objects) + 1}\n".encode())
+    payload.extend(b"0000000000 65535 f \n")
+    for offset in offsets[1:]:
+        payload.extend(f"{offset:010d} 00000 n \n".encode())
+    payload.extend(
+        f"trailer\n<< /Size {len(objects) + 1} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n".encode()
+    )
+    return bytes(payload)
+
+
 def test_global_geometry_is_encoded_once_in_the_contract_asset():
     css = _read("app/static/css/ui-contract-v1.css")
     required = (
@@ -124,6 +150,18 @@ def test_all_nonlegacy_surfaces_execute_nominal_http_smoke(authenticated_client,
         response = authenticated_client.get(sample_path, follow_redirects=False)
         results.append((surface["path"], response.status_code))
         assert response.status_code < 500, (surface, sample_path, response.status_code, response.text[:240])
+        if "{" not in surface["path"]:
+            assert response.status_code != 404, (surface, sample_path, "static route did not render")
+        if sample_path.startswith("/v2-clean") and "{" not in surface["path"]:
+            expected_statuses = {200, 303, 403}
+            if surface["classification"] == "adapter":
+                expected_statuses.add(302)
+            assert response.status_code in expected_statuses, (
+                surface,
+                sample_path,
+                "unexpected authenticated route status",
+                response.status_code,
+            )
         if (
             sample_path.startswith("/v2-clean")
             and response.status_code == 200
@@ -164,12 +202,7 @@ def test_representative_contract_pages_render_with_the_canonical_shell(authentic
     document_root = tmp_path / "document-archive"
     document_root.mkdir()
     preview_file = document_root / "synthetic-contract-preview.pdf"
-    preview_file.write_bytes(
-        b"%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n"
-        b"2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj\n"
-        b"3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 595 842]>>endobj\n"
-        b"trailer<</Root 1 0 R>>\n%%EOF\n"
-    )
+    preview_file.write_bytes(_synthetic_preview_pdf())
     monkeypatch.setattr(settings, "document_archive_root", str(document_root))
     capture_only = os.getenv("CARFAST_UI_CONTRACT_CAPTURE_ONLY")
     admin_user = db_session.scalar(select(User).where(User.email == "admin.tests@carfast.local"))

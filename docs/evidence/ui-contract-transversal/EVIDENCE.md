@@ -24,10 +24,10 @@
 | Email tablet/mobile | lista, conversa e triagem na mesma rota | PASS |
 | Inventário HTML | 137 superfícies atuais contra baseline 136; classes canonical/detail/overlay/portal/adapter/legacy_blocked | PASS |
 | Inventário executável | Cada superfície não-legada cruzada com path+handler live; legado cruzado com implementação nominal preservada | PASS |
-| Pixel gate do RC | 21 capturas determinísticas contra golden revisto, diferença permitida <2% | PASS |
+| Pixel gate do RC | 21 capturas determinísticas, viewport integral, diferença permitida <2% | **NO-GO — correção em curso** |
 | Regressão focada | 17 testes; inclui HTTP nominal 125/125 superfícies não-legadas | PASS |
 
-As medidas completas e os retângulos observados estão em `metrics-v1j.json`. `python -m scripts.check_ui_contract_evidence` é o gate automatizado fail-closed: valida as 21 imagens, tokens, overflow, presença das zonas, seis linhas de Tarefas, diferença geométrica máxima inferior a 2% e diferença visual normalizada inferior a 2% contra goldens independentes. Conteúdo operacional, fixtures e ações dependentes de permissões são regiões dinâmicas explicitamente delimitadas; geometria e overflow são sempre medidos separadamente.
+As medidas completas e os retângulos observados estão em `metrics-v1j.json`. `python -m scripts.check_ui_contract_evidence` é fail-closed e compara o viewport integral contra goldens independentes; não mascara a área útil da aplicação. A revisão independente detetou diferenças acima do limite, sobretudo em Documentação e Email, pelo que PR/deploy permanecem bloqueados.
 
 ## Capturas da aplicação
 

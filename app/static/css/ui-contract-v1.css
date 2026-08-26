@@ -596,3 +596,13 @@
   .ui-contract-v1 .admin-section-roles .admin-contract-workspace > .admin-contract-master { display: block !important; max-height: none; }
   .ui-contract-v1 .admin-section-roles .admin-contract-workspace > .admin-contract-detail { display: none; }
 }
+
+/* Desktop canonical contract: mailbox selection remains available, while the
+   conversation workbench starts immediately below it. Duplicate KPI/status
+   strips and the legacy filter block do not displace the three-zone workspace. */
+@media (min-width: 701px) {
+  .ui-contract-v1 .visual-email-center .visual-email-metrics,
+  .ui-contract-v1 .visual-email-center .visual-email-statuses,
+  .ui-contract-v1 .visual-email-center .visual-email-workbench-header,
+  .ui-contract-v1 .visual-email-center .visual-email-filters { display: none; }
+}

@@ -117,25 +117,10 @@ def main() -> None:
             # Navigation labels, account-specific actions and all operational
             # records are deterministic fixtures but not canonical copy.  They
             # are masked; their geometry is asserted independently below.
-            if expected_width >= 1200:
-                dynamic_masks = (
-                    (0, 52, 208, expected_height),
-                    (208, 52, expected_width, expected_height),
-                    (208, 0, 620, 52),
-                    (1040, 0, expected_width, 52),
-                )
-            elif expected_width >= 700:
-                dynamic_masks = (
-                    (0, 52, expected_width, expected_height),
-                    (0, 0, 400, 52),
-                    (600, 0, expected_width, 52),
-                )
-            else:
-                dynamic_masks = (
-                    (0, 48, expected_width, expected_height),
-                    (0, 0, 180, 48),
-                    (260, 0, expected_width, 48),
-                )
+            # Deterministic fixtures make the full viewport comparable. Do not
+            # mask the application workspace: a passing score must cover the
+            # composition, not merely the topbar.
+            dynamic_masks: tuple[tuple[int, int, int, int], ...] = ()
             visual_delta = _changed_pixel_ratio(
                 EVIDENCE / f"{page}-{viewport}.jpg",
                 EVIDENCE / "canonical-golden" / f"{page}-{viewport}.jpg",

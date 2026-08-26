@@ -229,6 +229,7 @@
     const previousConversationScroll = previousShell?.querySelector(".email-conversation")?.scrollTop || 0;
     const previousTriageScroll = previousShell?.querySelector(".email-triage-pane")?.scrollTop || 0;
     dialog.innerHTML = '<div class="email-preview-loading">A abrir conversa…</div>';
+    if (!dialog.open && document.body.classList.contains("ui-contract-v1") && window.matchMedia("(min-width: 1025px)").matches) dialog.show();
     if (!dialog.open) dialog.showModal();
     const response = await fetch(`/v2-clean/email/${threadId}/preview`, {headers: {"X-Requested-With": "fetch"}});
     dialog.innerHTML = await response.text();

@@ -88,6 +88,7 @@ INITIAL_PERMISSIONS = [
     ("process.models.manage", "Gerir Processos-modelo"),
     ("process.models.publish", "Publicar Processos-modelo"),
     ("process.instances.start", "Iniciar processos autorizados"),
+    ("process.instances.execute", "Executar processos autorizados"),
     ("vehicle_sales.process.create", "Iniciar Venda de Viatura Usada a Comerciante"),
     ("service_desk.read", "Consultar tickets do Service Desk"),
     ("service_desk.create", "Criar tickets do Service Desk"),
@@ -260,6 +261,7 @@ DEFAULT_ROLE_PERMISSIONS = {
         "tasks.templates.read",
         "process.models.read",
         "process.instances.start",
+        "process.instances.execute",
         "vehicle_sales.process.create",
         "service_desk.read",
         "service_desk.create",
@@ -308,6 +310,7 @@ DEFAULT_ROLE_PERMISSIONS = {
         "tasks.templates.read",
         "process.models.read",
         "process.instances.start",
+        "process.instances.execute",
         "vehicle_sales.process.create",
         "service_desk.read",
         "service_desk.create",
@@ -351,6 +354,7 @@ DEFAULT_ROLE_PERMISSIONS = {
 # work. These capabilities must be granted through an explicit operational role.
 ADMIN_EXCLUDED_OPERATIONAL_PERMISSIONS = {
     "process.instances.start",
+    "process.instances.execute",
     "vehicle_sales.process.create",
 }
 
@@ -480,6 +484,42 @@ def seed_task_template_library(db: Session) -> None:
             "defaults": {"title": title, "priority": "normal"},
             "preview": {"label": name, "description": "Criação revalidada no âmbito atual."},
             "checklist": [],
+            "conditional_fields": [],
+            "documents": {"selection": "explicit_only"},
+        }
+        snapshot, digest = canonical_snapshot(definition)
+        db.add(TaskTemplateVersion(template_id=model.id, version=1, status="published", definition_json=snapshot, definition_digest=digest, published_at=datetime.now(timezone.utc)))
+    process_task_labels = {
+        "select_vehicles": "Selecionar viaturas",
+        "select_documents": "Selecionar documentos autorizados",
+        "prepare_merchant_ticket": "Preparar ticket do comerciante",
+        "validate_vehicle_state": "Validar estado operacional",
+        "validate_document_set": "Validar conjunto documental",
+        "review_email": "Rever email ao comerciante",
+        "preview_portal": "Rever preview do portal",
+        "confirm_delivery": "Confirmar entrega",
+        "validate_amounts": "Validar valores financeiros",
+        "confirm_settlement": "Confirmar liquidação",
+        "reconcile_evidence": "Reconciliar evidências",
+        "close_sale": "Fechar venda",
+    }
+    for code, contract in USED_VEHICLE_SALE_DEFINITION["tasks"].items():
+        model = db.scalar(select(TaskTemplate).where(TaskTemplate.code == code))
+        if model is None:
+            model = TaskTemplate(code=code, name=process_task_labels[code], active=True)
+            db.add(model); db.flush()
+        if db.scalar(select(TaskTemplateVersion).where(TaskTemplateVersion.template_id == model.id, TaskTemplateVersion.version == 1)):
+            continue
+        definition = {
+            "task_type": "process_task",
+            "process_only": True,
+            "classification": {},
+            "required_create_permissions": ["vehicle_sales.process.create", "process.instances.execute"],
+            "allowed_role_codes": ["operator", "manager"],
+            "allowed_context_types": [],
+            "defaults": {"title": process_task_labels[code], "priority": "normal"},
+            "preview": {"label": process_task_labels[code]},
+            "checklist": contract,
             "conditional_fields": [],
             "documents": {"selection": "explicit_only"},
         }

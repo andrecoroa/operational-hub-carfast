@@ -146,6 +146,8 @@ class TaskCreationCapabilityResolver:
         versions = self.db.scalars(select(TaskTemplateVersion).join(TaskTemplate, TaskTemplate.id == TaskTemplateVersion.template_id).where(TaskTemplate.active.is_(True), TaskTemplateVersion.status == "published")).all()
         result = []
         for version in versions:
+            if version.definition_json.get("process_only"):
+                continue
             try:
                 self.require(user, version)
                 result.append(CreationCapability(version.id, True))
@@ -271,10 +273,20 @@ def start_process(db: Session, *, user: User, model_version_id: int, context: di
         raise CreationDenied("document_selection_invalid")
     if not {"vehicles.read", "documents.read"}.issubset(permissions):
         raise CreationDenied("source_data_permission_required")
-    selected_vehicles = list(db.scalars(select(Vehicle).where(Vehicle.id.in_(vehicle_ids), Vehicle.active.is_(True))).all())
+    selected_unit = db.scalar(select(OrganizationalUnit).where(OrganizationalUnit.code == unit_code, OrganizationalUnit.active.is_(True)))
+    if not selected_unit:
+        raise CreationDenied("vehicle_scope_denied")
+    if selection_mode == "all_authorized":
+        selected_vehicles = list(db.scalars(select(Vehicle).where(Vehicle.current_location_id == selected_unit.id, Vehicle.active.is_(True))).all())
+        if not selected_vehicles:
+            raise CreationDenied("vehicle_selection_invalid")
+        vehicle_ids = [item.id for item in selected_vehicles]
+        context = deepcopy(context)
+        context["vehicle_ids"] = vehicle_ids
+    else:
+        selected_vehicles = list(db.scalars(select(Vehicle).where(Vehicle.id.in_(vehicle_ids), Vehicle.active.is_(True))).all())
     if {item.id for item in selected_vehicles} != set(vehicle_ids):
         raise CreationDenied("vehicle_selection_invalid")
-    selected_unit = db.scalar(select(OrganizationalUnit).where(OrganizationalUnit.code == unit_code, OrganizationalUnit.active.is_(True)))
     if not selected_unit or any(vehicle.current_location_id != selected_unit.id for vehicle in selected_vehicles):
         raise CreationDenied("vehicle_scope_denied")
     selected_documents = list(db.scalars(select(Document).where(Document.id.in_(document_ids), Document.archived.is_(False))).all()) if document_ids else []
@@ -316,14 +328,48 @@ def create_task_for_process(db: Session, *, user: User, instance: ProcessInstanc
     )
 
 
+class ProcessExecutionCapabilityResolver:
+    def __init__(self, db: Session):
+        self.db = db
+
+    def require(self, user: User, instance: ProcessInstance) -> None:
+        if instance.status != "active":
+            raise CreationDenied("process_instance_not_actionable")
+        permissions = get_user_permission_codes(self.db, user)
+        if "process.instances.execute" not in permissions:
+            raise CreationDenied("process_execute_permission_required")
+        if instance.organizational_unit_code not in get_user_authorized_unit_codes(self.db, user):
+            raise CreationDenied("process_instance_scope_denied")
+        roles = set(self.db.scalars(select(Role.code).join(UserRole, UserRole.role_id == Role.id).where(UserRole.user_id == user.id, Role.active.is_(True))))
+        if not roles.intersection({"operator", "manager"}):
+            raise CreationDenied("process_execute_role_denied")
+
+
+def _phase_tasks_complete(db: Session, instance: ProcessInstance, phase: dict) -> bool:
+    required_codes = set(phase.get("tasks") or [])
+    if not required_codes:
+        return True
+    rows = db.execute(
+        select(Task, TaskTemplate)
+        .join(TaskTemplateVersion, TaskTemplateVersion.id == Task.task_template_version_id)
+        .join(TaskTemplate, TaskTemplate.id == TaskTemplateVersion.template_id)
+        .where(Task.process_instance_id == instance.id, Task.process_step_code == phase.get("code"))
+    ).all()
+    completed_codes = {template.code for task, template in rows if task.status in {"resolved", "closed", "execution_done", "ready_validation"}}
+    return required_codes.issubset(completed_codes)
+
+
 def complete_process_checkpoint(db: Session, *, user: User, instance: ProcessInstance, checkpoint_code: str) -> ProcessInstance:
-    if instance.status not in {"active", "blocked"} or instance.organizational_unit_code not in get_user_authorized_unit_codes(db, user):
-        raise CreationDenied("process_instance_scope_denied")
+    ProcessExecutionCapabilityResolver(db).require(user, instance)
     current = instance.context_json.get("current_phase_code")
     phase = next((item for item in instance.model_snapshot_json.get("phases", []) if item.get("code") == current), None)
-    allowed = set((phase or {}).get("tasks") or []) | set((phase or {}).get("gates") or [])
+    allowed = set((phase or {}).get("gates") or [])
     if checkpoint_code not in allowed:
         raise CreationDenied("process_checkpoint_not_allowed")
+    if not _phase_tasks_complete(db, instance, phase):
+        raise CreationDenied("process_gate_evidence_incomplete")
+    if checkpoint_code == "explicit_documents_selected" and not instance.context_json.get("document_ids"):
+        raise CreationDenied("process_gate_evidence_incomplete")
     context = deepcopy(instance.context_json)
     completed = set(context.get("completed_checkpoints") or [])
     completed.add(checkpoint_code)
@@ -335,17 +381,16 @@ def complete_process_checkpoint(db: Session, *, user: User, instance: ProcessIns
 
 
 def advance_process_phase(db: Session, *, user: User, instance: ProcessInstance, justification: str | None = None) -> ProcessInstance:
-    if instance.status not in {"active", "blocked"} or instance.organizational_unit_code not in get_user_authorized_unit_codes(db, user):
-        raise CreationDenied("process_instance_scope_denied")
+    ProcessExecutionCapabilityResolver(db).require(user, instance)
     phases = instance.model_snapshot_json.get("phases") or []
     current = instance.context_json.get("current_phase_code")
     index = next((index for index, item in enumerate(phases) if item.get("code") == current), None)
     if index is None:
         raise CreationDenied("process_phase_invalid")
     phase = phases[index]
-    required = set(phase.get("tasks") or []) | set(phase.get("gates") or [])
+    required = set(phase.get("gates") or [])
     completed = set(instance.context_json.get("completed_checkpoints") or [])
-    if not required.issubset(completed):
+    if not _phase_tasks_complete(db, instance, phase) or not required.issubset(completed):
         raise CreationDenied("process_phase_incomplete")
     role_codes = set(db.scalars(select(Role.code).join(UserRole, UserRole.role_id == Role.id).where(UserRole.user_id == user.id, Role.active.is_(True))))
     if "manager" in role_codes and instance.model_snapshot_json.get("manager_execution_requires_justification", True) and not (justification or "").strip():

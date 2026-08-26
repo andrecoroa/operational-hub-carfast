@@ -102,6 +102,10 @@ def test_start_process_is_distinct_and_manager_requires_audited_justification(db
     process=start_process(db,user=user,model_version_id=version.id,context=context,justification="Exceção operacional acompanhada")
     assert process.title=="Venda 42-ZX-19" and process.manager_exception_justification
     assert db.scalar(select(Task)) is None
+    vehicle2=Vehicle(plate="43-ZX-20",active=True,current_location_id=unit.id);db.add(vehicle2);db.flush()
+    all_context={**context,"selection_mode":"all_authorized","vehicle_ids":[vehicle.id]}
+    all_process=start_process(db,user=user,model_version_id=version.id,context=all_context,justification="Abranger frota autorizada")
+    assert set(all_process.context_json["vehicle_ids"]) == {vehicle.id, vehicle2.id}
     with pytest.raises(CreationDenied, match="process_source_not_allowed"):
         start_process(db, user=user, model_version_id=version.id, context=context, source="import", justification="Revisão")
 
@@ -146,6 +150,7 @@ def test_bootstrap_admin_does_not_gain_operational_process_creation(db):
     assert "tasks.templates.manage" in granted
     assert "process.models.manage" in granted
     assert "process.instances.start" not in granted
+    assert "process.instances.execute" not in granted
     assert "vehicle_sales.process.create" not in granted
 
 
@@ -164,25 +169,32 @@ def test_process_task_requires_instance_scope_current_phase_and_model_mapping(db
     template.code = "select_vehicles"
     unit = OrganizationalUnit(code="north", name="Norte", unit_type="location", active=True)
     db.add(unit); db.flush(); db.add(UserOrganizationalUnit(user_id=user.id, organizational_unit_id=unit.id))
-    vehicle=Vehicle(plate="NORTH-1",active=True,current_location_id=unit.id);db.add(vehicle);db.flush()
-    for code in ("vehicle_sales.process.create", "vehicles.read", "documents.read"):
+    vehicle=Vehicle(plate="NORTH-1",active=True,current_location_id=unit.id);db.add(vehicle);db.flush();document=Document(title="Venda",original_name="sale.pdf",file_name="opaque.pdf",storage_provider="local",storage_path="opaque",status="validated",vehicle_id=vehicle.id,archived=False);db.add(document);db.flush()
+    for code in ("vehicle_sales.process.create", "process.instances.execute", "vehicles.read", "documents.read"):
         permission = Permission(code=code, name=code); db.add(permission); db.flush()
         role_id = db.scalar(select(UserRole.role_id).where(UserRole.user_id == user.id))
         db.add(RolePermission(role_id=role_id, permission_id=permission.id))
+    operator_role=Role(code="operator",name="Operador",active=True);db.add(operator_role);db.flush();db.add(UserRole(user_id=user.id,role_id=operator_role.id));db.flush()
     model = ProcessModel(code="sale", name="Venda"); db.add(model); db.flush()
     definition = deepcopy(USED_VEHICLE_SALE_DEFINITION)
+    definition["phases"][0]["tasks"] = ["select_vehicles"]
     snapshot, digest = canonical_snapshot(definition)
     model_version = ProcessModelVersion(model_id=model.id, version=1, status="published", definition_json=snapshot, definition_digest=digest)
     db.add(model_version); db.flush()
-    instance = start_process(db, user=user, model_version_id=model_version.id, context={"organizational_unit_code":"north","selection_mode":"selected","vehicle_ids":[vehicle.id],"document_ids":[]})
+    instance = start_process(db, user=user, model_version_id=model_version.id, context={"organizational_unit_code":"north","selection_mode":"selected","vehicle_ids":[vehicle.id],"document_ids":[document.id]})
+    viewer=User(name="Viewer",email="viewer-process@test.invalid",password_hash="x",active=True);db.add(viewer);db.flush();grant(db,viewer,"viewer",set());db.add(UserOrganizationalUnit(user_id=viewer.id,organizational_unit_id=unit.id));db.flush()
+    with pytest.raises(CreationDenied, match="process_execute_permission_required"):
+        complete_process_checkpoint(db,user=viewer,instance=instance,checkpoint_code="explicit_documents_selected")
     task = create_task_for_process(db, user=user, instance=instance, template_version_id=version.id, process_step_code="preparation")
     assert task.process_instance_id == instance.id and task.process_step_code == "preparation"
     with pytest.raises(CreationDenied, match="process_phase_not_actionable"):
         create_task_for_process(db, user=user, instance=instance, template_version_id=version.id, process_step_code="financial")
     with pytest.raises(CreationDenied, match="process_phase_incomplete"):
         advance_process_phase(db, user=user, instance=instance)
-    for checkpoint in ("select_vehicles", "select_documents", "prepare_merchant_ticket", "explicit_documents_selected"):
-        complete_process_checkpoint(db, user=user, instance=instance, checkpoint_code=checkpoint)
+    with pytest.raises(CreationDenied, match="process_checkpoint_not_allowed"):
+        complete_process_checkpoint(db, user=user, instance=instance, checkpoint_code="select_vehicles")
+    task.status="resolved";db.flush()
+    complete_process_checkpoint(db, user=user, instance=instance, checkpoint_code="explicit_documents_selected")
     advance_process_phase(db, user=user, instance=instance)
     assert instance.context_json["current_phase_code"] == "operational_validation"
     instance.organizational_unit_code = "south"

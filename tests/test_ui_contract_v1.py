@@ -4,6 +4,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 BASE = (ROOT / "app/templates/base.html").read_text(encoding="utf-8")
 TASKS = (ROOT / "app/templates/clean_task_center.html").read_text(encoding="utf-8")
+PROCESSES = (ROOT / "app/templates/clean_process_center.html").read_text(encoding="utf-8")
 CSS = (ROOT / "app/static/css/ui-contract-v1.css").read_text(encoding="utf-8")
 ICONS = (ROOT / "app/static/icons/lucide-v3.svg").read_text(encoding="utf-8")
 
@@ -32,3 +33,12 @@ def test_task_center_uses_canonical_language_and_lucide_family() -> None:
         assert f'lucide-v3.svg#{icon}' in TASKS
         assert f'id="{icon}"' in ICONS
     assert "Service Desk</h2>" not in TASKS
+
+
+def test_process_center_uses_global_shell_and_compact_workspace() -> None:
+    assert '{% include "_visual_topbar.html" %}' in PROCESSES
+    assert 'visual_page = "Centro de Processos"' in PROCESSES
+    assert "process-command-kpis" in CSS
+    assert "process-command-toolbar { min-height: 64px" in CSS
+    for icon in ("inbox", "triangle-alert", "user-round", "circle-check"):
+        assert f'lucide-v3.svg#{icon}' in PROCESSES

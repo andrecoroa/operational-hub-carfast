@@ -79,9 +79,32 @@
 .ui-contract-v1 .visual-service-desk .visual-task-filters :is(input,select,button,.button-link) { min-height: 34px; height: 34px; }
 .ui-contract-v1 .visual-service-desk .clean-task-table :is(th,td) { height: var(--ui-row-height); padding-block: 6px; }
 
+/* Centro de Processos shares the same compact command-workspace contract. */
+.ui-contract-v1 .process-command-page { gap: 10px; }
+.ui-contract-v1 .process-command-header { min-height: 0; margin: 0; padding: 6px 0 8px; align-items: center; }
+.ui-contract-v1 .process-command-header .eyebrow { margin: 0 0 1px; font-size: 10px; }
+.ui-contract-v1 .process-command-header h2 { margin: 0; font-size: 22px; line-height: 28px; }
+.ui-contract-v1 .process-command-header p:not(.eyebrow) { margin: 1px 0 0; font-size: 12px; line-height: 16px; }
+.ui-contract-v1 .process-command-actions :is(.button-link,button) { min-height: 34px; height: 34px; padding: 6px 12px; }
+.ui-contract-v1 .process-command-kpis { min-height: 56px; margin: 0; gap: 8px; }
+.ui-contract-v1 .process-command-kpis > a { min-height: 56px; padding: 7px 10px; grid-template-columns: 28px auto 1fr; column-gap: 8px; align-content: center; }
+.ui-contract-v1 .process-command-kpis .ui-contract-icon { width: 28px; height: 28px; padding: 6px; grid-row: 1 / span 2; color: var(--cf-blue-600); background: var(--cf-blue-050); border-radius: 7px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.ui-contract-v1 .process-command-kpis strong { font-size: 18px; line-height: 20px; }
+.ui-contract-v1 .process-command-kpis span { font-size: 10px; }
+.ui-contract-v1 .process-command-kpis em { display: none; }
+.ui-contract-v1 .process-command-toolbar { min-height: 64px; padding: 8px 12px; }
+.ui-contract-v1 .process-command-toolbar h3 { margin: 0; font-size: 16px; }
+.ui-contract-v1 .process-command-toolbar :is(input,select,button,.button-link) { min-height: 34px; height: 34px; }
+.ui-contract-v1 .process-command-layout { gap: 12px; }
+.ui-contract-v1 .process-command-queue,
+.ui-contract-v1 .process-command-summary { padding: 12px; }
+.ui-contract-v1 .process-command-section-head { min-height: 44px; margin-bottom: 6px; }
+.ui-contract-v1 .process-command-table :is(th,td) { height: var(--ui-row-height); padding-block: 6px; }
+
 @media (max-width: 1024px) {
   .ui-contract-v1 { --visual-sidebar-width: 64px; }
   .ui-contract-v1 .visual-service-desk .visual-service-metrics { grid-template-columns: repeat(3,minmax(0,1fr)); }
+  .ui-contract-v1 .process-command-kpis { grid-template-columns: repeat(2,minmax(0,1fr)); }
 }
 @media (max-width: 640px) {
   .ui-contract-v1 { --visual-sidebar-width: 0px; }

@@ -1,17 +1,17 @@
 # CarFast — Estado canónico sanitizado
 
-**Versão:** 2026-08-26.1  
+**Versão:** 2026-08-26.2  
 **Atualizado em:** 2026-08-26, Europe/Lisbon
 
 Este documento alinha execução local, Estratégia, Coordenação cloud e Operador cloud. Não contém segredos, credenciais, URLs privadas nem dados pessoais.
 
 ## Green
 
-- Release live: `b06424e58eca1ad19a0a0532ebd03a1c45431e65`.
-- Origem: `integration/modular-architecture`, merge do PR #79.
+- Release live: `5501277efc5b17f2767010650c313e54cca7f99e`.
+- Origem: `integration/modular-architecture`, merge do PR #80.
 - Deploy manual: concluído exclusivamente no Green.
 - Health Render: `live`.
-- Smoke autenticado: UI Contract ativo; Centro de Tarefas com título canónico, dados reais preservados e sem overflow global no viewport verificado.
+- Smoke autenticado: UI Contract ativo; Email, Documentação, Administração, Dashboard e Parceiros responderam na sessão real sem overflow global; preview Email inicia fechado nos viewports modais.
 - Efeitos externos permanecem desligados.
 
 ## Blue preservado
@@ -26,21 +26,22 @@ Este documento alinha execução local, Estratégia, Coordenação cloud e Opera
 - Shell e navegação transversais convergidas, incluindo agrupamentos Operação, Operações de negócio e Sistema.
 - Instalação modular, Tarefas-tipo, Processos-modelo e modelo seguro de Venda de Viatura Usada a Comerciante integrados no Green, sem iniciar instâncias nem efeitos externos.
 - UI Contract v1 aplicado à shell, Centro de Tarefas e Centro de Processos no PR #79.
+- UI Contract v1 aplicado a Email, Documentação, Administração, Dashboard e Parceiros no PR #80.
 - CI do PR #79 e revisão independente sem P0/P1; deploy e smoke Green concluídos.
 
 ## Em curso
 
-- PR #80, branch `codex/ui-contract-core-workspaces`, HEAD `6a17cc51`.
+- Validação visual humana e evidência responsive pós-deploy do Green `5501277e`.
 - Email: lista e preview/tratamento no mesmo contexto desktop; modal responsive em tablet/mobile; ações preservam o preview e o foco.
 - Documentação: topbar e workbench lista/preview alinhados ao contrato canónico, preservando a triagem documental aprovada.
 - Administração: composição mestre-detalhe e densidade transversal, mantendo RBAC fail-closed e rotas existentes.
 - Dashboard e Parceiros: densidade, controlos e tabelas alinhados pelas mesmas primitives.
-- Revisão independente do HEAD atual: GO, sem P0/P1; CI remoto ainda tem de fechar antes de merge.
+- PR #80: CI verde, revisão independente GO, merge/deploy/smoke concluídos.
 
 ## Bloqueios
 
 - Nenhum bloqueio funcional conhecido.
-- Gate atual: CI remoto verde do PR #80, seguido de merge, deploy apenas Green e smoke autenticado/runtime responsive.
+- Gate atual: evidência responsive pós-deploy e validação visual explícita antes de expandir às restantes superfícies.
 
 ## Decisões funcionais fechadas
 
@@ -74,12 +75,10 @@ Este documento alinha execução local, Estratégia, Coordenação cloud e Opera
 
 ## Próximos gates
 
-1. CI remoto e revisão final do PR #80 verdes.
-2. Merge em `integration/modular-architecture`.
-3. Deploy manual apenas Green.
-4. Smoke autenticado e responsive de Email, Documentação, Administração, Dashboard e Parceiros.
-5. Atualizar este documento com o novo Green SHA somente depois do deploy/smoke.
-6. Validação visual explícita antes de expandir o contrato às restantes superfícies.
+1. Capturas e métricas responsive do Green `5501277e` em desktop, tablet e mobile.
+2. Validação visual explícita de Email, Documentação, Administração, Dashboard e Parceiros.
+3. Corrigir qualquer regressão factual na mesma tranche.
+4. Só depois expandir tokens/primitives às restantes superfícies do inventário 136.
 
 ## Limitações conhecidas
 

@@ -10,7 +10,7 @@ ICONS = (ROOT / "app/static/icons/lucide-v3.svg").read_text(encoding="utf-8")
 
 
 def test_contract_asset_is_global_for_foundation_surfaces() -> None:
-    assert 'ui-contract-v1.css?v=20260826-contract-v1' in BASE
+    assert 'ui-contract-v1.css?v=20260826-contract-v1e' in BASE
     assert 'class="ui-contract-v1"' in BASE
 
 
@@ -27,6 +27,9 @@ def test_shell_alignment_and_compact_first_fold_are_measurable() -> None:
         assert contract in CSS
     assert "grid-template-columns: 18px minmax(0,1fr)" in CSS
     assert ".ui-contract-v1.visual-nav-open #visual-sidebar { width: min(320px,88vw); }" in CSS
+    assert ".clean-task-relation-list { display: none; }" in CSS
+    assert ".clean-task-table td { height: 48px;" in CSS
+    assert "#visual-sidebar nav { display: flex; flex-direction: column;" in CSS
 
 
 def test_task_center_uses_canonical_language_and_lucide_family() -> None:

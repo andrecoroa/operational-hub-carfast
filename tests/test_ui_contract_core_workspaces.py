@@ -16,6 +16,10 @@ def test_email_uses_same_page_list_preview_contract() -> None:
     assert "id=\"email-preview-dialog\"" in EMAIL
     assert "dialog.showModal();" in EMAIL_JS
     assert "const previewRoot = usePanel ? previewPanel : dialog" in EMAIL_JS
+    assert 'form.closest("#email-preview-dialog, #email-preview-panel")' in EMAIL_JS
+    assert "formPreviewRoot === dialog && !dialog.open" in EMAIL_JS
+    assert "button.closest(\"#email-preview-panel\")" in EMAIL_JS
+    assert "resetPreviewPanel()" in EMAIL_JS
     assert "<dialog" in EMAIL and "<dialog" not in EMAIL.split("ui-email-list-preview", 1)[1].split("</div>{% if foundation_ui_enabled %}</section>", 1)[0]
     assert ".ui-email-list-preview { display: grid;" in CSS
 

@@ -2,6 +2,13 @@
   const dialog = document.getElementById("email-preview-dialog");
   const previewPanel = document.getElementById("email-preview-panel");
   let previewTrigger = null;
+  const resetPreviewPanel = () => {
+    if (!previewPanel) return;
+    previewPanel.innerHTML = '<div class="email-preview-loading"><strong>Pré-visualização</strong><span>Selecione uma conversa para triar, classificar e responder sem perder a fila.</span></div>';
+    document.querySelectorAll("[data-email-preview]").forEach((row) => row.classList.remove("is-selected"));
+    if (previewTrigger instanceof HTMLElement && previewTrigger.isConnected) previewTrigger.focus();
+    previewTrigger = null;
+  };
   const bindWorkHierarchy = (root) => {
     const source = root.querySelector("[data-email-work-hierarchy]");
     const container = root.querySelector("[data-work-hierarchy]");
@@ -146,7 +153,10 @@
     bindBodyViews(root);
     bindPanelSwitch(root);
     bindLinkKinds(root);
-    root.querySelectorAll("[data-email-modal-close]").forEach((button) => button.addEventListener("click", () => dialog?.close()));
+    root.querySelectorAll("[data-email-modal-close]").forEach((button) => button.addEventListener("click", () => {
+      if (button.closest("#email-preview-panel")) resetPreviewPanel();
+      else dialog?.close();
+    }));
     root.querySelectorAll("[data-email-show-images]").forEach((button) => button.addEventListener("click", () => {
       const frame = document.getElementById(button.dataset.emailShowImages);
       frame?.contentDocument?.querySelectorAll("img[data-email-src]").forEach((image) => { image.src = image.dataset.emailSrc; image.style.display = "inline-block"; });
@@ -203,7 +213,8 @@
     }));
     root.querySelectorAll("form").forEach((form) => form.addEventListener("submit", async (event) => {
       if (event.submitter?.matches("[data-email-approve]")) return;
-      if (!dialog || !dialog.open || !form.closest("#email-preview-dialog")) return;
+      const formPreviewRoot = form.closest("#email-preview-dialog, #email-preview-panel");
+      if (!formPreviewRoot || (formPreviewRoot === dialog && !dialog.open)) return;
       event.preventDefault();
       const submitter = event.submitter;
       if (submitter) submitter.disabled = true;

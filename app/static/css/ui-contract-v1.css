@@ -554,4 +554,29 @@
   .ui-contract-v1 .admin-section-roles .clean-admin-role-workspace-head { max-height: 300px; border-right: 0; border-bottom: 1px solid var(--ui-color-border); }
   .ui-contract-v1 .admin-overview-configuration-grid { grid-template-columns: minmax(0,1fr); }
   .ui-contract-v1 .admin-overview-configuration-grid > section { min-height: 0; border-right: 0; border-bottom: 1px solid var(--ui-color-border); }
+
+  /* Canonical mobile drill-in: surface the queue/master first and keep the
+     same route/ReturnContext for the subsequent detail. */
+  .ui-contract-v1 .visual-email-center .visual-email-heading,
+  .ui-contract-v1 .visual-email-center .visual-email-metrics,
+  .ui-contract-v1 .visual-email-center .visual-email-statuses,
+  .ui-contract-v1 .visual-email-center .visual-email-workbench-header,
+  .ui-contract-v1 .visual-email-center .visual-email-filters { display: none; }
+  .ui-contract-v1 .visual-email-center .visual-email-overview { margin-top: 8px; }
+  .ui-contract-v1 .visual-email-center .ui-email-triage-workbench { grid-template-columns: minmax(0,1fr); }
+  .ui-contract-v1 .visual-email-center .ui-email-triage-workbench > .visual-email-table-wrap { max-height: 276px; border-right: 0; border-bottom: 1px solid var(--ui-contract-border); }
+
+  .ui-contract-v1 .visual-document-workbench .doc-arch-nav,
+  .ui-contract-v1 .visual-document-workbench .doc-arch-kpis,
+  .ui-contract-v1 .visual-document-workbench .visual-document-context,
+  .ui-contract-v1 .visual-document-workbench .visual-document-filters { display: none; }
+  .ui-contract-v1 .visual-document-workbench .doc-arch-header { min-height: 64px; padding: 6px 0; }
+  .ui-contract-v1 .visual-document-workbench .doc-arch-header .eyebrow,
+  .ui-contract-v1 .visual-document-workbench .doc-arch-header p { display: none; }
+  .ui-contract-v1 .visual-document-workbench .doc-arch-header h1 { font-size: 22px; }
+  .ui-contract-v1 .visual-document-workbench .visual-document-step-nav { margin: 0; }
+  .ui-contract-v1 .visual-document-workbench .visual-document-queue-list { max-height: 292px; }
+
+  .ui-contract-v1 .admin-section-roles .admin-contract-workspace > .admin-contract-master { display: block !important; max-height: none; }
+  .ui-contract-v1 .admin-section-roles .admin-contract-workspace > .admin-contract-detail { display: none; }
 }

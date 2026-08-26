@@ -63,6 +63,7 @@ def test_partner_navigation_is_domain_only_and_admin_navigation_is_separate():
 def test_inventory_covers_dynamic_overlays_adapters_and_blocked_legacy_surfaces():
     import json
     from app.main import app
+    from starlette.routing import Match
 
     artifact = json.loads(_read("docs/architecture/HTML_SURFACE_INVENTORY.json"))
     assert artifact["baseline_surface_count"] == 136
@@ -74,6 +75,7 @@ def test_inventory_covers_dynamic_overlays_adapters_and_blocked_legacy_surfaces(
         (route.path, getattr(getattr(route, "endpoint", None), "__name__", ""))
         for route in app.routes
     }
+    resolved = 0
     for surface in artifact["surfaces"]:
         route_key = (surface["path"], surface["handler"])
         source = ROOT / surface["source"]
@@ -87,6 +89,16 @@ def test_inventory_covers_dynamic_overlays_adapters_and_blocked_legacy_surfaces(
             assert f"def {surface['handler']}(" in source_text or f"async def {surface['handler']}(" in source_text
         else:
             assert route_key in live, ("inventoried surface is not executable", surface)
+            sample_path = surface["path"]
+            for parameter in ("document_id", "vehicle_id", "process_id", "task_id", "supplier_id", "message_id", "user_id", "role_id", "id"):
+                sample_path = sample_path.replace("{" + parameter + "}", "1")
+            scope = {"type": "http", "method": "GET", "path": sample_path, "root_path": ""}
+            matches = [route for route in app.routes if route.matches(scope)[0] is Match.FULL]
+            assert any(getattr(getattr(route, "endpoint", None), "__name__", "") == surface["handler"] for route in matches), (
+                "nominal route smoke failed", surface, sample_path
+            )
+            resolved += 1
+    assert resolved == sum(1 for row in artifact["surfaces"] if row["classification"] != "legacy_blocked")
 
 
 def test_tasks_keep_operational_context_visible_at_dense_desktop_height():

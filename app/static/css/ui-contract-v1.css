@@ -9,23 +9,28 @@
   --ui-row-height: 40px;
 }
 
-.ui-contract-v1 .clean-shell .sidebar { width: var(--visual-sidebar-width); }
-.ui-contract-v1 .clean-shell .sidebar nav { gap: 2px; }
+.ui-contract-v1 .clean-shell .sidebar { width: var(--visual-sidebar-width); overflow-x: hidden; }
+.ui-contract-v1 .clean-shell .sidebar nav { width: 100%; min-width: 0; gap: 2px; overflow-x: hidden; }
 .ui-contract-v1 .clean-shell .sidebar nav > a,
 .ui-contract-v1 .clean-shell .sidebar-nav-group > summary {
   display: grid;
+  box-sizing: border-box;
+  width: 100%;
   min-width: 0;
   min-height: 36px;
   padding: 8px 10px;
   grid-template-columns: 18px minmax(0,1fr);
   column-gap: 10px;
   align-items: center;
+  justify-content: start;
+  text-align: left;
   white-space: nowrap;
 }
 .ui-contract-v1 .clean-shell .sidebar nav > a::before,
 .ui-contract-v1 .clean-shell .sidebar-nav-group > summary::before { width: 18px; height: 18px; margin: 0; }
 .ui-contract-v1 .clean-shell .sidebar .nav-section-label { margin: 14px 10px 4px 38px; }
-.ui-contract-v1 .clean-shell .sidebar-nav-children { margin-left: 28px; }
+.ui-contract-v1 .clean-shell .sidebar-nav-group { min-width: 0; }
+.ui-contract-v1 .clean-shell .sidebar-nav-children { box-sizing: border-box; width: calc(100% - 28px); min-width: 0; margin-left: 28px; }
 .ui-contract-v1 .clean-shell .sidebar-sub-link { min-height: 32px; padding-block: 6px; }
 
 .ui-contract-v1 .visual-topbar { height: 52px; min-height: 52px; }
@@ -86,7 +91,8 @@
 .ui-contract-v1 .visual-service-desk .clean-task-table td { height: 48px; padding-block: 5px; vertical-align: middle; }
 .ui-contract-v1 .visual-service-desk .clean-task-table td small { display: inline; margin: 0; font-size: 10px; line-height: 12px; }
 .ui-contract-v1 .visual-service-desk .clean-task-title-line { display: flex; align-items: center; gap: 6px; }
-.ui-contract-v1 .visual-service-desk .clean-task-relation-list { display: none; }
+.ui-contract-v1 .visual-service-desk .clean-task-relation-list { display: inline-flex; max-width: 180px; gap: 3px; margin-left: 4px; vertical-align: middle; }
+.ui-contract-v1 .visual-service-desk .clean-task-relation-list em { padding: 1px 4px; overflow: hidden; font-size: 9px; line-height: 12px; text-overflow: ellipsis; white-space: nowrap; }
 .ui-contract-v1 .visual-service-desk .clean-task-table .button-link { min-height: 30px; padding: 5px 8px; white-space: nowrap; }
 
 /* Centro de Processos shares the same compact command-workspace contract. */
@@ -118,7 +124,7 @@
   .ui-contract-v1.visual-nav-open #visual-sidebar { width: 208px; }
   .ui-contract-v1.visual-nav-open #visual-sidebar nav { display: flex; flex-direction: column; align-items: stretch; overflow-y: auto; overflow-x: hidden; }
   .ui-contract-v1.visual-nav-open #visual-sidebar nav > a,
-  .ui-contract-v1.visual-nav-open #visual-sidebar .sidebar-nav-group > summary { width: 100%; min-height: 36px; grid-template-columns: 18px minmax(0,1fr); justify-content: start; font-size: 13px; }
+  .ui-contract-v1.visual-nav-open #visual-sidebar .sidebar-nav-group > summary { width: 100%; min-height: 36px; grid-template-columns: 18px minmax(0,1fr); justify-content: start; text-align: left; font-size: 13px; }
   .ui-contract-v1.visual-nav-open #visual-sidebar .nav-section-label { display: block; width: auto; min-height: 0; font-size: 10px; }
   .ui-contract-v1 .visual-service-desk .visual-service-metrics { grid-template-columns: repeat(3,minmax(0,1fr)); }
   .ui-contract-v1 .process-command-kpis { grid-template-columns: repeat(2,minmax(0,1fr)); }
@@ -132,7 +138,7 @@
   .ui-contract-v1.visual-nav-open #visual-sidebar { width: min(320px,88vw); }
   .ui-contract-v1.visual-nav-open #visual-sidebar nav { display: flex; flex-direction: column; align-items: stretch; overflow-y: auto; overflow-x: hidden; }
   .ui-contract-v1.visual-nav-open #visual-sidebar nav > a,
-  .ui-contract-v1.visual-nav-open #visual-sidebar .sidebar-nav-group > summary { width: 100%; min-height: 36px; grid-template-columns: 18px minmax(0,1fr); justify-content: start; font-size: 13px; }
+  .ui-contract-v1.visual-nav-open #visual-sidebar .sidebar-nav-group > summary { width: 100%; min-height: 36px; grid-template-columns: 18px minmax(0,1fr); justify-content: start; text-align: left; font-size: 13px; }
   .ui-contract-v1.visual-nav-open #visual-sidebar .nav-section-label { display: block; width: auto; min-height: 0; font-size: 10px; }
   .ui-contract-v1 .visual-service-desk .clean-task-hero { align-items: start; }
   .ui-contract-v1 .visual-service-desk .visual-service-metrics { grid-template-columns: repeat(2,minmax(0,1fr)); }

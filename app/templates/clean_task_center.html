@@ -4,7 +4,7 @@
   {% set active_menu = "clean_tasks" %}
   {% include "_sidebar.html" %}
   <main class="content clean-content{% if foundation_ui_enabled %} ui-foundation ui-page-shell visual-service-desk{% endif %}">
-    {% set visual_section = "Operação" %}{% set visual_page = "Service Desk" %}{% include "_visual_topbar.html" %}
+    {% set visual_section = "Operação" %}{% set visual_page = "Centro de Tarefas" %}{% include "_visual_topbar.html" %}
     <header class="clean-module-hero clean-task-hero{% if foundation_ui_enabled %} ui-page-header visual-service-heading{% endif %}">
       <div>
         <p class="eyebrow">Operação</p>
@@ -202,7 +202,7 @@
 
     <section class="clean-panel clean-card-wide clean-task-queue-panel{% if foundation_ui_enabled %} visual-task-workbench{% endif %}">
       <div class="table-heading flat-heading{% if foundation_ui_enabled %} visual-task-workbench-header{% endif %}">
-        <div>{% if foundation_ui_enabled %}<p class="visual-kicker">Service Desk</p>{% endif %}<h3>Fila de trabalho</h3><p>{{ pagination.total }} registos nos filtros atuais.</p></div>
+        <div>{% if foundation_ui_enabled %}<p class="visual-kicker">Centro de Tarefas</p>{% endif %}<h3>Fila de trabalho</h3><p>{{ pagination.total }} registos nos filtros atuais.</p></div>
         {% if foundation_ui_enabled %}<span class="visual-count-badge" aria-label="{{ pagination.total }} tarefas">{{ pagination.total }}</span>{% endif %}
       </div>
       <nav class="clean-task-workspace-tabs" aria-label="Filas">

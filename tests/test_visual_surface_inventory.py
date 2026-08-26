@@ -60,6 +60,19 @@ def test_every_reachable_static_html_surface_uses_asset_and_sidebar(
                 failures.append(f"{path}: missing canonical script")
             if CANONICAL_SIDEBAR not in response.text:
                 failures.append(f"{path}: missing canonical sidebar")
+            canonical_labels = (
+                'data-nav-section="operation"',
+                'data-nav-section="business"',
+                'data-nav-section="system"',
+            )
+            if not all(label in response.text for label in canonical_labels):
+                failures.append(f"{path}: missing canonical navigation groups")
+            elif not (
+                response.text.index(canonical_labels[0])
+                < response.text.index(canonical_labels[1])
+                < response.text.index(canonical_labels[2])
+            ):
+                failures.append(f"{path}: canonical navigation groups out of order")
         else:
             failures.append(f"{path}: unexpected status {response.status_code}")
     assert not failures, "\n".join(failures)
@@ -113,3 +126,44 @@ def test_sidebar_contains_approved_composition_and_independent_fallbacks():
     assert "/v2-clean/fleet/sales/opportunities" in sidebar
     assert "can_nav_sales and not can_nav_fleet" in sidebar
     assert "can_nav_stock and not can_nav_workshop" in sidebar
+
+
+def test_sidebar_has_the_canonical_global_group_order():
+    sidebar = (Path(__file__).resolve().parents[1] / "app/templates/_sidebar.html").read_text(
+        encoding="utf-8"
+    )
+
+    operation = sidebar.index('data-nav-section="operation"')
+    alerts = sidebar.index("Alertas personalizados", operation)
+    tasks = sidebar.index("Centro de Tarefas", alerts)
+    processes = sidebar.index("Centro de Processos", tasks)
+    email = sidebar.index(">Email</a>", processes)
+    business = sidebar.index('data-nav-section="business"', email)
+    workshop = sidebar.index(">Oficina</summary>", business)
+    stock = sidebar.index(">Stock e Compras</summary>", workshop)
+    fleet = sidebar.index(">Frota</summary>", stock)
+    sales = sidebar.index(">Vendas</summary>", fleet)
+    partners = sidebar.index("Parceiros / Fornecedores", sales)
+    documents = sidebar.index(">Documentação</summary>", partners)
+    system = sidebar.index('data-nav-section="system"', documents)
+    administration = sidebar.index(">Administração</a>", system)
+
+    assert operation < alerts < tasks < processes < email < business
+    assert business < workshop < stock < fleet < sales < partners < documents < system
+    assert system < administration
+
+
+def test_sidebar_keeps_independent_child_promotion_and_mobile_drawer_contract():
+    sidebar = (Path(__file__).resolve().parents[1] / "app/templates/_sidebar.html").read_text(
+        encoding="utf-8"
+    )
+    visual_script = (Path(__file__).resolve().parents[1] / "app/static/js/visual-v2.js").read_text(
+        encoding="utf-8"
+    )
+
+    assert "can_nav_sales and not can_nav_fleet" in sidebar
+    assert "can_nav_stock and not can_nav_workshop" in sidebar
+    assert ">Stock e Compras</a>" in sidebar
+    assert 'id="visual-sidebar"' in sidebar
+    assert 'querySelector("#visual-sidebar")' in visual_script
+    assert 'classList.toggle("visual-nav-open"' in visual_script

@@ -32,12 +32,18 @@
       {% set can_nav_email = "navigation.email.access" in nav_perms and nav_has_permission(request, "email.read", "email.triage", "email.reply", "email.approve", "email.manage", "admin.manage") %}
       {% set can_nav_documentation = "navigation.documentation.access" in nav_perms and nav_has_permission(request, "documents.read", "documents.write", "admin.manage") %}
       {% set can_nav_admin = "navigation.admin.access" in nav_perms and nav_has_permission(request, "admin.dashboard.read", "admin.users.read", "admin.users.manage", "admin.roles.read", "admin.roles.manage", "admin.organization.read", "admin.organization.manage", "admin.settings.read", "admin.settings.manage", "admin.workshop_models.read", "admin.workshop_models.manage", "admin.workshop_models.publish", "admin.audit.read", "admin.audit.export", "admin.integrations.read", "admin.integrations.manage", "admin.security.read", "admin.security.manage", "admin.manage", "users.manage", "settings.manage", "suppliers.configuration.manage") %}
+      {% set can_nav_partners = nav_has_permission(request, "suppliers.read", "suppliers.write", "stock.read", "stock.manage", "admin.manage") %}
       {% if can_nav_home %}<a href="/v2-clean" {% if active_menu == "clean" %}class="active"{% endif %}>Início</a>{% endif %}
+      {% if "dashboard.read" in nav_perms or can_nav_tasks or can_nav_processes or can_nav_email %}<span class="nav-section-label" data-nav-section="operation">Operação</span>{% endif %}
       {% if "dashboard.read" in nav_perms %}
         <a href="/alerts" {% if active_menu == "alerts" %}class="active"{% endif %}>Alertas personalizados</a>
       {% endif %}
       {% if can_nav_tasks %}<a href="/v2-clean/tasks" {% if active_menu == "clean_tasks" %}class="active"{% endif %}>Centro de Tarefas</a>{% endif %}
       {% if can_nav_processes %}<a href="/v2-clean/processes" {% if active_menu == "clean_processes" %}class="active"{% endif %}>Centro de Processos</a>{% endif %}
+      {% if can_nav_email %}
+        <a href="/v2-clean/email" {% if active_menu == "email" %}class="active"{% endif %}>Email</a>
+      {% endif %}
+      {% if can_nav_workshop or can_nav_stock or can_nav_fleet or can_nav_sales or can_nav_partners or can_nav_documentation %}<span class="nav-section-label" data-nav-section="business">Operações de negócio</span>{% endif %}
       {% set workshop_menu_open = active_menu in ["workshop", "stock"] or request.url.path.startswith('/v2-clean/workshop') %}
       {% if can_nav_workshop %}<details class="sidebar-nav-group" {% if workshop_menu_open %}open{% endif %}>
         <summary data-nav-icon="workshop" {% if workshop_menu_open %}class="active"{% endif %}>Oficina</summary>
@@ -86,13 +92,10 @@
         <a href="/v2-clean/fleet/sales" {% if active_menu == "fleet_sales" %}class="active"{% endif %}>Vendas</a>
       {% endif %}
       {% if can_nav_stock and not can_nav_workshop %}
-        <a href="/v2-clean/stock" {% if active_menu == "stock" %}class="active"{% endif %}>Stock</a>
+        <a href="/v2-clean/stock" {% if active_menu == "stock" %}class="active"{% endif %}>Stock e Compras</a>
       {% endif %}
-      {% if nav_has_permission(request, "suppliers.read", "suppliers.write", "stock.read", "stock.manage", "admin.manage") %}
-        <a href="/v2-clean/suppliers" {% if active_menu == "suppliers" %}class="active"{% endif %}>Fornecedores</a>
-      {% endif %}
-      {% if can_nav_email %}
-        <a href="/v2-clean/email" {% if active_menu == "email" %}class="active"{% endif %}>Email</a>
+      {% if can_nav_partners %}
+        <a href="/v2-clean/suppliers" {% if active_menu == "suppliers" %}class="active"{% endif %}>Parceiros / Fornecedores</a>
       {% endif %}
       {% set documentation_menu_open = active_menu in ["documentation_center", "documentation_triage", "documentation_treatment", "documentation_imports", "documentation_invoices", "documentation_diagnostics", "documentation_archive", "documentation_models", "documents", "documents_center"] %}
       {% if can_nav_documentation %}<details class="sidebar-nav-group" {% if documentation_menu_open %}open{% endif %}>
@@ -105,8 +108,8 @@
           <a class="sidebar-sub-link" href="/v2-clean/documentation/archive">Arquivo</a>
         </div>
       </details>{% endif %}
-      <span class="nav-section-label">Sistema</span>
       {% if can_nav_admin %}
+        <span class="nav-section-label" data-nav-section="system">Sistema</span>
         <a href="/v2-clean/admin" {% if active_menu == "clean_admin" %}class="active"{% endif %}>Administração</a>
       {% endif %}
     {% else %}

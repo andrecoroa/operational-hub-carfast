@@ -43,6 +43,6 @@ def test_process_center_uses_global_shell_and_compact_workspace() -> None:
     assert "process-command-kpis" in CSS
     assert ".process-command-kpis > a { display: grid;" in CSS
     assert ".visual-service-kpi-icon { position: static;" in CSS
-    assert "process-command-toolbar { min-height: 64px" in CSS
+    assert "process-command-toolbar { min-height: 48px" in CSS
     for icon in ("inbox", "triangle-alert", "user-round", "circle-check"):
         assert f'lucide-v3.svg#{icon}' in PROCESSES

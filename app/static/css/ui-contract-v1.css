@@ -95,7 +95,7 @@
 .ui-contract-v1 .process-command-kpis strong { font-size: 18px; line-height: 20px; }
 .ui-contract-v1 .process-command-kpis span { font-size: 10px; }
 .ui-contract-v1 .process-command-kpis em { display: none; }
-.ui-contract-v1 .process-command-toolbar { min-height: 64px; padding: 8px 12px; }
+.ui-contract-v1 .process-command-toolbar { min-height: 48px; padding: 6px 12px; }
 .ui-contract-v1 .process-command-toolbar h3 { margin: 0; font-size: 16px; }
 .ui-contract-v1 .process-command-toolbar :is(input,select,button,.button-link) { min-height: var(--ui-control-compact); height: var(--ui-control-compact); }
 .ui-contract-v1 .process-command-layout { gap: 12px; }

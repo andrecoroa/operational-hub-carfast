@@ -90,6 +90,47 @@
       </section>
     {% endif %}
 
+    {% if admin_section == "task_process_models" %}
+      <section class="clean-panel clean-card-wide admin-model-workbench" aria-labelledby="model-library-title">
+        <div class="table-heading flat-heading">
+          <div>
+            <p class="eyebrow">Biblioteca versionada</p>
+            <h3 id="model-library-title">Tarefas-tipo e Processos-modelo</h3>
+            <p>Publicar uma versão afeta apenas novas criações; tarefas e processos existentes preservam o snapshot imutável.</p>
+          </div>
+          <span class="pill muted-pill">Fail-closed por permissão e âmbito</span>
+        </div>
+        <div class="admin-model-columns">
+          <div class="admin-model-master" role="list" aria-label="Tarefas-tipo">
+            <h4>Tarefas-tipo</h4>
+            {% for model, version in task_model_rows %}
+              <button type="button" class="admin-model-row{% if loop.first %} is-selected{% endif %}" data-model-target="task-{{ version.id }}">
+                <strong>{{ model.name }}</strong><span>v{{ version.version }} · {{ version.status }}</span>
+              </button>
+            {% else %}<p class="empty-state">Ainda não existem Tarefas-tipo.</p>{% endfor %}
+          </div>
+          <div class="admin-model-master" role="list" aria-label="Processos-modelo">
+            <h4>Processos-modelo</h4>
+            {% for model, version in process_model_rows %}
+              <button type="button" class="admin-model-row{% if loop.first %} is-selected{% endif %}" data-model-target="process-{{ version.id }}">
+                <strong>{{ model.name }}</strong><span>v{{ version.version }} · {{ version.status }}</span>
+              </button>
+            {% else %}<p class="empty-state">Ainda não existem Processos-modelo.</p>{% endfor %}
+          </div>
+          <div class="admin-model-detail">
+            <h4>Contrato de criação</h4>
+            <dl>
+              <div><dt>Criar tarefa</dt><dd>Escolhe uma Tarefa-tipo autorizada e cria snapshot.</dd></div>
+              <div><dt>Iniciar processo</dt><dd>Cria uma nova instância de um Processo-modelo.</dd></div>
+              <div><dt>Criar tarefa do processo</dt><dd>Adiciona uma tarefa a uma instância já existente.</dd></div>
+            </dl>
+            <div class="alert">Leitura ou gestão nunca implica criação. O servidor revalida tipo, categoria, subcategoria, versão, perfil e âmbito no POST.</div>
+            <div class="sticky-actions"><a class="button-link secondary-link" href="/v2-clean/tasks?create=1#new-task">Pré-visualizar Criar tarefa</a></div>
+          </div>
+        </div>
+      </section>
+    {% endif %}
+
     {% if admin_section == "setup" %}
       <section class="clean-admin-setup-hero clean-card-wide" aria-labelledby="setup-title">
         <div>

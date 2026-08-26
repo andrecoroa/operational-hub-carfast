@@ -138,6 +138,15 @@ class Task(TimestampMixin, Base):
     recurrence_interval: Mapped[int | None] = mapped_column(Integer)
     recurrence_next_on: Mapped[date | None] = mapped_column(Date, index=True)
     recurrence_created_from_task_id: Mapped[int | None] = mapped_column(ForeignKey("tasks.id"))
+    task_template_version_id: Mapped[int | None] = mapped_column(
+        ForeignKey("task_template_versions.id", ondelete="RESTRICT"), index=True
+    )
+    task_template_snapshot_json: Mapped[dict | None] = mapped_column(JSON)
+    task_template_snapshot_digest: Mapped[str | None] = mapped_column(String(64))
+    process_instance_id: Mapped[int | None] = mapped_column(
+        ForeignKey("process_instances.id", ondelete="SET NULL"), index=True
+    )
+    process_step_code: Mapped[str | None] = mapped_column(String(120), index=True)
 
 
 class TaskComment(Base):

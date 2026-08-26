@@ -88,6 +88,7 @@ from app.models.tasks import (
     TaskRecurrenceTemplate,
     TaskSlaEvent,
 )
+from app.models.task_templates import TaskTemplate, TaskTemplateUsage, TaskTemplateVersion
 from app.models.vehicle_history_audit import (
     VehicleHistoryAudit,
     VehicleHistoryAuditDocument,
@@ -272,6 +273,7 @@ from app.services.task_recurrence import (
     opportunistic_generate_recurring_tasks,
     utc_datetime_to_local,
 )
+from app.services.task_templates import TaskCreationCapabilityResolver
 from app.services.trade_debt_importer import (
     TRADE_DEBT_IMPORT_TYPE,
     apply_trade_debt_import,
@@ -5151,6 +5153,22 @@ def clean_tasks_center(
             ]
             for task in tasks
         }
+        allowed_template_ids = {
+            item.template_version_id
+            for item in TaskCreationCapabilityResolver(db).options(current_user)
+            if item.allowed
+        } if current_user else set()
+        task_template_options = db.execute(
+            select(TaskTemplateVersion, TaskTemplate, TaskTemplateUsage)
+            .join(TaskTemplate, TaskTemplate.id == TaskTemplateVersion.template_id)
+            .outerjoin(
+                TaskTemplateUsage,
+                (TaskTemplateUsage.template_id == TaskTemplate.id)
+                & (TaskTemplateUsage.user_id == user_id),
+            )
+            .where(TaskTemplateVersion.id.in_(allowed_template_ids))
+            .order_by(TaskTemplateUsage.favorite.desc().nullslast(), TaskTemplateUsage.last_used_at.desc().nullslast(), TaskTemplate.name)
+        ).all() if allowed_template_ids else []
         return templates.TemplateResponse(
             request,
             "clean_task_center.html",
@@ -5192,6 +5210,7 @@ def clean_tasks_center(
                 "task_claim_allowed_by_id": task_claim_allowed_by_id,
                 "task_assignable_users_by_id": task_assignable_users_by_id,
                 "task_support_teams_by_id": task_support_teams_by_id,
+                "task_template_options": task_template_options,
                 "mine_counts": mine_counts,
                 "task_notifications": task_notifications,
                 "task_notification_unread_count": task_notification_unread_count,

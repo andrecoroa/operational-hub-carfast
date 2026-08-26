@@ -1,20 +1,10 @@
-<nav class="partner-context-nav" aria-label="Parceiros e parametrização">
+<nav class="partner-context-nav" aria-label="Parceiros e fornecedores">
   {% if nav_has_permission(request, 'suppliers.read', 'suppliers.write', 'stock.read', 'stock.manage', 'admin.manage') %}
   <a href="/v2-clean/suppliers"{% if partner_tab == 'directory' %} aria-current="page"{% endif %}>Parceiros</a>
   {% endif %}
   {% if nav_has_permission(request, 'suppliers.configuration.manage', 'admin.manage') %}
-    <a href="/v2-clean/admin/suppliers"{% if partner_tab == 'configuration' %} aria-current="page"{% endif %}>Tipos e modelos</a>
+    <a href="/v2-clean/admin/suppliers"{% if partner_tab == 'configuration' %} aria-current="page"{% endif %}>Tipos e serviços</a>
   {% endif %}
-  {% if nav_has_permission(request, 'admin.users.read', 'admin.users.manage', 'users.manage', 'admin.manage') %}
-    <a href="/v2-clean/admin/users"{% if partner_tab == 'users' %} aria-current="page"{% endif %}>Utilizadores</a>
-  {% endif %}
-  {% if nav_has_permission(request, 'admin.roles.read', 'admin.roles.manage', 'users.manage', 'admin.manage') %}
-    <a href="/v2-clean/admin/roles"{% if partner_tab == 'roles' %} aria-current="page"{% endif %}>Perfis e permissões</a>
-  {% endif %}
-  {% if nav_has_permission(request, 'service_desk.classifications.manage', 'classification.validate', 'classification.merge_reclassify', 'classification.catalog.manage', 'admin.settings.read', 'admin.settings.manage', 'settings.manage', 'admin.manage') %}
-    <a href="/v2-clean/admin/work-classification?view=structure"{% if partner_tab == 'categories' %} aria-current="page"{% endif %}>Categorias</a>
-  {% endif %}
-  {% if nav_has_permission(request, 'admin.settings.read', 'admin.settings.manage', 'settings.manage', 'admin.manage') %}
-    <a href="/v2-clean/admin/work-classification?view=channels"{% if partner_tab == 'email' %} aria-current="page"{% endif %}>Email</a>
-  {% endif %}
+  {% if nav_has_permission(request, 'suppliers.read', 'suppliers.write', 'admin.manage') %}<a href="/v2-clean/suppliers?view=contracts"{% if partner_tab == 'contracts' %} aria-current="page"{% endif %}>Contratos</a>{% endif %}
+  {% if nav_has_permission(request, 'suppliers.configuration.manage', 'admin.manage') %}<a href="/v2-clean/admin/suppliers?view=settings"{% if partner_tab == 'settings' %} aria-current="page"{% endif %}>Configuração</a>{% endif %}
 </nav>

@@ -53,6 +53,14 @@
     </section>
 
     <section class="process-command-layout" id="process-workbench">
+      <aside class="clean-panel process-command-catalog" aria-label="Catálogo e filas de processos">
+        <header class="process-command-section-head"><div><p class="eyebrow">Catálogo</p><h3>Filas e modelos</h3></div></header>
+        <nav class="process-command-catalog-list" aria-label="Modelos disponíveis">
+          <a class="active" href="/v2-clean/processes">Todos os processos <strong>{{ process_metrics.open }}</strong></a>
+          {% for process_type in process_types %}<a href="?model={{ process_type.code|urlencode }}{% if process_filters.status %}&status={{ process_filters.status|urlencode }}{% endif %}"><span>{{ process_type.name }}</span><small>{{ process_type.code }}</small></a>{% else %}<p class="empty-state">Sem modelos disponíveis.</p>{% endfor %}
+        </nav>
+        <a class="button-link secondary-link" href="/v2-clean/tasks?workspace=management">Tarefas associadas</a>
+      </aside>
       <div class="clean-panel process-command-queue">
         <header class="process-command-section-head"><div><p class="eyebrow">Visão operacional</p><h3>Fila de processos</h3></div><span>{{ recent_management|length }} visíveis</span></header>
         {% if process_filter_error %}

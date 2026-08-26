@@ -33,17 +33,17 @@
       {% set can_nav_documentation = "navigation.documentation.access" in nav_perms and nav_has_permission(request, "documents.read", "documents.write", "admin.manage") %}
       {% set can_nav_admin = "navigation.admin.access" in nav_perms and nav_has_permission(request, "admin.dashboard.read", "admin.users.read", "admin.users.manage", "admin.roles.read", "admin.roles.manage", "admin.organization.read", "admin.organization.manage", "admin.settings.read", "admin.settings.manage", "admin.workshop_models.read", "admin.workshop_models.manage", "admin.workshop_models.publish", "admin.audit.read", "admin.audit.export", "admin.integrations.read", "admin.integrations.manage", "admin.security.read", "admin.security.manage", "admin.manage", "users.manage", "settings.manage", "suppliers.configuration.manage") %}
       {% set can_nav_partners = nav_has_permission(request, "suppliers.read", "suppliers.write", "stock.read", "stock.manage", "admin.manage") %}
-      {% if can_nav_home %}<a href="/v2-clean" {% if active_menu == "clean" %}class="active"{% endif %}>Início</a>{% endif %}
       {% if "dashboard.read" in nav_perms or can_nav_tasks or can_nav_processes or can_nav_email %}<span class="nav-section-label" data-nav-section="operation">Operação</span>{% endif %}
+      {% if can_nav_home %}<a href="/v2-clean" {% if active_menu == "clean" %}class="active"{% endif %}>Início</a>{% endif %}
       {% if "dashboard.read" in nav_perms %}
         <a href="/alerts" {% if active_menu == "alerts" %}class="active"{% endif %}>Alertas personalizados</a>
       {% endif %}
-      {% if can_nav_tasks %}<a href="/v2-clean/tasks" {% if active_menu == "clean_tasks" %}class="active"{% endif %}>Centro de Tarefas</a>{% endif %}
-      {% if can_nav_processes %}<a href="/v2-clean/processes" {% if active_menu == "clean_processes" %}class="active"{% endif %}>Centro de Processos</a>{% endif %}
+      {% if can_nav_tasks %}<a href="/v2-clean/tasks" {% if active_menu == "clean_tasks" %}class="active"{% endif %}>Service Desk</a>{% endif %}
+      {% if can_nav_processes %}<a href="/v2-clean/processes" {% if active_menu == "clean_processes" %}class="active"{% endif %}>Processos</a>{% endif %}
       {% if can_nav_email %}
         <a href="/v2-clean/email" {% if active_menu == "email" %}class="active"{% endif %}>Email</a>
       {% endif %}
-      {% if can_nav_workshop or can_nav_stock or can_nav_fleet or can_nav_sales or can_nav_partners or can_nav_documentation %}<span class="nav-section-label" data-nav-section="business">Operações de negócio</span>{% endif %}
+      {% if can_nav_workshop or can_nav_stock or can_nav_fleet or can_nav_sales or can_nav_partners or can_nav_documentation %}<span class="nav-section-label" data-nav-section="business">Negócio</span>{% endif %}
       {% set workshop_menu_open = active_menu in ["workshop", "stock"] or request.url.path.startswith('/v2-clean/workshop') %}
       {% if can_nav_workshop %}<details class="sidebar-nav-group" {% if workshop_menu_open %}open{% endif %}>
         <summary data-nav-icon="workshop" {% if workshop_menu_open %}class="active"{% endif %}>Oficina</summary>
@@ -95,7 +95,7 @@
         <a href="/v2-clean/stock" {% if active_menu == "stock" %}class="active"{% endif %}>Stock e Compras</a>
       {% endif %}
       {% if can_nav_partners %}
-        <a href="/v2-clean/suppliers" {% if active_menu == "suppliers" %}class="active"{% endif %}>Parceiros / Fornecedores</a>
+        <a href="/v2-clean/suppliers" {% if active_menu == "suppliers" %}class="active"{% endif %}>Parceiros</a>
       {% endif %}
       {% set documentation_menu_open = active_menu in ["documentation_center", "documentation_triage", "documentation_treatment", "documentation_imports", "documentation_invoices", "documentation_diagnostics", "documentation_archive", "documentation_models", "documents", "documents_center"] %}
       {% if can_nav_documentation %}<details class="sidebar-nav-group" {% if documentation_menu_open %}open{% endif %}>
@@ -191,6 +191,47 @@
     </div>
   </div>
 </aside>
+{% if foundation_ui_enabled %}<script>
+  (() => {
+    const sidebar = document.getElementById("visual-sidebar");
+    if (!sidebar) return;
+    const iconFor = (element) => {
+      const href = element.getAttribute("href") || "";
+      const domain = element.dataset.navIcon || "";
+      if (href === "/v2-clean") return "package";
+      if (href.includes("alerts")) return "triangle-alert";
+      if (href.includes("tasks")) return "circle-check";
+      if (href.includes("process")) return "inbox";
+      if (href.includes("email")) return "inbox";
+      if (href.includes("suppliers")) return "user-round";
+      if (domain === "documents" || href.includes("document")) return "inbox";
+      if (domain === "workshop") return "tags";
+      if (domain === "fleet") return "package";
+      if (href.includes("admin")) return "tags";
+      return "arrow-right";
+    };
+    sidebar.querySelectorAll("nav > a, .sidebar-nav-group > summary").forEach((item) => {
+      if (!item.querySelector(":scope > .sidebar-nav-label")) {
+        const textNodes = [...item.childNodes].filter((node) => node.nodeType === Node.TEXT_NODE && node.textContent.trim());
+        if (textNodes.length) {
+          const label = document.createElement("span");
+          label.className = "sidebar-nav-label";
+          label.textContent = textNodes.map((node) => node.textContent.trim()).join(" ");
+          textNodes[0].replaceWith(label);
+          textNodes.slice(1).forEach((node) => node.remove());
+        }
+      }
+      if (item.querySelector(":scope > .sidebar-lucide-icon")) return;
+      const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+      svg.classList.add("sidebar-lucide-icon");
+      svg.setAttribute("aria-hidden", "true");
+      const use = document.createElementNS("http://www.w3.org/2000/svg", "use");
+      use.setAttribute("href", `/static/icons/lucide-v3.svg#${iconFor(item)}`);
+      svg.append(use);
+      item.prepend(svg);
+    });
+  })();
+</script>{% endif %}
 
 {% if nav_has_permission(request, "admin.evolution.create", "admin.evolution.manage", "admin.manage") %}
   <dialog class="quick-evolution-dialog" data-evolution-dialog aria-labelledby="quick-evolution-title">

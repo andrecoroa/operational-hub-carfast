@@ -4,12 +4,12 @@
   {% set active_menu = "clean_tasks" %}
   {% include "_sidebar.html" %}
   <main class="content clean-content{% if foundation_ui_enabled %} ui-foundation ui-page-shell visual-service-desk{% endif %}">
-    {% set visual_section = "Operação" %}{% set visual_page = "Centro de Tarefas" %}{% include "_visual_topbar.html" %}
+    {% set visual_section = "Operação" %}{% set visual_page = "Service Desk" %}{% include "_visual_topbar.html" %}
     <header class="clean-module-hero clean-task-hero{% if foundation_ui_enabled %} ui-page-header visual-service-heading{% endif %}">
       <div>
         <p class="eyebrow">Operação</p>
-        <h2>Centro de Tarefas</h2>
-        <p>Fila operacional, responsabilidade e SLA no mesmo contexto.</p>
+        <h2>Service Desk</h2>
+        <p>Fila operacional única, densa e acionável.</p>
       </div>
       {% if creatable_workspaces or can_manage_recurrence %}
         <div class="clean-module-hero-actions">

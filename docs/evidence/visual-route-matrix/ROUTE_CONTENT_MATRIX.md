@@ -2,8 +2,8 @@
 
 Base: `integration/modular-architecture@4161572a899289d27ca7636e64bf623c25c419b8`
 
-Inventário: `scripts/check_visual_surface_inventory.py` — 53/53 rotas estáticas canónicas, incluindo o novo assistente `/v2-clean/admin/setup`.
-Shell: **PASS transversal em todas as 53 rotas** (asset, sidebar, topbar e composição de navegação). A coluna `Conteúdo` não herda esse PASS: descreve apenas a reconstrução da superfície funcional.
+Inventário: `scripts/check_visual_surface_inventory.py` — 54/54 rotas estáticas canónicas, incluindo o assistente `/v2-clean/admin/setup` e a biblioteca `/v2-clean/admin/task-process-models`.
+Shell: **PASS transversal em todas as 54 rotas** (asset, sidebar, topbar e composição de navegação). A coluna `Conteúdo` não herda esse PASS: descreve apenas a reconstrução da superfície funcional.
 
 | # | Rota | Shell | Conteúdo | Evidência / próxima tranche |
 |---:|---|---|---|---|
@@ -20,6 +20,7 @@ Shell: **PASS transversal em todas as 53 rotas** (asset, sidebar, topbar e compo
 | 10 | `/v2-clean/admin/security` | PASS | reconstruído/aprovado | Administração residual |
 | 11 | `/v2-clean/admin/settings` | PASS | reconstruído/aprovado | Administração residual |
 | 12 | `/v2-clean/admin/suppliers` | PASS | reconstruído pendente de captura | Tipos/subtipos/modelos runtime PASS |
+| 12A | `/v2-clean/admin/task-process-models` | PASS | reconstruído/aprovado | Tarefas-tipo e Processos-modelo versionados; Green 1db3b916 |
 | 13 | `/v2-clean/admin/users` | PASS | reconstruído pendente de captura | Utilizadores runtime PASS |
 | 14 | `/v2-clean/admin/work-classification` | PASS | reconstruído pendente de captura | Categorias/parametrização/Email runtime PASS |
 | 15 | `/v2-clean/admin/workshop-models` | PASS | reconstruído/aprovado | Oficina/Configuração residual |

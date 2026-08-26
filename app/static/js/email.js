@@ -236,7 +236,9 @@
   };
   const openPreview = async (threadId, trigger = null) => {
     if (!dialog || !threadId) return;
-    const usePanel = Boolean(previewPanel && window.matchMedia("(min-width: 1025px)").matches);
+    // UI Contract v1 keeps list, conversation and treatment on the same route at
+    // every breakpoint. The dialog remains only as a legacy/no-foundation fallback.
+    const usePanel = Boolean(previewPanel);
     const previewRoot = usePanel ? previewPanel : dialog;
     previewTrigger = trigger || document.activeElement;
     const previousShell = previewRoot.querySelector("[data-email-thread-id]");
@@ -274,6 +276,11 @@
     event.stopPropagation();
     openPreview(button.dataset.emailPreviewTrigger, button);
   }));
+
+  const initialPreview = document.querySelector("[data-email-preview]");
+  if (previewPanel && initialPreview) {
+    openPreview(initialPreview.dataset.emailPreview, initialPreview);
+  }
   dialog?.addEventListener("click", (event) => { if (event.target === dialog) dialog.close(); });
   dialog?.addEventListener("close", () => {
     document.querySelectorAll("[data-email-preview]").forEach((row) => row.classList.remove("is-selected"));

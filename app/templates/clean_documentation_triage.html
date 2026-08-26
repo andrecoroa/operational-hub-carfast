@@ -4,6 +4,7 @@
   {% set active_menu = "documentation_triage" %}
   {% include "_sidebar.html" %}
   <main class="content clean-content doc-arch-page{% if foundation_ui_enabled %} visual-document-workbench document-view-{{ document_view }}{% endif %}">
+    {% if foundation_ui_enabled %}{% set visual_section = "Operações de negócio" %}{% set visual_page = "Documentação" %}{% include "_visual_topbar.html" %}{% endif %}
     {% set doc_nav = "triage" %}
     {% include "_clean_documentation_nav.html" %}
     <header class="doc-arch-header">
@@ -72,9 +73,11 @@
       <aside class="visual-document-review" aria-label="OCR e dados extraídos">
         <header><h2>OCR e dados extraídos</h2><p>Confirme a classificação e o destino.</p></header>
         {% if selected_row %}
-          <div class="visual-document-confidence"><span><small>Classificação</small><strong>{{ workflow_labels.get(selected_row.workflow.suggested_invoice_nature, "Por reconhecer") }}</strong></span><span><small>Confiança</small><strong>{{ ((selected_row.workflow.suggestion_confidence or 0) * 100)|round|int }}%</strong></span></div>
+          <nav class="visual-document-review-tabs" aria-label="Tratamento do documento"><a href="#document-extracted" aria-current="page">Dados extraídos</a><a href="#document-classification">Classificação</a><a href="#document-associations">Associações</a></nav>
+          <div class="visual-document-confidence" id="document-extracted"><span><small>Classificação</small><strong>{{ workflow_labels.get(selected_row.workflow.suggested_invoice_nature, "Por reconhecer") }}</strong></span><span><small>Confiança OCR</small><strong>{{ ((selected_row.workflow.suggestion_confidence or 0) * 100)|round|int }}%</strong></span></div>
+          <section class="visual-document-ocr-fields" aria-label="Campos reconhecidos"><h3>Reconhecimento por campo</h3><dl><div><dt>Documento</dt><dd>DOC-{{ selected_row.document.id }} <b>{{ ((selected_row.workflow.suggestion_confidence or 0) * 100)|round|int }}%</b></dd></div><div><dt>Data recebida</dt><dd>{{ selected_row.date_display }} <b>100%</b></dd></div><div><dt>Origem</dt><dd>{{ selected_row.origin }} <b>{{ ((selected_row.workflow.suggestion_confidence or 0) * 100)|round|int }}%</b></dd></div></dl></section>
           <section class="visual-document-matching"><h3>Correspondência</h3><dl><div><dt>Origem</dt><dd>{{ selected_row.origin }}</dd></div><div><dt>Associação</dt><dd>{{ workflow_labels.get(selected_row.workflow.association_status, selected_row.workflow.association_status) }}</dd></div><div><dt>Destino</dt><dd>{{ workflow_labels.get(selected_row.workflow.destination_status, selected_row.workflow.destination_status) }}</dd></div></dl></section>
-          <section class="visual-document-associate"><h3>Associar e decidir</h3>
+          <section class="visual-document-associate" id="document-classification"><h3>Classificar e arquivar</h3>
             {% set row = selected_row %}<form method="post" action="/v2-clean/documentation/triage/{{ row.document.id }}">
                       <input type="hidden" name="q" value="{{ q }}">
                       <input type="hidden" name="origin" value="{{ origin }}">
@@ -97,8 +100,9 @@
                           <option value="stock">Fatura de stock</option>
                         </select>
                       </label>
+                      <dl class="visual-document-policy-facts" id="document-associations"><div><dt>Tipo atual</dt><dd>{{ selected_row.document.document_type or 'Por classificar' }}</dd></div><div><dt>Associação</dt><dd>{{ workflow_labels.get(selected_row.workflow.association_status, selected_row.workflow.association_status) }}</dd></div><div><dt>Confidencialidade</dt><dd>Aplicada no detalhe documental autorizado</dd></div><div><dt>Destinos externos</dt><dd>Fail-closed; seleção explícita no respetivo fluxo</dd></div></dl>
                       <label>Justificação<input name="decision_reason" placeholder="Motivo da decisão"></label>
-                      <div class="visual-document-actions"><a class="button-link secondary-link" href="{{ selected_row.detail_href }}">Ver auditoria</a><button type="submit">Guardar decisão</button></div>
+                      <div class="visual-document-actions"><a class="button-link secondary-link" href="{{ selected_row.detail_href }}">Ver auditoria</a><button type="submit" aria-label="Guardar decisão">Guardar decisão</button></div>
             </form>
           </section>
         {% else %}<p class="doc-arch-empty">Sem documento selecionado.</p>{% endif %}

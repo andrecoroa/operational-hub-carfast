@@ -54,6 +54,9 @@ def test_partner_context_nav_is_rbac_gated_and_keyboard_native():
     template = (ROOT / "app/templates/_supplier_context_nav.html").read_text(
         encoding="utf-8"
     )
+    admin_template = (ROOT / "app/templates/_admin_context_nav.html").read_text(
+        encoding="utf-8"
+    )
     suppliers = (ROOT / "app/templates/clean_suppliers.html").read_text(
         encoding="utf-8"
     )
@@ -62,10 +65,14 @@ def test_partner_context_nav_is_rbac_gated_and_keyboard_native():
     assert "nav_has_permission(request" in template
     assert "nav_can" not in template
     assert "'suppliers.read', 'suppliers.write', 'stock.read', 'stock.manage', 'admin.manage'" in template
-    assert "'admin.users.read', 'admin.users.manage'" in template
-    assert "'admin.roles.read', 'admin.roles.manage'" in template
-    assert "'service_desk.classifications.manage', 'classification.validate'" in template
-    assert 'href="/v2-clean/admin/work-classification?view=channels"' in template
+    assert "Utilizadores" not in template
+    assert "Perfis e permissões" not in template
+    assert ">Categorias<" not in template
+    assert ">Email<" not in template
+    assert "'admin.users.read', 'admin.users.manage'" in admin_template
+    assert "'admin.roles.read', 'admin.roles.manage'" in admin_template
+    assert "'service_desk.classifications.manage', 'classification.validate'" in admin_template
+    assert 'href="/v2-clean/admin/work-classification?view=channels"' in admin_template
     assert "tabindex=\"0\"" in suppliers
     assert "scrollbar-width:none" in styles
     assert ".partner-context-nav a{display:inline-flex" in styles

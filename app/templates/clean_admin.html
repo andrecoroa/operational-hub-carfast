@@ -5,11 +5,10 @@
   {% include "_sidebar.html" %}
   <main class="content clean-content clean-admin-content{% if foundation_ui_enabled %} ui-foundation ui-admin-master-detail admin-section-{{ admin_section }}{% endif %}">
     {% set visual_section = "Sistema" %}{% set visual_page = "Administração" %}{% include "_visual_topbar.html" %}
-    {% if admin_section in ['users', 'roles', 'work_classification', 'email'] %}
-      {% set work_view = request.query_params.get('view', 'desk') %}
-      {% set partner_tab = 'users' if admin_section == 'users' else 'roles' if admin_section == 'roles' else 'email' if work_view in ['channels', 'templates'] else 'categories' %}
-      {% include "_supplier_context_nav.html" %}
-    {% endif %}
+    {% if admin_section in ['users', 'roles', 'work_classification', 'email'] %}{% include "_admin_context_nav.html" %}{% endif %}
+    <div class="admin-contract-workspace">
+      <aside class="admin-contract-master" aria-label="Catálogo da Administração">{% include "_clean_admin_directory.html" %}</aside>
+      <section class="admin-contract-detail" aria-label="Configuração selecionada">
     <header class="clean-header-shell clean-card-wide clean-admin-header">
       <div class="clean-header-topbar">
         <div>
@@ -19,7 +18,6 @@
         </div>
         <span class="pill muted-pill">{{ current_admin_user.email if current_admin_user else "" }}</span>
       </div>
-      {% include "_clean_admin_directory.html" %}
     </header>
 
     {% if admin_section in ['operations', 'organization', 'settings', 'evolution', 'audit', 'integrations', 'security'] %}
@@ -34,6 +32,14 @@
     {% endif %}
 
     {% if admin_section == "overview" %}
+      <section class="clean-panel clean-card-wide admin-overview-configuration" aria-labelledby="admin-overview-config-title">
+        <header><div><p class="eyebrow">Configuração selecionada</p><h3 id="admin-overview-config-title">Perfis e permissões</h3><p>Defina capacidades e âmbitos explicitamente; nenhum acesso operacional é herdado da Administração.</p></div><span class="pill muted-pill">{{ metrics.roles }} perfis ativos</span></header>
+        <div class="admin-overview-configuration-grid">
+          <section><h4>Dependências</h4><ul><li>Estrutura organizacional e equipas</li><li>Catálogo de capacidades versionado</li><li>Âmbitos por unidade operacional</li></ul></section>
+          <section><h4>Validação fail-closed</h4><p>Perfis sem capacidade ou âmbito explícito não recebem conteúdo operacional. Todas as alterações ficam sujeitas a revisão e auditoria.</p></section>
+          <section><h4>Próxima ação</h4><p>Rever a matriz de perfis antes de associar utilizadores.</p><a class="button-link primary-link" href="/v2-clean/admin/roles">Configurar perfis</a></section>
+        </div>
+      </section>
       <section class="metric-grid clean-card-wide clean-admin-metrics">
         <div class="metric"><span>Utilizadores ativos</span><strong>{{ metrics.active_users }}</strong><small>{{ metrics.users }} no total</small></div>
         <div class="metric"><span>Perfis ativos</span><strong>{{ metrics.roles }}</strong><small>Controlo por função</small></div>
@@ -684,6 +690,8 @@ DEPOIS
         </article>
       </section>
     {% endif %}
+      </section>
+    </div>
   </main>
 </div>
 <script>

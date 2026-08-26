@@ -26,6 +26,7 @@ EXPECTED_STATIC_HTML_SURFACES = (
     "/v2-clean/admin/settings",
     "/v2-clean/admin/setup",
     "/v2-clean/admin/suppliers",
+    "/v2-clean/admin/task-process-models",
     "/v2-clean/admin/users",
     "/v2-clean/admin/work-classification",
     "/v2-clean/admin/workshop-models",

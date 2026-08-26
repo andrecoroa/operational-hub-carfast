@@ -1,0 +1,92 @@
+/* CarFast UI Contract v1 — canonical density and reusable workspace primitives. */
+.ui-contract-v1 {
+  --visual-sidebar-width: 240px;
+  --visual-topbar-height: 48px;
+  --ui-page-gap: 12px;
+  --ui-panel-radius: 8px;
+  --ui-row-height: 44px;
+}
+
+.ui-contract-v1 .clean-shell .sidebar { width: var(--visual-sidebar-width); }
+.ui-contract-v1 .clean-shell .sidebar nav { gap: 2px; }
+.ui-contract-v1 .clean-shell .sidebar nav > a,
+.ui-contract-v1 .clean-shell .sidebar-nav-group > summary {
+  display: grid;
+  min-width: 0;
+  min-height: 36px;
+  padding: 8px 10px;
+  grid-template-columns: 18px minmax(0,1fr);
+  column-gap: 10px;
+  align-items: center;
+  white-space: nowrap;
+}
+.ui-contract-v1 .clean-shell .sidebar nav > a::before,
+.ui-contract-v1 .clean-shell .sidebar-nav-group > summary::before { width: 18px; height: 18px; margin: 0; }
+.ui-contract-v1 .clean-shell .sidebar .nav-section-label { margin: 14px 10px 4px 38px; }
+.ui-contract-v1 .clean-shell .sidebar-nav-children { margin-left: 28px; }
+.ui-contract-v1 .clean-shell .sidebar-sub-link { min-height: 32px; padding-block: 6px; }
+
+.ui-contract-v1 .visual-topbar { height: 48px; min-height: 48px; }
+.ui-contract-v1 .visual-topbar-title { font-size: 16px; }
+.ui-contract-v1 .visual-global-search { height: 34px; }
+.ui-contract-v1 .visual-icon-action { width: 34px; height: 34px; }
+.ui-contract-v1 .visual-breadcrumbs { padding: 8px 0 4px; font-size: 12px; }
+.ui-contract-v1 .clean-content { display: grid; gap: var(--ui-page-gap); align-content: start; }
+.ui-contract-v1 :is(.clean-panel,.ui-panel,.visual-panel) { border-radius: var(--ui-panel-radius); }
+
+/* Centro de Tarefas: contract first-fold at 1440x731. */
+.ui-contract-v1 .visual-service-desk .clean-task-hero {
+  min-height: 0;
+  margin: 0;
+  padding: 6px 0 8px;
+  align-items: center;
+}
+.ui-contract-v1 .visual-service-desk .clean-task-hero .eyebrow { margin: 0 0 1px; font-size: 10px; }
+.ui-contract-v1 .visual-service-desk .clean-task-hero h2 { margin: 0; font-size: 22px; line-height: 28px; }
+.ui-contract-v1 .visual-service-desk .clean-task-hero p:not(.eyebrow) { margin: 1px 0 0; font-size: 12px; line-height: 16px; }
+.ui-contract-v1 .visual-service-desk .clean-module-hero-actions { gap: 6px; }
+.ui-contract-v1 .visual-service-desk .clean-module-hero-actions :is(.button-link,button) { min-height: 34px; height: 34px; padding: 6px 12px; }
+.ui-contract-v1 .visual-service-desk .clean-task-notification-center { margin: 0; }
+.ui-contract-v1 .visual-service-desk .clean-task-notification-center > summary { min-height: 34px; padding: 5px 10px; }
+.ui-contract-v1 .visual-service-desk .clean-task-notification-title b { min-width: 20px; height: 20px; }
+.ui-contract-v1 .visual-service-desk .visual-service-metrics {
+  min-height: 56px;
+  margin: 0;
+  grid-template-columns: repeat(5,minmax(0,1fr));
+  gap: 8px;
+}
+.ui-contract-v1 .visual-service-desk .visual-service-metrics > :is(article,a) {
+  min-height: 56px;
+  padding: 7px 10px;
+  grid-template-columns: 28px auto 1fr;
+  column-gap: 8px;
+  align-content: center;
+}
+.ui-contract-v1 .visual-service-desk .visual-service-kpi-icon { width: 28px; height: 28px; grid-row: 1 / span 2; }
+.ui-contract-v1 .visual-service-desk .visual-service-kpi-icon svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.ui-contract-v1 .visual-service-desk .visual-service-metrics strong { font-size: 18px; line-height: 20px; }
+.ui-contract-v1 .visual-service-desk .visual-service-metrics span { font-size: 10px; }
+.ui-contract-v1 .visual-service-desk .visual-service-metrics em { display: none; }
+.ui-contract-v1 .visual-service-desk .clean-task-queue-panel { margin: 0; }
+.ui-contract-v1 .visual-service-desk .visual-task-workbench-header { min-height: 48px; padding: 7px 12px; }
+.ui-contract-v1 .visual-service-desk .visual-task-workbench-header h3 { margin: 0; font-size: 16px; }
+.ui-contract-v1 .visual-service-desk .visual-task-workbench-header p { margin: 0; font-size: 11px; }
+.ui-contract-v1 .visual-service-desk .clean-task-workspace-tabs,
+.ui-contract-v1 .visual-service-desk .clean-task-mine-tabs { min-height: 34px; padding-block: 0; }
+.ui-contract-v1 .visual-service-desk .clean-task-workspace-tabs a,
+.ui-contract-v1 .visual-service-desk .clean-task-mine-tabs a { min-height: 34px; padding: 7px 10px; }
+.ui-contract-v1 .visual-service-desk .visual-task-filters { padding: 8px 10px; gap: 7px; }
+.ui-contract-v1 .visual-service-desk .visual-task-filters :is(input,select,button,.button-link) { min-height: 34px; height: 34px; }
+.ui-contract-v1 .visual-service-desk .clean-task-table :is(th,td) { height: var(--ui-row-height); padding-block: 6px; }
+
+@media (max-width: 1024px) {
+  .ui-contract-v1 { --visual-sidebar-width: 64px; }
+  .ui-contract-v1 .visual-service-desk .visual-service-metrics { grid-template-columns: repeat(3,minmax(0,1fr)); }
+}
+@media (max-width: 640px) {
+  .ui-contract-v1 { --visual-sidebar-width: 0px; }
+  .ui-contract-v1 .clean-shell { grid-template-columns: 1fr; }
+  .ui-contract-v1 .visual-service-desk .clean-task-hero { align-items: start; }
+  .ui-contract-v1 .visual-service-desk .visual-service-metrics { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .ui-contract-v1 .visual-service-desk .visual-service-metrics > :is(article,a) { min-height: 52px; }
+}

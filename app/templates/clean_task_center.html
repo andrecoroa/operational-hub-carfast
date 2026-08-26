@@ -8,8 +8,8 @@
     <header class="clean-module-hero clean-task-hero{% if foundation_ui_enabled %} ui-page-header visual-service-heading{% endif %}">
       <div>
         <p class="eyebrow">Operação</p>
-        <h2>Service Desk</h2>
-        <p>Tickets, responsabilidade operacional e SLA num único centro de serviço.</p>
+        <h2>Centro de Tarefas</h2>
+        <p>Fila operacional, responsabilidade e SLA no mesmo contexto.</p>
       </div>
       {% if creatable_workspaces or can_manage_recurrence %}
         <div class="clean-module-hero-actions">
@@ -64,11 +64,11 @@
     </details>
 
     <section class="clean-process-kpi-row clean-task-kpis-compact{% if foundation_ui_enabled %} visual-service-metrics{% endif %}" aria-label="Indicadores">
-      <article>{% if foundation_ui_enabled %}<i class="visual-service-kpi-icon is-blue" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 5h16v14H4zM8 9h8M8 13h5"/></svg></i>{% endif %}<span>Filas</span><strong>{{ task_metrics.divisions }}</strong><em>visíveis</em></article>
-      <article>{% if foundation_ui_enabled %}<i class="visual-service-kpi-icon is-violet" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></svg></i>{% endif %}<span>Abertas</span><strong>{{ task_metrics.open }}</strong><em>tarefas</em></article>
-      <a class="clean-task-kpi-link" href="/v2-clean/tasks?workspace=all&status=open&assignment=unassigned">{% if foundation_ui_enabled %}<i class="visual-service-kpi-icon is-blue" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3"/><path d="M5 20c1-4 3-6 7-6s6 2 7 6"/></svg></i>{% endif %}<span>Por atribuir</span><strong>{{ task_metrics.unassigned }}</strong><em>sem responsável</em></a>
-      <a class="clean-task-kpi-link is-warning" href="/v2-clean/tasks?workspace=all&status=open&due=due_soon" title="Prazo entre hoje e os próximos {{ task_due_soon_days }} dias">{% if foundation_ui_enabled %}<i class="visual-service-kpi-icon is-amber" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v6l4 2"/></svg></i>{% endif %}<span>A terminar</span><strong>{{ task_metrics.due_soon }}</strong><em>hoje–{{ task_due_soon_days }} dias</em></a>
-      <a class="clean-task-kpi-link is-danger" href="/v2-clean/tasks?workspace=all&status=open&due=overdue" title="Tarefas abertas com prazo anterior a hoje">{% if foundation_ui_enabled %}<i class="visual-service-kpi-icon is-red" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3 2 21h20L12 3Zm0 6v5m0 3h.01"/></svg></i>{% endif %}<span>Ultrapassado</span><strong>{{ task_metrics.overdue }}</strong><em>prazo vencido</em></a>
+      <article>{% if foundation_ui_enabled %}<i class="visual-service-kpi-icon is-blue" aria-hidden="true"><svg><use href="/static/icons/lucide-v3.svg#inbox"></use></svg></i>{% endif %}<span>Filas</span><strong>{{ task_metrics.divisions }}</strong><em>visíveis</em></article>
+      <article>{% if foundation_ui_enabled %}<i class="visual-service-kpi-icon is-violet" aria-hidden="true"><svg><use href="/static/icons/lucide-v3.svg#circle-check"></use></svg></i>{% endif %}<span>Abertas</span><strong>{{ task_metrics.open }}</strong><em>tarefas</em></article>
+      <a class="clean-task-kpi-link" href="/v2-clean/tasks?workspace=all&status=open&assignment=unassigned">{% if foundation_ui_enabled %}<i class="visual-service-kpi-icon is-blue" aria-hidden="true"><svg><use href="/static/icons/lucide-v3.svg#user-round"></use></svg></i>{% endif %}<span>Por atribuir</span><strong>{{ task_metrics.unassigned }}</strong><em>sem responsável</em></a>
+      <a class="clean-task-kpi-link is-warning" href="/v2-clean/tasks?workspace=all&status=open&due=due_soon" title="Prazo entre hoje e os próximos {{ task_due_soon_days }} dias">{% if foundation_ui_enabled %}<i class="visual-service-kpi-icon is-amber" aria-hidden="true"><svg><use href="/static/icons/lucide-v3.svg#clock"></use></svg></i>{% endif %}<span>A terminar</span><strong>{{ task_metrics.due_soon }}</strong><em>hoje–{{ task_due_soon_days }} dias</em></a>
+      <a class="clean-task-kpi-link is-danger" href="/v2-clean/tasks?workspace=all&status=open&due=overdue" title="Tarefas abertas com prazo anterior a hoje">{% if foundation_ui_enabled %}<i class="visual-service-kpi-icon is-red" aria-hidden="true"><svg><use href="/static/icons/lucide-v3.svg#triangle-alert"></use></svg></i>{% endif %}<span>Ultrapassado</span><strong>{{ task_metrics.overdue }}</strong><em>prazo vencido</em></a>
     </section>
 
     {% if creatable_workspaces %}

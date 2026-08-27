@@ -648,8 +648,18 @@ def test_desktop_preview_uses_two_pane_queue_and_unified_work_area():
     assert ".ui-email-list-preview.is-preview-open { grid-template-columns:260px minmax(0,1fr); }" in css
     assert ".ui-context-preview .email-reader-grid {" in css
     assert "grid-template-columns:minmax(0,1fr);" in css
-    assert "grid-template-rows:minmax(140px,1fr) 96px;" in css
+    assert "grid-template-rows:minmax(160px,1fr) clamp(170px,22vh,210px);" in css
     assert "grid-template-columns:repeat(4,minmax(0,1fr));" in css
     assert "grid-template-columns:minmax(0,1.65fr) minmax(280px,.85fr)" not in css
     assert ".email-attachment-form footer { display:grid; grid-template-columns:repeat(2,minmax(0,1fr));" in app_css
     assert ".email-attachment-form footer > button { grid-column:1/-1; }" in app_css
+
+
+def test_desktop_email_first_fold_reserves_space_for_message_and_triage():
+    css = (ROOT / "app/static/css/ui-contract-v1.css").read_text(encoding="utf-8")
+
+    assert ".visual-email-heading { height:48px; min-height:48px; padding-block:4px; }" in css
+    assert ".visual-email-metrics > a { min-height:48px; height:48px;" in css
+    assert ".ui-context-preview .email-body-frame { display:block; height:clamp(96px,18vh,180px); min-height:96px;" in css
+    assert ".ui-context-preview .email-triage-pane { height:auto; max-height:none;" in css
+    assert ".ui-context-preview .email-modal-footer { position:sticky;" in css

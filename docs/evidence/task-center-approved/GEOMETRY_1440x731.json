@@ -1,0 +1,18 @@
+{
+  "viewport": {"width": 1440, "height": 731},
+  "sidebar": {"x": 0, "width": 208, "height": 731},
+  "topbar": {"x": 208, "height": 52},
+  "operational_header": {"x": 232, "y": 80, "width": 1184, "height": 58},
+  "counters": {"x": 232, "y": 182, "width": 1184, "height": 62, "count": 5},
+  "filters": {"x": 232, "y": 256, "width": 1184, "height": 76},
+  "workspace": {"x": 232, "y": 344, "width": 1184},
+  "queue": {"x": 232, "width": 728},
+  "preview": {"x": 970, "width": 446},
+  "workspace_ratio": "62/38",
+  "row_height": 42,
+  "row_fields": 7,
+  "body_scroll_width": 1440,
+  "body_scroll_height": 731,
+  "visible_descendant_overflow": [],
+  "states_checked": ["initial", "selected", "workshop", "closed", "empty"]
+}

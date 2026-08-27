@@ -4704,9 +4704,37 @@ def clean_tasks_center(
         active_department_id = parse_int_from_text(department)
         if active_department_id:
             filters.append(Task.work_department_id == active_department_id)
+        default_task_category = "documentacao"
+        approved_category_codes = {"documentacao", "oficina", "sinistros", "all"}
+        requested_category = category.strip().lower()
+        active_task_category = (
+            requested_category
+            if requested_category in approved_category_codes
+            else default_task_category
+            if not request.url.query
+            else "all"
+        )
         clean_nature = nature.strip()[:80]
         if clean_nature:
             filters.append(Task.category == clean_nature)
+        category_conditions = {
+            "documentacao": or_(
+                Task.category.ilike("%document%"),
+                Task.category.ilike("%fatura%"),
+                Task.task_type.in_(("audit_task", "administration_task")),
+            ),
+            "oficina": or_(
+                Task.category.ilike("%oficina%"),
+                Task.category.ilike("%repara%"),
+                Task.task_type.in_(("workshop_task", "workshop_audit")),
+            ),
+            "sinistros": or_(
+                Task.category.ilike("%sinistro%"),
+                Task.category.ilike("%acidente%"),
+            ),
+        }
+        if active_task_category != "all":
+            filters.append(category_conditions[active_task_category])
         active_due = due if due in {"today", "due_soon", "overdue"} else ""
         if active_due == "today":
             filters.append(Task.due_on == date.today())
@@ -4960,9 +4988,10 @@ def clean_tasks_center(
         recent_documents = db.scalars(
             select(Document).order_by(Document.created_at.desc()).limit(80)
         ).all()
-        open_filter = [Task.task_type.in_(tuple(readable_task_type_codes))]
+        counter_base_filters = [Task.task_type.in_(tuple(readable_task_type_codes))]
         if visibility_filter is not None:
-            open_filter.append(visibility_filter)
+            counter_base_filters.append(visibility_filter)
+        open_filter = list(counter_base_filters)
         open_task_filter = [
             *open_filter,
             Task.closed_at.is_(None),
@@ -5029,6 +5058,27 @@ def clean_tasks_center(
                 if "audit" in readable_workspaces
                 else 0
             ),
+        }
+        task_counter_metrics = {
+            "unassigned": db.scalar(select(func.count()).select_from(Task).where(*open_task_filter, Task.assigned_to_id.is_(None))) or 0,
+            "risk": db.scalar(select(func.count()).select_from(Task).where(*open_task_filter, due_soon_condition)) or 0,
+            "today": db.scalar(select(func.count()).select_from(Task).where(*open_task_filter, Task.due_on == date.today())) or 0,
+            "late": db.scalar(select(func.count()).select_from(Task).where(*open_task_filter, overdue_condition)) or 0,
+            "active": db.scalar(select(func.count()).select_from(Task).where(*open_task_filter)) or 0,
+        }
+        task_category_counts = {
+            code: db.scalar(
+                select(func.count()).select_from(Task).where(
+                    *open_task_filter,
+                    *(tuple() if code == "all" else (condition,)),
+                )
+            ) or 0
+            for code, condition in (
+                ("documentacao", category_conditions["documentacao"]),
+                ("oficina", category_conditions["oficina"]),
+                ("sinistros", category_conditions["sinistros"]),
+                ("all", True),
+            )
         }
         task_workspace_options = [
             ("mine", "Minhas"),
@@ -5175,6 +5225,9 @@ def clean_tasks_center(
             {
                 "task_divisions": task_divisions,
                 "task_metrics": task_metrics,
+                "task_counter_metrics": task_counter_metrics,
+                "task_category_counts": task_category_counts,
+                "task_category_labels": {"documentacao": "Documentação", "oficina": "Oficina", "sinistros": "Sinistros", "all": "Todas"},
                 "tasks": tasks,
                 "task_workspace_options": task_workspace_options,
                 "task_status_options": task_status_options,
@@ -5242,6 +5295,7 @@ def clean_tasks_center(
                     "due": active_due,
                     "assignment": active_assignment,
                     "sort": active_sort,
+                    "category": active_task_category,
                 },
                 "prefill": {
                     "record_type": effective_record_type,

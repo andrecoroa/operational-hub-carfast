@@ -1,0 +1,73 @@
+<div class="app-shell clean-shell task-center-approved-shell">
+  {% set active_menu = "clean_tasks" %}{% include "_sidebar.html" %}
+  <main class="content clean-content ui-foundation ui-page-shell task-center-approved">
+    {% set visual_section = "Operação" %}{% set visual_page = "Centro de Tarefas" %}{% include "_visual_topbar.html" %}
+    <header class="task-center-approved-header">
+      <div><h1>Centro de Tarefas</h1><p>Trabalho operacional autorizado, prioridade e prazo no mesmo contexto.</p></div>
+      <div>{% if can_manage_recurrence %}<a class="button-link secondary-link" href="/v2-clean/tasks/recurring">Recorrentes</a>{% endif %}{% if creatable_workspaces %}<a class="button-link" href="/v2-clean/tasks?create=1#new-task">Nova tarefa</a>{% endif %}</div>
+    </header>
+    <div class="sr-only" aria-live="polite">Notificações: {{ task_notification_unread_count }} não lidas.{% for help_items in help_requests_by_task.values() %}{% for help in help_items if help.requested_team_id %} Equipa · {{ teams_by_id.get(help.requested_team_id).name if teams_by_id.get(help.requested_team_id) else 'Equipa' }}{% endfor %}{% endfor %}</div>
+
+    <section class="task-center-approved-metrics" aria-label="Indicadores operacionais">
+      <button type="button" class="task-center-approved-metric" data-task-counter="unassigned" aria-label="Ver {{ task_counter_metrics.unassigned }} tarefas por atribuir"><span aria-hidden="true">⇥</span><b><small>Por atribuir</small><strong>{{ task_counter_metrics.unassigned }}</strong><em>Ver fila</em></b></button>
+      <button type="button" class="task-center-approved-metric" data-task-counter="risk" aria-label="Ver {{ task_counter_metrics.risk }} tarefas em risco de SLA"><span aria-hidden="true">!</span><b><small>Em risco de SLA</small><strong>{{ task_counter_metrics.risk }}</strong><em>Priorizar</em></b></button>
+      <button type="button" class="task-center-approved-metric" data-task-counter="today" aria-label="Ver {{ task_counter_metrics.today }} tarefas que terminam hoje"><span aria-hidden="true">◷</span><b><small>Terminam hoje</small><strong>{{ task_counter_metrics.today }}</strong><em>Ver hoje</em></b></button>
+      <button type="button" class="task-center-approved-metric" data-task-counter="late" aria-label="Ver {{ task_counter_metrics.late }} tarefas atrasadas"><span aria-hidden="true">△</span><b><small>Atrasadas</small><strong>{{ task_counter_metrics.late }}</strong><em>Resolver</em></b></button>
+      <button type="button" class="task-center-approved-metric" data-task-counter="active" aria-label="Ver {{ task_counter_metrics.active }} tarefas em tratamento"><span aria-hidden="true">✓</span><b><small>Em tratamento</small><strong>{{ task_counter_metrics.active }}</strong><em>Ver ativas</em></b></button>
+    </section>
+
+    <form method="get" action="/v2-clean/tasks" class="task-center-approved-filters" aria-label="Filtros de tarefas" data-task-filters>
+      <div class="task-center-approved-filter-row">
+        <fieldset><legend>Âmbito</legend><div class="task-center-approved-segmented">
+          {% for code,label in [("mine","Minhas"),("claim","Por assumir"),("team","Equipa")] %}<label><input type="radio" name="workspace" value="{{ 'mine' if code != 'team' else 'tasks_support' }}" data-scope="{{ code }}" {% if (code == 'mine' and filters.workspace == 'mine' and filters.assignment != 'unassigned') or (code == 'claim' and filters.assignment == 'unassigned') or (code == 'team' and filters.workspace == 'tasks_support') %}checked{% endif %}><span>{{ label }}</span></label>{% endfor %}
+        </div></fieldset>
+        <fieldset><legend>Categoria de foco</legend><div class="task-center-approved-segmented" role="radiogroup" aria-label="Categoria de foco">
+          {% for code,label in [("documentacao","Documentação"),("oficina","Oficina"),("sinistros","Sinistros"),("all","Todas")] %}<label><input type="radio" name="category" value="{{ code }}" {% if filters.category == code %}checked{% endif %}><span>{{ label }} <b>{{ task_category_counts.get(code, 0) }}</b></span></label>{% endfor %}
+        </div></fieldset>
+        <label>Estado<select name="status"><option value="open" {% if filters.status == 'open' %}selected{% endif %}>Estados ativos</option><option value="closed" {% if filters.status == 'closed' %}selected{% endif %}>Fechadas</option><option value="all" {% if filters.status == 'all' %}selected{% endif %}>Todos os estados</option></select></label>
+        <label>Prazo<select name="due"><option value="" {% if not filters.due %}selected{% endif %}>Qualquer prazo</option><option value="today" {% if filters.due == 'today' %}selected{% endif %}>Termina hoje</option><option value="due_soon" {% if filters.due == 'due_soon' %}selected{% endif %}>Em risco</option><option value="overdue" {% if filters.due == 'overdue' %}selected{% endif %}>Atrasadas</option></select></label>
+        <label>Pesquisa<input name="q" value="{{ filters.q }}" placeholder="Referência ou assunto"></label>
+        <button type="button" class="secondary" data-task-safe-reset>Limpar filtros</button>
+      </div>
+      <div class="task-center-approved-active"><span>Filtros ativos:</span><b>{{ 'Minhas' if filters.workspace == 'mine' else 'Equipa' }}</b><b>{{ task_category_labels.get(filters.category, 'Todas') }}</b><b>{{ 'Estados ativos' if filters.status == 'open' else ('Fechadas' if filters.status == 'closed' else 'Todos os estados') }}</b><span>↺ Limpar repõe Minhas + categoria de foco + ativos</span><strong>{% if filters.status == 'open' %}Fechadas excluídas por defeito{% else %}Vista explícita de {{ filters.status }}{% endif %}</strong></div>
+    </form>
+
+    <section class="task-center-approved-workspace" data-return-context="{{ request.url.path }}?{{ request.url.query }}">
+      <section class="task-center-approved-queue{% if not tasks %} is-empty{% endif %}">
+        <header><h2>{{ task_category_labels.get(filters.category, 'Trabalho ativo') }}</h2><span>{{ pagination.total }} {{ 'tarefa' if pagination.total == 1 else 'tarefas' }}</span><small>{{ pagination.total }} registos nos filtros atuais · Prioridade e prazo</small></header>
+        <div class="task-center-approved-table-wrap"><table aria-label="Tarefas" data-task-field-count="7"><colgroup><col class="c-priority"><col class="c-reference"><col class="c-subject"><col class="c-category"><col class="c-owner"><col class="c-due"><col class="c-state"></colgroup><thead><tr><th>Prior.</th><th>Referência</th><th>Assunto</th><th>Categoria</th><th>Responsável</th><th>Prazo</th><th>Estado</th></tr></thead><tbody>
+          {% for task in tasks %}<tr tabindex="0" data-task-row data-task-id="{{ task.id }}" data-reference="CF-{{ '%05d'|format(task.id) }}" data-title="{{ task.title|e }}" data-category="{{ task.category or 'Por classificar' }}" data-owner="{{ task_assignment_labels.get(task.id, 'Por assumir') }}" data-due="{{ task.due_on.strftime('%d/%m/%Y') if task.due_on else 'Sem prazo' }}" data-state="{{ task_status_labels.get(task.status, task.status) }}" data-priority="{{ task_priority_labels.get(task.priority, 'Normal') }}" data-summary="{{ (task.description or 'Sem descrição.')|e }}" data-update="{{ (task.updated_at|lisbon_datetime).strftime('%d/%m/%Y %H:%M') if task.updated_at else '-' }}" data-can-update="{{ '1' if task_update_allowed_by_id.get(task.id) else '0' }}" data-can-close="{{ '1' if task_close_allowed_by_id.get(task.id) else '0' }}" data-can-claim="{{ '1' if task_claim_allowed_by_id.get(task.id) else '0' }}" aria-selected="false"><td><b class="priority-{{ task.priority }}">{{ '▲' if task.priority in ['urgent','high'] else '—' }} {{ task_priority_labels.get(task.priority, 'Normal') }}</b></td><td>CF-{{ "%05d"|format(task.id) }}</td><td><strong>{{ task.title }}</strong></td><td>{{ task.category or 'Por classificar' }}</td><td>{{ task_assignment_labels.get(task.id, 'Por assumir') }}</td><td>{{ task.due_on.strftime('%d/%m/%Y') if task.due_on else '—' }}</td><td><span>● {{ task_status_labels.get(task.status, task.status) }}</span></td></tr>
+          {% else %}<tr><td colspan="7"><div class="task-center-approved-empty"><strong>Sem tarefas neste recorte</strong>Altera um filtro ou repõe a vista segura.</div></td></tr>{% endfor %}
+        </tbody></table></div>
+      </section>
+      <aside class="task-center-approved-preview is-empty" aria-live="polite" data-task-preview>
+        <div class="task-center-approved-placeholder"><strong>Selecione uma tarefa</strong><span>O resumo e as ações essenciais aparecem aqui, sem sair da fila.</span></div>
+        <header><strong>Resumo da tarefa</strong><span data-preview-reference></span><button type="button" aria-label="Fechar preview" data-task-preview-close>×</button></header>
+        <div class="task-center-approved-preview-body"><h2 data-preview-title></h2><div class="task-center-approved-tags"><span data-preview-category></span><span data-preview-state></span><span data-preview-priority></span></div><dl><div><dt>Responsável</dt><dd data-preview-owner></dd></div><div><dt>Prazo</dt><dd data-preview-due></dd></div></dl><p data-preview-summary></p><small><b>Última atualização</b><span data-preview-update></span></small></div>
+        <footer><button type="button" class="primary" data-task-preview-action="context">Continuar</button><button type="button" data-task-preview-action="state">Alterar estado</button><button type="button" data-task-preview-action="note">Registar nota</button><button type="button" class="secondary" data-task-preview-action="open">Abrir tarefa</button></footer>
+      </aside>
+    </section>
+  </main>
+</div>
+<script>
+(() => {
+  const form=document.querySelector('[data-task-filters]'), preview=document.querySelector('[data-task-preview]'), rows=[...document.querySelectorAll('[data-task-row]')];
+  if(!form||!preview)return;
+  const submit=()=>form.requestSubmit(); form.querySelectorAll('input[type=radio],select').forEach(el=>el.addEventListener('change',submit));
+  let timer; form.querySelector('[name=q]').addEventListener('input',()=>{clearTimeout(timer);timer=setTimeout(submit,300)});
+  form.querySelector('[data-task-safe-reset]').addEventListener('click',()=>{const last=localStorage.getItem('carfast.taskCategory')||'documentacao';location.assign(`/v2-clean/tasks?workspace=mine&status=open&due=&category=${encodeURIComponent(last)}`)});
+  form.querySelectorAll('[name=category]').forEach(el=>el.addEventListener('change',()=>{if(el.value!=='all')localStorage.setItem('carfast.taskCategory',el.value)}));
+  const fields=['reference','title','category','owner','due','state','priority','summary','update'];
+  function close(){preview.classList.add('is-empty');rows.forEach(r=>r.setAttribute('aria-selected','false'));history.replaceState(null,'',location.pathname+location.search);sessionStorage.removeItem('carfast.taskSelection')}
+  let selectedRow=null;
+  function select(row){selectedRow=row;rows.forEach(r=>r.setAttribute('aria-selected',String(r===row)));fields.forEach(k=>{const el=preview.querySelector(`[data-preview-${k}]`);if(el)el.textContent=row.dataset[k]||''});preview.classList.remove('is-empty');preview.querySelectorAll('[data-task-preview-action]').forEach((b,i)=>b.hidden=i<3&&row.dataset.canUpdate!=='1');preview.querySelector('[data-task-preview-action="context"]').textContent=row.dataset.canClaim==='1'?'Assumir':'Continuar';history.replaceState(null,'',`${location.pathname}${location.search}#task-${row.dataset.taskId}`);sessionStorage.setItem('carfast.taskSelection',row.dataset.taskId)}
+  function submitTo(action,fields={}){const post=document.createElement('form');post.method='post';post.action=action;Object.entries({return_url:location.pathname+location.search+location.hash,...fields}).forEach(([name,value])=>{const input=document.createElement('input');input.type='hidden';input.name=name;input.value=value;post.append(input)});document.body.append(post);post.submit()}
+  rows.forEach(row=>{row.addEventListener('click',()=>select(row));row.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();select(row)}})});preview.querySelector('[data-task-preview-close]').addEventListener('click',close);
+  preview.querySelector('[data-task-preview-action="context"]').addEventListener('click',()=>{if(!selectedRow)return;if(selectedRow.dataset.canClaim==='1')submitTo(`/v2-clean/tasks/${selectedRow.dataset.taskId}/claim`);else location.assign(`/task-board/${selectedRow.dataset.taskId}`)});
+  preview.querySelector('[data-task-preview-action="state"]').addEventListener('click',()=>{if(selectedRow)location.assign(`/task-board/${selectedRow.dataset.taskId}`)});
+  preview.querySelector('[data-task-preview-action="note"]').addEventListener('click',()=>{if(!selectedRow)return;const comment=prompt('Registar nota na tarefa');if(comment?.trim())submitTo(`/v2-clean/tasks/${selectedRow.dataset.taskId}/comments`,{comment:comment.trim()})});
+  preview.querySelector('[data-task-preview-action="open"]').addEventListener('click',()=>{if(selectedRow)location.assign(`/task-board/${selectedRow.dataset.taskId}`)});
+  document.querySelectorAll('[data-task-counter]').forEach(button=>button.addEventListener('click',()=>{const mode=button.dataset.taskCounter, params=new URLSearchParams({workspace:'all',category:'all',status:'open'});if(mode==='unassigned')params.set('assignment','unassigned');if(mode==='today')params.set('due','today');if(mode==='risk')params.set('due','due_soon');if(mode==='late')params.set('due','overdue');location.assign('/v2-clean/tasks?'+params)}));
+  const selected=new URLSearchParams(location.hash.slice(1).replace('task-','task='));const id=selected.get('task')||sessionStorage.getItem('carfast.taskSelection');if(id){const row=rows.find(r=>r.dataset.taskId===id);if(row)select(row)}
+})();
+</script>

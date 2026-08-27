@@ -693,6 +693,7 @@ def test_email_approval_keeps_the_recipient_selected_on_the_reply(
     authenticated_client, db_session, tmp_path, monkeypatch
 ):
     monkeypatch.setattr(settings, "email_storage_root", str(tmp_path))
+    monkeypatch.setattr(settings, "email_outbound_enabled", True)
     monkeypatch.setattr(
         email_web,
         "SessionLocal",

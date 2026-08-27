@@ -448,7 +448,9 @@
 .ui-contract-v1 .ui-context-preview .email-save-triage { color: #fff; background: var(--ui-color-primary); border-color: var(--ui-color-primary); }
 
 /* Canonical document workbench: queue / dominant preview / treatment. */
-.ui-contract-v1 .visual-document-grid { min-height: 600px; grid-template-columns: 250px minmax(0,1fr) 350px; gap: 8px; }
+.ui-contract-v1 .visual-document-grid { min-height: 600px; grid-template-columns: minmax(0,1fr); gap: 8px; }
+.ui-contract-v1 .visual-document-grid:not(.is-preview-open) > :is(.visual-document-preview,.visual-document-review) { display: none; }
+.ui-contract-v1 .visual-document-grid.is-preview-open { grid-template-columns: 250px minmax(0,1fr) 350px; }
 .ui-contract-v1 .visual-document-grid > * { min-width: 0; }
 .ui-contract-v1 .visual-document-grid > :is(.visual-document-queue,.visual-document-preview,.visual-document-review) > header { height: 44px; min-height: 44px; padding: 6px 10px; }
 .ui-contract-v1 .visual-document-canvas { display: grid; height: 500px; grid-template-columns: 66px minmax(0,1fr); background: #f7f8fa; overflow: hidden; }
@@ -456,7 +458,13 @@
 .ui-contract-v1 .visual-document-canvas > aside img { width: 48px; height: 68px; object-fit: contain; background: #fff; border: 1px solid var(--ui-contract-blue); }
 .ui-contract-v1 .visual-document-canvas > aside small { font-size: 10px; }
 .ui-contract-v1 .visual-document-canvas > div { display: grid; padding: 10px; place-items: start center; overflow: auto; }
-.ui-contract-v1 .visual-document-canvas > div > img { display: block; width: min(100%,480px); height: auto; background: #fff; border: 1px solid var(--ui-contract-border); box-shadow: 0 2px 8px rgb(16 24 40 / 8%); }
+.ui-contract-v1 .visual-document-canvas > div > img { display: block; width: min(100%,620px); height: auto; background: #fff; border: 1px solid var(--ui-contract-border); box-shadow: 0 2px 8px rgb(16 24 40 / 8%); }
+
+@media (min-width: 1025px) {
+  .ui-contract-v1 .ui-email-triage-workbench { grid-template-columns: minmax(0,1fr); }
+  .ui-contract-v1 .ui-email-triage-workbench:not(.is-preview-open) > #email-preview-panel { display: none; }
+  .ui-contract-v1 .ui-email-triage-workbench.is-preview-open { grid-template-columns: 250px minmax(0,1fr); }
+}
 .ui-contract-v1 .visual-document-review-tabs {
   display: flex;
   min-width: 0;

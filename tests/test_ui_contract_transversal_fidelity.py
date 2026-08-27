@@ -65,6 +65,10 @@ def test_process_email_documents_and_admin_use_real_workbench_markup():
     email_js = _read("app/static/js/email.js")
     assert "const usePanel = Boolean(previewPanel);" in email_js
     assert 'matchMedia("(min-width: 1025px)")' not in email_js
+    assert "requestedPreview = new URLSearchParams(location.search).get" in email_js
+    assert 'classList.add("is-preview-open")' in email_js
+    assert 'classList.remove("is-preview-open")' in email_js
+    assert 'visual-document-grid{% if selected_row %} is-preview-open{% endif %}' in documents
 
 
 def test_partner_navigation_is_domain_only_and_admin_navigation_is_separate():

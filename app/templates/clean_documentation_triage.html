@@ -49,7 +49,7 @@
       <button type="submit">Filtrar</button>
     </form>
 
-    <section class="visual-document-grid">
+    <section class="visual-document-grid{% if selected_row %} is-preview-open{% endif %}">
       <article class="visual-document-queue" aria-label="Fila de documentos">
         <header><div><h2>A · Fila compacta</h2></div><span>{{ pagination.total }}</span></header>
         <div class="visual-document-queue-list">

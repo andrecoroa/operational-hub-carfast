@@ -13907,7 +13907,7 @@ def clean_documentation_triage(
         ]
         selected_row = next(
             (row for row in rows if row["document"].id == selected),
-            rows[0] if rows else None,
+            None,
         )
         document_view = view if view in {"queue", "preview", "validation"} else "queue"
         document_return_context = return_context if return_context in {"queue", "preview", "validation"} else ""

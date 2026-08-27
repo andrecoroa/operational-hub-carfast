@@ -171,13 +171,15 @@
 .ui-contract-v1 :is(.visual-email-heading,.doc-arch-header,.supplier-hero,.clean-admin-header,.visual-dashboard-heading) p { margin-block: 1px; font-size: 12px; line-height: 16px; }
 .ui-contract-v1 :is(.visual-email-heading,.doc-arch-header,.supplier-hero,.clean-admin-header,.visual-dashboard-heading) :is(button,.button-link,.visual-button) { min-height: 32px; height: 32px; }
 
-.ui-contract-v1 .visual-email-overview { margin: 0; padding: 6px 10px; }
+.ui-contract-v1 .visual-email-heading { height:48px; min-height:48px; padding-block:4px; }
+
+.ui-contract-v1 .visual-email-overview { margin:0; padding:4px 8px; }
 .ui-contract-v1 .visual-email-overview > header { display:none; }
 .ui-contract-v1 .visual-email-overview > header { min-height: 36px; }
 .ui-contract-v1 .visual-email-mailboxes,
 .ui-contract-v1 .visual-email-statuses { min-height: 32px; }
 .ui-contract-v1 .visual-email-metrics { grid-template-columns: repeat(5,minmax(0,1fr)); gap: 8px; }
-.ui-contract-v1 .visual-email-metrics > a { min-height: 52px; padding: 6px 9px; }
+.ui-contract-v1 .visual-email-metrics > a { min-height:48px; height:48px; padding:4px 8px; }
 .ui-contract-v1 .visual-email-workbench { display:flex; min-height:0; margin:0; flex:1; flex-direction:column; overflow:hidden; }
 .ui-contract-v1 .visual-email-workbench-header { min-height: 40px; padding: 4px 12px; }
 .ui-contract-v1 .visual-email-workbench-header h2 { margin: 0; font-size: 16px; }
@@ -196,7 +198,7 @@
 .ui-contract-v1 .ui-context-preview .email-header-actions :is(button,.button-link) { min-height:30px; height:30px; padding:5px 8px; font-size:11px; }
 .ui-contract-v1 .ui-context-preview .email-reader-grid {
   grid-template-columns:minmax(0,1fr);
-  grid-template-rows:minmax(140px,1fr) 96px;
+  grid-template-rows:minmax(160px,1fr) clamp(170px,22vh,210px);
   min-height:0;
   overflow:hidden;
 }
@@ -216,8 +218,8 @@
 .ui-contract-v1 .ui-context-preview .email-message-meta { font-size:10px; }
 .ui-contract-v1 .ui-context-preview .email-body-switch { min-height:28px; margin-top:3px; }
 .ui-contract-v1 .ui-context-preview .email-body-switch button { min-height:28px; padding:3px 6px; }
-.ui-contract-v1 .ui-context-preview .email-body-frame { display:block; height:48px; min-height:48px; margin-top:3px; background:#fff; }
-.ui-contract-v1 .ui-context-preview .email-triage-pane { height:96px; max-height:96px; padding:3px 9px; border-top:1px solid var(--ui-color-border); background:#f8fafc; }
+.ui-contract-v1 .ui-context-preview .email-body-frame { display:block; height:clamp(96px,18vh,180px); min-height:96px; margin-top:3px; background:#fff; }
+.ui-contract-v1 .ui-context-preview .email-triage-pane { height:auto; max-height:none; padding:5px 9px; border-top:1px solid var(--ui-color-border); background:#f8fafc; }
 .ui-contract-v1 .ui-context-preview .email-triage-intro { display:none; }
 .ui-contract-v1 .ui-context-preview .email-notice { height:18px; margin:0; padding:2px 7px; overflow:hidden; font-size:9px; }
 .ui-contract-v1 .ui-context-preview .email-triage-section { padding:2px 0; }

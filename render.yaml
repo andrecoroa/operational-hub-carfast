@@ -2,7 +2,7 @@ services:
   - type: web
     name: operational-hub-carfast
     runtime: python
-    plan: free
+    plan: standard
     region: frankfurt
     buildCommand: pip install -r requirements.txt
     startCommand: python scripts/render_start.py

@@ -23,7 +23,7 @@ from urllib.parse import quote_plus, urlencode
 from fastapi import APIRouter, File, Form, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import case, delete, func, literal, or_, select
+from sqlalchemy import and_, case, delete, func, literal, or_, select
 from sqlalchemy.orm import Session, aliased
 
 from app.core.change_notice import (
@@ -4704,9 +4704,48 @@ def clean_tasks_center(
         active_department_id = parse_int_from_text(department)
         if active_department_id:
             filters.append(Task.work_department_id == active_department_id)
+        default_task_category = "documentacao"
+        approved_category_codes = {"documentacao", "oficina", "sinistros", "all"}
+        requested_category = category.strip().lower()
+        remembered_task_category = request.cookies.get("carfast_task_category", "").strip().lower()
+        if remembered_task_category not in approved_category_codes - {"all"}:
+            remembered_task_category = default_task_category
+        active_task_category = (
+            requested_category
+            if requested_category in approved_category_codes
+            else remembered_task_category
+            if settings.visual_foundation_enabled
+            else "all"
+        )
         clean_nature = nature.strip()[:80]
         if clean_nature:
             filters.append(Task.category == clean_nature)
+        task_category_text = func.coalesce(Task.category, "")
+        sinistros_category_condition = or_(
+            task_category_text.ilike("%sinistro%"),
+            task_category_text.ilike("%acidente%"),
+        )
+        oficina_category_source = or_(
+            task_category_text.ilike("%oficina%"),
+            task_category_text.ilike("%repara%"),
+            Task.task_type.in_(("workshop_task", "workshop_audit")),
+        )
+        documentacao_category_source = or_(
+                task_category_text.ilike("%document%"),
+                task_category_text.ilike("%fatura%"),
+                Task.task_type.in_(("audit_task", "administration_task")),
+        )
+        category_conditions = {
+            "sinistros": sinistros_category_condition,
+            "oficina": and_(~sinistros_category_condition, oficina_category_source),
+            "documentacao": and_(
+                ~sinistros_category_condition,
+                ~oficina_category_source,
+                documentacao_category_source,
+            ),
+        }
+        if active_task_category != "all":
+            filters.append(category_conditions[active_task_category])
         active_due = due if due in {"today", "due_soon", "overdue"} else ""
         if active_due == "today":
             filters.append(Task.due_on == date.today())
@@ -4820,6 +4859,16 @@ def clean_tasks_center(
                 action="close",
             )
             and _task_hierarchy_scope_allows(db, user_id, task, action="close")
+            for task in tasks
+        }
+        task_respond_allowed_by_id = {
+            task.id: user_can_access_task_workspace(
+                db,
+                current_user,
+                workspace_for_task_type(task.task_type),
+                action="update",
+            )
+            and _task_hierarchy_scope_allows(db, user_id, task, action="respond")
             for task in tasks
         }
         task_ids = [task.id for task in tasks]
@@ -4960,9 +5009,10 @@ def clean_tasks_center(
         recent_documents = db.scalars(
             select(Document).order_by(Document.created_at.desc()).limit(80)
         ).all()
-        open_filter = [Task.task_type.in_(tuple(readable_task_type_codes))]
+        counter_base_filters = [Task.task_type.in_(tuple(readable_task_type_codes))]
         if visibility_filter is not None:
-            open_filter.append(visibility_filter)
+            counter_base_filters.append(visibility_filter)
+        open_filter = list(counter_base_filters)
         open_task_filter = [
             *open_filter,
             Task.closed_at.is_(None),
@@ -5029,6 +5079,27 @@ def clean_tasks_center(
                 if "audit" in readable_workspaces
                 else 0
             ),
+        }
+        task_counter_metrics = {
+            "unassigned": db.scalar(select(func.count()).select_from(Task).where(*open_task_filter, Task.assigned_to_id.is_(None))) or 0,
+            "risk": db.scalar(select(func.count()).select_from(Task).where(*open_task_filter, due_soon_condition)) or 0,
+            "today": db.scalar(select(func.count()).select_from(Task).where(*open_task_filter, Task.due_on == date.today())) or 0,
+            "late": db.scalar(select(func.count()).select_from(Task).where(*open_task_filter, overdue_condition)) or 0,
+            "active": db.scalar(select(func.count()).select_from(Task).where(*open_task_filter)) or 0,
+        }
+        task_category_counts = {
+            code: db.scalar(
+                select(func.count()).select_from(Task).where(
+                    *open_task_filter,
+                    *(tuple() if code == "all" else (condition,)),
+                )
+            ) or 0
+            for code, condition in (
+                ("documentacao", category_conditions["documentacao"]),
+                ("oficina", category_conditions["oficina"]),
+                ("sinistros", category_conditions["sinistros"]),
+                ("all", True),
+            )
         }
         task_workspace_options = [
             ("mine", "Minhas"),
@@ -5175,6 +5246,9 @@ def clean_tasks_center(
             {
                 "task_divisions": task_divisions,
                 "task_metrics": task_metrics,
+                "task_counter_metrics": task_counter_metrics,
+                "task_category_counts": task_category_counts,
+                "task_category_labels": {"documentacao": "Documentação", "oficina": "Oficina", "sinistros": "Sinistros", "all": "Todas"},
                 "tasks": tasks,
                 "task_workspace_options": task_workspace_options,
                 "task_status_options": task_status_options,
@@ -5207,6 +5281,7 @@ def clean_tasks_center(
                 "task_relations_by_task": task_relations_by_task,
                 "task_update_allowed_by_id": task_update_allowed_by_id,
                 "task_close_allowed_by_id": task_close_allowed_by_id,
+                "task_respond_allowed_by_id": task_respond_allowed_by_id,
                 "task_claim_allowed_by_id": task_claim_allowed_by_id,
                 "task_assignable_users_by_id": task_assignable_users_by_id,
                 "task_support_teams_by_id": task_support_teams_by_id,
@@ -5242,6 +5317,7 @@ def clean_tasks_center(
                     "due": active_due,
                     "assignment": active_assignment,
                     "sort": active_sort,
+                    "category": active_task_category,
                 },
                 "prefill": {
                     "record_type": effective_record_type,
@@ -13872,8 +13948,41 @@ def clean_documentation_triage(
         ]
         selected_row = next(
             (row for row in rows if row["document"].id == selected),
-            rows[0] if rows else None,
+            None,
         )
+        action_compatibility = {
+            "save": {"allowed": False, "reason": "document_required"},
+            "validate": {"allowed": False, "reason": "document_required"},
+            "archive": {"allowed": False, "reason": "document_required"},
+        }
+        if selected_row:
+            selected_document = selected_row["document"]
+            selected_state = next(
+                (
+                    state
+                    for document, state in records
+                    if document.id == selected_document.id
+                ),
+                None,
+            )
+            if selected_state is not None:
+                for ui_action, contract_action in {
+                    "save": "classify",
+                    "validate": "validate",
+                    "archive": "archive",
+                }.items():
+                    allowed, reason_code = document_action_compatibility(
+                        selected_document,
+                        selected_state,
+                        action=contract_action,
+                        invoice_nature=selected_state.invoice_nature or "",
+                        plate=selected_document.plate or "",
+                        saved_service_count=service_count(db, selected_document.id),
+                    )
+                    action_compatibility[ui_action] = {
+                        "allowed": allowed,
+                        "reason": reason_code,
+                    }
         document_view = view if view in {"queue", "preview", "validation"} else "queue"
         document_return_context = return_context if return_context in {"queue", "preview", "validation"} else ""
         return templates.TemplateResponse(
@@ -13882,6 +13991,7 @@ def clean_documentation_triage(
             {
                 "rows": rows,
                 "selected_row": selected_row,
+                "action_compatibility": action_compatibility,
                 "document_view": document_view,
                 "document_return_context": document_return_context,
                 "foundation_ui_enabled": settings.visual_foundation_enabled,
@@ -13903,6 +14013,7 @@ def clean_documentation_triage(
 def clean_documentation_triage_decide(
     request: Request,
     document_id: int,
+    action: str = Form("save"),
     destination: str = Form(...),
     decision_reason: str = Form(""),
     invoice_nature: str = Form("por_classificar"),
@@ -13934,11 +14045,31 @@ def clean_documentation_triage_decide(
     if not can_manage_documentation(request):
         return triage_redirect(error="permission")
     user_id = get_web_user_id(request)
+    clean_action = action.strip().lower()
+    if clean_action not in {"save", "validate", "archive"}:
+        return triage_redirect(error="action_not_supported")
     clean_destination = destination.strip().lower()
     with SessionLocal() as db:
         document = db.get(Document, document_id)
         if not document:
             return triage_redirect(error="missing")
+        state = get_or_create_workflow_state(db, document)
+        compatible, reason_code = document_action_compatibility(
+            document,
+            state,
+            action={"save": "classify", "validate": "validate", "archive": "archive"}[
+                clean_action
+            ],
+            invoice_nature=invoice_nature,
+            plate=document.plate or "",
+            reason=decision_reason,
+            saved_service_count=service_count(db, document.id),
+        )
+        if not compatible:
+            db.rollback()
+            return triage_redirect(error=reason_code)
+        if clean_action == "archive":
+            clean_destination = "archive"
         if clean_destination == "invoices":
             try:
                 classify_invoice_nature(
@@ -13967,13 +14098,21 @@ def clean_documentation_triage_decide(
                 return triage_redirect(error="destination")
             document.document_type, document.classification = target_types[clean_destination]
             needs_extraction = clean_destination == "diagnostics"
-            document.status = "pending_extraction" if needs_extraction else "archived"
+            document.status = (
+                "archived"
+                if clean_action == "archive"
+                else "validated"
+                if clean_action == "validate"
+                else "pending_extraction"
+                if needs_extraction
+                else "classified"
+            )
             if needs_extraction:
                 profile = ensure_diagnostic_profile(db, document)
                 profile.diagnostic_status = "processing"
                 profile.ocr_status = "pending"
                 profile.validation_status = "pending"
-            if clean_destination == "archive":
+            if clean_action == "archive":
                 document.archived = True
                 document.archived_at = document.archived_at or datetime.now(UTC)
                 document.archived_by_id = user_id
@@ -13985,9 +14124,27 @@ def clean_documentation_triage_decide(
                 ingestion_status="completed",
                 association_status="associated" if document.vehicle_id else "unassociated",
                 extraction_status="queued" if needs_extraction else "not_requested",
-                validation_status="pending" if needs_extraction else "human_validated",
+                validation_status=(
+                    "human_validated"
+                    if clean_action in {"validate", "archive"}
+                    else state.validation_status
+                ),
                 destination_status=clean_destination,
             )
+        if clean_action in {"validate", "archive"} and clean_destination == "invoices":
+            transition_document_workflow(
+                db,
+                document=document,
+                user_id=user_id,
+                reason=decision_reason or "Validação manual na Triagem",
+                validation_status="human_validated",
+                destination_status="archive" if clean_action == "archive" else "invoices",
+            )
+            document.status = "archived" if clean_action == "archive" else "validated"
+            if clean_action == "archive":
+                document.archived = True
+                document.archived_at = document.archived_at or datetime.now(UTC)
+                document.archived_by_id = user_id
         db.commit()
     return triage_redirect(saved="1")
 
@@ -22910,6 +23067,10 @@ async def clean_workshop_entry_save(request: Request):
     form = await request.form()
     process_id = parse_int_from_text(str(form.get("process_id") or ""))
     action = str(form.get("action") or "save")
+    if action not in {"save", "advance"}:
+        suffix = f"?process_id={process_id}" if process_id else ""
+        separator = "&" if suffix else "?"
+        return RedirectResponse(f"/v2-clean/workshop-entry{suffix}{separator}error=invalid_action", status_code=303)
     now = datetime.now(UTC)
     user_id = get_web_user_id(request)
     is_historical = str(form.get("process_mode") or "").strip().lower() == "historical"
@@ -22970,6 +23131,11 @@ async def clean_workshop_entry_save(request: Request):
             if clean_workshop_process_is_readonly(process):
                 return RedirectResponse(
                     f"{clean_workshop_process_url(process)}&readonly=1", status_code=303
+                )
+            if process.current_phase_code != "entrada":
+                return RedirectResponse(
+                    f"/v2-clean/workshop-entry?process_id={process.id}&error=invalid_phase_order",
+                    status_code=303,
                 )
         else:
             process = clean_workshop_create_process(
@@ -23106,6 +23272,15 @@ async def clean_workshop_entry_save(request: Request):
             intervention_date = datetime.fromisoformat(str(entry_data["historical_intervention_date"])).replace(tzinfo=UTC)
             process.opened_at = intervention_date
             process.received_at = intervention_date
+        record_audit(
+            db,
+            action="workshop.entry.advanced" if action == "advance" else "workshop.entry.saved",
+            entity_type="workshop_phased_process",
+            entity_id=process.id,
+            detail="Entrada de Oficina avançada." if action == "advance" else "Entrada de Oficina guardada.",
+            user_id=user_id,
+            after_json={"phase": "entrada", "next_phase": process.current_phase_code, "action": action},
+        )
         db.commit()
 
     if action == "advance":
@@ -24170,6 +24345,14 @@ async def clean_workshop_phase_save(request: Request, phase: str):
         return RedirectResponse(clean_workshop_phase_path(phase), status_code=303)
 
     action = str(form.get("action") or "save")
+    allowed_actions = {"save", "save_substep", "advance_substep", "advance"}
+    if phase == "fecho":
+        allowed_actions.update({"return_to_repair", "close_process", "close_with_pending"})
+    if action not in allowed_actions:
+        return RedirectResponse(
+            f"{clean_workshop_phase_path(phase)}?process_id={process_id}&error=invalid_action",
+            status_code=303,
+        )
     current_substep = str(form.get("current_substep") or "").strip()
     known_substeps = clean_workshop_substeps(phase)
     if current_substep not in known_substeps:
@@ -24184,6 +24367,11 @@ async def clean_workshop_phase_save(request: Request, phase: str):
         if clean_workshop_process_is_readonly(process):
             return RedirectResponse(
                 f"{clean_workshop_process_url(process)}&readonly=1", status_code=303
+            )
+        if process.current_phase_code != phase:
+            return RedirectResponse(
+                f"{clean_workshop_phase_path(phase)}?process_id={process.id}&error=invalid_phase_order",
+                status_code=303,
             )
         known_substeps = clean_workshop_substeps(phase, process)
         if current_substep not in known_substeps:
@@ -24467,6 +24655,15 @@ async def clean_workshop_phase_save(request: Request, phase: str):
             if current_substep:
                 redirect_url = f"{redirect_url}#{current_substep}"
 
+        record_audit(
+            db,
+            action="workshop.phase.advanced" if action in {"advance", "advance_substep"} else "workshop.phase.saved",
+            entity_type="workshop_phased_process",
+            entity_id=process.id,
+            detail=f"Fase {phase} processada com ação {requested_action}.",
+            user_id=user_id,
+            after_json={"phase": phase, "action": requested_action, "current_phase": process.current_phase_code, "status": process.status},
+        )
         db.commit()
 
     return RedirectResponse(redirect_url, status_code=303)

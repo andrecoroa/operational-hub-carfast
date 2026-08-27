@@ -43,12 +43,12 @@ def test_document_workbench_keeps_real_routes_data_and_decision_form() -> None:
     assert '&selected={{ row.document.id }}">Triar</a>' in source
 
 
-def test_document_selection_is_server_derived_and_defaults_to_first_row() -> None:
+def test_document_selection_is_server_derived_and_requires_explicit_choice() -> None:
     source = ROUTER.read_text(encoding="utf-8")
     assert "selected: int | None = None" in source
     assert 'view: str = "queue"' in source
     assert 'row["document"].id == selected' in source
-    assert 'rows[0] if rows else None' in source
+    assert 'rows[0] if rows else None' not in source
     assert '"selected_row": selected_row' in source
     assert '"foundation_ui_enabled": settings.visual_foundation_enabled' in source
 

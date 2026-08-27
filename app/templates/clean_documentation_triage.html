@@ -48,7 +48,7 @@
       <button type="submit">Filtrar</button>
     </form>
 
-    <section class="visual-document-grid">
+    <section class="visual-document-grid{% if selected_row %} is-preview-open{% endif %}">
       <article class="visual-document-queue" aria-label="Fila de documentos">
         <header><div><h2>Fila de documentos</h2><p>{{ pagination.total }} documentos por decidir</p></div><button type="button" aria-label="Atualizar fila" onclick="location.reload()">↻</button></header>
         <div class="visual-document-queue-list">
@@ -56,7 +56,7 @@
             <a data-document-view-link class="visual-document-row{% if selected_row and selected_row.document.id == row.document.id %} active{% endif %}" href="?q={{ q|urlencode }}&origin={{ origin|urlencode }}&confidence={{ confidence|urlencode }}&page={{ pagination.page }}&page_size={{ pagination.page_size }}&selected={{ row.document.id }}&view=preview&return_context=queue">
               <span class="visual-document-status{% if (row.workflow.suggestion_confidence or 0) < 0.6 %} danger{% elif (row.workflow.suggestion_confidence or 0) >= 0.9 %} success{% endif %}" aria-hidden="true"></span>
               <span><strong>{{ row.title }}</strong><small>DOC-{{ row.document.id }} · {{ row.origin }}</small></span>
-              <span><strong>{{ workflow_labels.get(row.workflow.suggested_invoice_nature, "Por reconhecer") }}</strong><small>{% if (row.workflow.suggestion_confidence or 0) < 0.6 %}Baixa confiança{% elif (row.workflow.suggestion_confidence or 0) >= 0.9 %}Alta confiança{% else %}Em validação{% endif %} · {{ row.date_display }}</small></span>
+              <span><strong>{{ workflow_labels.get(row.workflow.suggested_invoice_nature, "Por reconhecer") }}</strong><small>{% if row.workflow.validation_status == "human_validated" %}Validado{% elif row.workflow.validation_status == "blocked" %}Bloqueado{% elif (row.workflow.suggestion_confidence or 0) < 0.6 %}Baixa confiança{% elif (row.workflow.suggestion_confidence or 0) >= 0.9 %}Alta confiança{% else %}Em validação{% endif %} · {{ row.date_display }}</small></span>
             </a>
           {% else %}<p class="doc-arch-empty">Nenhum documento corresponde aos filtros.</p>{% endfor %}
         </div>
@@ -72,7 +72,7 @@
       <aside class="visual-document-review" aria-label="OCR e dados extraídos">
         <header><h2>OCR e dados extraídos</h2><p>Confirme a classificação e o destino.</p></header>
         {% if selected_row %}
-          <div class="visual-document-confidence"><span><small>Classificação</small><strong>{{ workflow_labels.get(selected_row.workflow.suggested_invoice_nature, "Por reconhecer") }}</strong></span><span><small>Confiança</small><strong>{{ ((selected_row.workflow.suggestion_confidence or 0) * 100)|round|int }}%</strong></span></div>
+          <div class="visual-document-confidence"><span><small>Classificação</small><strong>{{ workflow_labels.get(selected_row.workflow.suggested_invoice_nature, "Por reconhecer") }}</strong></span><span><small>Confiança</small><strong>{{ ((selected_row.workflow.suggestion_confidence or 0) * 100)|round|int }}%</strong></span><span><small>Validação</small><strong>{% if selected_row.workflow.validation_status == "human_validated" %}Validado{% elif selected_row.workflow.validation_status == "blocked" %}Bloqueado{% else %}Pendente{% endif %}</strong></span></div>
           <section class="visual-document-matching"><h3>Correspondência</h3><dl><div><dt>Origem</dt><dd>{{ selected_row.origin }}</dd></div><div><dt>Associação</dt><dd>{{ workflow_labels.get(selected_row.workflow.association_status, selected_row.workflow.association_status) }}</dd></div><div><dt>Destino</dt><dd>{{ workflow_labels.get(selected_row.workflow.destination_status, selected_row.workflow.destination_status) }}</dd></div></dl></section>
           <section class="visual-document-associate"><h3>Associar e decidir</h3>
             {% set row = selected_row %}<form method="post" action="/v2-clean/documentation/triage/{{ row.document.id }}">
@@ -98,7 +98,7 @@
                         </select>
                       </label>
                       <label>Justificação<input name="decision_reason" placeholder="Motivo da decisão"></label>
-                      <div class="visual-document-actions"><a class="button-link secondary-link" href="{{ selected_row.detail_href }}">Ver auditoria</a><button type="submit">Guardar decisão</button></div>
+                      <div class="visual-document-actions"><a class="button-link secondary-link" href="{{ selected_row.detail_href }}">Ver auditoria</a><button type="submit" name="action" value="save"{% if not action_compatibility.save.allowed %} disabled title="{{ action_compatibility.save.reason }}"{% endif %}>Guardar</button><button type="submit" name="action" value="validate"{% if not action_compatibility.validate.allowed %} disabled title="{{ action_compatibility.validate.reason }}"{% endif %}>Validar</button><button type="submit" name="action" value="archive"{% if not action_compatibility.archive.allowed %} disabled title="{{ action_compatibility.archive.reason }}"{% endif %}>Arquivar</button></div>
             </form>
           </section>
         {% else %}<p class="doc-arch-empty">Sem documento selecionado.</p>{% endif %}

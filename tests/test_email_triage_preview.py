@@ -1,5 +1,6 @@
 import base64
 import json
+import re
 from pathlib import Path
 
 from sqlalchemy import select
@@ -8,8 +9,8 @@ from sqlalchemy.orm import sessionmaker
 import app.web.email as email_web
 from app.core.config import settings
 from app.models.admin import User
-from app.models.email import EmailAttachment, EmailMessage
-from app.models.work_hierarchy import WorkDepartment, WorkQueue
+from app.models.email import EmailAttachment, EmailAuditEvent, EmailMessage, EmailThread
+from app.models.work_hierarchy import WorkCategory, WorkDepartment, WorkQueue
 from app.services.email_postmark import ingest_inbound, send_message
 
 ROOT = Path(__file__).parents[1]
@@ -58,6 +59,94 @@ def test_preview_actions_refresh_without_closing_or_losing_selected_thread():
     assert "await openPreview(shell.dataset.emailThreadId)" in script
     assert 'row.dataset.emailPreview === String(threadId)' in script
     assert 'dialog?.addEventListener("close"' in script
+
+
+def test_inbox_facets_apply_remaining_filters_server_side(authenticated_client, db_session, tmp_path, monkeypatch):
+    monkeypatch.setattr(settings, "email_storage_root", str(tmp_path))
+    monkeypatch.setattr(settings, "visual_foundation_enabled", True)
+    _bind_email_session(monkeypatch, db_session)
+    admin = db_session.scalar(select(User).where(User.email == "admin.tests@carfast.local"))
+    first_payload = _payload("facet-triage-assigned")
+    first_payload["Subject"] = "Facet assigned"
+    second_payload = _payload("facet-triage-unassigned")
+    second_payload["Subject"] = "Facet unassigned"
+    waiting_payload = _payload("facet-waiting-unassigned")
+    waiting_payload["Subject"] = "Facet waiting"
+    first, _ = ingest_inbound(db_session, first_payload)
+    second, _ = ingest_inbound(db_session, second_payload)
+    waiting, _ = ingest_inbound(db_session, waiting_payload)
+    first.assigned_to_id = admin.id
+    first.assignment_state = "assigned_user"
+    second.executor_team_id = None
+    second.assignment_state = "waiting_assignment"
+    waiting.executor_team_id = None
+    waiting.assignment_state = "waiting_assignment"
+    waiting.status = "waiting_reply"
+    db_session.commit()
+
+    response = authenticated_client.get("/v2-clean/email?status=all&responsible=unassigned")
+
+    assert response.status_code == 200
+    assert re.findall(r"\d+ resultado\(s\) com todos os filtros ativos", response.text) == [
+        "2 resultado(s) com todos os filtros ativos"
+    ]
+    assert '<strong>1</strong><span>Por triar</span>' in response.text
+    assert '<strong>1</strong><span>Resposta pendente</span>' in response.text
+    assert 'class="email-secondary-filters"' in response.text
+    assert 'aria-label="Estados das conversas"' not in response.text
+
+
+def test_outbound_off_rejects_send_before_any_durable_mutation(
+    authenticated_client, db_session, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(settings, "email_storage_root", str(tmp_path))
+    monkeypatch.setattr(settings, "email_outbound_enabled", False)
+    _bind_email_session(monkeypatch, db_session)
+    thread, _ = ingest_inbound(db_session, _payload("outbound-off-atomic"))
+    db_session.commit()
+    before_threads = len(db_session.scalars(select(email_web.EmailThread)).all())
+    before_messages = len(db_session.scalars(select(EmailMessage)).all())
+
+    reply = authenticated_client.post(
+        f"/v2-clean/email/{thread.id}/reply",
+        data={"submit": "send", "body": "Resposta sintética"},
+        follow_redirects=False,
+    )
+    compose = authenticated_client.post(
+        "/v2-clean/email/new",
+        data={"submit": "send", "channel_id": thread.channel_id},
+        follow_redirects=False,
+    )
+
+    assert "error=send_disabled" in reply.headers["location"]
+    assert "error=send_disabled" in compose.headers["location"]
+    assert len(db_session.scalars(select(email_web.EmailThread)).all()) == before_threads
+    assert len(db_session.scalars(select(EmailMessage)).all()) == before_messages
+
+    approval_request = authenticated_client.post(
+        f"/v2-clean/email/{thread.id}/reply",
+        data={"submit": "approval", "body": "Resposta sintética a validar"},
+        follow_redirects=False,
+    )
+    assert approval_request.status_code == 303
+    pending = db_session.scalar(
+        select(EmailMessage)
+        .where(EmailMessage.thread_id == thread.id, EmailMessage.direction == "outbound")
+        .order_by(EmailMessage.id.desc())
+    )
+    assert pending is not None and pending.state == "pending_approval"
+    before_audits = len(db_session.scalars(select(EmailAuditEvent)).all())
+
+    approve = authenticated_client.post(
+        f"/v2-clean/email/{thread.id}/messages/{pending.id}/approve",
+        follow_redirects=False,
+    )
+
+    assert "error=send_disabled" in approve.headers["location"]
+    db_session.refresh(pending)
+    assert pending.state == "pending_approval"
+    assert pending.postmark_error is None
+    assert len(db_session.scalars(select(EmailAuditEvent)).all()) == before_audits
 
 
 def test_hierarchy_only_renders_active_options_and_server_rejects_cross_branch_selection(
@@ -256,6 +345,79 @@ def test_attachment_preview_is_explicit_and_unsupported_file_does_not_auto_downl
     assert implicit_file.status_code == 415
 
 
+def test_text_attachment_preview_and_classification_are_safe_and_audited(
+    authenticated_client, db_session, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(settings, "email_storage_root", str(tmp_path))
+    _bind_email_session(monkeypatch, db_session)
+    payload = _payload("preview-text-attachment")
+    payload["Attachments"] = [
+        {
+            "Name": "comprovativo-sintetico.txt",
+            "ContentType": "text/plain",
+            "Content": base64.b64encode(
+                b"COMPROVATIVO SINTETICO\nSem dados reais.\n"
+            ).decode(),
+            "ContentID": "",
+        }
+    ]
+    thread, _ = ingest_inbound(db_session, payload)
+    attachment = db_session.scalar(select(EmailAttachment))
+
+    preview = authenticated_client.get(
+        f"/v2-clean/email/attachments/{attachment.id}/file"
+    )
+    preview_panel = authenticated_client.get(
+        f"/v2-clean/email/attachments/{attachment.id}/preview"
+    )
+    forged = authenticated_client.post(
+        f"/v2-clean/email/attachments/{attachment.id}/classify",
+        data={"status": "forged"},
+    )
+    db_session.expire_all()
+    assert db_session.get(EmailAttachment, attachment.id).status == "pending"
+    download = authenticated_client.get(
+        f"/v2-clean/email/attachments/{attachment.id}/file?download=true"
+    )
+    classified = authenticated_client.post(
+        f"/v2-clean/email/attachments/{attachment.id}/classify",
+        data={
+            "document_type": "receipt",
+            "nature": "operational",
+            "destination": "operational",
+            "status": "classified",
+            "notes": "Fixture sintética validada.",
+        },
+    )
+    db_session.expire_all()
+    stored = db_session.get(EmailAttachment, attachment.id)
+    audit = db_session.scalar(
+        select(EmailAuditEvent)
+        .where(
+            EmailAuditEvent.thread_id == thread.id,
+            EmailAuditEvent.action == "attachment_classified",
+        )
+        .order_by(EmailAuditEvent.id.desc())
+    )
+
+    assert preview.status_code == 200
+    assert "COMPROVATIVO SINTETICO" in preview.text
+    assert "default-src 'none'" in preview.headers["content-security-policy"]
+    assert "Abrir ficheiro" in preview_panel.text
+    assert f"/attachments/{attachment.id}/file?download=true" in preview_panel.text
+    assert "Descarregar" in preview_panel.text
+    assert forged.status_code == 422
+    assert download.status_code == 200
+    assert download.content.startswith(b"COMPROVATIVO SINTETICO")
+    assert "attachment;" in download.headers["content-disposition"]
+    assert classified.status_code == 200
+    assert stored.document_type == "receipt"
+    assert stored.status == "classified"
+    assert stored.notes == "Fixture sintética validada."
+    assert audit is not None
+    assert audit.details_json["attachment_id"] == attachment.id
+
+
 def test_header_footer_order_read_action_and_original_text(
     authenticated_client, db_session, tmp_path, monkeypatch
 ):
@@ -274,9 +436,19 @@ def test_header_footer_order_read_action_and_original_text(
     db_session.expire_all()
 
     footer = preview.text.split('<footer class="email-modal-footer">', 1)[1]
-    labels = ["Arquivar", "Criar tarefa", "Guardar triagem", "Responder", "Concluir triagem"]
+    labels = [
+        "Guardar triagem",
+        "Validar classificação",
+        "Arquivar",
+        "Responder",
+        "Criar tarefa",
+    ]
     positions = [footer.index(label) for label in labels]
     assert positions == sorted(positions)
+    assert preview.text.count("Fechar preview") == 1
+    assert 'name="action" value="save"' in footer
+    assert 'name="action" value="validate"' in footer
+    assert "Concluir triagem" not in footer
     assert "Marcar como lido" in preview.text
     assert "Texto original" in preview.text
     assert plain.status_code == 200
@@ -284,6 +456,176 @@ def test_header_footer_order_read_action_and_original_text(
     assert "<strong>formatado</strong>" not in plain.text
     assert marked.status_code == 303
     assert db_session.get(EmailMessage, message.id).state == "read"
+
+
+def test_triage_actions_fail_closed_before_mutation(
+    authenticated_client, db_session, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(settings, "email_storage_root", str(tmp_path))
+    _bind_email_session(monkeypatch, db_session)
+    thread, _ = ingest_inbound(db_session, _payload("preview-triage-actions"))
+    initial_audits = len(db_session.scalars(select(EmailAuditEvent)).all())
+
+    forged = authenticated_client.post(
+        f"/v2-clean/email/{thread.id}/triage",
+        data={"action": "complete", "triage_notes": "não persistir"},
+        follow_redirects=False,
+    )
+    missing = authenticated_client.post(
+        f"/v2-clean/email/{thread.id}/triage",
+        data={"action": "validate", "triage_notes": "não validar"},
+        follow_redirects=False,
+    )
+    db_session.expire_all()
+    stored = db_session.get(EmailThread, thread.id)
+
+    assert "error=action_not_supported" in forged.headers["location"]
+    assert "error=missing_classification" in missing.headers["location"]
+    assert stored.triage_notes is None
+    assert stored.status == "triage"
+    assert len(db_session.scalars(select(EmailAuditEvent)).all()) == initial_audits
+
+
+def test_validate_classification_is_explicit_and_audited(
+    authenticated_client, db_session, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(settings, "email_storage_root", str(tmp_path))
+    _bind_email_session(monkeypatch, db_session)
+    thread, _ = ingest_inbound(db_session, _payload("preview-validate-classification"))
+    queue = WorkQueue(code="email-validate", name="Fila validação", active=True)
+    db_session.add(queue)
+    db_session.flush()
+    department = WorkDepartment(
+        queue_id=queue.id,
+        code="email-validate-dept",
+        name="Departamento validação",
+        active=True,
+    )
+    db_session.add(department)
+    db_session.flush()
+    category = WorkCategory(
+        department_id=department.id,
+        code="email-validate-category",
+        name="Categoria validada",
+        active=True,
+    )
+    db_session.add(category)
+    db_session.commit()
+
+    response = authenticated_client.post(
+        f"/v2-clean/email/{thread.id}/triage",
+        data={
+            "action": "validate",
+            "work_queue_id": str(queue.id),
+            "work_department_id": str(department.id),
+            "work_category_id": str(category.id),
+        },
+        follow_redirects=False,
+    )
+    db_session.expire_all()
+    stored = db_session.get(EmailThread, thread.id)
+    audit = db_session.scalar(
+        select(EmailAuditEvent)
+        .where(
+            EmailAuditEvent.thread_id == thread.id,
+            EmailAuditEvent.action == "classification_validated",
+        )
+        .order_by(EmailAuditEvent.id.desc())
+    )
+
+    assert "saved=validate" in response.headers["location"]
+    assert stored.classification_status == "classified"
+    assert stored.status == "in_progress"
+    assert audit is not None
+
+    saved_after_validation = authenticated_client.post(
+        f"/v2-clean/email/{thread.id}/triage",
+        data={
+            "action": "save",
+            "triage_notes": "alteração posterior à validação",
+            "work_queue_id": str(queue.id),
+            "work_department_id": str(department.id),
+            "work_category_id": str(category.id),
+        },
+        follow_redirects=False,
+    )
+    stale_archive = authenticated_client.post(
+        f"/v2-clean/email/{thread.id}/status",
+        data={"status": "archived"},
+        follow_redirects=False,
+    )
+    db_session.expire_all()
+
+    assert "saved=save" in saved_after_validation.headers["location"]
+    assert "error=invalid_transition" in stale_archive.headers["location"]
+    assert db_session.get(EmailThread, thread.id).status == "in_progress"
+
+    revalidated = authenticated_client.post(
+        f"/v2-clean/email/{thread.id}/triage",
+        data={
+            "action": "validate",
+            "work_queue_id": str(queue.id),
+            "work_department_id": str(department.id),
+            "work_category_id": str(category.id),
+        },
+        follow_redirects=False,
+    )
+    archived = authenticated_client.post(
+        f"/v2-clean/email/{thread.id}/status",
+        data={"status": "archived"},
+        follow_redirects=False,
+    )
+    db_session.expire_all()
+    archive_audit = db_session.scalar(
+        select(EmailAuditEvent)
+        .where(
+            EmailAuditEvent.thread_id == thread.id,
+            EmailAuditEvent.action == "status_changed",
+        )
+        .order_by(EmailAuditEvent.id.desc())
+    )
+
+    assert "saved=validate" in revalidated.headers["location"]
+    assert "saved=status" in archived.headers["location"]
+    assert db_session.get(EmailThread, thread.id).status == "archived"
+    assert archive_audit is not None
+    assert archive_audit.details_json["status"] == "archived"
+
+
+def test_archive_requires_explicit_classification_validation(
+    authenticated_client, db_session, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(settings, "email_storage_root", str(tmp_path))
+    _bind_email_session(monkeypatch, db_session)
+    thread, _ = ingest_inbound(db_session, _payload("preview-archive-sequence"))
+    initial_audits = len(db_session.scalars(select(EmailAuditEvent)).all())
+
+    response = authenticated_client.post(
+        f"/v2-clean/email/{thread.id}/status",
+        data={"status": "archived"},
+        follow_redirects=False,
+    )
+    db_session.expire_all()
+    stored = db_session.get(EmailThread, thread.id)
+
+    assert "error=invalid_transition" in response.headers["location"]
+    assert stored.status == "triage"
+    assert stored.classification_status != "classified"
+    assert len(db_session.scalars(select(EmailAuditEvent)).all()) == initial_audits
+
+    stored.classification_status = "classified"
+    stored.status = "waiting_reply"
+    db_session.commit()
+    bypass = authenticated_client.post(
+        f"/v2-clean/email/{thread.id}/status",
+        data={"status": "archived"},
+        follow_redirects=False,
+    )
+    db_session.expire_all()
+
+    assert "error=invalid_transition" in bypass.headers["location"]
+    assert db_session.get(EmailThread, thread.id).status == "waiting_reply"
+    assert len(db_session.scalars(select(EmailAuditEvent)).all()) == initial_audits
 
 
 def test_mobile_layout_is_single_column_without_body_overflow():
@@ -297,3 +639,17 @@ def test_mobile_layout_is_single_column_without_body_overflow():
     )
     assert mobile_grid in css
     assert ".email-modal-footer { position:relative;" in css
+
+
+def test_desktop_preview_uses_two_pane_queue_and_unified_work_area():
+    css = (ROOT / "app/static/css/ui-contract-v1.css").read_text(encoding="utf-8")
+    app_css = (ROOT / "app/static/css/app.css").read_text(encoding="utf-8")
+
+    assert ".ui-email-list-preview.is-preview-open { grid-template-columns:260px minmax(0,1fr); }" in css
+    assert ".ui-context-preview .email-reader-grid {" in css
+    assert "grid-template-columns:minmax(0,1fr);" in css
+    assert "grid-template-rows:minmax(140px,1fr) 96px;" in css
+    assert "grid-template-columns:repeat(4,minmax(0,1fr));" in css
+    assert "grid-template-columns:minmax(0,1.65fr) minmax(280px,.85fr)" not in css
+    assert ".email-attachment-form footer { display:grid; grid-template-columns:repeat(2,minmax(0,1fr));" in app_css
+    assert ".email-attachment-form footer > button { grid-column:1/-1; }" in app_css

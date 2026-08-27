@@ -1,5 +1,8 @@
 {% extends "base.html" %}
 {% block body %}
+{% if foundation_ui_enabled %}
+  {% include "_task_center_approved.html" %}
+{% else %}
 <div class="app-shell clean-shell">
   {% set active_menu = "clean_tasks" %}
   {% include "_sidebar.html" %}
@@ -620,4 +623,5 @@
   if (requested) openTaskPreview(`task-preview-${requested}`);
   else if (location.hash.startsWith("#task-preview-")) openTaskPreview(location.hash.slice(1));
 </script>
+{% endif %}
 {% endblock %}

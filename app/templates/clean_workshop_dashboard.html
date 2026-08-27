@@ -4,29 +4,30 @@
   {% set active_menu = "workshop" %}
   {% include "_sidebar.html" %}
   <main class="content clean-content">
-    <header class="clean-header-shell clean-card-wide clean-header-shell-dashboard">
-      <div class="clean-header-topbar">
-        <p class="eyebrow">Oficina / experiência nova</p>
-      </div>
+    <header class="clean-header-shell clean-card-wide clean-header-shell-dashboard fur-workshop-header">
       <div class="clean-header-hero-row">
         <div class="clean-header-hero-main">
+          <p class="eyebrow">Operações de negócio</p>
           <h2>Oficina</h2>
-          <p>Gerir entradas, processos históricos e trabalhos por fases, mostrando só processos criados na v2-clean.</p>
+          <p>Entradas e processos por fases.</p>
         </div>
-        <div class="clean-header-hero-side clean-header-hero-side-stack">
+        <div class="clean-header-hero-side fur-workshop-actions">
           <a class="button-link" href="/v2-clean/workshop-entry">Criar novo processo</a>
-          <a class="button-link secondary-link" href="/v2-clean/workshop-entry?historical=1">Criar processo histórico</a>
-          <a class="button-link secondary-link" href="/v2-clean/fleet">Consultar frota</a>
+          <details class="fur-secondary-actions">
+            <summary>Mais ações</summary>
+            <div>
+              <a href="/v2-clean/workshop-entry?historical=1">Criar processo histórico</a>
+              <a href="/v2-clean/fleet">Consultar frota</a>
+            </div>
+          </details>
         </div>
       </div>
     </header>
 
     <section class="clean-workshop-dashboard-grid">
       <article class="clean-panel clean-workshop-recent-panel">
-        <div class="table-heading flat-heading">
-          <div>
-            <p class="eyebrow">Acompanhamento</p>
-            <h3>
+        <div class="table-heading flat-heading fur-workshop-list-title">
+          <div><h3>
               {% if scope == "closed" %}
                 Processos fechados de Oficina
               {% elif scope == "cancelled" %}
@@ -36,13 +37,7 @@
               {% else %}
                 Processos abertos de Oficina
               {% endif %}
-            </h3>
-            <p>Filtro rápido para ver só o conjunto relevante sem misturar históricos fechados e processos em curso.</p>
-          </div>
-        </div>
-        <div class="clean-workshop-filter-title">
-          <strong>Âmbito apresentado</strong>
-          <span>Cada contador mostra o total disponível nesse conjunto. A tabela abaixo apresenta classificação, fase atual e situação do processo.</span>
+            </h3></div>
         </div>
         <nav class="clean-workshop-scope-row" aria-label="Filtro de processos de oficina">
           <a class="{% if scope == 'open' %}active{% endif %}" href="/v2-clean/workshop?scope=open&amp;{{ filter_query }}">

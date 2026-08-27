@@ -37,7 +37,7 @@ def test_clean_admin_pages_are_available_to_admin(authenticated_client):
         ("/v2-clean/admin/users", "Utilizadores"),
         ("/v2-clean/admin/roles", "Perfis e permissões"),
         ("/v2-clean/admin/organization", "Áreas organizacionais"),
-        ("/v2-clean/admin/settings", "Configurações"),
+        ("/v2-clean/admin/settings", "Parametrizações"),
         ("/v2-clean/admin/audit", "Auditoria do sistema"),
         ("/v2-clean/admin/integrations", "Entradas de integração"),
         ("/v2-clean/admin/security", "Utilizadores administrativos"),

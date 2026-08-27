@@ -5,11 +5,6 @@
   {% include "_sidebar.html" %}
   <main class="content clean-content clean-admin-content{% if foundation_ui_enabled %} ui-foundation ui-admin-master-detail admin-section-{{ admin_section }}{% endif %}">
     {% set visual_section = "Sistema" %}{% set visual_page = "Administração" %}{% include "_visual_topbar.html" %}
-    {% if admin_section in ['users', 'roles', 'work_classification', 'email'] %}
-      {% set work_view = request.query_params.get('view', 'desk') %}
-      {% set partner_tab = 'users' if admin_section == 'users' else 'roles' if admin_section == 'roles' else 'email' if work_view in ['channels', 'templates'] else 'categories' %}
-      {% include "_supplier_context_nav.html" %}
-    {% endif %}
     <header class="clean-header-shell clean-card-wide clean-admin-header">
       <div class="clean-header-topbar">
         <div>
@@ -19,7 +14,9 @@
         </div>
         <span class="pill muted-pill">{{ current_admin_user.email if current_admin_user else "" }}</span>
       </div>
-      {% include "_clean_admin_directory.html" %}
+      {% if admin_section not in ['operations', 'organization', 'settings', 'evolution', 'audit', 'integrations', 'security'] %}
+        {% include "_clean_admin_directory.html" %}
+      {% endif %}
     </header>
 
     {% if admin_section in ['operations', 'organization', 'settings', 'evolution', 'audit', 'integrations', 'security'] %}

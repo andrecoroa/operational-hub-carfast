@@ -5,6 +5,7 @@
   const resetPreviewPanel = () => {
     if (!previewPanel) return;
     previewPanel.innerHTML = '<div class="email-preview-loading"><strong>Pré-visualização</strong><span>Selecione uma conversa para triar, classificar e responder sem perder a fila.</span></div>';
+    document.querySelector(".ui-email-list-preview")?.classList.remove("is-preview-open");
     document.querySelectorAll("[data-email-preview]").forEach((row) => row.classList.remove("is-selected"));
     if (previewTrigger instanceof HTMLElement && previewTrigger.isConnected) previewTrigger.focus();
     previewTrigger = null;
@@ -248,6 +249,7 @@
     }
     const response = await fetch(`/v2-clean/email/${threadId}/preview`, {headers: {"X-Requested-With": "fetch"}});
     previewRoot.innerHTML = await response.text();
+    document.querySelector(".ui-email-list-preview")?.classList.add("is-preview-open");
     bindThread(previewRoot);
     const fullPageLink = previewRoot.querySelector(".email-open-full");
     if (fullPageLink) fullPageLink.href = `${fullPageLink.pathname}?return_context=${encodeURIComponent(location.pathname + location.search)}`;

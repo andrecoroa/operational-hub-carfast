@@ -120,12 +120,12 @@ def test_sidebar_contains_approved_composition_and_independent_fallbacks():
         encoding="utf-8"
     )
 
-    assert "Stock e Compras" in sidebar
+    assert ">Stock</a>" in sidebar
     assert "Vendas" in sidebar
     assert "/v2-clean/fleet/sales/proposals" in sidebar
     assert "/v2-clean/fleet/sales/opportunities" in sidebar
     assert "can_nav_sales and not can_nav_fleet" in sidebar
-    assert "can_nav_stock and not can_nav_workshop" in sidebar
+    assert 'href="/v2-clean/workshop"' in sidebar
 
 
 def test_sidebar_has_the_canonical_global_group_order():
@@ -139,11 +139,11 @@ def test_sidebar_has_the_canonical_global_group_order():
     processes = sidebar.index("Centro de Processos", tasks)
     email = sidebar.index(">Email</a>", processes)
     business = sidebar.index('data-nav-section="business"', email)
-    workshop = sidebar.index(">Oficina</summary>", business)
-    stock = sidebar.index(">Stock e Compras</summary>", workshop)
+    workshop = sidebar.index(">Oficina</a>", business)
+    stock = sidebar.index(">Stock</a>", workshop)
     fleet = sidebar.index(">Frota</summary>", stock)
     sales = sidebar.index(">Vendas</summary>", fleet)
-    partners = sidebar.index("Parceiros / Fornecedores", sales)
+    partners = sidebar.index(">Parceiros</a>", sales)
     documents = sidebar.index(">Documentação</summary>", partners)
     system = sidebar.index('data-nav-section="system"', documents)
     administration = sidebar.index(">Administração</a>", system)
@@ -162,8 +162,8 @@ def test_sidebar_keeps_independent_child_promotion_and_mobile_drawer_contract():
     )
 
     assert "can_nav_sales and not can_nav_fleet" in sidebar
-    assert "can_nav_stock and not can_nav_workshop" in sidebar
-    assert ">Stock e Compras</a>" in sidebar
+    assert 'href="/v2-clean/workshop"' in sidebar
+    assert ">Stock</a>" in sidebar
     assert 'id="visual-sidebar"' in sidebar
     assert 'querySelector("#visual-sidebar")' in visual_script
     assert 'classList.toggle("visual-nav-open"' in visual_script

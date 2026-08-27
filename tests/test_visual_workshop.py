@@ -42,20 +42,18 @@ def test_workshop_preserves_real_routes_actions_and_return_context():
     assert "workshop_process.id" in template
 
 
-def test_stock_and_purchasing_is_composed_under_workshop_with_fallback():
+def test_stock_and_workshop_are_direct_distinct_destinations():
     sidebar = _read("app/templates/_sidebar.html")
 
     workshop_start = sidebar.index('data-nav-icon="workshop"')
     fleet_start = sidebar.index('data-nav-icon="fleet"')
     workshop_block = sidebar[workshop_start:fleet_start]
-    assert "Stock e Compras" in workshop_block
-    assert "/v2-clean/stock" in workshop_block
-    assert "Movimentos" in workshop_block
-    assert "Compras / Encomendas" in workshop_block
-    assert "Inventários" in workshop_block
-    assert 'active_menu in ["workshop", "stock"]' in sidebar
-    assert "{% if can_nav_stock and not can_nav_workshop %}" in sidebar
+    assert ">Oficina</a>" in workshop_block
+    assert ">Stock</a>" in workshop_block
+    assert "Stock e Compras" not in workshop_block
+    assert "Modelos / Configuração" not in workshop_block
     assert 'href="/v2-clean/stock"' in sidebar
+    stock_nav = _read("app/templates/_clean_stock_nav.html")
     for path in (
         "/v2-clean/stock/movements",
         "/v2-clean/stock/workshop-requests",
@@ -63,7 +61,7 @@ def test_stock_and_purchasing_is_composed_under_workshop_with_fallback():
         "/v2-clean/stock/receipts",
         "/v2-clean/stock/inventory",
     ):
-        assert f'href="{path}"' in sidebar
+        assert f'href="{path}"' in stock_nav
 
 
 def test_visual_markup_is_fail_safe_when_foundation_flag_is_off():

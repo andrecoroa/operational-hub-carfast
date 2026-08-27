@@ -48,7 +48,7 @@
       <button type="submit">Filtrar</button>
     </form>
 
-    <section class="visual-document-grid">
+    <section class="visual-document-grid{% if selected_row %} is-preview-open{% endif %}">
       <article class="visual-document-queue" aria-label="Fila de documentos">
         <header><div><h2>Fila de documentos</h2><p>{{ pagination.total }} documentos por decidir</p></div><button type="button" aria-label="Atualizar fila" onclick="location.reload()">↻</button></header>
         <div class="visual-document-queue-list">

@@ -19,6 +19,10 @@ services:
         fromDatabase:
           name: operational-hub-carfast-db
           property: connectionString
+      - key: EMAIL_INBOUND_ENABLED
+        value: "false"
+      - key: EMAIL_OUTBOUND_ENABLED
+        value: "false"
 
 databases:
   - name: operational-hub-carfast-db

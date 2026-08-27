@@ -90,6 +90,78 @@ O Green atual é alvo de validação, não golden visual.
 | Instalação vazia | Preservada; sem mutação autorizada |
 | Deploy/DNS/cutover | Não autorizado |
 
+## Leitura factual do SHA base
+
+Esta classificação é read-only e não equivale ao resultado da implementação:
+
+| Gate | Estado no SHA base | Observação |
+|---|---|---|
+| FA-01 | UNVERIFIED | Existem regras estáticas de overflow/labels, mas não há prova runtime 1440x731 nem reserva global de scrollbar. |
+| FA-02 | FAIL | Stock/Compras e Modelos/Configuração estão aninhados em Oficina; um teste atual exige o comportamento agora obsoleto. |
+| FA-03 | UNVERIFIED | A compactação/no-wrap não é transversal e não tem teste comum por família de ações. |
+| FA-04 | UNVERIFIED | A composição coloca vários blocos antes do workbench; a evidência existente é 1440x900. |
+| FA-05 | BLOCKED | A definição FUR ainda não está versionada no GitHub. |
+| FA-06 | UNVERIFIED | Email e Documentação já têm implementação same-page e testes focados; falta prova runtime no viewport obrigatório. |
+| FA-07 | FAIL | As mutações web de Oficina não revalidam especificamente `workshop.write`; a proteção da API não cobre este percurso. |
+| FA-08 | UNVERIFIED | Existem pré-requisitos, mas faltam ações forjadas, ordem adversarial e cobertura web RBAC fail-closed. |
+| FA-09 | UNVERIFIED | Efeitos de email estão OFF por omissão; saves/avanços normais de Oficina não têm prova equivalente no audit global. |
+
+## Identidade e proveniência da RC
+
+| Campo | Valor |
+|---|---|
+| ID/versão do registo | `FRONT-A-2026-08-27.1` |
+| Fonte FUR | Pendente: path, blob SHA e revisão comparada |
+| Branch/PR de implementação | Pendente |
+| Base SHA da implementação | Pendente |
+| Head SHA da implementação | Pendente |
+| Merge/RC SHA | Pendente |
+| Artefacto/imagem Green | Pendente; fingerprint sanitizado |
+| Alembic/relacionamentos | Pendente na RC |
+| Revisor funcional/visual | Pendente |
+| Gate humano | Pendente |
+
+## Evidência mínima por gate
+
+Cada FA-01..FA-09 deve registar: teste/comando, rota sanitizada, perfil positivo e
+negativo quando aplicável, browser/viewport, timestamp, captura/path, resultado,
+SHA e correlação sanitizada de ReturnContext/auditoria. Não são aceites
+referências a “último deploy” ou a ficheiros locais não versionados.
+
+## Regressão da RC
+
+| Campo | Valor |
+|---|---|
+| Workflow/run ID | Pendente |
+| Suite exata e contagens | Pendente |
+| Falhas conhecidas aprovadas | Pendente |
+| Novas regressões | Pendente |
+| Jornadas críticas desktop | Pendente |
+| Perfis/RBAC adversarial | Pendente |
+| Transições fail-closed | Pendente |
+| Efeitos OFF/auditoria | Pendente |
+
+## Dados, rollback e instalação vazia
+
+O dossier da RC deve referenciar apenas IDs/digests sanitizados dos manifests:
+cutoff, 166 tabelas, diferenças, contagens/digests do storage e estados
+Blue/Green/instalação vazia. Deve ainda ligar o run da instalação vazia,
+bootstrap executado duas vezes, idempotência, zero dados operacionais, zero
+storage, onboarding/login/RBAC-base e combinações modulares. Estes campos
+preparam gates posteriores e não autorizam qualquer mutação.
+
+## Aprovações separadas
+
+| Gate | Estado |
+|---|---|
+| Merge Front A | Pendente |
+| Aprovação visual humana 1440x731 | Pendente |
+| Congelamento RC | Pendente |
+| Ensaio/delta final | Não autorizado |
+| Deploy Green | Não autorizado |
+| Cutover/Blue/DNS/domínio | Não autorizado |
+| Integrações/efeitos externos | Não autorizado |
+
 ## Trabalho paralelo sem colisão
 
 Até o branch/PR da execução local estar publicado:

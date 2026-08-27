@@ -96,6 +96,34 @@ def test_inbox_facets_apply_remaining_filters_server_side(authenticated_client, 
     assert 'aria-label="Estados das conversas"' not in response.text
 
 
+def test_outbound_off_rejects_send_before_any_durable_mutation(
+    authenticated_client, db_session, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(settings, "email_storage_root", str(tmp_path))
+    monkeypatch.setattr(settings, "email_outbound_enabled", False)
+    _bind_email_session(monkeypatch, db_session)
+    thread, _ = ingest_inbound(db_session, _payload("outbound-off-atomic"))
+    db_session.commit()
+    before_threads = len(db_session.scalars(select(email_web.EmailThread)).all())
+    before_messages = len(db_session.scalars(select(EmailMessage)).all())
+
+    reply = authenticated_client.post(
+        f"/v2-clean/email/{thread.id}/reply",
+        data={"submit": "send", "body": "Resposta sintética"},
+        follow_redirects=False,
+    )
+    compose = authenticated_client.post(
+        "/v2-clean/email/new",
+        data={"submit": "send", "channel_id": thread.channel_id},
+        follow_redirects=False,
+    )
+
+    assert "error=send_disabled" in reply.headers["location"]
+    assert "error=send_disabled" in compose.headers["location"]
+    assert len(db_session.scalars(select(email_web.EmailThread)).all()) == before_threads
+    assert len(db_session.scalars(select(EmailMessage)).all()) == before_messages
+
+
 def test_hierarchy_only_renders_active_options_and_server_rejects_cross_branch_selection(
     authenticated_client, db_session, tmp_path, monkeypatch
 ):

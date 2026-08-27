@@ -22975,6 +22975,11 @@ async def clean_workshop_entry_save(request: Request):
                 return RedirectResponse(
                     f"{clean_workshop_process_url(process)}&readonly=1", status_code=303
                 )
+            if process.current_phase_code != "entrada":
+                return RedirectResponse(
+                    f"/v2-clean/workshop-entry?process_id={process.id}&error=invalid_phase_order",
+                    status_code=303,
+                )
         else:
             process = clean_workshop_create_process(
                 db,
@@ -24206,7 +24211,7 @@ async def clean_workshop_phase_save(request: Request, phase: str):
             return RedirectResponse(
                 f"{clean_workshop_process_url(process)}&readonly=1", status_code=303
             )
-        if action in {"advance", "advance_substep", "close_process", "close_with_pending"} and process.current_phase_code not in {None, phase}:
+        if process.current_phase_code != phase:
             return RedirectResponse(
                 f"{clean_workshop_phase_path(phase)}?process_id={process.id}&error=invalid_phase_order",
                 status_code=303,

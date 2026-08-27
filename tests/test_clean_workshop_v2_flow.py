@@ -40,10 +40,14 @@ def test_workshop_web_actions_reject_forgery_and_adverse_order_and_audit_save(au
 
     forged = authenticated_client.post("/v2-clean/workshop/validacao/save", data={"process_id": process.id, "action": "forged"}, follow_redirects=False)
     adverse = authenticated_client.post("/v2-clean/workshop/diagnostico/save", data={"process_id": process.id, "action": "advance"}, follow_redirects=False)
+    adverse_save = authenticated_client.post("/v2-clean/workshop/diagnostico/save", data={"process_id": process.id, "action": "save"}, follow_redirects=False)
+    adverse_entry = authenticated_client.post("/v2-clean/workshop-entry", data={"process_id": process.id, "plate": process.plate_snapshot, "action": "save"}, follow_redirects=False)
     saved = authenticated_client.post("/v2-clean/workshop/validacao/save", data={"process_id": process.id, "action": "save"}, follow_redirects=False)
 
     assert "error=invalid_action" in forged.headers["location"]
     assert "error=invalid_phase_order" in adverse.headers["location"]
+    assert "error=invalid_phase_order" in adverse_save.headers["location"]
+    assert "error=invalid_phase_order" in adverse_entry.headers["location"]
     assert saved.status_code == 303
     audit = db_session.scalar(select(AuditLog).where(AuditLog.entity_id == str(process.id), AuditLog.action == "workshop.phase.saved"))
     assert audit is not None

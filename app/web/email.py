@@ -1107,6 +1107,8 @@ def email_new_message(
         return RedirectResponse("/v2-clean/email?error=forbidden", status_code=303)
     if submit not in {"draft", "approval", "send"}:
         return RedirectResponse("/v2-clean/email?error=invalid_action", status_code=303)
+    if submit == "send" and not settings.email_outbound_enabled:
+        return RedirectResponse("/v2-clean/email?error=send_disabled", status_code=303)
     user_id, permissions = auth
     recipient_list = [
         item.strip()
@@ -2233,6 +2235,10 @@ def email_reply(
     if submit not in {"draft", "approval", "send"}:
         return RedirectResponse(
             f"/v2-clean/email/{thread_id}?error=invalid_action", status_code=303
+        )
+    if submit == "send" and not settings.email_outbound_enabled:
+        return RedirectResponse(
+            f"/v2-clean/email/{thread_id}?error=send_disabled", status_code=303
         )
     user_id, permissions = auth
     with SessionLocal() as db:

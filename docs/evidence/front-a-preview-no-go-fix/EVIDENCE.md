@@ -40,5 +40,6 @@ Comando focado/regressão Front A:
 
 `python -m pytest -q tests/test_email_triage_preview.py tests/test_clean_admin.py tests/test_front_a_fur_desktop_gate.py tests/test_clean_workshop_v2_flow.py tests/test_navigation_rbac.py tests/test_clean_documentation_architecture.py`
 
-Resultado: **113 passed**, 5 warnings deprecatórias SWIG, zero falhas.
+Resultado: **114 passed**, 5 warnings deprecatórias SWIG, zero falhas.
 
+Uma primeira revisão independente detetou duas lacunas P1 (save em fase adversarial e tentativa `send` com outbound OFF não atómica). Ambas foram corrigidas e cobertas por testes negativos antes da revisão final.

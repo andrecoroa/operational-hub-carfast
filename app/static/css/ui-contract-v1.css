@@ -47,7 +47,12 @@
 .ui-contract-v1 .visual-global-search { height: var(--ui-control-compact); }
 .ui-contract-v1 .visual-icon-action { width: var(--ui-control-compact); height: var(--ui-control-compact); }
 .ui-contract-v1 .visual-breadcrumbs { padding: 8px 0 4px; font-size: 12px; }
+.ui-contract-v1 .visual-breadcrumbs { display: none; }
 .ui-contract-v1 .clean-content { display: grid; gap: var(--ui-page-gap); align-content: start; }
+.ui-contract-v1 .clean-content > header .eyebrow { display: none; }
+.ui-contract-v1 .clean-content > header { margin-top: 8px; }
+.ui-contract-v1 .clean-content > header > :last-child,
+.ui-contract-v1 .clean-content > header .visual-document-heading + * { white-space: nowrap; }
 .ui-contract-v1 :is(.clean-panel,.ui-panel,.visual-panel) { border-radius: var(--ui-panel-radius); }
 
 /* Centro de Tarefas: contract first-fold at 1440x731. */

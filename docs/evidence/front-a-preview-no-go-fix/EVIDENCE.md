@@ -16,9 +16,15 @@ Data: 2026-08-27. Candidato: `codex/front-a-preview-no-go-fix`, derivado de `e8d
 - `email-list-1440x731.png`
 - `email-preview-treatment-1440x731.png`
 - `documentation-list-preview-1440x731.png`
+- `documentation-low-confidence-1440x731.png`
+- `documentation-validated-1440x731.png`
+- `documentation-blocked-1440x731.png`
 - `workshop-first-fold-1440x731.png`
+- `email-triage-1440x731.png`
+- `email-response-pending-1440x731.png`
+- `email-low-confidence-1440x731.png`
 
-As medições DOM confirmaram ausência de overflow horizontal global nas cinco vistas. Email lista apresentou 3 linhas; a seleção manteve as 3 linhas acessíveis e abriu o painel amplo de triagem, validação e resposta na mesma página.
+As medições DOM confirmaram ausência de overflow horizontal global nas cinco vistas. Email lista apresentou 3 linhas; a seleção manteve as 3 linhas acessíveis e abriu o painel amplo de triagem, validação e resposta na mesma página. Documentação manteve 3 itens na fila e provou baixa confiança, validado e bloqueado com preview e decisão no mesmo contexto. Breadcrumb e kicker duplicados foram removidos transversalmente na fundação visual.
 
 ## Matriz binária
 
@@ -40,6 +46,6 @@ Comando focado/regressão Front A:
 
 `python -m pytest -q tests/test_email_triage_preview.py tests/test_clean_admin.py tests/test_front_a_fur_desktop_gate.py tests/test_clean_workshop_v2_flow.py tests/test_navigation_rbac.py tests/test_clean_documentation_architecture.py`
 
-Resultado: **114 passed**, 5 warnings deprecatórias SWIG, zero falhas.
+Resultado: **115 passed**, 5 warnings deprecatórias SWIG, zero falhas.
 
 As revisões independentes detetaram lacunas P1 em save de fase adversarial e nos percursos enviar/aprovar com outbound OFF. Todas foram corrigidas com rejeição anterior à mutação e cobertas por testes negativos antes da revisão final.

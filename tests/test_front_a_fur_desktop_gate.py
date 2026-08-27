@@ -30,6 +30,17 @@ def test_fur_sidebar_and_actions_encode_stable_geometry():
     assert ":is(button,.button-link,.visual-button,.clean-action-button)" in css
 
 
+def test_fur_headers_and_document_states_are_explicit_and_compact():
+    css = _read("app/static/css/ui-contract-v1.css")
+    documents = _read("app/templates/clean_documentation_triage.html")
+    assert ".visual-breadcrumbs { display: none; }" in css
+    assert ".clean-content > header .eyebrow { display: none; }" in css
+    assert "Validação" in documents
+    assert "Validado" in documents
+    assert "Bloqueado" in documents
+    assert "Baixa confiança" in documents
+
+
 def test_fur_email_and_documents_preserve_queue_until_explicit_selection():
     email_js = _read("app/static/js/email.js")
     documents = _read("app/templates/clean_documentation_triage.html")

@@ -1,6 +1,7 @@
 """Serve synthetic UI-contract evidence without contacting Blue or Green."""
 
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
+import os
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -17,7 +18,16 @@ PROTOTYPE = Path(
 
 class EvidenceHandler(SimpleHTTPRequestHandler):
     def do_GET(self) -> None:
-        if urlsplit(self.path).path == "/reference":
+        clean = urlsplit(self.path).path
+        if clean.startswith("/v2-clean/documents/") and clean.endswith("/preview-page"):
+            payload = (PAGES / "document-preview-page.png").read_bytes()
+            self.send_response(200)
+            self.send_header("Content-Type", "image/png")
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+            return
+        if clean == "/reference":
             payload = normalized_reference_html().encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
@@ -37,6 +47,8 @@ class EvidenceHandler(SimpleHTTPRequestHandler):
             return str(PAGES / "email-body.html")
         if clean.startswith("/v2-clean/documents/") and clean.endswith("/file"):
             return str(PAGES / "document-preview.pdf")
+        if clean.startswith("/v2-clean/documents/") and clean.endswith("/preview-page"):
+            return str(PAGES / "document-preview-page.png")
         page = clean.strip("/") or "dashboard"
         if page.endswith(".html"):
             page = page[:-5]
@@ -47,4 +59,5 @@ class EvidenceHandler(SimpleHTTPRequestHandler):
 
 
 if __name__ == "__main__":
-    ThreadingHTTPServer(("127.0.0.1", 8765), EvidenceHandler).serve_forever()
+    port = int(os.getenv("CARFAST_UI_EVIDENCE_PORT", "8765"))
+    ThreadingHTTPServer(("127.0.0.1", port), EvidenceHandler).serve_forever()

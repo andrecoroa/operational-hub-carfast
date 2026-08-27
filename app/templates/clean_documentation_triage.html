@@ -8,8 +8,8 @@
     {% set doc_nav = "triage" %}
     {% include "_clean_documentation_nav.html" %}
     <header class="doc-arch-header">
-      <div class="visual-document-heading"><div><p class="eyebrow">Gestão documental</p><h1>Processamento de documento</h1><p>Validar reconhecimento, correspondências e associações sem perder o contexto da fila.</p></div></div>
-      <a class="button-link secondary-link" href="/v2-clean/documents/ocr-validation">Reprocessar reconhecimento</a>
+      <div class="visual-document-heading"><div><p class="eyebrow">Gestão documental</p><h1>Documentação</h1><p>Fila, documento real e classificação visíveis em simultâneo.</p></div></div>
+      <a class="button-link secondary-link" href="/v2-clean/documentation/imports">Importar</a>
     </header>
 
     <section class="doc-arch-kpis doc-arch-kpis-three">
@@ -51,7 +51,7 @@
 
     <section class="visual-document-grid">
       <article class="visual-document-queue" aria-label="Fila de documentos">
-        <header><div><h2>Fila de documentos</h2><p>{{ pagination.total }} documentos por decidir</p></div><button type="button" aria-label="Atualizar fila" onclick="location.reload()">↻</button></header>
+        <header><div><h2>A · Fila compacta</h2></div><span>{{ pagination.total }}</span></header>
         <div class="visual-document-queue-list">
           {% for row in rows %}
             <a data-document-view-link class="visual-document-row{% if selected_row and selected_row.document.id == row.document.id %} active{% endif %}" href="?q={{ q|urlencode }}&origin={{ origin|urlencode }}&confidence={{ confidence|urlencode }}&page={{ pagination.page }}&page_size={{ pagination.page_size }}&selected={{ row.document.id }}&view=preview&return_context=queue">
@@ -65,13 +65,13 @@
       </article>
 
       <article class="visual-document-preview" aria-label="Pré-visualização do documento">
-        <header><div><h2>Pré-visualização</h2><p>{% if selected_row %}{{ selected_row.title }}{% else %}Selecione um documento{% endif %}</p></div>{% if selected_row %}<a class="button-link secondary-link" href="{{ selected_row.detail_href }}">Abrir detalhe</a>{% endif %}</header>
+        <header><div><h2>B · Preview e OCR</h2></div>{% if selected_row %}<span>DOC-{{ selected_row.document.id }}</span>{% endif %}</header>
         <div class="visual-document-toolbar" aria-label="Estado da pré-visualização"><span>Página 1 / 1</span>{% if selected_row %}<a href="{{ selected_row.preview_href }}" target="_blank" rel="noopener">Abrir ficheiro original</a><a data-document-view-link class="visual-document-next" href="?q={{ q|urlencode }}&origin={{ origin|urlencode }}&confidence={{ confidence|urlencode }}&page={{ pagination.page }}&page_size={{ pagination.page_size }}&selected={{ selected_row.document.id }}&view=validation&return_context=preview">Validar →</a>{% endif %}</div>
-        {% if selected_row %}<iframe title="Documento selecionado" src="{{ selected_row.preview_href }}"></iframe>{% else %}<div class="visual-document-empty">A fila está tratada.</div>{% endif %}
+        {% if selected_row %}<div class="visual-document-canvas"><aside aria-label="Miniaturas"><img src="{{ selected_row.preview_page_href }}" alt="Miniatura da página 1"><small>Pág. 1</small></aside><div><img src="{{ selected_row.preview_page_href }}" alt="Página 1 do documento selecionado"></div></div>{% else %}<div class="visual-document-empty">A fila está tratada.</div>{% endif %}
       </article>
 
       <aside class="visual-document-review" aria-label="OCR e dados extraídos">
-        <header><h2>OCR e dados extraídos</h2><p>Confirme a classificação e o destino.</p></header>
+        <header><h2>Classificar e arquivar</h2>{% if selected_row %}<p>{{ ((selected_row.workflow.suggestion_confidence or 0) * 100)|round|int }}% confiança</p>{% endif %}</header>
         {% if selected_row %}
           <nav class="visual-document-review-tabs" aria-label="Tratamento do documento"><a href="#document-extracted" aria-current="page">Dados extraídos</a><a href="#document-classification">Classificação</a><a href="#document-associations">Associações</a></nav>
           <div class="visual-document-confidence" id="document-extracted"><span><small>Classificação</small><strong>{{ workflow_labels.get(selected_row.workflow.suggested_invoice_nature, "Por reconhecer") }}</strong></span><span><small>Confiança OCR</small><strong>{{ ((selected_row.workflow.suggestion_confidence or 0) * 100)|round|int }}%</strong></span></div>

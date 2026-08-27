@@ -12457,6 +12457,40 @@ def clean_document_file(request: Request, document_id: int, inline: int = 1):
     return response
 
 
+@web_router.get("/v2-clean/documents/{document_id}/preview-page")
+def clean_document_preview_page(request: Request, document_id: int, page: int = 1):
+    """Render one PDF page for the in-workbench preview without exposing paths."""
+    denied = clean_experience_denied(request)
+    if denied:
+        return denied
+    if not can_view_documentation(request):
+        return RedirectResponse("/v2-clean?error=forbidden", status_code=303)
+    with SessionLocal() as db:
+        document = db.get(Document, document_id)
+        if not document or (document.status or "").strip().lower() in V2_CLEAN_REMOVED_STATUSES:
+            return Response(status_code=404)
+        if document.confidentiality_level == "management" and not can_view_management_documents(request):
+            return Response(status_code=403)
+        resolved_path = _document_resolved_file(document)
+        if not resolved_path or resolved_path.suffix.lower() != ".pdf":
+            return Response(status_code=404)
+
+    try:
+        import fitz
+
+        with fitz.open(resolved_path) as pdf:
+            page_index = max(0, min(page - 1, pdf.page_count - 1))
+            pixmap = pdf.load_page(page_index).get_pixmap(matrix=fitz.Matrix(1.45, 1.45), alpha=False)
+            payload = pixmap.tobytes("png")
+    except (OSError, RuntimeError, ValueError):
+        return Response(status_code=422)
+    return Response(
+        content=payload,
+        media_type="image/png",
+        headers={"Cache-Control": "private, max-age=120"},
+    )
+
+
 @web_router.post("/v2-clean/documents/{document_id}/remove")
 def clean_document_remove(
     request: Request,
@@ -13675,6 +13709,7 @@ def _documentation_row(
         "origin": document.entry_channel or document.source or "Desconhecida",
         "detail_href": f"/v2-clean/documents/{document.id}",
         "preview_href": f"/v2-clean/documents/{document.id}/file?inline=1",
+        "preview_page_href": f"/v2-clean/documents/{document.id}/preview-page?page=1",
     }
 
 

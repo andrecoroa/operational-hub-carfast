@@ -29,7 +29,7 @@
 .ui-contract-v1 .clean-shell .sidebar .sidebar-collapse-toggle { display: none; }
 .ui-contract-v1 .clean-shell .sidebar .eyebrow { margin-left: 0; color: var(--ui-contract-foreground); font-size: 15px; font-weight: 700; }
 .ui-contract-v1 .clean-shell .sidebar .sidebar-brand h1 { display: none; }
-.ui-contract-v1 .clean-shell .sidebar nav { padding: 12px 8px; }
+.ui-contract-v1 .clean-shell .sidebar nav { margin-top: 0; padding: 8px; }
 .ui-contract-v1 .clean-shell .sidebar nav > a,
 .ui-contract-v1 .clean-shell .sidebar-nav-group > summary { color: var(--ui-contract-foreground); background: transparent; border-radius: 6px; font-weight: 500; }
 .ui-contract-v1 .clean-shell .sidebar nav > a:hover,
@@ -41,6 +41,8 @@
 .ui-contract-v1 .clean-shell .sidebar-footer-actions { display: none; }
 .ui-contract-v1 .clean-shell .sidebar :is(.sidebar-evolution-create,.sidebar-legacy-link,.sidebar-logout button) { color: var(--ui-contract-muted-foreground); background: transparent; border-color: var(--ui-contract-border); }
 .ui-contract-v1 .clean-shell .sidebar-status { color: var(--ui-contract-foreground); background: var(--ui-contract-muted); border-color: var(--ui-contract-border); }
+.ui-contract-v1 .clean-shell .sidebar-status { min-height: 60px; padding: 10px; align-items: center; }
+.ui-contract-v1 .clean-shell .sidebar-status > span:last-child > span { display: none; }
 .ui-contract-v1 .clean-shell .sidebar-status span span { color: var(--ui-contract-muted-foreground); }
 .ui-contract-v1 .clean-shell .content { background: var(--ui-contract-muted); }
 .ui-contract-v1 .visual-topbar { color: var(--ui-contract-foreground); background: var(--ui-contract-background); border-color: var(--ui-contract-border); backdrop-filter: none; }
@@ -56,16 +58,17 @@
   min-width: 0;
   min-height: 36px;
   padding: 8px 10px;
-  grid-template-columns: 18px minmax(0,1fr);
-  column-gap: 10px;
+  grid-template-columns: minmax(0,1fr);
+  column-gap: 0;
   align-items: center;
   justify-content: start;
   text-align: left;
   white-space: nowrap;
 }
 .ui-contract-v1 .clean-shell .sidebar nav > a::before,
-.ui-contract-v1 .clean-shell .sidebar-nav-group > summary::before { width: 18px; height: 18px; margin: 0; }
-.ui-contract-v1 .clean-shell .sidebar .nav-section-label { margin: 14px 10px 4px 38px; }
+.ui-contract-v1 .clean-shell .sidebar-nav-group > summary::before { display: none; }
+.ui-contract-v1 .clean-shell .sidebar .nav-section-label { margin: 10px 10px 4px; }
+.ui-contract-v1 .clean-shell .sidebar nav > a[href="/alerts"] { display: none; }
 .ui-contract-v1 .clean-shell .sidebar-nav-group { min-width: 0; }
 .ui-contract-v1 .clean-shell .sidebar-nav-children { box-sizing: border-box; width: calc(100% - 28px); min-width: 0; margin-left: 28px; }
 .ui-contract-v1 .clean-shell .sidebar-sub-link { min-height: 32px; padding-block: 6px; }
@@ -343,6 +346,28 @@
 .ui-contract-v1 .visual-dashboard-metrics { min-height: 60px; grid-auto-rows: 60px; }
 .ui-contract-v1 .visual-dashboard-metrics .visual-metric-card { min-height: 60px; height: 60px; padding: 6px 10px; }
 .ui-contract-v1 .visual-dashboard-grid { gap: 8px; }
+
+/* Dashboard canonical: compact title, flat metrics and one operational rail. */
+.ui-contract-v1 .visual-dashboard-heading { min-height: 68px; height: 68px; padding: 8px 0 6px; align-items: end; }
+.ui-contract-v1 .visual-dashboard-heading h1 { margin: 0; font-size: 24px; line-height: 28px; }
+.ui-contract-v1 .visual-dashboard-heading p { margin-top: 2px; }
+.ui-contract-v1 .visual-dashboard-actions { align-self: center; }
+.ui-contract-v1 .visual-dashboard-metrics { grid-auto-rows: 62px; min-height: 62px; gap: 8px; }
+.ui-contract-v1 .visual-dashboard-metrics .visual-metric-card {
+  display: block;
+  height: 62px;
+  min-height: 62px;
+  padding: 10px 22px;
+  border-radius: 8px;
+}
+.ui-contract-v1 .visual-dashboard-metrics .visual-metric-card > span { display: grid; gap: 1px; }
+.ui-contract-v1 .visual-dashboard-metrics .visual-metric-card small { font-size: 11px; line-height: 14px; }
+.ui-contract-v1 .visual-dashboard-metrics .visual-metric-card strong { margin: 0; font-size: 21px; line-height: 25px; }
+.ui-contract-v1 .visual-dashboard-grid { grid-template-columns: minmax(0,3fr) minmax(260px,1fr); margin-top: 12px; gap: 12px; }
+.ui-contract-v1 .visual-dashboard-grid .visual-card-header { height: 46px; min-height: 46px; padding: 6px 12px; }
+.ui-contract-v1 .visual-dashboard-grid .visual-card-header h2 { font-size: 15px; line-height: 20px; }
+.ui-contract-v1 .visual-dashboard-grid .visual-card-header > .visual-button { width: auto; margin-left: auto; }
+.ui-contract-v1 .visual-dashboard-aside .visual-attention-list > a { min-height: 60px; }
 .ui-contract-v1 .visual-work-table :is(th,td) { height: 40px; padding-block: 4px; }
 
 /* Tasks: six complete operational rows fit at the canonical 1440x731 viewport. */
@@ -426,6 +451,12 @@
 .ui-contract-v1 .visual-document-grid { min-height: 600px; grid-template-columns: 250px minmax(0,1fr) 350px; gap: 8px; }
 .ui-contract-v1 .visual-document-grid > * { min-width: 0; }
 .ui-contract-v1 .visual-document-grid > :is(.visual-document-queue,.visual-document-preview,.visual-document-review) > header { height: 44px; min-height: 44px; padding: 6px 10px; }
+.ui-contract-v1 .visual-document-canvas { display: grid; height: 500px; grid-template-columns: 66px minmax(0,1fr); background: #f7f8fa; overflow: hidden; }
+.ui-contract-v1 .visual-document-canvas > aside { display: grid; padding: 10px 7px; align-content: start; justify-items: center; gap: 5px; background: #fff; border-right: 1px solid var(--ui-contract-border); }
+.ui-contract-v1 .visual-document-canvas > aside img { width: 48px; height: 68px; object-fit: contain; background: #fff; border: 1px solid var(--ui-contract-blue); }
+.ui-contract-v1 .visual-document-canvas > aside small { font-size: 10px; }
+.ui-contract-v1 .visual-document-canvas > div { display: grid; padding: 10px; place-items: start center; overflow: auto; }
+.ui-contract-v1 .visual-document-canvas > div > img { display: block; width: min(100%,480px); height: auto; background: #fff; border: 1px solid var(--ui-contract-border); box-shadow: 0 2px 8px rgb(16 24 40 / 8%); }
 .ui-contract-v1 .visual-document-review-tabs {
   display: flex;
   min-width: 0;
@@ -460,6 +491,10 @@
 .ui-contract-v1 .visual-document-workbench :is(.doc-arch-nav,.doc-arch-kpis,.visual-document-step-nav,.visual-document-context,.visual-document-filters) { display: none; }
 .ui-contract-v1 .visual-document-workbench .doc-arch-header { min-height: 64px; padding: 6px 0; }
 .ui-contract-v1 .visual-document-workbench .doc-arch-header .eyebrow { display: none; }
+@media (min-width: 1025px) {
+  .ui-contract-v1 .visual-document-workbench .visual-document-step-nav { display: flex; height: 36px; min-height: 36px; margin: 0; padding: 0; gap: 6px; align-items: center; background: transparent; border: 0; }
+  .ui-contract-v1 .visual-document-workbench .visual-document-step-nav a { min-height: 30px; padding: 5px 10px; border: 1px solid var(--ui-contract-border); border-radius: 6px; background: #fff; }
+}
 
 /* Administration is one master-detail workspace, never a directory of cards. */
 .ui-contract-v1 .admin-contract-workspace { display: grid; height: calc(100vh - 170px); min-height: 520px; grid-template-columns: 280px minmax(0,1fr); gap: 8px; overflow: hidden; }

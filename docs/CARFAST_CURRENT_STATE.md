@@ -1,9 +1,24 @@
 # CarFast — Estado canónico sanitizado
 
-**Versão:** 2026-08-26.2  
-**Atualizado em:** 2026-08-26, Europe/Lisbon
+**Versão:** 2026-08-27.1 — TRANSITION CHECKPOINT / NO-GO
+
+**Atualizado em:** 2026-08-27, Europe/Lisbon
+
+**Branch:** `codex/ui-contract-transversal-fidelity`
+
+**Base:** `47694c0a5b200133e8d475afcf6ceda853e07351` + alterações do checkpoint
 
 Este documento alinha execução local, Estratégia, Coordenação cloud e Operador cloud. Não contém segredos, credenciais, URLs privadas nem dados pessoais.
+
+## Checkpoint de transição atual
+
+- Este trabalho ainda não foi publicado no Green; PR, merge e deploy permanecem bloqueados.
+- Gate desktop: sete famílias em `1440×731`, zoom 100%, cada uma com MAE full-frame `<2,00%`, sem máscaras.
+- Métricas atuais: Dashboard 2,70%; Tarefas 3,54%; Processos 5,15%; Email 5,66%; Documentação 5,22%; Administração 3,93%; Parceiros 3,80%.
+- Dashboard foi recomposto; Documentação usa preview real da primeira página PDF com RBAC/confidencialidade; Email mantém as três zonas sem faixas desktop redundantes.
+- Ordem fechada: Documentação → Email → Tarefas → Processos → Administração → Dashboard → Parceiros.
+- Tablet/mobile só retomam após validação explícita do desktop.
+- GitHub é a fonte canónica; nenhuma prova pode depender exclusivamente de sessão de browser, `/dev/shm`, worktree ou ficheiro temporário.
 
 ## Green
 

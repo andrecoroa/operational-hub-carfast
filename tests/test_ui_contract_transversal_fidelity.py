@@ -11,28 +11,20 @@ def _read(path: str) -> str:
 
 def _synthetic_preview_pdf() -> bytes:
     """Small valid PDF so browser evidence exercises a real rendered preview."""
-    stream = b"BT /F1 18 Tf 72 760 Td (Documento sintetico) Tj ET"
-    objects = [
-        b"<< /Type /Catalog /Pages 2 0 R >>",
-        b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
-        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>",
-        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
-        b"<< /Length " + str(len(stream)).encode() + b" >>\nstream\n" + stream + b"\nendstream",
-    ]
-    payload = bytearray(b"%PDF-1.4\n")
-    offsets = [0]
-    for index, obj in enumerate(objects, 1):
-        offsets.append(len(payload))
-        payload.extend(f"{index} 0 obj\n".encode() + obj + b"\nendobj\n")
-    xref = len(payload)
-    payload.extend(f"xref\n0 {len(objects) + 1}\n".encode())
-    payload.extend(b"0000000000 65535 f \n")
-    for offset in offsets[1:]:
-        payload.extend(f"{offset:010d} 00000 n \n".encode())
-    payload.extend(
-        f"trailer\n<< /Size {len(objects) + 1} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n".encode()
-    )
-    return bytes(payload)
+    from io import BytesIO
+    from PIL import Image, ImageDraw
+
+    page = Image.new("RGB", (595, 842), "white")
+    draw = ImageDraw.Draw(page)
+    draw.text((52, 58), "AUTO PECAS NORTE", fill="#111827")
+    draw.text((52, 92), "FATURA FT 2026/2841", fill="#374151")
+    draw.line((52, 124, 543, 124), fill="#d1d5db", width=1)
+    draw.text((52, 170), "Cliente: CarFast", fill="#374151")
+    draw.text((52, 206), "Viatura: 37-XQ-91", fill="#374151")
+    draw.text((52, 242), "Total: 1 248,30 EUR", fill="#111827")
+    payload = BytesIO()
+    page.save(payload, format="PDF", resolution=96.0)
+    return payload.getvalue()
 
 
 def test_global_geometry_is_encoded_once_in_the_contract_asset():
@@ -312,6 +304,12 @@ def test_representative_contract_pages_render_with_the_canonical_shell(authentic
                 preview = authenticated_client.get(f"/v2-clean/documents/{document_ids[0]}/file?inline=1")
                 assert preview.status_code == 200
                 (target / "document-preview.pdf").write_bytes(preview.content)
+                page_preview = authenticated_client.get(
+                    f"/v2-clean/documents/{document_ids[0]}/preview-page?page=1"
+                )
+                assert page_preview.status_code == 200
+                assert page_preview.headers["content-type"] == "image/png"
+                (target / "document-preview-page.png").write_bytes(page_preview.content)
         if name == "processes" and capture_only in (None, "processes"):
             db_session.delete(grant)
             db_session.commit()

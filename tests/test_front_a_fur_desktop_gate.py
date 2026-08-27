@@ -41,6 +41,18 @@ def test_fur_headers_and_document_states_are_explicit_and_compact():
     assert "Baixa confiança" in documents
 
 
+def test_fur_geometry_probe_checks_visible_descendants_not_only_body_width():
+    probe = _read("scripts/front_a_geometry_probe.js")
+    assert 'document.querySelectorAll("body *")' in probe
+    assert "getBoundingClientRect" in probe
+    assert "hasClippingAncestor" in probe
+    assert "uncontainedDescendantOverflow" in probe
+    assert "actionBar" in probe
+    assert "fullyVisible" in probe
+    assert "isFullyPaintable" in probe
+    assert "actionControls.every" in probe
+
+
 def test_fur_email_and_documents_preserve_queue_until_explicit_selection():
     email_js = _read("app/static/js/email.js")
     documents = _read("app/templates/clean_documentation_triage.html")

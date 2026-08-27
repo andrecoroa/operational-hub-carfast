@@ -28253,7 +28253,9 @@ body:has(.email-preview-dialog[open]) { overflow: hidden; }
 .email-attachment-file { min-height:0; background:#dfe5ec; }
 .email-attachment-file iframe { width:100%; height:100%; border:0; background:#fff; }
 .email-attachment-form { overflow:auto; padding:18px; background:#f7f9fc; }
-.email-attachment-form footer { display:flex; gap:8px; align-items:center; }
+.email-attachment-form footer { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; align-items:center; }
+.email-attachment-form footer > button { grid-column:1/-1; }
+.email-attachment-form footer > :is(button,.button-link) { width:100%; min-width:0; white-space:nowrap; text-align:center; }
 .email-access-panel { padding:12px; border:1px solid #d8e0ea; background:#fff; }
 .email-access-panel > summary { cursor:pointer; font-weight:800; }
 .email-access-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(430px,1fr)); gap:12px; margin-top:12px; }

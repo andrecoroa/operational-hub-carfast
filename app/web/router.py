@@ -13874,6 +13874,39 @@ def clean_documentation_triage(
             (row for row in rows if row["document"].id == selected),
             None,
         )
+        action_compatibility = {
+            "save": {"allowed": False, "reason": "document_required"},
+            "validate": {"allowed": False, "reason": "document_required"},
+            "archive": {"allowed": False, "reason": "document_required"},
+        }
+        if selected_row:
+            selected_document = selected_row["document"]
+            selected_state = next(
+                (
+                    state
+                    for document, state in records
+                    if document.id == selected_document.id
+                ),
+                None,
+            )
+            if selected_state is not None:
+                for ui_action, contract_action in {
+                    "save": "classify",
+                    "validate": "validate",
+                    "archive": "archive",
+                }.items():
+                    allowed, reason_code = document_action_compatibility(
+                        selected_document,
+                        selected_state,
+                        action=contract_action,
+                        invoice_nature=selected_state.invoice_nature or "",
+                        plate=selected_document.plate or "",
+                        saved_service_count=service_count(db, selected_document.id),
+                    )
+                    action_compatibility[ui_action] = {
+                        "allowed": allowed,
+                        "reason": reason_code,
+                    }
         document_view = view if view in {"queue", "preview", "validation"} else "queue"
         document_return_context = return_context if return_context in {"queue", "preview", "validation"} else ""
         return templates.TemplateResponse(
@@ -13882,6 +13915,7 @@ def clean_documentation_triage(
             {
                 "rows": rows,
                 "selected_row": selected_row,
+                "action_compatibility": action_compatibility,
                 "document_view": document_view,
                 "document_return_context": document_return_context,
                 "foundation_ui_enabled": settings.visual_foundation_enabled,

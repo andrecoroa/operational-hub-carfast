@@ -694,6 +694,17 @@ def test_triage_uses_server_contract_and_exposes_separate_save_validate_archive(
     monkeypatch.setattr(settings, "visual_foundation_enabled", True)
     document = _triage_document(801)
     db_session.add(document)
+    db_session.flush()
+    db_session.add(
+        DocumentWorkflowState(
+            document_id=document.id,
+            ingestion_status="completed",
+            association_status="unassociated",
+            extraction_status="not_requested",
+            validation_status="pending",
+            destination_status="triage",
+        )
+    )
     db_session.commit()
     calls: list[str] = []
 
@@ -711,13 +722,89 @@ def test_triage_uses_server_contract_and_exposes_separate_save_validate_archive(
         follow_redirects=False,
     )
 
-    assert 'name="action" value="save">Guardar' in page.text
-    assert 'name="action" value="validate">Validar' in page.text
-    assert 'name="action" value="archive">Arquivar' in page.text
-    assert calls == ["archive"]
+    assert 'name="action" value="save"' in page.text
+    assert 'name="action" value="validate"' in page.text
+    assert 'name="action" value="archive"' in page.text
+    assert "Guardar" in page.text
+    assert "Validar" in page.text
+    assert "Arquivar" in page.text
+    assert page.text.count('disabled title="contract_blocked"') == 3
+    assert calls == ["classify", "validate", "archive", "archive"]
     assert "error=contract_blocked" in response.headers["location"]
     db_session.refresh(document)
     assert document.archived is False
+
+
+def test_triage_positive_sequence_is_save_then_validate_then_archive(
+    authenticated_client, db_session
+):
+    vehicle = Vehicle(plate="SQ-26-AA", active=True)
+    db_session.add(vehicle)
+    db_session.flush()
+    document = Document(
+        title="Documento sequencial",
+        document_type="other_document",
+        classification="general",
+        source="upload",
+        original_name="sequencial.pdf",
+        file_name="sequencial.pdf",
+        storage_provider="local",
+        storage_path="sequencial.pdf",
+        status="received",
+        archived=False,
+        vehicle_id=vehicle.id,
+        plate=vehicle.plate,
+    )
+    db_session.add(document)
+    db_session.flush()
+    db_session.add(
+        DocumentWorkflowState(
+            document_id=document.id,
+            ingestion_status="completed",
+            association_status="associated",
+            extraction_status="not_requested",
+            validation_status="pending",
+            destination_status="triage",
+        )
+    )
+    db_session.commit()
+
+    saved = authenticated_client.post(
+        f"/v2-clean/documentation/triage/{document.id}",
+        data={"destination": "imports", "action": "save"},
+        follow_redirects=False,
+    )
+    db_session.expire_all()
+    assert "saved=1" in saved.headers["location"]
+    assert db_session.get(Document, document.id).archived is False
+    state = db_session.scalar(
+        select(DocumentWorkflowState).where(DocumentWorkflowState.document_id == document.id)
+    )
+    assert state.validation_status == "pending"
+
+    validated = authenticated_client.post(
+        f"/v2-clean/documentation/triage/{document.id}",
+        data={"destination": "imports", "action": "validate"},
+        follow_redirects=False,
+    )
+    db_session.expire_all()
+    assert "saved=1" in validated.headers["location"]
+    state = db_session.scalar(
+        select(DocumentWorkflowState).where(DocumentWorkflowState.document_id == document.id)
+    )
+    assert state.validation_status == "human_validated"
+    assert db_session.get(Document, document.id).archived is False
+
+    archived = authenticated_client.post(
+        f"/v2-clean/documentation/triage/{document.id}",
+        data={"destination": "archive", "action": "archive"},
+        follow_redirects=False,
+    )
+    db_session.expire_all()
+    stored = db_session.get(Document, document.id)
+    assert "saved=1" in archived.headers["location"]
+    assert stored.archived is True
+    assert stored.status == "archived"
 
 
 def test_triage_rejects_invalid_invoice_nature_without_server_error(

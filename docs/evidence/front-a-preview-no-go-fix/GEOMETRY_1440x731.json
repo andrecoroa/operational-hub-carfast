@@ -1,20 +1,182 @@
 {
-  "viewport": {"width": 1440, "height": 731},
-  "email": {
-    "preview": {"left": 453, "right": 1400, "top": 204, "bottom": 634},
-    "action_bar": {"top": 592, "right": 1400, "bottom": 634},
-    "uncontained_descendant_overflow": 0
+  "email-list": {
+    "actionBar": null,
+    "uncontainedDescendantOverflow": [],
+    "viewport": {
+      "height": 731,
+      "width": 1440
+    },
+    "document": {
+      "scrollHeight": 731,
+      "scrollWidth": 1440
+    }
   },
-  "documentation": {
-    "queue_items": 3,
-    "actions": ["Guardar", "Validar", "Arquivar"],
-    "uncontained_descendant_overflow": 0
+  "email-preview": {
+    "actionBar": {
+      "bottom": 730,
+      "controls": [
+        {
+          "bottom": 724,
+          "fullyVisible": true,
+          "label": "Guardar triagem",
+          "top": 694
+        },
+        {
+          "bottom": 724,
+          "fullyVisible": true,
+          "label": "Validar classificação",
+          "top": 694
+        },
+        {
+          "bottom": 724,
+          "fullyVisible": true,
+          "label": "Arquivar",
+          "top": 694
+        },
+        {
+          "bottom": 724,
+          "fullyVisible": true,
+          "label": "Responder",
+          "top": 694
+        },
+        {
+          "bottom": 724,
+          "fullyVisible": true,
+          "label": "Criar tarefa",
+          "top": 694
+        }
+      ],
+      "fullyVisible": true,
+      "left": 493,
+      "right": 1415,
+      "top": 688
+    },
+    "uncontainedDescendantOverflow": [],
+    "viewport": {
+      "height": 731,
+      "width": 1440
+    },
+    "document": {
+      "scrollHeight": 731,
+      "scrollWidth": 1440
+    }
   },
-  "administration": {
-    "body_scroll_height": 731,
-    "master_detail_bottom": 731,
-    "detail_scroll_is_internal": true,
-    "uncontained_descendant_overflow": 0
+  "documentation-list": {
+    "actionBar": null,
+    "uncontainedDescendantOverflow": [],
+    "viewport": {
+      "height": 731,
+      "width": 1440
+    },
+    "document": {
+      "scrollHeight": 731,
+      "scrollWidth": 1440
+    }
   },
-  "overflow_method": "All visible descendants were measured by getBoundingClientRect. Elements clipped by an explicit overflow auto/scroll/hidden ancestor were classified as contained; any remaining left/right viewport breach fails the gate."
+  "documentation-preview": {
+    "actionBar": {
+      "bottom": 666,
+      "controls": [
+        {
+          "bottom": 666,
+          "fullyVisible": true,
+          "label": "Ver auditoria",
+          "top": 636
+        },
+        {
+          "bottom": 666,
+          "fullyVisible": true,
+          "label": "Guardar",
+          "top": 636
+        },
+        {
+          "bottom": 666,
+          "fullyVisible": true,
+          "label": "Validar",
+          "top": 636
+        },
+        {
+          "bottom": 666,
+          "fullyVisible": true,
+          "label": "Arquivar",
+          "top": 636
+        }
+      ],
+      "fullyVisible": true,
+      "left": 1070,
+      "right": 1392,
+      "top": 631
+    },
+    "uncontainedDescendantOverflow": [],
+    "viewport": {
+      "height": 731,
+      "width": 1440
+    },
+    "document": {
+      "scrollHeight": 731,
+      "scrollWidth": 1440
+    }
+  },
+  "administration-users": {
+    "actionBar": null,
+    "uncontainedDescendantOverflow": [],
+    "viewport": {
+      "height": 731,
+      "width": 1440
+    },
+    "document": {
+      "scrollHeight": 731,
+      "scrollWidth": 1440
+    }
+  },
+  "processes": {
+    "actionBar": null,
+    "uncontainedDescendantOverflow": [],
+    "viewport": {
+      "height": 731,
+      "width": 1440
+    },
+    "document": {
+      "scrollHeight": 731,
+      "scrollWidth": 1440
+    }
+  },
+  "tasks": {
+    "actionBar": null,
+    "uncontainedDescendantOverflow": [],
+    "viewport": {
+      "height": 731,
+      "width": 1440
+    },
+    "document": {
+      "scrollHeight": 731,
+      "scrollWidth": 1440
+    }
+  },
+  "email-attachment-preview": {
+    "dialog": {"left": 130, "right": 1310, "top": 58, "bottom": 673, "fullyVisible": true},
+    "preview": {"left": 130, "right": 950, "top": 141, "bottom": 668, "contentVisible": true},
+    "treatment": {"left": 950, "right": 1310, "top": 141, "bottom": 668, "fullyVisible": true},
+    "controls": [
+      {"label": "Guardar classificação", "left": 968, "right": 1277, "top": 576, "bottom": 611, "fullyVisible": true, "textFits": true},
+      {"label": "Abrir ficheiro", "left": 968, "right": 1119, "top": 620, "bottom": 654, "fullyVisible": true, "textFits": true},
+      {"label": "Descarregar", "left": 1127, "right": 1277, "top": 620, "bottom": 654, "fullyVisible": true, "textFits": true}
+    ],
+    "returnContextPreserved": true,
+    "uncontainedDescendantOverflow": [],
+    "viewport": {"height": 731, "width": 1440},
+    "document": {"scrollHeight": 731, "scrollWidth": 1440}
+  },
+  "workshop": {
+    "actionBar": null,
+    "uncontainedDescendantOverflow": [],
+    "viewport": {
+      "height": 731,
+      "width": 1440
+    },
+    "document": {
+      "scrollHeight": 731,
+      "scrollWidth": 1440
+    }
+  }
 }

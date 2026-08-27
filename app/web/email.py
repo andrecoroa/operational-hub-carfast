@@ -1647,6 +1647,7 @@ def email_message_body(request: Request, message_id: int, view: str = "html"):
 def email_triage(
     request: Request,
     thread_id: int,
+    action: str = Form("save"),
     content_type: str = Form(""),
     nature: str = Form(""),
     document_type: str = Form(""),
@@ -1666,6 +1667,11 @@ def email_triage(
     if not auth:
         return RedirectResponse(f"/v2-clean/email/{thread_id}?error=forbidden", status_code=303)
     user_id, permissions = auth
+    clean_action = action.strip().lower()
+    if clean_action not in {"save", "validate"}:
+        return RedirectResponse(
+            f"/v2-clean/email/{thread_id}?error=action_not_supported", status_code=303
+        )
     if (
         content_type
         and content_type not in CONTENT_TYPES
@@ -1730,6 +1736,13 @@ def email_triage(
                     f"/v2-clean/email/{thread_id}?error=invalid_hierarchy",
                     status_code=303,
                 )
+        if clean_action == "validate" and (
+            not hierarchy_selection or hierarchy_selection.status != "classified"
+        ):
+            return RedirectResponse(
+                f"/v2-clean/email/{thread_id}?error=missing_classification",
+                status_code=303,
+            )
         assignee = (
             db.get(User, int(assigned_to_id)) if assigned_to_id.isdigit() else None
         )
@@ -1888,12 +1901,17 @@ def email_triage(
                     module="email",
                     origin_url=str(request.url),
                 )
-        thread.status = "in_progress" if thread.status == "triage" else thread.status
+        if clean_action == "validate" and thread.status == "triage":
+            thread.status = "in_progress"
         db.add(
             EmailAuditEvent(
                 thread_id=thread.id,
                 user_id=user_id,
-                action="triage_saved",
+                action=(
+                    "classification_validated"
+                    if clean_action == "validate"
+                    else "triage_saved"
+                ),
                 details_json={
                     "content_type": thread.content_type,
                     "nature": thread.nature,
@@ -1907,7 +1925,9 @@ def email_triage(
             )
         )
         db.commit()
-    return RedirectResponse(f"/v2-clean/email/{thread_id}?saved=triage", status_code=303)
+    return RedirectResponse(
+        f"/v2-clean/email/{thread_id}?saved={clean_action}", status_code=303
+    )
 
 
 @email_router.get(
@@ -1986,6 +2006,24 @@ def email_attachment_file(request: Request, attachment_id: int, download: bool =
             return HTMLResponse(
                 "Este formato não tem pré-visualização segura. Usa a ação Descarregar.",
                 status_code=415,
+            )
+
+        if media_type.startswith("text/") and not download:
+            try:
+                text_content = path.read_text(encoding="utf-8")
+            except UnicodeDecodeError:
+                text_content = path.read_text(encoding="utf-8", errors="replace")
+            return HTMLResponse(
+                "<!doctype html><html><head><meta charset='utf-8'>"
+                "<style>body{margin:18px;color:#13213a;font:14px/1.55 Arial,sans-serif;}"
+                "pre{margin:0;white-space:pre-wrap;overflow-wrap:anywhere}</style></head>"
+                f"<body><pre>{escape(text_content)}</pre></body></html>",
+                headers={
+                    "Content-Security-Policy": (
+                        "default-src 'none'; style-src 'unsafe-inline'; "
+                        "base-uri 'none'; form-action 'none'"
+                    )
+                },
             )
 
         return FileResponse(
@@ -2079,6 +2117,27 @@ def email_status(request: Request, thread_id: int, status: str = Form(...)):
     user_id, _ = auth
     with SessionLocal() as db:
         thread = db.get(EmailThread, thread_id)
+        if thread and status == "archived":
+            latest_classification_action = db.scalar(
+                select(EmailAuditEvent.action)
+                .where(
+                    EmailAuditEvent.thread_id == thread.id,
+                    EmailAuditEvent.action.in_(
+                        {"classification_validated", "triage_saved"}
+                    ),
+                )
+                .order_by(EmailAuditEvent.id.desc())
+                .limit(1)
+            )
+            if (
+                thread.classification_status != "classified"
+                or thread.status == "triage"
+                or latest_classification_action != "classification_validated"
+            ):
+                return RedirectResponse(
+                    f"/v2-clean/email/{thread_id}?error=invalid_transition",
+                    status_code=303,
+                )
         action = (
             "manage_sla"
             if status in {"waiting_reply", "resolved"}

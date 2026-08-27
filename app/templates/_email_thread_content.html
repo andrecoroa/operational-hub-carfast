@@ -2,7 +2,7 @@
   <header class="email-modal-header">
     <div class="email-thread-identity"><div class="email-title-line"><span class="email-thread-reference">{{ thread_reference }}</span><span class="email-badge status-{{ thread.status }}">{{ status_labels.get(thread.status, thread.status) }}</span></div><h2>{{ thread.subject }}</h2></div>
     <dl class="email-header-facts"><div><dt>Caixa</dt><dd>{{ channel.name }}</dd></div><div><dt>SLA</dt><dd><span class="clean-sla-state is-{{ email_sla.overall }}">{{ {'within':'Dentro do prazo','warning':'A terminar','overdue':'Ultrapassado','completed':'Concluído','paused':'Pausado','not_configured':'Sem SLA'}.get(email_sla.overall, 'Sem SLA') }}</span>{% if thread.resolution_due_at %}<small>{{ (thread.resolution_due_at|lisbon_datetime).strftime('%d/%m · %H:%M') }}</small>{% endif %}</dd></div></dl>
-    <div class="email-header-actions">{% if can_alter and has_unread %}<form method="post" action="/v2-clean/email/{{ thread.id }}/read"><button type="submit" class="secondary">Marcar como lido</button></form>{% elif not has_unread %}<span class="email-read-state">✓ Lido</span>{% endif %}{% if embedded %}<a class="button-link secondary-link email-open-full" href="/v2-clean/email/{{ thread.id }}">Abrir página completa</a><button type="button" class="secondary" data-email-modal-close>Fechar preview</button><button type="button" class="email-modal-close" data-email-modal-close aria-label="Fechar preview">×</button>{% else %}<a class="button-link secondary-link" href="{{ return_context or '/v2-clean/email' }}">Voltar</a>{% endif %}</div>
+    <div class="email-header-actions">{% if can_alter and has_unread %}<form method="post" action="/v2-clean/email/{{ thread.id }}/read"><button type="submit" class="secondary">Marcar como lido</button></form>{% elif not has_unread %}<span class="email-read-state">✓ Lido</span>{% endif %}{% if embedded %}<a class="button-link secondary-link email-open-full" href="/v2-clean/email/{{ thread.id }}">Abrir página completa</a><button type="button" class="secondary" data-email-modal-close>Fechar preview</button>{% else %}<a class="button-link secondary-link" href="{{ return_context or '/v2-clean/email' }}">Voltar</a>{% endif %}</div>
   </header>
 
   <div class="email-reader-grid">
@@ -49,11 +49,11 @@
   </div>
 
   <footer class="email-modal-footer">
+    <button type="submit" form="email-triage-{{ thread.id }}" name="action" value="save" class="secondary email-save-triage" {% if not can_triage %}disabled{% endif %}>Guardar triagem</button>
+    <button type="submit" form="email-triage-{{ thread.id }}" name="action" value="validate" class="email-validate-classification" {% if not can_triage %}disabled{% endif %}>Validar classificação</button>
     {% if can_alter %}<form method="post" action="/v2-clean/email/{{ thread.id }}/status"><input type="hidden" name="status" value="archived"><button type="submit" class="secondary {% if thread.status == 'archived' %}is-complete{% endif %}">Arquivar</button></form>{% else %}<button disabled>Arquivar</button>{% endif %}
-    {% if can_create_task and not thread.task_id %}<form method="post" action="/v2-clean/email/{{ thread.id }}/task"><button type="submit" class="secondary">Criar tarefa</button></form>{% elif thread.task_id %}<a class="button-link secondary-link is-complete" href="/v2-clean/tasks?open_task={{ thread.task_id }}">Tarefa #{{ thread.task_id }}</a>{% else %}<button disabled>Criar tarefa</button>{% endif %}
-    <button type="submit" form="email-triage-{{ thread.id }}" class="email-save-triage {% if thread.status == 'triage' %}is-pending{% else %}is-complete{% endif %}" {% if not can_triage %}disabled{% endif %}>Guardar triagem</button>
     <button type="button" class="secondary" data-email-open-composer {% if not can_reply %}disabled{% endif %}>Responder</button>
-    {% if can_alter %}<form method="post" action="/v2-clean/email/{{ thread.id }}/status"><input type="hidden" name="status" value="resolved"><button type="submit" class="email-conclude {% if thread.status == 'resolved' %}is-complete{% endif %}">Concluir triagem</button></form>{% else %}<button disabled>Concluir triagem</button>{% endif %}
+    {% if can_create_task and not thread.task_id %}<form method="post" action="/v2-clean/email/{{ thread.id }}/task"><button type="submit" class="secondary">Criar tarefa</button></form>{% elif thread.task_id %}<a class="button-link secondary-link is-complete" href="/v2-clean/tasks?open_task={{ thread.task_id }}">Tarefa #{{ thread.task_id }}</a>{% else %}<button disabled>Criar tarefa</button>{% endif %}
   </footer>
   <dialog class="email-attachment-dialog" data-email-attachment-dialog><div class="email-preview-loading">A abrir anexo…</div></dialog>
 </section>

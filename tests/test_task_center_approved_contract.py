@@ -59,6 +59,8 @@ def test_approved_preview_is_inline_and_has_at_most_four_rbac_actions() -> None:
     assert len(re.findall(r"<button[^>]+data-task-preview-action=", TEMPLATE)) <= 4
     assert "task_update_allowed_by_id" in TEMPLATE
     assert "task_close_allowed_by_id" in TEMPLATE
+    assert "data-preview-origin" in TEMPLATE
+    assert "data-preview-relation" in TEMPLATE
 
 
 def test_approved_selection_preserves_return_context() -> None:
@@ -66,6 +68,9 @@ def test_approved_selection_preserves_return_context() -> None:
     assert 'data-return-context' in TEMPLATE
     assert 'history.replaceState' in TEMPLATE
     assert 'sessionStorage' in TEMPLATE
+    assert 'data-task-scroll' in TEMPLATE
+    assert 'scrollTop' in TEMPLATE
+    assert 'carfast.taskScroll:' in TEMPLATE
 
 
 def test_server_side_scope_is_shared_by_list_and_counters() -> None:
@@ -85,6 +90,8 @@ def test_initial_default_excludes_closed_and_uses_documentation_focus(
             Task(title="Documento ativo aprovado", task_type="operational_task", category="Documentação", status="new", priority="normal", assigned_to_id=actor.id),
             Task(title="Oficina fora do foco inicial", task_type="workshop_task", category="Oficina", status="new", priority="normal"),
             Task(title="Documento fechado excluído", task_type="operational_task", category="Documentação", status="closed", priority="normal"),
+            Task(title="Documento cancelado excluído", task_type="operational_task", category="Documentação", status="cancelled", priority="normal"),
+            Task(title="Documento sem ação excluído", task_type="operational_task", category="Documentação", status="no_action_needed", priority="normal"),
         ]
     )
     db_session.commit()
@@ -95,6 +102,8 @@ def test_initial_default_excludes_closed_and_uses_documentation_focus(
     assert "Documento ativo aprovado" in page.text
     assert "Oficina fora do foco inicial" not in page.text
     assert "Documento fechado excluído" not in page.text
+    assert "Documento cancelado excluído" not in page.text
+    assert "Documento sem ação excluído" not in page.text
     assert 'value="documentacao" checked' in page.text
     assert 'value="open" selected' in page.text
 
@@ -221,3 +230,42 @@ def test_note_action_visibility_uses_distinct_server_respond_scope(
 
     assert 'data-can-update="1"' in row
     assert 'data-can-respond="0"' in row
+
+
+def test_origin_and_existing_relations_are_exposed_only_in_preview(
+    authenticated_client, db_session, monkeypatch
+) -> None:
+    monkeypatch.setattr(task_router.settings, "visual_foundation_enabled", True)
+    actor = db_session.scalar(select(User).where(User.email == "admin.tests@carfast.local"))
+    parent = Task(title="Tarefa mãe", task_type="operational_task", category="Documentação", status="new", priority="normal", assigned_to_id=actor.id)
+    db_session.add(parent)
+    db_session.flush()
+    child = Task(title="Subtarefa relacionada", task_type="operational_task", category="Documentação", status="new", priority="normal", parent_task_id=parent.id, assigned_to_id=actor.id)
+    db_session.add(child)
+    db_session.commit()
+
+    page = authenticated_client.get("/v2-clean/tasks?workspace=all&status=open&category=all")
+    row = re.search(r'<tr[^>]+data-title="Subtarefa relacionada"[^>]+>', page.text).group(0)
+
+    assert 'data-origin="Subtarefa"' in row
+    assert f'data-relation="Tarefa mãe CF-{parent.id:05d}"' in row
+    assert "Origem" not in re.search(r'<thead>.*?</thead>', page.text, re.S).group(0)
+
+
+def test_creation_options_and_post_share_the_same_capability_resolver() -> None:
+    assert "TaskCreationCapabilityResolver(db).options(current_user)" in ROUTER
+    service = (ROOT / "app/services/task_templates.py").read_text(encoding="utf-8")
+    assert "TaskCreationCapabilityResolver(db).require(user, version)" in service
+    assert 'data-task-create-future disabled' in TEMPLATE
+    assert '?create=1#new-task' not in TEMPLATE
+
+
+def test_guardrails_keep_owner_executor_support_and_sla_concepts_distinct() -> None:
+    assert "task_assignment_labels" in ROUTER
+    assert "TaskHelpRequest" in ROUTER
+    assert "task_sla_by_id = {task.id: sla_snapshot(task)" in ROUTER
+    assert "data-preview-owner" in TEMPLATE
+    assert "data-preview-due" in TEMPLATE
+    assert "task_sla_labels_by_id" in ROUTER
+    assert "data-preview-sla" in TEMPLATE
+    assert 'data-sla="{{ task_sla_labels_by_id.get' in TEMPLATE

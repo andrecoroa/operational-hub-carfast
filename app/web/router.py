@@ -2288,6 +2288,28 @@ PRIORITY_LABELS = dict(PRIORITIES)
 PRIORITY_DISPLAY_LABELS = {**PRIORITY_LABELS, "low": "Baixa"}
 
 TASK_ARCHIVE_STATUSES = {"closed", "cancelled", "no_action_needed"}
+
+
+def task_origin_label(task: Task) -> str:
+    """Describe an existing task origin without inventing workflow state."""
+    if task.recurrence_created_from_task_id or task.recurrence_enabled:
+        return "Recorrente"
+    if task.process_instance_id:
+        return "Tarefa do processo"
+    if task.parent_task_id:
+        return "Subtarefa"
+    normalized = " ".join(
+        value.strip().lower()
+        for value in (task.task_type or "", task.source or "")
+        if value and value.strip()
+    )
+    if any(token in normalized for token in ("incident", "problem", "sinistro")):
+        return "Incidente"
+    if any(token in normalized for token in ("information", "communication", "informacao", "informação")):
+        return "Informação"
+    if any(token in normalized for token in ("request", "pedido", "service_desk")):
+        return "Pedido"
+    return "Tarefa"
 TASK_PLANNED_STATUSES = {"planned"}
 TASK_RESPONSIBLE_ONLY_STATUSES = {"in_execution", "closed", "cancelled", "no_action_needed"}
 TASK_ADMIN_ONLY_ASSIGNMENT_EMAILS = {"andrecoroa@daccordinvest.pt"}
@@ -5187,11 +5209,34 @@ def clean_tasks_center(
             for category_id in category_ids
         }
         task_sla_by_id = {task.id: sla_snapshot(task) for task in tasks}
+        task_sla_labels_by_id = {
+            task_id: {
+                "overdue": "SLA ultrapassado",
+                "warning": "SLA em risco",
+                "paused": "SLA pausado",
+                "within": "SLA dentro do prazo",
+                "completed": "SLA cumprido",
+                "not_configured": "SLA não configurado",
+            }[snapshot.overall]
+            for task_id, snapshot in task_sla_by_id.items()
+        }
         task_assignment_labels = {
             task.id: assignment_label(
                 state=task.assignment_state,
                 user_name=(users_by_id[task.assigned_to_id].name if task.assigned_to_id in users_by_id else None),
                 team_name=(teams_by_id[task.team_id].name if task.team_id in teams_by_id else None),
+            )
+            for task in tasks
+        }
+        task_origin_labels = {task.id: task_origin_label(task) for task in tasks}
+        task_relation_labels = {
+            task.id: " · ".join(
+                part
+                for part in (
+                    f"Processo #{task.process_instance_id}" if task.process_instance_id else "",
+                    f"Tarefa mãe CF-{task.parent_task_id:05d}" if task.parent_task_id else "",
+                )
+                if part
             )
             for task in tasks
         }
@@ -5271,7 +5316,10 @@ def clean_tasks_center(
                 "eligible_user_ids_by_category": eligible_user_ids_by_category,
                 "eligible_team_ids_by_category": eligible_team_ids_by_category,
                 "task_sla_by_id": task_sla_by_id,
+                "task_sla_labels_by_id": task_sla_labels_by_id,
                 "task_assignment_labels": task_assignment_labels,
+                "task_origin_labels": task_origin_labels,
+                "task_relation_labels": task_relation_labels,
                 "participants_by_task": participants_by_task,
                 "comments_by_task": comments_by_task,
                 "history_by_task": history_by_task,

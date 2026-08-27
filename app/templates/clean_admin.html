@@ -14,14 +14,13 @@
         </div>
         <span class="pill muted-pill">{{ current_admin_user.email if current_admin_user else "" }}</span>
       </div>
-      {% if admin_section not in ['operations', 'organization', 'settings', 'evolution', 'audit', 'integrations', 'security'] %}
-        {% include "_clean_admin_directory.html" %}
-      {% endif %}
     </header>
 
-    {% if admin_section in ['operations', 'organization', 'settings', 'evolution', 'audit', 'integrations', 'security'] %}
-      {% include "_clean_admin_residual_nav.html" %}
-    {% endif %}
+    <div class="clean-admin-master-detail clean-card-wide">
+      {% include "_clean_admin_directory.html" %}
+      <section class="clean-admin-detail" aria-label="Configuração do domínio selecionado">
+    {% set admin_detail_titles = {'overview':'Setup administrativo','setup':'Setup','organization':'Organização','users':'Utilizadores','roles':'Perfis e permissões','settings':'Parametrizações','work_classification':'Categorias e Email','workshop_models':'Modelos','integrations':'Integrações','security':'Segurança e auditoria','audit':'Segurança e auditoria'} %}
+    <header class="clean-admin-detail-heading"><p class="eyebrow">Domínio selecionado</p><h1>{{ admin_detail_titles.get(admin_section, 'Configuração') }}</h1></header>
 
     {% if request.query_params.get("error") %}
       <div class="alert clean-card-wide">Não foi possível concluir a operação: {{ request.query_params.get("error") }}.</div>
@@ -681,6 +680,8 @@ DEPOIS
         </article>
       </section>
     {% endif %}
+      </section>
+    </div>
   </main>
 </div>
 <script>

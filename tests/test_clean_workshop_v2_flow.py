@@ -20,6 +20,35 @@ from app.web.router import clean_workshop_technical_reading_rows
 from app.services.users import create_user
 
 
+def test_workshop_web_actions_reject_forgery_and_adverse_order_and_audit_save(authenticated_client, db_session):
+    process = WorkshopPhasedProcess(
+        public_reference="OF-TEST-GATE",
+        process_type="general",
+        title="Gate fail closed",
+        creation_mode="synthetic_test",
+        status="active",
+        plate_snapshot="ZZ-99-ZZ",
+        current_phase_code="validacao",
+        priority="normal",
+        origin="v2_clean",
+        metadata_json={},
+    )
+    db_session.add(process)
+    db_session.flush()
+    db_session.add(WorkshopPhasedProcessPhase(process_id=process.id, phase_code="validacao", name="Validação", status="in_progress", sort_order=2, data_json={}))
+    db_session.commit()
+
+    forged = authenticated_client.post("/v2-clean/workshop/validacao/save", data={"process_id": process.id, "action": "forged"}, follow_redirects=False)
+    adverse = authenticated_client.post("/v2-clean/workshop/diagnostico/save", data={"process_id": process.id, "action": "advance"}, follow_redirects=False)
+    saved = authenticated_client.post("/v2-clean/workshop/validacao/save", data={"process_id": process.id, "action": "save"}, follow_redirects=False)
+
+    assert "error=invalid_action" in forged.headers["location"]
+    assert "error=invalid_phase_order" in adverse.headers["location"]
+    assert saved.status_code == 303
+    audit = db_session.scalar(select(AuditLog).where(AuditLog.entity_id == str(process.id), AuditLog.action == "workshop.phase.saved"))
+    assert audit is not None
+
+
 def test_rentway_fleet_update_preserves_workshop_mileage(db_session, tmp_path):
     vehicle = Vehicle(
         plate="KM-11-AA",

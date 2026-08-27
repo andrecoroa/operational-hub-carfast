@@ -59,9 +59,15 @@ def test_fur_workshop_first_fold_contract_is_compact_and_keeps_one_primary_actio
 
 def test_fur_admin_uses_one_local_navigation_per_route_family():
     template = _read("app/templates/clean_admin.html")
+    directory = _read("app/templates/_clean_admin_directory.html")
     assert '_supplier_context_nav.html' not in template
-    assert "admin_section not in ['operations', 'organization', 'settings', 'evolution', 'audit', 'integrations', 'security']" in template
-    assert template.count('_clean_admin_residual_nav.html') == 1
+    assert template.count('_clean_admin_directory.html') == 1
+    assert '_clean_admin_residual_nav.html' not in template
+    assert 'clean-admin-master-detail' in template
+    for label in ('Setup', 'Organização', 'Utilizadores', 'Perfis / Permissões', 'Categorias', 'Email', 'Modelos', 'Integrações', 'Segurança / Auditoria'):
+        assert label in directory
+    assert '/v2-clean/tasks' not in directory
+    assert '/v2-clean/processes' not in directory
 
 
 def test_fur_does_not_enable_external_effects_or_client_only_authority():

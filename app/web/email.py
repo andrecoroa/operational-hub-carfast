@@ -936,50 +936,36 @@ def email_inbox(
                 search_terms.append(EmailThread.id == int(reference_tail))
             query = query.where(or_(*search_terms))
         rows = db.execute(query.order_by(EmailThread.last_message_at.desc()).limit(100)).all()
-        counts = dict(
-            db.execute(
-                select(EmailThread.status, func.count())
-                .where(_email_visibility_filter(db, user_id, channel_access))
-                .group_by(EmailThread.status)
-            ).all()
-        )
-        visible = _email_visibility_filter(db, user_id, channel_access)
-        operational_counters = {
-            "triage": db.scalar(
-                select(func.count()).select_from(EmailThread).where(
-                    visible, EmailThread.status == "triage"
-                )
-            )
-            or 0,
-            "mine": db.scalar(
-                select(func.count()).select_from(EmailThread).where(
-                    visible, EmailThread.assigned_to_id == user_id
-                )
-            )
-            or 0,
-            "unassigned": db.scalar(
-                select(func.count()).select_from(EmailThread).where(
-                    visible,
-                    EmailThread.assigned_to_id.is_(None),
-                    EmailThread.executor_team_id.is_(None),
-                )
-            )
-            or 0,
-            "overdue": db.scalar(
-                select(func.count()).select_from(EmailThread).where(
-                    visible,
-                    EmailThread.resolution_due_at < now,
-                    EmailThread.status.not_in({"resolved", "archived"}),
-                )
-            )
-            or 0,
-            "waiting": db.scalar(
-                select(func.count()).select_from(EmailThread).where(
-                    visible, EmailThread.status == "waiting_reply"
-                )
-            )
-            or 0,
-        }
+
+        def facet_count(*, facet_status: str | None = None, facet_responsible: str | None = None, facet_due: str | None = None) -> int:
+            statement = select(func.count()).select_from(EmailThread).join(EmailChannel, EmailChannel.id == EmailThread.channel_id).where(_email_visibility_filter(db, user_id, channel_access))
+            effective_status = selected_status if facet_status is None else facet_status
+            effective_responsible = responsible if facet_responsible is None else facet_responsible
+            effective_due = due if facet_due is None else facet_due
+            if effective_status != "all": statement = statement.where(EmailThread.status == effective_status)
+            if channel: statement = statement.where(EmailChannel.code == channel)
+            if effective_responsible == "mine": statement = statement.where(EmailThread.assigned_to_id == user_id)
+            elif effective_responsible == "unassigned": statement = statement.where(EmailThread.assigned_to_id.is_(None), EmailThread.executor_team_id.is_(None))
+            elif effective_responsible.startswith("team:") and effective_responsible[5:].isdigit(): statement = statement.where(EmailThread.executor_team_id == int(effective_responsible[5:]))
+            elif effective_responsible.isdigit(): statement = statement.where(EmailThread.assigned_to_id == int(effective_responsible))
+            if effective_due == "overdue": statement = statement.where(EmailThread.resolution_due_at < now, EmailThread.status.not_in({"resolved", "archived"}))
+            elif effective_due == "today":
+                tomorrow = now + timedelta(days=1)
+                statement = statement.where(EmailThread.resolution_due_at >= now.replace(hour=0, minute=0, second=0, microsecond=0), EmailThread.resolution_due_at < tomorrow.replace(hour=0, minute=0, second=0, microsecond=0))
+            elif effective_due == "no_sla": statement = statement.where(EmailThread.resolution_due_at.is_(None))
+            if clean_query:
+                pattern = f"%{clean_query}%"
+                message_match = select(EmailMessage.thread_id).where(EmailMessage.thread_id == EmailThread.id, or_(EmailMessage.subject.ilike(pattern), EmailMessage.sender.ilike(pattern), EmailMessage.text_body.ilike(pattern), EmailMessage.html_body.ilike(pattern), EmailMessage.external_message_id.ilike(pattern)))
+                terms = [EmailThread.subject.ilike(pattern), EmailThread.sender_name.ilike(pattern), EmailThread.sender_email.ilike(pattern), EmailThread.external_conversation_id.ilike(pattern), EmailThread.id.in_(message_match)]
+                reference_tail = clean_query.upper().split(".", 1)[0].rsplit("-", 1)[-1]
+                if reference_tail.isdigit(): terms.append(EmailThread.id == int(reference_tail))
+                statement = statement.where(or_(*terms))
+            return db.scalar(statement) or 0
+
+        counts = {code: facet_count(facet_status=code) for code in STATUS_LABELS}
+        all_status_count = facet_count(facet_status="all")
+        filtered_total_count = facet_count()
+        operational_counters = {"triage": facet_count(facet_status="triage"), "mine": facet_count(facet_responsible="mine"), "unassigned": facet_count(facet_responsible="unassigned"), "overdue": facet_count(facet_due="overdue"), "waiting": facet_count(facet_status="waiting_reply")}
         channels = list(
             db.scalars(
                 select(EmailChannel)
@@ -1071,7 +1057,8 @@ def email_inbox(
                 "channels": channels,
                 "counts": counts,
                 "operational_counters": operational_counters,
-                "total_count": sum(counts.values()),
+                "total_count": all_status_count,
+                "filtered_total_count": filtered_total_count,
                 "status_labels": STATUS_LABELS,
                 "filters": {
                     "status": selected_status,
@@ -1118,6 +1105,8 @@ def email_new_message(
     auth = _auth(request, "email.reply", "email.manage", "admin.manage")
     if not auth:
         return RedirectResponse("/v2-clean/email?error=forbidden", status_code=303)
+    if submit not in {"draft", "approval", "send"}:
+        return RedirectResponse("/v2-clean/email?error=invalid_action", status_code=303)
     user_id, permissions = auth
     recipient_list = [
         item.strip()
@@ -2241,6 +2230,10 @@ def email_reply(
     auth = _auth(request, "email.reply", "email.manage", "admin.manage")
     if not auth:
         return RedirectResponse(f"/v2-clean/email/{thread_id}?error=forbidden", status_code=303)
+    if submit not in {"draft", "approval", "send"}:
+        return RedirectResponse(
+            f"/v2-clean/email/{thread_id}?error=invalid_action", status_code=303
+        )
     user_id, permissions = auth
     with SessionLocal() as db:
         thread = db.get(EmailThread, thread_id)

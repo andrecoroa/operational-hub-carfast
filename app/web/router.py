@@ -22910,6 +22910,10 @@ async def clean_workshop_entry_save(request: Request):
     form = await request.form()
     process_id = parse_int_from_text(str(form.get("process_id") or ""))
     action = str(form.get("action") or "save")
+    if action not in {"save", "advance"}:
+        suffix = f"?process_id={process_id}" if process_id else ""
+        separator = "&" if suffix else "?"
+        return RedirectResponse(f"/v2-clean/workshop-entry{suffix}{separator}error=invalid_action", status_code=303)
     now = datetime.now(UTC)
     user_id = get_web_user_id(request)
     is_historical = str(form.get("process_mode") or "").strip().lower() == "historical"
@@ -23106,6 +23110,15 @@ async def clean_workshop_entry_save(request: Request):
             intervention_date = datetime.fromisoformat(str(entry_data["historical_intervention_date"])).replace(tzinfo=UTC)
             process.opened_at = intervention_date
             process.received_at = intervention_date
+        record_audit(
+            db,
+            action="workshop.entry.advanced" if action == "advance" else "workshop.entry.saved",
+            entity_type="workshop_phased_process",
+            entity_id=process.id,
+            detail="Entrada de Oficina avançada." if action == "advance" else "Entrada de Oficina guardada.",
+            user_id=user_id,
+            after_json={"phase": "entrada", "next_phase": process.current_phase_code, "action": action},
+        )
         db.commit()
 
     if action == "advance":
@@ -24170,6 +24183,14 @@ async def clean_workshop_phase_save(request: Request, phase: str):
         return RedirectResponse(clean_workshop_phase_path(phase), status_code=303)
 
     action = str(form.get("action") or "save")
+    allowed_actions = {"save", "save_substep", "advance_substep", "advance"}
+    if phase == "fecho":
+        allowed_actions.update({"return_to_repair", "close_process", "close_with_pending"})
+    if action not in allowed_actions:
+        return RedirectResponse(
+            f"{clean_workshop_phase_path(phase)}?process_id={process_id}&error=invalid_action",
+            status_code=303,
+        )
     current_substep = str(form.get("current_substep") or "").strip()
     known_substeps = clean_workshop_substeps(phase)
     if current_substep not in known_substeps:
@@ -24184,6 +24205,11 @@ async def clean_workshop_phase_save(request: Request, phase: str):
         if clean_workshop_process_is_readonly(process):
             return RedirectResponse(
                 f"{clean_workshop_process_url(process)}&readonly=1", status_code=303
+            )
+        if action in {"advance", "advance_substep", "close_process", "close_with_pending"} and process.current_phase_code not in {None, phase}:
+            return RedirectResponse(
+                f"{clean_workshop_phase_path(phase)}?process_id={process.id}&error=invalid_phase_order",
+                status_code=303,
             )
         known_substeps = clean_workshop_substeps(phase, process)
         if current_substep not in known_substeps:
@@ -24467,6 +24493,15 @@ async def clean_workshop_phase_save(request: Request, phase: str):
             if current_substep:
                 redirect_url = f"{redirect_url}#{current_substep}"
 
+        record_audit(
+            db,
+            action="workshop.phase.advanced" if action in {"advance", "advance_substep"} else "workshop.phase.saved",
+            entity_type="workshop_phased_process",
+            entity_id=process.id,
+            detail=f"Fase {phase} processada com ação {requested_action}.",
+            user_id=user_id,
+            after_json={"phase": phase, "action": requested_action, "current_phase": process.current_phase_code, "status": process.status},
+        )
         db.commit()
 
     return RedirectResponse(redirect_url, status_code=303)

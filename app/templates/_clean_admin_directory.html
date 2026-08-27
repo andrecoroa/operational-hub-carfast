@@ -1,50 +1,21 @@
-<section class="clean-admin-domain-directory" aria-label="Navegação da Administração">
-  <label class="clean-admin-domain-search">
-    <span>Pesquisar na Administração</span>
-    <input type="search" placeholder="utilizadores, Email, auditoria…" data-admin-domain-search autocomplete="off">
-  </label>
-  <div class="clean-admin-domain-groups" data-admin-domain-groups>
-    {% for domain in admin_domains %}
-      <details
-        class="clean-admin-domain-group {% if domain.code == 'operations' %}is-primary{% endif %}"
-        data-admin-domain-group
-        data-search-text="{{ domain.label }} {{ domain.description }} {% for item in domain['items'] %}{{ item.label }} {% endfor %}"
-        {% if domain.active or domain.code == 'operations' %}open{% endif %}
-      >
-        <summary>
-          <span><strong>{{ domain.label }}</strong><small>{{ domain.description }}</small></span>
-          <b>{{ domain['items']|length }}</b>
-        </summary>
-        <nav aria-label="{{ domain.label }}">
-          {% for item in domain['items'] %}
-            <a href="{{ item.href }}" {% if admin_section == item.code %}class="active" aria-current="page"{% endif %}>{{ item.label }}</a>
-          {% endfor %}
-        </nav>
-      </details>
+<aside class="clean-admin-master" aria-label="Domínios administrativos">
+  <p class="eyebrow">Domínios</p>
+  <nav>
+    {% set admin_master_items = [
+      ('setup', 'Setup', '/v2-clean/admin/setup'),
+      ('organization', 'Organização', '/v2-clean/admin/organization'),
+      ('users', 'Utilizadores', '/v2-clean/admin/users'),
+      ('roles', 'Perfis / Permissões', '/v2-clean/admin/roles'),
+      ('work_classification', 'Categorias', '/v2-clean/admin/work-classification?view=desk'),
+      ('email', 'Email', '/v2-clean/admin/work-classification?view=channels'),
+      ('workshop_models', 'Modelos', '/v2-clean/admin/workshop-models'),
+      ('integrations', 'Integrações', '/v2-clean/admin/integrations'),
+      ('security', 'Segurança / Auditoria', '/v2-clean/admin/security')
+    ] %}
+    {% for code, label, href in admin_master_items %}
+      {% if code == 'email' %}{% set active = admin_section == 'work_classification' and request.query_params.get('view') in ['channels', 'templates'] %}{% elif code == 'security' %}{% set active = admin_section in ['security', 'audit'] %}{% else %}{% set active = admin_section == code %}{% endif %}
+      <a href="{{ href }}"{% if active %} class="active" aria-current="page"{% endif %}>{{ label }}</a>
     {% endfor %}
-  </div>
-  <details class="clean-admin-module-directory">
-    <summary>Mapa técnico por módulo</summary>
-    <div class="clean-admin-module-table-wrap">
-      <table class="clean-admin-module-table">
-        <thead><tr><th>Módulo</th>{% for code,label in admin_module_dimension_labels.items() %}<th>{{ label }}</th>{% endfor %}</tr></thead>
-        <tbody>{% for module_code,module_label in admin_module_labels.items() %}<tr><th><a href="/v2-clean/admin/modules/{{ module_code }}">{{ module_label }}</a></th>{% for dimension_code in admin_module_dimension_labels %}{% set target = admin_module_nav[module_code][dimension_code] %}<td><a href="{{ target[1] }}">{{ target[0] }}</a></td>{% endfor %}</tr>{% endfor %}</tbody>
-      </table>
-    </div>
-  </details>
-</section>
-<script>
-  (() => {
-    const input = document.querySelector("[data-admin-domain-search]");
-    const groups = [...document.querySelectorAll("[data-admin-domain-group]")];
-    if (!input || !groups.length) return;
-    input.addEventListener("input", () => {
-      const query = input.value.trim().toLocaleLowerCase("pt");
-      groups.forEach((group) => {
-        const matches = !query || group.dataset.searchText.toLocaleLowerCase("pt").includes(query);
-        group.hidden = !matches;
-        if (query && matches) group.open = true;
-      });
-    });
-  })();
-</script>
+  </nav>
+  <small>Parametrização e controlo. A execução diária permanece na navegação global.</small>
+</aside>

@@ -36,7 +36,7 @@
       {% if can_nav_home %}<a href="/v2-clean" {% if active_menu == "clean" %}class="active"{% endif %}>Início</a>{% endif %}
       {% if "dashboard.read" in nav_perms or can_nav_tasks or can_nav_processes or can_nav_email %}<span class="nav-section-label" data-nav-section="operation">Operação</span>{% endif %}
       {% if "dashboard.read" in nav_perms %}
-        <a href="/alerts" {% if active_menu == "alerts" %}class="active"{% endif %}>Alertas personalizados</a>
+        <a href="/alerts" {% if active_menu == "alerts" %}class="active"{% endif %}>Alertas</a>
       {% endif %}
       {% if can_nav_tasks %}<a href="/v2-clean/tasks" {% if active_menu == "clean_tasks" %}class="active"{% endif %}>Tarefas<span class="sr-only">Centro de Tarefas</span></a>{% endif %}
       {% if can_nav_processes %}<a href="/v2-clean/processes" {% if active_menu == "clean_processes" %}class="active"{% endif %}>Processos<span class="sr-only">Centro de Processos</span></a>{% endif %}

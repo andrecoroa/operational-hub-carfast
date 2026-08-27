@@ -210,6 +210,31 @@
 .ui-contract-v1 .clean-workshop-process-list { gap: 4px; }
 .ui-contract-v1 .clean-workshop-process-item { min-height: 44px; padding-block: 5px; }
 
+/* Front A NO-GO closeout: compact filtered Email and one Admin master-detail. */
+.ui-contract-v1 .visual-email-overview { display:grid; gap:6px; }
+.ui-contract-v1 .visual-email-overview > header { align-items:center; }
+.ui-contract-v1 .visual-email-overview > header small { display:block; color:var(--ui-color-text-muted); font-size:11px; }
+.ui-contract-v1 .visual-email-metrics > a { display:grid; grid-template-columns:32px minmax(0,1fr); align-items:center; gap:8px; overflow:hidden; }
+.ui-contract-v1 .visual-email-metrics > a > i { position:static; display:grid; width:32px; height:32px; place-items:center; border-radius:50%; }
+.ui-contract-v1 .email-metric-copy { display:grid; min-width:0; grid-template-columns:auto minmax(0,1fr); gap:0 7px; align-items:baseline; }
+.ui-contract-v1 .email-metric-copy > strong { grid-row:1 / span 2; font-size:20px; line-height:24px; }
+.ui-contract-v1 .email-metric-copy > span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:12px; font-weight:700; }
+.ui-contract-v1 .email-metric-copy > small { color:var(--ui-color-text-muted); font-size:10px; }
+.ui-contract-v1 .visual-email-filters { display:grid; grid-template-columns:minmax(260px,1fr) minmax(180px,240px) auto auto auto; align-items:end; }
+.ui-contract-v1 .email-secondary-filters { position:relative; }
+.ui-contract-v1 .email-secondary-filters > summary { display:flex; min-height:32px; padding:6px 10px; align-items:center; border:1px solid var(--ui-color-border); border-radius:6px; cursor:pointer; list-style:none; white-space:nowrap; }
+.ui-contract-v1 .email-secondary-filters > div { position:absolute; z-index:30; top:36px; right:0; display:grid; width:280px; gap:8px; padding:10px; border:1px solid var(--ui-color-border); border-radius:8px; background:var(--ui-color-surface); box-shadow:0 10px 28px rgba(15,23,42,.16); }
+.ui-contract-v1 .clean-admin-header { padding:8px 12px; }
+.ui-contract-v1 .clean-admin-master-detail { display:grid; grid-template-columns:210px minmax(0,1fr); gap:12px; min-width:0; align-items:start; }
+.ui-contract-v1 .clean-admin-master { position:sticky; top:8px; display:grid; gap:8px; padding:10px; border:1px solid var(--ui-color-border); border-radius:8px; background:var(--ui-color-surface); }
+.ui-contract-v1 .clean-admin-master nav { display:grid; gap:2px; }
+.ui-contract-v1 .clean-admin-master a { min-height:32px; padding:7px 9px; border-radius:6px; color:var(--ui-color-text); text-decoration:none; font-size:12px; font-weight:700; white-space:nowrap; }
+.ui-contract-v1 .clean-admin-master a:is(:hover,.active) { background:var(--ui-color-surface-muted); color:var(--ui-color-primary); }
+.ui-contract-v1 .clean-admin-master small { color:var(--ui-color-text-muted); line-height:1.35; }
+.ui-contract-v1 .clean-admin-detail { display:grid; min-width:0; gap:12px; }
+.ui-contract-v1 .clean-admin-detail > .clean-card-wide { width:100%; min-width:0; }
+.ui-contract-v1 .clean-admin-overview-strip { grid-template-columns:repeat(3,minmax(0,1fr)); }
+
 @media (max-width: 1024px) {
   .ui-contract-v1 { --visual-sidebar-width: var(--visual-sidebar-collapsed); }
   .ui-contract-v1.visual-nav-open .clean-shell .sidebar,

@@ -1,5 +1,6 @@
 import base64
 import json
+import re
 from pathlib import Path
 
 from sqlalchemy import select
@@ -58,6 +59,41 @@ def test_preview_actions_refresh_without_closing_or_losing_selected_thread():
     assert "await openPreview(shell.dataset.emailThreadId)" in script
     assert 'row.dataset.emailPreview === String(threadId)' in script
     assert 'dialog?.addEventListener("close"' in script
+
+
+def test_inbox_facets_apply_remaining_filters_server_side(authenticated_client, db_session, tmp_path, monkeypatch):
+    monkeypatch.setattr(settings, "email_storage_root", str(tmp_path))
+    monkeypatch.setattr(settings, "visual_foundation_enabled", True)
+    _bind_email_session(monkeypatch, db_session)
+    admin = db_session.scalar(select(User).where(User.email == "admin.tests@carfast.local"))
+    first_payload = _payload("facet-triage-assigned")
+    first_payload["Subject"] = "Facet assigned"
+    second_payload = _payload("facet-triage-unassigned")
+    second_payload["Subject"] = "Facet unassigned"
+    waiting_payload = _payload("facet-waiting-unassigned")
+    waiting_payload["Subject"] = "Facet waiting"
+    first, _ = ingest_inbound(db_session, first_payload)
+    second, _ = ingest_inbound(db_session, second_payload)
+    waiting, _ = ingest_inbound(db_session, waiting_payload)
+    first.assigned_to_id = admin.id
+    first.assignment_state = "assigned_user"
+    second.executor_team_id = None
+    second.assignment_state = "waiting_assignment"
+    waiting.executor_team_id = None
+    waiting.assignment_state = "waiting_assignment"
+    waiting.status = "waiting_reply"
+    db_session.commit()
+
+    response = authenticated_client.get("/v2-clean/email?status=all&responsible=unassigned")
+
+    assert response.status_code == 200
+    assert re.findall(r"\d+ resultado\(s\) com todos os filtros ativos", response.text) == [
+        "2 resultado(s) com todos os filtros ativos"
+    ]
+    assert '<strong>1</strong><span>Por triar</span>' in response.text
+    assert '<strong>1</strong><span>Resposta pendente</span>' in response.text
+    assert 'class="email-secondary-filters"' in response.text
+    assert 'aria-label="Estados das conversas"' not in response.text
 
 
 def test_hierarchy_only_renders_active_options_and_server_rejects_cross_branch_selection(

@@ -56,7 +56,7 @@
   const submit=()=>form.requestSubmit(); form.querySelectorAll('input[type=radio],select').forEach(el=>el.addEventListener('change',submit));
   let timer; form.querySelector('[name=q]').addEventListener('input',()=>{clearTimeout(timer);timer=setTimeout(submit,300)});
   form.querySelector('[data-task-safe-reset]').addEventListener('click',()=>{const last=localStorage.getItem('carfast.taskCategory')||'documentacao';location.assign(`/v2-clean/tasks?workspace=mine&status=open&due=&category=${encodeURIComponent(last)}`)});
-  form.querySelectorAll('[name=category]').forEach(el=>el.addEventListener('change',()=>{if(el.value!=='all')localStorage.setItem('carfast.taskCategory',el.value)}));
+  form.querySelectorAll('[name=category]').forEach(el=>el.addEventListener('change',()=>{if(el.value!=='all'){localStorage.setItem('carfast.taskCategory',el.value);document.cookie=`carfast_task_category=${encodeURIComponent(el.value)}; Path=/; SameSite=Lax`}}));
   const fields=['reference','title','category','owner','due','state','priority','summary','update'];
   function close(){preview.classList.add('is-empty');rows.forEach(r=>r.setAttribute('aria-selected','false'));history.replaceState(null,'',location.pathname+location.search);sessionStorage.removeItem('carfast.taskSelection')}
   let selectedRow=null;

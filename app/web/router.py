@@ -23,7 +23,7 @@ from urllib.parse import quote_plus, urlencode
 from fastapi import APIRouter, File, Form, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import case, delete, func, literal, or_, select
+from sqlalchemy import and_, case, delete, func, literal, or_, select
 from sqlalchemy.orm import Session, aliased
 
 from app.core.change_notice import (
@@ -4707,30 +4707,40 @@ def clean_tasks_center(
         default_task_category = "documentacao"
         approved_category_codes = {"documentacao", "oficina", "sinistros", "all"}
         requested_category = category.strip().lower()
+        remembered_task_category = request.cookies.get("carfast_task_category", "").strip().lower()
+        if remembered_task_category not in approved_category_codes - {"all"}:
+            remembered_task_category = default_task_category
         active_task_category = (
             requested_category
             if requested_category in approved_category_codes
-            else default_task_category
-            if not request.url.query
+            else remembered_task_category
+            if settings.visual_foundation_enabled
             else "all"
         )
         clean_nature = nature.strip()[:80]
         if clean_nature:
             filters.append(Task.category == clean_nature)
-        category_conditions = {
-            "documentacao": or_(
+        sinistros_category_condition = or_(
+            Task.category.ilike("%sinistro%"),
+            Task.category.ilike("%acidente%"),
+        )
+        oficina_category_source = or_(
+            Task.category.ilike("%oficina%"),
+            Task.category.ilike("%repara%"),
+            Task.task_type.in_(("workshop_task", "workshop_audit")),
+        )
+        documentacao_category_source = or_(
                 Task.category.ilike("%document%"),
                 Task.category.ilike("%fatura%"),
                 Task.task_type.in_(("audit_task", "administration_task")),
-            ),
-            "oficina": or_(
-                Task.category.ilike("%oficina%"),
-                Task.category.ilike("%repara%"),
-                Task.task_type.in_(("workshop_task", "workshop_audit")),
-            ),
-            "sinistros": or_(
-                Task.category.ilike("%sinistro%"),
-                Task.category.ilike("%acidente%"),
+        )
+        category_conditions = {
+            "sinistros": sinistros_category_condition,
+            "oficina": and_(~sinistros_category_condition, oficina_category_source),
+            "documentacao": and_(
+                ~sinistros_category_condition,
+                ~oficina_category_source,
+                documentacao_category_source,
             ),
         }
         if active_task_category != "all":

@@ -137,3 +137,42 @@ def test_counter_values_reconcile_with_authorized_server_filters(
     page_count = int(re.search(r'data-task-counter="unassigned"[^>]+aria-label="Ver (\d+) tarefas', page.text).group(1))
     result_count = int(re.search(r'<section class="task-center-approved-queue[^>]*>.*?<header>.*?<span>(\d+) tarefas', unassigned.text, re.S).group(1))
     assert page_count == result_count
+
+
+def test_last_focus_cookie_and_invalid_category_fail_closed(
+    authenticated_client, db_session, monkeypatch
+) -> None:
+    monkeypatch.setattr(task_router.settings, "visual_foundation_enabled", True)
+    actor = db_session.scalar(select(User).where(User.email == "admin.tests@carfast.local"))
+    db_session.add_all(
+        [
+            Task(title="Oficina lembrada", task_type="workshop_task", category="Oficina", status="new", priority="normal", assigned_to_id=actor.id),
+            Task(title="Documento fora do foco lembrado", task_type="operational_task", category="Documentação", status="new", priority="normal", assigned_to_id=actor.id),
+        ]
+    )
+    db_session.commit()
+    authenticated_client.cookies.set("carfast_task_category", "oficina")
+
+    remembered = authenticated_client.get("/v2-clean/tasks")
+    invalid = authenticated_client.get("/v2-clean/tasks?category=valor-invalido")
+
+    for page in (remembered, invalid):
+        assert "Oficina lembrada" in page.text
+        assert "Documento fora do foco lembrado" not in page.text
+        assert 'value="oficina" checked' in page.text
+
+
+def test_category_buckets_are_mutually_exclusive_under_adversarial_type(
+    authenticated_client, db_session, monkeypatch
+) -> None:
+    monkeypatch.setattr(task_router.settings, "visual_foundation_enabled", True)
+    db_session.add(
+        Task(title="Sinistro em fluxo de oficina", task_type="workshop_task", category="Sinistros", status="new", priority="high")
+    )
+    db_session.commit()
+
+    workshop = authenticated_client.get("/v2-clean/tasks?workspace=all&status=open&category=oficina")
+    claims = authenticated_client.get("/v2-clean/tasks?workspace=all&status=open&category=sinistros")
+
+    assert "Sinistro em fluxo de oficina" not in workshop.text
+    assert "Sinistro em fluxo de oficina" in claims.text

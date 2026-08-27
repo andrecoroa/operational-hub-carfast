@@ -26,7 +26,7 @@ As diferenças face ao PNG do protótipo limitam-se ao conteúdo real do shell a
 
 | Estado | Ficheiro | SHA-256 |
 |---|---|---|
-| initial | `initial-1440x731.png` | `b694d02567fdd57607e7aa27c09d11a9ac26efd27045d55b6b575a38aadee4a9` |
+| initial | `initial-1440x731.png` | `965618b70fe2229a9d61e8b0b375dcf8c0542fd6df6366b818de254176ec394b` |
 | selected | `selected-1440x731.png` | `7b1138799925e7fbeee0c1a612028f84a1333b8aed0e26696bfa4aec55ae618c` |
 | workshop | `workshop-1440x731.png` | `cf2b0276c8981ba2a896aa823c48d9f23e9a66ff3d7be4d56afa5ee6447f1903` |
 | closed | `closed-1440x731.png` | `9297af742b87760b7244d83f2824ef442ee67378426ac3839ca26f69482c613c` |
@@ -43,7 +43,7 @@ As diferenças face ao PNG do protótipo limitam-se ao conteúdo real do shell a
 
 ## Testes
 
-- `54 passed`: contrato novo, defaults/fechadas, reconciliação de contadores, tarefas, notificações/acesso, Service Desk, RBAC e gates Frente A diretamente afetados.
+- `56 passed`: contrato novo, preferência persistida, buckets adversariais exclusivos, defaults/fechadas, reconciliação de contadores, tarefas, notificações/acesso, Service Desk, RBAC e gates Frente A diretamente afetados.
 - Suite completa recolhida: 811 testes; os primeiros FAILs são anteriores e reproduzíveis na base aceite em superfícies fora desta tranche. Não foram mascarados nem alterados.
 - Browser: seleção por Enter, fechar sem perda de contexto, categoria Oficina + reset para Oficina, cinco estados e geometria sem overflow PASS.
 

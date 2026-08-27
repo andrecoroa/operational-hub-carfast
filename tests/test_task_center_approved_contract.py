@@ -176,3 +176,24 @@ def test_category_buckets_are_mutually_exclusive_under_adversarial_type(
 
     assert "Sinistro em fluxo de oficina" not in workshop.text
     assert "Sinistro em fluxo de oficina" in claims.text
+
+
+def test_null_category_uses_authorized_task_type_bucket(
+    authenticated_client, db_session, monkeypatch
+) -> None:
+    monkeypatch.setattr(task_router.settings, "visual_foundation_enabled", True)
+    db_session.add_all(
+        [
+            Task(title="Oficina sem categoria", task_type="workshop_task", category=None, status="new", priority="normal"),
+            Task(title="Admin sem categoria", task_type="administration_task", category=None, status="new", priority="normal"),
+        ]
+    )
+    db_session.commit()
+
+    workshop = authenticated_client.get("/v2-clean/tasks?workspace=all&status=open&category=oficina")
+    documents = authenticated_client.get("/v2-clean/tasks?workspace=all&status=open&category=documentacao")
+
+    assert "Oficina sem categoria" in workshop.text
+    assert "Admin sem categoria" not in workshop.text
+    assert "Admin sem categoria" in documents.text
+    assert "Oficina sem categoria" not in documents.text

@@ -4720,18 +4720,19 @@ def clean_tasks_center(
         clean_nature = nature.strip()[:80]
         if clean_nature:
             filters.append(Task.category == clean_nature)
+        task_category_text = func.coalesce(Task.category, "")
         sinistros_category_condition = or_(
-            Task.category.ilike("%sinistro%"),
-            Task.category.ilike("%acidente%"),
+            task_category_text.ilike("%sinistro%"),
+            task_category_text.ilike("%acidente%"),
         )
         oficina_category_source = or_(
-            Task.category.ilike("%oficina%"),
-            Task.category.ilike("%repara%"),
+            task_category_text.ilike("%oficina%"),
+            task_category_text.ilike("%repara%"),
             Task.task_type.in_(("workshop_task", "workshop_audit")),
         )
         documentacao_category_source = or_(
-                Task.category.ilike("%document%"),
-                Task.category.ilike("%fatura%"),
+                task_category_text.ilike("%document%"),
+                task_category_text.ilike("%fatura%"),
                 Task.task_type.in_(("audit_task", "administration_task")),
         )
         category_conditions = {

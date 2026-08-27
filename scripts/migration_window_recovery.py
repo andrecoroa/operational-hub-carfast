@@ -19,7 +19,7 @@ from pathlib import Path
 import psycopg
 from psycopg import sql
 
-BLUE_RELEASE = "58a150c701221b64c43bd14fcb671683f3722ebe"
+BLUE_RELEASE = "6b6fc5d878561a829426ac17848ab9a33007453a"
 MARKER_NAME = ".carfast_migration_window.json"
 MARKER_SCHEMA = "carfast.migration-window-recovery.v1"
 _BUNDLE_RE = re.compile(r"^[a-z0-9][a-z0-9-]{11,63}$")

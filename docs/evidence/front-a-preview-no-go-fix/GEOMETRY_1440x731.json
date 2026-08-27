@@ -1,0 +1,20 @@
+{
+  "viewport": {"width": 1440, "height": 731},
+  "email": {
+    "preview": {"left": 453, "right": 1400, "top": 204, "bottom": 634},
+    "action_bar": {"top": 592, "right": 1400, "bottom": 634},
+    "uncontained_descendant_overflow": 0
+  },
+  "documentation": {
+    "queue_items": 3,
+    "actions": ["Guardar", "Validar", "Arquivar"],
+    "uncontained_descendant_overflow": 0
+  },
+  "administration": {
+    "body_scroll_height": 731,
+    "master_detail_bottom": 731,
+    "detail_scroll_is_internal": true,
+    "uncontained_descendant_overflow": 0
+  },
+  "overflow_method": "All visible descendants were measured by getBoundingClientRect. Elements clipped by an explicit overflow auto/scroll/hidden ancestor were classified as contained; any remaining left/right viewport breach fails the gate."
+}

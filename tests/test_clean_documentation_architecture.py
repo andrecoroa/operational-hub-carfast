@@ -688,6 +688,38 @@ def test_triage_decision_preserves_filters_and_queues_diagnostic_extraction(
     assert workflow.destination_status == "diagnostics"
 
 
+def test_triage_uses_server_contract_and_exposes_separate_save_validate_archive(
+    authenticated_client, db_session, monkeypatch
+):
+    monkeypatch.setattr(settings, "visual_foundation_enabled", True)
+    document = _triage_document(801)
+    db_session.add(document)
+    db_session.commit()
+    calls: list[str] = []
+
+    def reject_by_contract(_document, _state, *, action, **_kwargs):
+        calls.append(action)
+        return False, "contract_blocked"
+
+    monkeypatch.setattr(web_router, "document_action_compatibility", reject_by_contract)
+    page = authenticated_client.get(
+        f"/v2-clean/documentation/triage?selected={document.id}&view=preview"
+    )
+    response = authenticated_client.post(
+        f"/v2-clean/documentation/triage/{document.id}",
+        data={"destination": "archive", "action": "archive"},
+        follow_redirects=False,
+    )
+
+    assert 'name="action" value="save">Guardar' in page.text
+    assert 'name="action" value="validate">Validar' in page.text
+    assert 'name="action" value="archive">Arquivar' in page.text
+    assert calls == ["archive"]
+    assert "error=contract_blocked" in response.headers["location"]
+    db_session.refresh(document)
+    assert document.archived is False
+
+
 def test_triage_rejects_invalid_invoice_nature_without_server_error(
     authenticated_client,
     db_session,

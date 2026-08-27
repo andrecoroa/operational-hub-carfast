@@ -44,32 +44,28 @@ def test_foundation_endpoints_return_seed_data():
         assert health.json()["status"] == "ok"
 
         units = client.get("/organization/units")
-        assert units.status_code == 200
-        unit_codes = {item["code"] for item in units.json()}
-        assert {"carfast", "fleet", "workshop"}.issubset(unit_codes)
+        assert units.status_code == 401
 
         roles = client.get("/admin/roles")
         assert roles.status_code == 401
 
         catalogs = client.get("/settings/catalogs")
-        assert catalogs.status_code == 200
-        catalog_codes = {item["code"] for item in catalogs.json()}
-        assert "vehicle_lifecycle_status" in catalog_codes
+        assert catalogs.status_code == 401
+
+        inventory = client.get("/api/stock/inventory-sessions/1")
+        assert inventory.status_code == 401
 
 
 def test_admin_write_endpoints_require_authentication():
     with build_test_db():
         client = TestClient(app)
 
-        units = client.get("/organization/units").json()
-        fleet_id = next(item["id"] for item in units if item["code"] == "fleet")
-
         team_response = client.post(
             "/organization/teams",
             json={
                 "code": "fleet_followup",
                 "name": "Follow-up Frota",
-                "organizational_unit_id": fleet_id,
+                "organizational_unit_id": 1,
                 "active": True,
             },
         )

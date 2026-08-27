@@ -18,10 +18,15 @@ from app.services.audit import record_audit
 
 router = APIRouter(prefix="/organization")
 SettingsManager = Annotated[object, Depends(require_permission("settings.manage"))]
+OrganizationReader = Annotated[
+    object, Depends(require_permission("admin.organization.read"))
+]
 
 
 @router.get("/units", response_model=list[OrganizationalUnitRead])
-def list_organizational_units(db: DbSession, include_inactive: bool = False):
+def list_organizational_units(
+    db: DbSession, _: OrganizationReader, include_inactive: bool = False
+):
     stmt = select(OrganizationalUnit).order_by(
         OrganizationalUnit.sort_order,
         OrganizationalUnit.name,
@@ -102,7 +107,7 @@ def update_organizational_unit(
 
 
 @router.get("/teams", response_model=list[TeamRead])
-def list_teams(db: DbSession, include_inactive: bool = False):
+def list_teams(db: DbSession, _: OrganizationReader, include_inactive: bool = False):
     stmt = select(Team).order_by(Team.name)
     if not include_inactive:
         stmt = stmt.where(Team.active.is_(True))

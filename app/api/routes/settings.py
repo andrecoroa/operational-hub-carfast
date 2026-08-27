@@ -18,10 +18,11 @@ from app.services.audit import record_audit
 
 router = APIRouter(prefix="/settings")
 SettingsManager = Annotated[object, Depends(require_permission("settings.manage"))]
+SettingsReader = Annotated[object, Depends(require_permission("admin.settings.read"))]
 
 
 @router.get("/catalogs", response_model=list[SettingsCatalogRead])
-def list_catalogs(db: DbSession, include_inactive: bool = False):
+def list_catalogs(db: DbSession, _: SettingsReader, include_inactive: bool = False):
     stmt = select(SettingsCatalog).order_by(SettingsCatalog.name)
     if not include_inactive:
         stmt = stmt.where(SettingsCatalog.active.is_(True))
@@ -82,7 +83,12 @@ def update_catalog(
 
 
 @router.get("/catalogs/{catalog_code}/values", response_model=list[SettingsValueRead])
-def list_catalog_values(catalog_code: str, db: DbSession, include_inactive: bool = False):
+def list_catalog_values(
+    catalog_code: str,
+    db: DbSession,
+    _: SettingsReader,
+    include_inactive: bool = False,
+):
     catalog = db.scalar(select(SettingsCatalog).where(SettingsCatalog.code == catalog_code))
     if not catalog:
         raise HTTPException(status_code=404, detail="Catalog not found.")

@@ -98,7 +98,7 @@
                         </select>
                       </label>
                       <label>Justificação<input name="decision_reason" placeholder="Motivo da decisão"></label>
-                      <div class="visual-document-actions"><a class="button-link secondary-link" href="{{ selected_row.detail_href }}">Ver auditoria</a><button type="submit">Guardar decisão</button></div>
+                      <div class="visual-document-actions"><a class="button-link secondary-link" href="{{ selected_row.detail_href }}">Ver auditoria</a><button type="submit" name="action" value="save">Guardar</button><button type="submit" name="action" value="validate">Validar</button><button type="submit" name="action" value="archive">Arquivar</button></div>
             </form>
           </section>
         {% else %}<p class="doc-arch-empty">Sem documento selecionado.</p>{% endif %}

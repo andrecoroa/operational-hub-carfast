@@ -13903,6 +13903,7 @@ def clean_documentation_triage(
 def clean_documentation_triage_decide(
     request: Request,
     document_id: int,
+    action: str = Form("save"),
     destination: str = Form(...),
     decision_reason: str = Form(""),
     invoice_nature: str = Form("por_classificar"),
@@ -13934,11 +13935,31 @@ def clean_documentation_triage_decide(
     if not can_manage_documentation(request):
         return triage_redirect(error="permission")
     user_id = get_web_user_id(request)
+    clean_action = action.strip().lower()
+    if clean_action not in {"save", "validate", "archive"}:
+        return triage_redirect(error="action_not_supported")
     clean_destination = destination.strip().lower()
     with SessionLocal() as db:
         document = db.get(Document, document_id)
         if not document:
             return triage_redirect(error="missing")
+        state = get_or_create_workflow_state(db, document)
+        compatible, reason_code = document_action_compatibility(
+            document,
+            state,
+            action={"save": "classify", "validate": "validate", "archive": "archive"}[
+                clean_action
+            ],
+            invoice_nature=invoice_nature,
+            plate=document.plate or "",
+            reason=decision_reason,
+            saved_service_count=service_count(db, document.id),
+        )
+        if not compatible:
+            db.rollback()
+            return triage_redirect(error=reason_code)
+        if clean_action == "archive":
+            clean_destination = "archive"
         if clean_destination == "invoices":
             try:
                 classify_invoice_nature(
@@ -13967,13 +13988,21 @@ def clean_documentation_triage_decide(
                 return triage_redirect(error="destination")
             document.document_type, document.classification = target_types[clean_destination]
             needs_extraction = clean_destination == "diagnostics"
-            document.status = "pending_extraction" if needs_extraction else "archived"
+            document.status = (
+                "archived"
+                if clean_action == "archive"
+                else "validated"
+                if clean_action == "validate"
+                else "pending_extraction"
+                if needs_extraction
+                else "classified"
+            )
             if needs_extraction:
                 profile = ensure_diagnostic_profile(db, document)
                 profile.diagnostic_status = "processing"
                 profile.ocr_status = "pending"
                 profile.validation_status = "pending"
-            if clean_destination == "archive":
+            if clean_action == "archive":
                 document.archived = True
                 document.archived_at = document.archived_at or datetime.now(UTC)
                 document.archived_by_id = user_id
@@ -13985,9 +14014,27 @@ def clean_documentation_triage_decide(
                 ingestion_status="completed",
                 association_status="associated" if document.vehicle_id else "unassociated",
                 extraction_status="queued" if needs_extraction else "not_requested",
-                validation_status="pending" if needs_extraction else "human_validated",
+                validation_status=(
+                    "human_validated"
+                    if clean_action in {"validate", "archive"}
+                    else state.validation_status
+                ),
                 destination_status=clean_destination,
             )
+        if clean_action in {"validate", "archive"} and clean_destination == "invoices":
+            transition_document_workflow(
+                db,
+                document=document,
+                user_id=user_id,
+                reason=decision_reason or "Validação manual na Triagem",
+                validation_status="human_validated",
+                destination_status="archive" if clean_action == "archive" else "invoices",
+            )
+            document.status = "archived" if clean_action == "archive" else "validated"
+            if clean_action == "archive":
+                document.archived = True
+                document.archived_at = document.archived_at or datetime.now(UTC)
+                document.archived_by_id = user_id
         db.commit()
     return triage_redirect(saved="1")
 

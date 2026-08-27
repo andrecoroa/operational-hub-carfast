@@ -23,8 +23,12 @@ Data: 2026-08-27. Candidato: `codex/front-a-preview-no-go-fix`, derivado de `e8d
 - `email-triage-1440x731.png`
 - `email-response-pending-1440x731.png`
 - `email-low-confidence-1440x731.png`
+- `administration-users-editor-first-fold-1440x731.png`
+- `tasks-positive-fixture-1440x731.png`
+- `processes-positive-fixture-1440x731.png`
+- `GEOMETRY_1440x731.json`
 
-As medições DOM confirmaram ausência de overflow horizontal global nas cinco vistas. Email lista apresentou 3 linhas; a seleção manteve as 3 linhas acessíveis e abriu o painel amplo de triagem, validação e resposta na mesma página. Documentação manteve 3 itens na fila e provou baixa confiança, validado e bloqueado com preview e decisão no mesmo contexto. Breadcrumb e kicker duplicados foram removidos transversalmente na fundação visual.
+As medições DOM inspecionaram todos os descendentes visíveis, não apenas `body.scrollWidth`. Email termina em x=1400 e a ActionBar fica visível entre y=592–634. Administração mede 731px de altura total e usa scroll interno no detalhe. Documentação mantém 3 itens na fila, consulta `document_action_compatibility` e separa Guardar → Validar → Arquivar. Fixtures positivas de Tarefas e Processos foram renderizadas no candidato.
 
 ## Matriz binária
 
@@ -46,6 +50,8 @@ Comando focado/regressão Front A:
 
 `python -m pytest -q tests/test_email_triage_preview.py tests/test_clean_admin.py tests/test_front_a_fur_desktop_gate.py tests/test_clean_workshop_v2_flow.py tests/test_navigation_rbac.py tests/test_clean_documentation_architecture.py`
 
-Resultado: **115 passed**, 5 warnings deprecatórias SWIG, zero falhas.
+Resultado: **128 passed**, 5 warnings deprecatórias SWIG, zero falhas. A regressão inclui os cinco perfis/scopes operacionais exercitados pelos testes de navegação, Tarefas e Processos: administrador sem execução implícita, executor, coordenador de equipa, coordenador operacional e gestor com exceção auditada.
 
 As revisões independentes detetaram lacunas P1 em save de fase adversarial e nos percursos enviar/aprovar com outbound OFF. Todas foram corrigidas com rejeição anterior à mutação e cobertas por testes negativos antes da revisão final.
+
+O reclose corrigiu ainda GET públicos de organização/configuração, confirmou autenticação do inventário, removeu rotas fantasma do percurso validado e acrescentou testes de contrato próprios para estas superfícies.

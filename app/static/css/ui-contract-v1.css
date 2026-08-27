@@ -39,7 +39,7 @@
   .ui-contract-v1 .visual-document-grid:not(.is-preview-open) { grid-template-columns: minmax(0,1fr); }
   .ui-contract-v1 .ui-email-list-preview { grid-template-columns: minmax(0,1fr); }
   .ui-contract-v1 .ui-email-list-preview:not(.is-preview-open) > #email-preview-panel { display: none; }
-  .ui-contract-v1 .ui-email-list-preview.is-preview-open { grid-template-columns: 250px minmax(0,1fr); }
+  .ui-contract-v1 .ui-email-list-preview.is-preview-open { grid-template-columns: 220px minmax(0,1fr); }
 }
 
 .ui-contract-v1 .visual-topbar { height: 52px; min-height: 52px; }
@@ -159,6 +159,17 @@
 .ui-contract-v1 .ui-email-list-preview { display: grid; grid-template-columns: minmax(0,2fr) minmax(300px,1fr); min-height: 430px; }
 .ui-contract-v1 .ui-email-list-preview > .visual-email-table-wrap { min-width: 0; border-right: 1px solid var(--ui-color-border); }
 .ui-contract-v1 .ui-context-preview { position: static; inset: auto; box-sizing: border-box; width: 100%; max-width: none; height: 100%; max-height: none; margin: 0; padding: 0; border: 0; border-radius: 0; background: var(--ui-color-surface); }
+.ui-contract-v1 .ui-context-preview * { min-width: 0; max-width: 100%; box-sizing: border-box; }
+.ui-contract-v1 .ui-context-preview .email-modal-shell { width:100%; height:430px; max-height:430px; overflow:hidden; }
+.ui-contract-v1 .ui-context-preview .email-modal-header { display:grid; grid-template-columns:minmax(0,1fr) auto; min-height:64px; padding:8px 10px; gap:6px; }
+.ui-contract-v1 .ui-context-preview .email-header-facts { grid-column:1/-1; grid-row:2; }
+.ui-contract-v1 .ui-context-preview .email-header-actions { display:flex; grid-column:2; grid-row:1; gap:5px; justify-content:flex-end; }
+.ui-contract-v1 .ui-context-preview .email-header-actions :is(button,.button-link) { min-height:30px; height:30px; padding:5px 8px; font-size:11px; }
+.ui-contract-v1 .ui-context-preview .email-reader-grid { grid-template-columns:minmax(0,1.65fr) minmax(280px,.85fr); min-height:0; overflow:hidden; }
+.ui-contract-v1 .ui-context-preview .email-conversation,
+.ui-contract-v1 .ui-context-preview .email-triage-pane { min-height:0; overflow:auto; }
+.ui-contract-v1 .ui-context-preview .email-modal-footer { position:sticky; z-index:4; bottom:0; display:flex; min-height:42px; gap:5px; padding:5px 8px; background:var(--ui-color-surface); }
+.ui-contract-v1 .ui-context-preview .email-modal-footer :is(button,.button-link) { min-height:30px; height:30px; padding:5px 8px; font-size:11px; }
 .ui-contract-v1 .ui-context-preview::backdrop { display: none; }
 .ui-contract-v1 .ui-context-preview .email-preview-loading { display: grid; min-height: 100%; padding: 24px; place-content: center; gap: 6px; color: var(--ui-color-text-muted); text-align: center; }
 
@@ -169,6 +180,7 @@
 
 .ui-contract-v1 .clean-admin-directory,
 .ui-contract-v1 .clean-admin-residual-nav { margin: 0; }
+.ui-contract-v1 .clean-admin-content { height:100vh; max-height:100vh; overflow:hidden; }
 .ui-contract-v1 .admin-model-workbench { padding: 0; overflow: hidden; }
 .ui-contract-v1 .admin-model-workbench > .table-heading { min-height: 52px; padding: 8px 12px; }
 .ui-contract-v1 .admin-model-columns { display: grid; grid-template-columns: minmax(190px,.7fr) minmax(190px,.7fr) minmax(320px,1.4fr); min-height: 440px; gap: 0; }
@@ -230,13 +242,13 @@
 .ui-contract-v1 .email-secondary-filters > summary { display:flex; min-height:32px; padding:6px 10px; align-items:center; border:1px solid var(--ui-color-border); border-radius:6px; cursor:pointer; list-style:none; white-space:nowrap; }
 .ui-contract-v1 .email-secondary-filters > div { position:absolute; z-index:30; top:36px; right:0; display:grid; width:280px; gap:8px; padding:10px; border:1px solid var(--ui-color-border); border-radius:8px; background:var(--ui-color-surface); box-shadow:0 10px 28px rgba(15,23,42,.16); }
 .ui-contract-v1 .clean-admin-header { padding:8px 12px; }
-.ui-contract-v1 .clean-admin-master-detail { display:grid; grid-template-columns:210px minmax(0,1fr); gap:12px; min-width:0; align-items:start; }
+.ui-contract-v1 .clean-admin-master-detail { display:grid; grid-template-columns:210px minmax(0,1fr); gap:12px; min-width:0; max-height:calc(100vh - 175px); overflow:hidden; align-items:start; }
 .ui-contract-v1 .clean-admin-master { position:sticky; top:8px; display:grid; gap:8px; padding:10px; border:1px solid var(--ui-color-border); border-radius:8px; background:var(--ui-color-surface); }
 .ui-contract-v1 .clean-admin-master nav { display:grid; gap:2px; }
 .ui-contract-v1 .clean-admin-master a { min-height:32px; padding:7px 9px; border-radius:6px; color:var(--ui-color-text); text-decoration:none; font-size:12px; font-weight:700; white-space:nowrap; }
 .ui-contract-v1 .clean-admin-master a:is(:hover,.active) { background:var(--ui-color-surface-muted); color:var(--ui-color-primary); }
 .ui-contract-v1 .clean-admin-master small { color:var(--ui-color-text-muted); line-height:1.35; }
-.ui-contract-v1 .clean-admin-detail { display:grid; min-width:0; gap:12px; }
+.ui-contract-v1 .clean-admin-detail { display:grid; min-width:0; max-height:calc(100vh - 175px); overflow:auto; gap:12px; align-content:start; }
 .ui-contract-v1 .clean-admin-detail > .clean-card-wide { width:100%; min-width:0; }
 .ui-contract-v1 .clean-admin-overview-strip { grid-template-columns:repeat(3,minmax(0,1fr)); }
 

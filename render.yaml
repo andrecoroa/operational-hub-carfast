@@ -2,8 +2,8 @@ services:
   - type: web
     name: operational-hub-carfast
     runtime: python
-    plan: standard
     region: frankfurt
+    branch: v2/production
     buildCommand: pip install -r requirements.txt
     startCommand: python scripts/render_start.py
     healthCheckPath: /health
@@ -26,7 +26,6 @@ services:
 
 databases:
   - name: operational-hub-carfast-db
-    plan: free
     region: frankfurt
     postgresMajorVersion: "17"
     databaseName: carfast_v2

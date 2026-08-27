@@ -197,3 +197,27 @@ def test_null_category_uses_authorized_task_type_bucket(
     assert "Admin sem categoria" not in workshop.text
     assert "Admin sem categoria" in documents.text
     assert "Oficina sem categoria" not in documents.text
+
+
+def test_note_action_visibility_uses_distinct_server_respond_scope(
+    authenticated_client, db_session, monkeypatch
+) -> None:
+    monkeypatch.setattr(task_router.settings, "visual_foundation_enabled", True)
+    original_scope_check = task_router._task_hierarchy_scope_allows
+
+    def scope_check(db, user_id, task, *, action):
+        if action == "respond":
+            return False
+        return original_scope_check(db, user_id, task, action=action)
+
+    monkeypatch.setattr(task_router, "_task_hierarchy_scope_allows", scope_check)
+    db_session.add(
+        Task(title="Atualiza sem responder", task_type="operational_task", category="Documentação", status="new", priority="normal")
+    )
+    db_session.commit()
+
+    page = authenticated_client.get("/v2-clean/tasks?workspace=all&status=open&category=documentacao")
+    row = re.search(r'<tr[^>]+data-title="Atualiza sem responder"[^>]+>', page.text).group(0)
+
+    assert 'data-can-update="1"' in row
+    assert 'data-can-respond="0"' in row

@@ -4861,6 +4861,16 @@ def clean_tasks_center(
             and _task_hierarchy_scope_allows(db, user_id, task, action="close")
             for task in tasks
         }
+        task_respond_allowed_by_id = {
+            task.id: user_can_access_task_workspace(
+                db,
+                current_user,
+                workspace_for_task_type(task.task_type),
+                action="update",
+            )
+            and _task_hierarchy_scope_allows(db, user_id, task, action="respond")
+            for task in tasks
+        }
         task_ids = [task.id for task in tasks]
         all_users = db.scalars(select(User).order_by(User.name)).all()
         users = [user for user in all_users if user.active]
@@ -5271,6 +5281,7 @@ def clean_tasks_center(
                 "task_relations_by_task": task_relations_by_task,
                 "task_update_allowed_by_id": task_update_allowed_by_id,
                 "task_close_allowed_by_id": task_close_allowed_by_id,
+                "task_respond_allowed_by_id": task_respond_allowed_by_id,
                 "task_claim_allowed_by_id": task_claim_allowed_by_id,
                 "task_assignable_users_by_id": task_assignable_users_by_id,
                 "task_support_teams_by_id": task_support_teams_by_id,

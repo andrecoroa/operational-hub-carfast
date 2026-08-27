@@ -43,7 +43,7 @@ As diferenças face ao PNG do protótipo limitam-se ao conteúdo real do shell a
 
 ## Testes
 
-- `57 passed`: contrato novo, preferência persistida, buckets adversariais exclusivos (incluindo categoria nula), defaults/fechadas, reconciliação de contadores, tarefas, notificações/acesso, Service Desk, RBAC e gates Frente A diretamente afetados.
+- `58 passed`: contrato novo, preferência persistida, buckets adversariais exclusivos (incluindo categoria nula), visibilidade distinta `update/respond`, defaults/fechadas, reconciliação de contadores, tarefas, notificações/acesso, Service Desk, RBAC e gates Frente A diretamente afetados.
 - Suite completa recolhida: 811 testes; os primeiros FAILs são anteriores e reproduzíveis na base aceite em superfícies fora desta tranche. Não foram mascarados nem alterados.
 - Browser: seleção por Enter, fechar sem perda de contexto, categoria Oficina + reset para Oficina, cinco estados e geometria sem overflow PASS.
 

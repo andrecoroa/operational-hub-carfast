@@ -42,4 +42,4 @@ Comando focado/regressão Front A:
 
 Resultado: **114 passed**, 5 warnings deprecatórias SWIG, zero falhas.
 
-Uma primeira revisão independente detetou duas lacunas P1 (save em fase adversarial e tentativa `send` com outbound OFF não atómica). Ambas foram corrigidas e cobertas por testes negativos antes da revisão final.
+As revisões independentes detetaram lacunas P1 em save de fase adversarial e nos percursos enviar/aprovar com outbound OFF. Todas foram corrigidas com rejeição anterior à mutação e cobertas por testes negativos antes da revisão final.

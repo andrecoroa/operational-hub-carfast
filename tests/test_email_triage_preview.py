@@ -9,7 +9,7 @@ from sqlalchemy.orm import sessionmaker
 import app.web.email as email_web
 from app.core.config import settings
 from app.models.admin import User
-from app.models.email import EmailAttachment, EmailMessage
+from app.models.email import EmailAttachment, EmailAuditEvent, EmailMessage
 from app.models.work_hierarchy import WorkDepartment, WorkQueue
 from app.services.email_postmark import ingest_inbound, send_message
 
@@ -122,6 +122,31 @@ def test_outbound_off_rejects_send_before_any_durable_mutation(
     assert "error=send_disabled" in compose.headers["location"]
     assert len(db_session.scalars(select(email_web.EmailThread)).all()) == before_threads
     assert len(db_session.scalars(select(EmailMessage)).all()) == before_messages
+
+    approval_request = authenticated_client.post(
+        f"/v2-clean/email/{thread.id}/reply",
+        data={"submit": "approval", "body": "Resposta sintética a validar"},
+        follow_redirects=False,
+    )
+    assert approval_request.status_code == 303
+    pending = db_session.scalar(
+        select(EmailMessage)
+        .where(EmailMessage.thread_id == thread.id, EmailMessage.direction == "outbound")
+        .order_by(EmailMessage.id.desc())
+    )
+    assert pending is not None and pending.state == "pending_approval"
+    before_audits = len(db_session.scalars(select(EmailAuditEvent)).all())
+
+    approve = authenticated_client.post(
+        f"/v2-clean/email/{thread.id}/messages/{pending.id}/approve",
+        follow_redirects=False,
+    )
+
+    assert "error=send_disabled" in approve.headers["location"]
+    db_session.refresh(pending)
+    assert pending.state == "pending_approval"
+    assert pending.postmark_error is None
+    assert len(db_session.scalars(select(EmailAuditEvent)).all()) == before_audits
 
 
 def test_hierarchy_only_renders_active_options_and_server_rejects_cross_branch_selection(

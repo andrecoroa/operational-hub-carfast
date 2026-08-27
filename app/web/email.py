@@ -2586,6 +2586,10 @@ def email_approve(request: Request, thread_id: int, message_id: int):
     auth = _auth(request, "email.approve", "email.manage", "admin.manage")
     if not auth:
         return RedirectResponse(f"/v2-clean/email/{thread_id}?error=forbidden", status_code=303)
+    if not settings.email_outbound_enabled:
+        return RedirectResponse(
+            f"/v2-clean/email/{thread_id}?error=send_disabled", status_code=303
+        )
     user_id, _ = auth
     with SessionLocal() as db:
         message = db.get(EmailMessage, message_id)

@@ -1,6 +1,6 @@
 # Centro de Tarefas — fecho funcional local
 
-Base imutável: `7c47f9fee27168ca9e91fe07acfe3092c0f81fd5`  
+Base imutável: `7c47f9fee27168ca9e91fe07acfe3092c0f81fd5`
 Branch: `codex/task-center-functional-closeout`
 
 ## Âmbito

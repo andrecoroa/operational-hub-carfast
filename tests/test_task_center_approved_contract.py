@@ -258,7 +258,7 @@ def test_creation_options_and_post_share_the_same_capability_resolver() -> None:
     assert "TaskCreationCapabilityResolver(db).require(user, version)" in service
     assert 'data-task-create-open' in TEMPLATE
     assert 'data-task-create-future disabled' not in TEMPLATE
-    assert "createDialog.querySelector('[name=return_url]').value=location.pathname+location.search+location.hash" in TEMPLATE
+    assert "createForm.querySelector('[name=return_url]').value=location.pathname+location.search+location.hash" in TEMPLATE
 
 
 def test_preview_actions_use_clean_canonical_routes_and_accessible_editors() -> None:
@@ -281,7 +281,48 @@ def test_category_and_focus_bucket_are_presented_as_distinct_concepts() -> None:
 def test_list_detail_visibility_uses_one_canonical_resolver() -> None:
     assert "user_can_view_task(db, user_id=user_id, task=task)" in ROUTER
     assert '@web_router.get("/v2-clean/tasks/{task_id}/open")' in ROUTER
-    assert 'return clean_task_action_redirect(return_url, task_id=task_id, flag="opened")' in ROUTER
+    assert 'issue_return_context(' in ROUTER
+    assert 'f"/v2-clean/tasks/{task_id}/detail?return_context={quote(return_token)}"' in ROUTER
+    assert "task_return_url" in ROUTER
+    assert 'href="{{ task_return_url }}"' in (ROOT / "app/templates/task_detail.html").read_text(encoding="utf-8")
+
+
+def test_creation_uses_three_approved_models_and_never_labels_workspaces_as_queues() -> None:
+    assert "Pedido simples" in TEMPLATE
+    assert "Informação / Comunicação" in TEMPLATE
+    assert "Tarefa completa" in TEMPLATE
+    assert "Mais opções" in TEMPLATE
+    assert "Fila autorizada" not in TEMPLATE
+    creation_dialog = TEMPLATE[TEMPLATE.index('<dialog id="new-task"'):]
+    assert 'action="/v2-clean/tasks"' in creation_dialog
+    assert 'data-create-model="request"' in creation_dialog
+    assert 'data-create-model="information"' in creation_dialog
+    assert 'data-create-model="task"' in creation_dialog
+    assert 'href="/task-board/new' not in creation_dialog
+    assert "setWorkspaceLock(button.dataset.createWorkspace||'')" in creation_dialog
+    assert "option.disabled=Boolean(value)&&option.value!==value" in creation_dialog
+    css = (ROOT / "app/static/css/ui-contract-v1.css").read_text(encoding="utf-8")
+    assert "[data-task-create-dialog]{width:min(720px,calc(100vw - 32px))" in css
+    assert "[data-task-create-form]{display:grid;grid-template-columns:repeat(2" in css
+
+
+def test_task_forms_use_scoped_team_resolver_and_legacy_defaults_are_explicit() -> None:
+    assert "task_context_teams(" in ROUTER
+    assert "LEGACY_WORKSPACE_TEAM_CODES" in ROUTER
+    for code in ("operations", "workshop", "finance", "support"):
+        assert f'"{code}"' in ROUTER
+    form_route = ROUTER[ROUTER.index("def task_new_form("):ROUTER.index("def task_vehicle_search(")]
+    assert "select(Team).where(Team.active.is_(True)).order_by(Team.name)" not in form_route
+    update_route = ROUTER[ROUTER.index("def task_update("):ROUTER.index("def task_guided_flow_step_update(")]
+    assert update_route.count("task_team_allowed_for_workspace(") >= 3
+
+
+def test_terminal_action_visibility_matches_server_complete_scope() -> None:
+    list_scope = ROUTER[ROUTER.index("task_close_allowed_by_id ="):ROUTER.index("task_respond_allowed_by_id =")]
+    detail_scope = ROUTER[ROUTER.index("can_close_task ="):ROUTER.index("detail_transition_options =")]
+    assert 'action="complete"' in list_scope
+    assert 'action="close"' not in list_scope.split("_task_hierarchy_scope_allows", 1)[1]
+    assert 'action="complete"' in detail_scope
 
 
 def test_inline_transition_is_server_side_and_fail_closed() -> None:

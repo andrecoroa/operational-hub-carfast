@@ -18,7 +18,7 @@ from tempfile import NamedTemporaryFile, TemporaryDirectory
 from time import monotonic
 from types import SimpleNamespace
 from typing import Any
-from urllib.parse import parse_qsl, quote_plus, urlencode, urlsplit, urlunsplit
+from urllib.parse import parse_qsl, quote, quote_plus, urlencode, urlsplit, urlunsplit
 
 from fastapi import APIRouter, File, Form, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
@@ -2339,6 +2339,10 @@ def task_origin_label(task: Task) -> str:
         return "Tarefa do processo"
     if task.parent_task_id:
         return "Subtarefa"
+    if task.task_type == "request_info" and ":request_info:" in (
+        task.external_source_id or ""
+    ):
+        return "Informação"
     normalized = " ".join(
         value.strip().lower()
         for value in (task.task_type or "", task.source or "")
@@ -2563,6 +2567,13 @@ TASK_WORKSPACE_CONFIG = {
         "default_category": "other",
         "default_team_code": "finance",
     },
+}
+LEGACY_WORKSPACE_TEAM_CODES = {
+    "operational": ("operations",),
+    "workshop": ("workshop",),
+    "audit": ("support",),
+    "management": ("management",),
+    "administration": ("finance",),
 }
 TASK_WORKSPACE_TASK_TYPES = {
     workspace: [*config["primary_task_types"], *config["secondary_task_types"]]
@@ -2947,6 +2958,39 @@ def task_workspace_manage_url(workspace: str | None) -> str:
 def task_workspace_new_url(workspace: str | None, mode: str = "task") -> str:
     clean_workspace = normalize_task_workspace(workspace)
     return f"/task-board/new?mode={mode}&workspace={clean_workspace}"
+
+
+def task_context_teams(
+    db: Session,
+    user: User | None,
+    workspace: str | None,
+    *,
+    include_ids: tuple[int, ...] = (),
+) -> list[Team]:
+    """Expose only active Teams belonging to an authorized legacy workspace."""
+    clean_workspace = normalize_task_workspace(workspace)
+    if not user_can_access_task_workspace(db, user, clean_workspace):
+        return []
+    conditions = [Team.code.in_(LEGACY_WORKSPACE_TEAM_CODES[clean_workspace])]
+    clean_include_ids = tuple(item for item in include_ids if item)
+    if clean_include_ids:
+        conditions.append(Team.id.in_(clean_include_ids))
+    return db.scalars(
+        select(Team)
+        .where(Team.active.is_(True), or_(*conditions))
+        .order_by(Team.name)
+    ).all()
+
+
+def task_team_allowed_for_workspace(
+    db: Session,
+    user: User | None,
+    workspace: str | None,
+    team_id: int | None,
+) -> bool:
+    if not team_id:
+        return True
+    return any(team.id == team_id for team in task_context_teams(db, user, workspace))
 
 
 def workspace_task_type_options(workspace: str | None) -> list[tuple[str, str]]:
@@ -4932,7 +4976,7 @@ def clean_tasks_center(
                 workspace_for_task_type(task.task_type),
                 action="close",
             )
-            and _task_hierarchy_scope_allows(db, user_id, task, action="close")
+            and _task_hierarchy_scope_allows(db, user_id, task, action="complete")
             for task in tasks
         }
         task_respond_allowed_by_id = {
@@ -6048,7 +6092,12 @@ def clean_tasks_create(
             clean_workspace = normalize_task_workspace(workspace)
         workspace_config = TASK_WORKSPACE_CONFIG[clean_workspace]
         is_problem = record_type == "problem" and clean_workspace == "workshop"
-        effective_record_type = "problem" if is_problem else "task"
+        if record_type in {"request", "information"} and clean_workspace != "operational":
+            return RedirectResponse("/v2-clean/tasks?error=forbidden", status_code=303)
+        effective_record_type = {
+            "request": "request",
+            "information": "request_info",
+        }.get(record_type, "problem" if is_problem else workspace_config["default_task_type"])
         if not user_can_access_task_workspace(
             db, current_user, clean_workspace, action="create"
         ):
@@ -6115,7 +6164,7 @@ def clean_tasks_create(
             ),
             title=clean_title[:200],
             description=description.strip() or None,
-            task_type=workspace_config["default_task_type"],
+            task_type=effective_record_type,
             source="v2_clean",
             category=(clean_category or workspace_config["default_category"])[:80],
             subcategory="problem" if is_problem else (clean_subcategory or clean_category or "task")[:120],
@@ -6961,7 +7010,18 @@ def clean_task_open(
             return clean_task_action_redirect(
                 return_url, task_id=task_id, flag="forbidden"
             )
-    return clean_task_action_redirect(return_url, task_id=task_id, flag="opened")
+    target = _clean_v2_return_url(return_url, "/v2-clean/tasks")
+    parsed = urlsplit(target)
+    return_token = issue_return_context(
+        settings.app_secret_key,
+        path=parsed.path,
+        query=parsed.query,
+        anchor=f"task-{task_id}",
+    )
+    return RedirectResponse(
+        f"/v2-clean/tasks/{task_id}/detail?return_context={quote(return_token)}",
+        status_code=303,
+    )
 
 
 @web_router.post("/v2-clean/tasks/{task_id}/transition", response_class=HTMLResponse)
@@ -33903,6 +33963,8 @@ def task_new_form(
     mode: str = "task",
     workspace: str = "operational",
     parent_task_id: str = "",
+    record_type: str = "",
+    return_context: str = "",
 ):
     user_id = get_web_user_id(request)
     if not user_id:
@@ -33920,7 +33982,12 @@ def task_new_form(
             return RedirectResponse("/task-board", status_code=303)
         users = db.scalars(select(User).where(User.active.is_(True)).order_by(User.name, User.email)).all()
         assignable_users = assignable_users_for_workspace(users, current_workspace)
-        teams = db.scalars(select(Team).where(Team.active.is_(True)).order_by(Team.name)).all()
+        teams = task_context_teams(db, current_user, current_workspace)
+        resolved_return = resolve_return_context(
+            settings.app_secret_key,
+            return_context,
+            allowed_prefixes=("/v2-clean/tasks",),
+        ) if return_context else None
         return templates.TemplateResponse(
             request,
             "task_new.html",
@@ -33934,10 +34001,13 @@ def task_new_form(
                 "workspace": current_workspace,
                 "workspace_config": workspace_config,
                 "workspace_label": workspace_config["label"],
-                "manage_url": task_workspace_manage_url(current_workspace),
+                "manage_url": resolved_return.url if resolved_return else task_workspace_manage_url(current_workspace),
+                "return_context": return_context if resolved_return else "",
                 "form_values": {
                     "task_type": workspace_config["default_task_type"],
-                    "record_type": QUICK_RECORD_TYPES_BY_WORKSPACE[current_workspace][0][0],
+                    "record_type": record_type
+                    if record_type in {code for code, _ in QUICK_RECORD_TYPES_BY_WORKSPACE[current_workspace]}
+                    else QUICK_RECORD_TYPES_BY_WORKSPACE[current_workspace][0][0],
                     "category": parent_task.category if parent_task else workspace_config["default_category"],
                     "subcategory": parent_task.subcategory
                     if parent_task
@@ -34107,7 +34177,7 @@ def quick_record_create(
             current_user = db.get(User, user_id)
             users = db.scalars(select(User).where(User.active.is_(True)).order_by(User.name, User.email)).all()
             assignable_users = assignable_users_for_workspace(users, clean_workspace)
-            teams = db.scalars(select(Team).where(Team.active.is_(True)).order_by(Team.name)).all()
+            teams = task_context_teams(db, current_user, clean_workspace)
         return templates.TemplateResponse(
             request,
             "task_new.html",
@@ -34432,6 +34502,13 @@ def quick_record_convert(
                 f"{task_workspace_new_url(workspace, 'task')}&error=assignment_not_allowed",
                 status_code=303,
             )
+        if not task_team_allowed_for_workspace(
+            db, current_user, workspace, assigned_team_id
+        ):
+            return RedirectResponse(
+                f"{task_workspace_new_url(workspace, 'task')}&error=assignment_not_allowed",
+                status_code=303,
+            )
         if assigned_user_id and assigned_team_id:
             return RedirectResponse(
                 f"{task_workspace_new_url(workspace, 'task')}&error=assignment_not_allowed",
@@ -34445,8 +34522,13 @@ def quick_record_convert(
                 f"{task_workspace_new_url(workspace, 'task')}&error=assignment_not_allowed",
                 status_code=303,
             )
-        if delegated_team_id and not db.get(Team, delegated_team_id):
-            delegated_team_id = None
+        if delegated_team_id and not task_team_allowed_for_workspace(
+            db, current_user, workspace, delegated_team_id
+        ):
+            return RedirectResponse(
+                f"{task_workspace_new_url(workspace, 'task')}&error=assignment_not_allowed",
+                status_code=303,
+            )
 
         task = Task(
             title=title.strip() or record.title,
@@ -34568,7 +34650,7 @@ def task_create(
                 return RedirectResponse("/task-board", status_code=303)
             users = db.scalars(select(User).where(User.active.is_(True)).order_by(User.name, User.email)).all()
             assignable_users = assignable_users_for_workspace(users, current_workspace)
-            teams = db.scalars(select(Team).where(Team.active.is_(True)).order_by(Team.name)).all()
+            teams = task_context_teams(db, current_user, current_workspace)
         return templates.TemplateResponse(
             request,
             "task_new.html",
@@ -34660,6 +34742,13 @@ def task_create(
                 f"{task_workspace_new_url(current_workspace, 'task')}&error=assignment_not_allowed",
                 status_code=303,
             )
+        if not task_team_allowed_for_workspace(
+            db, current_user, current_workspace, assigned_team_id
+        ):
+            return RedirectResponse(
+                f"{task_workspace_new_url(current_workspace, 'task')}&error=assignment_not_allowed",
+                status_code=303,
+            )
         if assigned_user_id and assigned_team_id:
             return RedirectResponse(
                 f"{task_workspace_new_url(current_workspace, 'task')}&error=assignment_not_allowed",
@@ -34670,8 +34759,13 @@ def task_create(
             delegated_user_id = None
         if not is_assignment_allowed_for_workspace(db, delegated_user_id, workspace):
             return RedirectResponse(f"{task_workspace_new_url(current_workspace, 'task')}&error=assignment_not_allowed", status_code=303)
-        if delegated_team_id and not db.get(Team, delegated_team_id):
-            delegated_team_id = None
+        if delegated_team_id and not task_team_allowed_for_workspace(
+            db, current_user, current_workspace, delegated_team_id
+        ):
+            return RedirectResponse(
+                f"{task_workspace_new_url(current_workspace, 'task')}&error=assignment_not_allowed",
+                status_code=303,
+            )
         parent_task_redirect_id = parent_task.id if parent_task else None
         duplicate_tasks = []
         if clean_plate and confirm_duplicate != "1" and not parent_task:
@@ -34688,7 +34782,7 @@ def task_create(
         if duplicate_tasks:
             users = db.scalars(select(User).where(User.active.is_(True)).order_by(User.name, User.email)).all()
             assignable_users = assignable_users_for_workspace(users, current_workspace)
-            teams = db.scalars(select(Team).where(Team.active.is_(True)).order_by(Team.name)).all()
+            teams = task_context_teams(db, current_user, current_workspace)
             return templates.TemplateResponse(
                 request,
                 "task_new.html",
@@ -34817,6 +34911,7 @@ def task_create(
     return RedirectResponse(f"{task_workspace_manage_url(current_workspace)}?created=1", status_code=303)
 
 
+@web_router.get("/v2-clean/tasks/{task_id}/detail", response_class=HTMLResponse)
 @web_router.get("/task-board/{task_id}", response_class=HTMLResponse)
 def task_detail(
     request: Request,
@@ -34824,6 +34919,7 @@ def task_detail(
     commented: str | None = None,
     feedback_saved: str | None = None,
     error: str | None = None,
+    return_context: str = "",
 ):
     if not get_web_user_id(request):
         return RedirectResponse("/login", status_code=303)
@@ -34838,7 +34934,14 @@ def task_detail(
             db, current_user, task_workspace
         ) or not user_can_view_task(db, user_id=current_user.id, task=task):
             return RedirectResponse("/task-board", status_code=303)
-        task_manage_url = task_workspace_manage_url(task_workspace)
+        is_clean_detail = request.url.path.startswith("/v2-clean/tasks/")
+        task_manage_url = "/v2-clean/tasks" if is_clean_detail else task_workspace_manage_url(task_workspace)
+        resolved_return = resolve_return_context(
+            settings.app_secret_key,
+            return_context,
+            allowed_prefixes=("/v2-clean/tasks",),
+        ) if return_context else None
+        task_return_url = resolved_return.url if resolved_return else task_manage_url
         comments = db.scalars(
             select(TaskComment).where(TaskComment.task_id == task.id).order_by(TaskComment.created_at.desc())
         ).all()
@@ -34867,7 +34970,14 @@ def task_detail(
         users = db.scalars(select(User).where(User.active.is_(True)).order_by(User.name, User.email)).all()
         user_by_id = {item.id: item for item in users}
         assignable_users = assignable_users_for_workspace(users, task_workspace)
-        teams = db.scalars(select(Team).where(Team.active.is_(True)).order_by(Team.name)).all()
+        historical_team_ids = tuple(
+            item
+            for item in (task.team_id, task.delegated_to_team_id, task.waiting_for_team_id)
+            if item
+        )
+        teams = task_context_teams(
+            db, current_user, task_workspace, include_ids=historical_team_ids
+        )
         team_by_id = {item.id: item for item in teams}
         assigned_user = db.get(User, task.assigned_to_id) if task.assigned_to_id else None
         assigned_team = db.get(Team, task.team_id) if task.team_id else None
@@ -34894,14 +35004,30 @@ def task_detail(
         current_category_options = list(TASK_CATEGORIES)
         if task.category and task.category not in {code for code, _ in current_category_options}:
             current_category_options.insert(0, (task.category, TASK_CATEGORY_DISPLAY_LABELS.get(task.category, task.category)))
+        can_update_task = user_can_access_task_workspace(
+            db, current_user, task_workspace, action="update"
+        ) and _task_hierarchy_scope_allows(db, current_user.id, task, action="update")
+        can_respond_task = user_can_access_task_workspace(
+            db, current_user, task_workspace, action="update"
+        ) and _task_hierarchy_scope_allows(db, current_user.id, task, action="respond")
+        can_close_task = user_can_access_task_workspace(
+            db, current_user, task_workspace, action="close"
+        ) and _task_hierarchy_scope_allows(db, current_user.id, task, action="complete")
+        detail_transition_options = tuple(
+            code
+            for code in task_allowed_status_transitions(task)
+            if can_update_task and (code not in TASK_ARCHIVE_STATUSES or can_close_task)
+        )
         return templates.TemplateResponse(
             request,
-            "task_detail.html",
+            "clean_task_detail.html" if is_clean_detail else "task_detail.html",
             {
                 "task": task,
                 "task_workspace": task_workspace,
                 "task_workspace_label": TASK_WORKSPACE_LABELS[task_workspace],
                 "task_manage_url": task_manage_url,
+                "task_return_url": task_return_url,
+                "return_context": return_context if resolved_return else "",
                 "can_write_workspace": user_can_access_task_workspace(db, current_user, task_workspace, write=True),
                 "comments": comments,
                 "history": history,
@@ -34933,6 +35059,10 @@ def task_detail(
                 "feedback_saved": feedback_saved,
                 "error": task_detail_error_message(error),
                 "task_statuses": current_status_options,
+                "task_transition_options": detail_transition_options,
+                "can_update_task": can_update_task,
+                "can_respond_task": can_respond_task,
+                "can_close_task": can_close_task,
                 "task_status_labels": TASK_STATUS_DISPLAY_LABELS,
                 "waiting_reasons": TASK_WAITING_REASONS,
                 "waiting_reason_labels": TASK_WAITING_REASON_LABELS,
@@ -35047,6 +35177,10 @@ def task_update(
             db, user_id, task, action="assign"
         ):
             return task_update_error_url(task_id, "forbidden")
+        if assignment_changed and assigned_team_id and not task_team_allowed_for_workspace(
+            db, current_user, target_workspace, assigned_team_id
+        ):
+            return task_update_error_url(task_id, "assignment_not_allowed")
         if assignment_changed and not is_assignment_allowed_for_workspace(db, assigned_user_id, target_workspace):
             return task_update_error_url(task_id, "assignment_not_allowed")
         delegated_user_id, delegated_team_id = parse_delegation_target(delegated_to)
@@ -35056,6 +35190,10 @@ def task_update(
             str(task.delegated_to_user_id or "") != str(delegated_user_id or "")
             or str(task.delegated_to_team_id or "") != str(delegated_team_id or "")
         )
+        if delegate_changed and delegated_team_id and not task_team_allowed_for_workspace(
+            db, current_user, target_workspace, delegated_team_id
+        ):
+            return task_update_error_url(task_id, "assignment_not_allowed")
         if delegate_changed and not is_assignment_allowed_for_workspace(db, delegated_user_id, target_workspace):
             return task_update_error_url(task_id, "assignment_not_allowed")
         if delegated_team_id and not db.get(Team, delegated_team_id):
@@ -35065,6 +35203,14 @@ def task_update(
             waiting_for_user_id = None
         if waiting_for_team_id and not db.get(Team, waiting_for_team_id):
             waiting_for_team_id = None
+        waiting_changed = (
+            str(task.waiting_for_user_id or "") != str(waiting_for_user_id or "")
+            or str(task.waiting_for_team_id or "") != str(waiting_for_team_id or "")
+        )
+        if waiting_changed and waiting_for_team_id and not task_team_allowed_for_workspace(
+            db, current_user, target_workspace, waiting_for_team_id
+        ):
+            return task_update_error_url(task_id, "assignment_not_allowed")
         parsed_due_on = parse_optional_date(due_on)
         clean_waiting_reason = waiting_reason.strip()
         clean_waiting_reason_detail = waiting_reason_detail.strip()

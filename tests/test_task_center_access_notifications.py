@@ -170,10 +170,73 @@ def test_listable_direct_task_uses_same_resolver_for_clean_and_legacy_detail(
     )
     assert task.title in listed.text
     assert opened.status_code == 303
-    assert opened.headers["location"].startswith(
-        "/v2-clean/tasks?workspace=all&status=open&category=all"
+    assert opened.headers["location"].startswith(f"/v2-clean/tasks/{task.id}/detail?return_context=")
+    detail = client.get(opened.headers["location"])
+    assert detail.status_code == 200
+    assert not detail.history, [(item.status_code, item.headers.get("location")) for item in detail.history]
+    assert task.title in detail.text
+    assert "Voltar ao Centro de Tarefas" in detail.text
+    assert "/v2-clean/tasks?workspace=all&amp;status=open&amp;category=all#task-1" in detail.text
+
+
+def test_three_creation_models_persist_distinct_canonical_task_types(
+    authenticated_client, db_session
+):
+    expected = {
+        "request": ("request", "Pedido"),
+        "information": ("request_info", "Informação"),
+        "task": ("operational_task", "Tarefa"),
+    }
+    for record_type, (task_type, origin_label) in expected.items():
+        response = authenticated_client.post(
+            "/v2-clean/tasks",
+            data={
+                "record_type": record_type,
+                "workspace": "operational",
+                "title": f"Modelo {record_type}",
+                "category": "operations",
+                "subcategory": "operations_tbd",
+                "return_url": "/v2-clean/tasks?workspace=mine&status=open",
+            },
+            follow_redirects=False,
+        )
+        assert response.status_code == 303
+        created = db_session.scalar(select(Task).where(Task.title == f"Modelo {record_type}"))
+        assert created is not None
+        assert created.task_type == task_type
+        assert task_router.task_origin_label(created) == origin_label
+
+    forged = authenticated_client.post(
+        "/v2-clean/tasks",
+        data={
+            "record_type": "request",
+            "workspace": "workshop",
+            "title": "Pedido forjado fora do workspace",
+            "category": "workshop",
+        },
+        follow_redirects=False,
     )
-    assert f"open_task={task.id}" in opened.headers["location"]
+    assert forged.status_code == 303
+    assert forged.headers["location"] == "/v2-clean/tasks?error=forbidden"
+    assert db_session.scalar(
+        select(Task).where(Task.title == "Pedido forjado fora do workspace")
+    ) is None
+
+
+def test_legacy_team_fallback_is_workspace_scoped_and_forged_team_fails_closed(
+    authenticated_client, db_session
+):
+    admin = db_session.scalar(select(User).where(User.email == "admin.tests@carfast.local"))
+    operations = db_session.scalar(select(Team).where(Team.code == "operations"))
+    workshop = db_session.scalar(select(Team).where(Team.code == "workshop"))
+    visible = task_router.task_context_teams(db_session, admin, "operational")
+    assert [team.code for team in visible] == ["operations"]
+    assert task_router.task_team_allowed_for_workspace(
+        db_session, admin, "operational", operations.id
+    )
+    assert not task_router.task_team_allowed_for_workspace(
+        db_session, admin, "operational", workshop.id
+    )
 
 
 def test_clean_transition_and_note_are_authorized_audited_and_fail_closed(

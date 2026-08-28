@@ -189,6 +189,7 @@ def test_clean_task_update_round_trips_hierarchy_and_exclusive_assignment(
         code="update_round_trip",
         name="Atualização integral",
         active=True,
+        requires_description=True,
     )
     db_session.add(category)
     db_session.flush()
@@ -234,6 +235,34 @@ def test_clean_task_update_round_trips_hierarchy_and_exclusive_assignment(
     db_session.add(task)
     db_session.commit()
 
+    detail = authenticated_client.get(f"/v2-clean/tasks/{task.id}/detail")
+    assert detail.status_code == 200
+    assert 'name="classification_other_text"' in detail.text
+    assert 'data-requires-description="true"' in detail.text
+
+    incomplete = authenticated_client.post(
+        f"/v2-clean/tasks/{task.id}/update",
+        data={
+            "return_url": f"/v2-clean/tasks/{task.id}/detail",
+            "post_action": "stay",
+            "workspace": "operational",
+            "status": "new",
+            "title": "Não deve persistir",
+            "description": "Sem descrição da classificação",
+            "priority": "high",
+            "classification_version": "3",
+            "work_queue_id": str(queue.id),
+            "work_department_id": str(department.id),
+            "work_category_id": str(category.id),
+            "work_subcategory_id": str(subcategory.id),
+        },
+        follow_redirects=False,
+    )
+    assert incomplete.status_code == 303
+    assert "missing_classification=1" in incomplete.headers["location"]
+    db_session.refresh(task)
+    assert task.title == "Antes do read-back"
+
     response = authenticated_client.post(
         f"/v2-clean/tasks/{task.id}/update",
         data={
@@ -250,6 +279,7 @@ def test_clean_task_update_round_trips_hierarchy_and_exclusive_assignment(
             "work_department_id": str(department.id),
             "work_category_id": str(category.id),
             "work_subcategory_id": str(subcategory.id),
+            "classification_other_text": "Processo com Cliente",
             "assigned_to_id": str(executor.id),
             "assigned_team_id": "",
         },
@@ -280,6 +310,31 @@ def test_clean_task_update_round_trips_hierarchy_and_exclusive_assignment(
         executor.id,
         None,
     )
+    assert task.classification_other_text == "Processo com Cliente"
+
+    forged_hierarchy = authenticated_client.post(
+        f"/v2-clean/tasks/{task.id}/update",
+        data={
+            "return_url": f"/v2-clean/tasks/{task.id}/detail",
+            "post_action": "stay",
+            "workspace": "operational",
+            "status": "new",
+            "title": "Hierarquia forjada",
+            "description": task.description,
+            "priority": task.priority,
+            "classification_version": "3",
+            "work_queue_id": str(queue.id + 99999),
+            "work_department_id": str(department.id),
+            "work_category_id": str(category.id),
+            "work_subcategory_id": str(subcategory.id),
+            "classification_other_text": "Texto presente",
+        },
+        follow_redirects=False,
+    )
+    assert forged_hierarchy.status_code == 303
+    assert "missing_classification=1" in forged_hierarchy.headers["location"]
+    db_session.refresh(task)
+    assert task.title == "Depois do read-back"
 
     rejected_update = authenticated_client.post(
         f"/v2-clean/tasks/{task.id}/update",
@@ -296,6 +351,7 @@ def test_clean_task_update_round_trips_hierarchy_and_exclusive_assignment(
             "work_department_id": str(department.id),
             "work_category_id": str(category.id),
             "work_subcategory_id": str(subcategory.id),
+            "classification_other_text": "Processo com Cliente",
             "assigned_to_id": str(executor.id),
             "assigned_team_id": str(team.id),
         },
@@ -315,6 +371,7 @@ def test_clean_task_update_round_trips_hierarchy_and_exclusive_assignment(
             "work_queue_id": str(queue.id),
             "work_department_id": str(department.id),
             "work_category_id": str(category.id),
+            "classification_other_text": "Processo com Cliente",
             "assigned_to_id": str(executor.id),
             "assigned_team_id": str(team.id),
         },

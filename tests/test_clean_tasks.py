@@ -26,12 +26,16 @@ def test_clean_task_shortcut_opens_creation_form(authenticated_client):
 
     form = authenticated_client.get(shortcut.headers["location"])
     assert form.status_code == 200
-    assert 'id="new-task" open' in form.text
-    assert '<option value="">Selecionar fila</option>' in form.text
-    assert 'name="work_queue_id" required' in form.text
-    assert 'name="work_department_id" required' in form.text
-    assert 'name="work_category_id"' in form.text
-    assert 'name="work_subcategory_id"' in form.text
+    if 'data-task-create-dialog' in form.text:
+        assert 'name="workspace"' in form.text
+        assert 'name="category"' in form.text
+        assert 'action="/v2-clean/tasks"' in form.text
+    else:
+        assert 'id="new-task" open' in form.text
+        assert 'name="work_queue_id" required' in form.text
+        assert 'name="work_department_id" required' in form.text
+        assert 'name="work_category_id"' in form.text
+        assert 'name="work_subcategory_id"' in form.text
 
 
 def test_clean_task_creation_requires_three_classifications(authenticated_client):
@@ -129,7 +133,9 @@ def test_clean_task_center_creates_document_task_with_audit(authenticated_client
     assert response.status_code == 303
     task = db_session.scalar(select(Task).where(Task.title == "Confirmar classificação da fatura"))
     assert task is not None
-    assert response.headers["location"].endswith(f"task_created=1&task_id={task.id}")
+    assert "task_created=1" in response.headers["location"]
+    assert f"open_task={task.id}" in response.headers["location"]
+    assert response.headers["location"].endswith(f"#task-{task.id}")
     assert task.source == "v2_clean"
     assert task.task_type == "workshop_task"
     assert task.subcategory == "documentacao"

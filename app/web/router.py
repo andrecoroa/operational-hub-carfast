@@ -18,7 +18,7 @@ from tempfile import NamedTemporaryFile, TemporaryDirectory
 from time import monotonic
 from types import SimpleNamespace
 from typing import Any
-from urllib.parse import quote_plus, urlencode
+from urllib.parse import parse_qsl, quote_plus, urlencode, urlsplit, urlunsplit
 
 from fastapi import APIRouter, File, Form, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
@@ -2266,6 +2266,47 @@ TASK_STATUSES = [
 ]
 
 TASK_STATUS_LABELS = dict(TASK_STATUSES)
+
+# The clean task centre deliberately exposes only the established task states.
+# Keeping the graph here makes both rendered options and forged POSTs use the
+# same fail-closed contract without changing the legacy task workflow.
+TASK_STATUS_TRANSITIONS = {
+    "planned": ("new", "cancelled"),
+    "new": ("in_execution", "waiting", "resolved", "cancelled"),
+    "in_execution": ("waiting", "resolved", "cancelled"),
+    "waiting": ("in_execution", "resolved", "cancelled"),
+    "delegated": ("in_execution", "waiting", "resolved", "cancelled"),
+    "execution_done": ("ready_validation", "in_execution"),
+    "ready_validation": ("resolved", "in_execution"),
+    "resolved": ("closed", "in_execution"),
+    "closed": (),
+    "cancelled": (),
+    "no_action_needed": (),
+}
+
+
+def task_allowed_status_transitions(task: Task) -> tuple[str, ...]:
+    return TASK_STATUS_TRANSITIONS.get(task.status, ())
+
+
+def task_focus_bucket(task: Task) -> str:
+    """Mirror the mutually-exclusive server filters with an explainable label."""
+    category = (task.category or "").casefold()
+    if "sinistro" in category or "acidente" in category:
+        return "sinistros"
+    if (
+        "oficina" in category
+        or "repara" in category
+        or task.task_type in {"workshop_task", "workshop_audit"}
+    ):
+        return "oficina"
+    if (
+        "document" in category
+        or "fatura" in category
+        or task.task_type in {"audit_task", "administration_task"}
+    ):
+        return "documentacao"
+    return "all"
 TASK_LEGACY_STATUS_LABELS = {
     "analysis": "Em análise",
     "in_treatment": "Em tratamento",
@@ -4469,6 +4510,16 @@ def clean_tasks_new_shortcut(request: Request):
     denied = clean_experience_denied(request)
     if denied:
         return denied
+    user_id = get_web_user_id(request)
+    with SessionLocal() as db:
+        user = db.get(User, user_id) if user_id else None
+        creatable = [
+            code
+            for code in TASK_WORKSPACE_CONFIG
+            if user_can_access_task_workspace(db, user, code, action="create")
+        ]
+    if not creatable:
+        return RedirectResponse("/v2-clean/tasks?error=forbidden", status_code=303)
     return RedirectResponse("/v2-clean/tasks?create=1#new-task", status_code=303)
 
 
@@ -4495,6 +4546,7 @@ def clean_tasks_center(
     entity_id: str = "",
     phase: str = "",
     return_url: str = "",
+    open_task: int | None = None,
     created: str | None = None,
     updated: str | None = None,
     closed: str | None = None,
@@ -4891,6 +4943,26 @@ def clean_tasks_center(
                 action="update",
             )
             and _task_hierarchy_scope_allows(db, user_id, task, action="respond")
+            for task in tasks
+        }
+        task_transition_options_by_id = {
+            task.id: [
+                (code, TASK_STATUS_LABELS.get(code, code))
+                for code in task_allowed_status_transitions(task)
+                if (
+                    code not in TASK_ARCHIVE_STATUSES
+                    or task_close_allowed_by_id.get(task.id, False)
+                )
+            ]
+            for task in tasks
+        }
+        task_focus_labels_by_id = {
+            task.id: {
+                "documentacao": "Documentação",
+                "oficina": "Oficina",
+                "sinistros": "Sinistros",
+                "all": "Todas / sem agrupamento específico",
+            }[task_focus_bucket(task)]
             for task in tasks
         }
         task_ids = [task.id for task in tasks]
@@ -5330,6 +5402,8 @@ def clean_tasks_center(
                 "task_update_allowed_by_id": task_update_allowed_by_id,
                 "task_close_allowed_by_id": task_close_allowed_by_id,
                 "task_respond_allowed_by_id": task_respond_allowed_by_id,
+                "task_transition_options_by_id": task_transition_options_by_id,
+                "task_focus_labels_by_id": task_focus_labels_by_id,
                 "task_claim_allowed_by_id": task_claim_allowed_by_id,
                 "task_assignable_users_by_id": task_assignable_users_by_id,
                 "task_support_teams_by_id": task_support_teams_by_id,
@@ -5345,6 +5419,13 @@ def clean_tasks_center(
                 "readable_workspaces": readable_workspaces,
                 "writable_workspaces": writable_workspaces,
                 "creatable_workspaces": creatable_workspaces,
+                "task_creation_options": {
+                    code: {
+                        "label": TASK_WORKSPACE_LABELS[code],
+                        "categories": TASK_NATURE_OPTIONS[code],
+                    }
+                    for code in creatable_workspaces
+                },
                 "updatable_workspaces": updatable_workspaces,
                 "closable_workspaces": closable_workspaces,
                 "can_manage_recurrence": user_can_create_recurring_tasks(db, current_user),
@@ -5362,6 +5443,7 @@ def clean_tasks_center(
                     "department": str(active_department_id or ""),
                     "plate": normalized_plate,
                     "q": q.strip(),
+                    "open_task": open_task,
                     "due": active_due,
                     "assignment": active_assignment,
                     "sort": active_sort,
@@ -6214,8 +6296,7 @@ def clean_tasks_create(
         return_url,
         f"/v2-clean/tasks?workspace={clean_workspace}&created=1",
     )
-    separator = "&" if "?" in target else "?"
-    return RedirectResponse(f"{target}{separator}task_created=1&task_id={task_id}", status_code=303)
+    return clean_task_action_redirect(target, task_id=task_id, flag="task_created")
 
 
 @web_router.post("/v2-clean/tasks/{task_id}/update", response_class=HTMLResponse)
@@ -6836,8 +6917,170 @@ def clean_tasks_reopen(request: Request, task_id: int, return_url: str = Form(""
 
 def clean_task_action_redirect(return_url: str, *, task_id: int, flag: str) -> RedirectResponse:
     target = _clean_v2_return_url(return_url, "/v2-clean/tasks")
-    separator = "&" if "?" in target else "?"
-    return RedirectResponse(f"{target}{separator}{flag}=1&open_task={task_id}", status_code=303)
+    parsed = urlsplit(target)
+    transient = {
+        "opened",
+        "claimed",
+        "commented",
+        "transitioned",
+        "forbidden",
+        "invalid_transition",
+        "transition_blocked",
+        "task_created",
+        "open_task",
+    }
+    query = [(key, value) for key, value in parse_qsl(parsed.query) if key not in transient]
+    query.extend(((flag, "1"), ("open_task", str(task_id))))
+    destination = urlunsplit(("", "", parsed.path, urlencode(query), f"task-{task_id}"))
+    return RedirectResponse(
+        destination,
+        status_code=303,
+    )
+
+
+@web_router.get("/v2-clean/tasks/{task_id}/open")
+def clean_task_open(
+    request: Request,
+    task_id: int,
+    return_url: str = "",
+):
+    """Open a task through the same row-level resolver used by the clean list."""
+    user_id = get_web_user_id(request)
+    if not user_id:
+        return RedirectResponse("/v2-clean/tasks?error=forbidden", status_code=303)
+    with SessionLocal() as db:
+        task = db.get(Task, task_id)
+        user = db.get(User, user_id)
+        if (
+            not task
+            or not user_can_access_task_workspace(
+                db, user, workspace_for_task_type(task.task_type)
+            )
+            or not user_can_view_task(db, user_id=user_id, task=task)
+        ):
+            return clean_task_action_redirect(
+                return_url, task_id=task_id, flag="forbidden"
+            )
+    return clean_task_action_redirect(return_url, task_id=task_id, flag="opened")
+
+
+@web_router.post("/v2-clean/tasks/{task_id}/transition", response_class=HTMLResponse)
+def clean_task_transition(
+    request: Request,
+    task_id: int,
+    status: str = Form(""),
+    return_url: str = Form(""),
+):
+    """Apply one explicit transition from the server-rendered transition graph."""
+    user_id = get_web_user_id(request)
+    if not user_id:
+        return clean_task_action_redirect(
+            return_url, task_id=task_id, flag="forbidden"
+        )
+    with SessionLocal() as db:
+        task = db.get(Task, task_id)
+        user = db.get(User, user_id)
+        if (
+            not task
+            or not user_can_access_task_workspace(
+                db, user, workspace_for_task_type(task.task_type), action="update"
+            )
+            or not user_can_view_task(db, user_id=user_id, task=task)
+            or not _task_hierarchy_scope_allows(db, user_id, task, action="update")
+        ):
+            return clean_task_action_redirect(
+                return_url, task_id=task_id, flag="forbidden"
+            )
+        if status not in task_allowed_status_transitions(task):
+            return clean_task_action_redirect(
+                return_url, task_id=task_id, flag="invalid_transition"
+            )
+        if status in TASK_ARCHIVE_STATUSES and (
+            not user_can_access_task_workspace(
+                db, user, workspace_for_task_type(task.task_type), action="close"
+            )
+            or not _task_hierarchy_scope_allows(
+                db, user_id, task, action="complete"
+            )
+        ):
+            return clean_task_action_redirect(
+                return_url, task_id=task_id, flag="forbidden"
+            )
+        if status in {"resolved", "closed"}:
+            photo_blockers = required_photo_blockers(db, task_id=task.id)
+            if photo_blockers:
+                return clean_task_action_redirect(
+                    return_url, task_id=task_id, flag="transition_blocked"
+                )
+        prior_status = task.status
+        transition_now = datetime.now(UTC)
+        task.status = status
+        if status == "waiting" and prior_status != "waiting":
+            pause_task_sla(
+                db,
+                task,
+                actor_user_id=user_id,
+                reason="Ticket em espera",
+                now=transition_now,
+            )
+        elif status != "waiting" and prior_status == "waiting":
+            resume_task_sla(
+                db,
+                task,
+                actor_user_id=user_id,
+                reason="Ticket retomado",
+                now=transition_now,
+            )
+        if status in TASK_ARCHIVE_STATUSES:
+            task.closed_at = task.closed_at or transition_now
+            mark_task_resolved(db, task, actor_user_id=user_id, now=transition_now)
+        else:
+            task.closed_at = None
+            if status == "resolved":
+                mark_task_resolved(db, task, actor_user_id=user_id, now=transition_now)
+            elif prior_status == "resolved" and task.resolved_at:
+                task.resolved_at = None
+                task.sla_paused_at = None
+                task.resolution_due_at = (
+                    transition_now + timedelta(minutes=task.sla_resolution_minutes)
+                    if task.sla_resolution_minutes is not None
+                    else None
+                )
+                db.add(
+                    TaskSlaEvent(
+                        task_id=task.id,
+                        actor_user_id=user_id,
+                        action="reopened",
+                        details_json={
+                            "resolution_due_at": (
+                                task.resolution_due_at.isoformat()
+                                if task.resolution_due_at
+                                else None
+                            )
+                        },
+                    )
+                )
+        db.add(
+            TaskHistory(
+                task_id=task.id,
+                user_id=user_id,
+                field_name="status",
+                old_value=prior_status,
+                new_value=status,
+            )
+        )
+        record_audit(
+            db,
+            action="task.status.transitioned",
+            entity_type="task",
+            entity_id=task.id,
+            detail=f"Estado alterado de {prior_status} para {status}",
+            user_id=user_id,
+        )
+        db.commit()
+    return clean_task_action_redirect(
+        return_url, task_id=task_id, flag="transitioned"
+    )
 
 
 @web_router.get("/v2-clean/tasks/notifications/{notification_id}/open")
@@ -6916,6 +7159,7 @@ def clean_tasks_claim(request: Request, task_id: int, return_url: str = Form("")
             or not user_can_access_task_workspace(
                 db, current_user, workspace_for_task_type(task.task_type), action="update"
             )
+            or not user_can_view_task(db, user_id=user_id, task=task)
             or not _task_hierarchy_scope_allows(db, user_id, task, action="assume")
         ):
             return clean_task_action_redirect(
@@ -6958,9 +7202,12 @@ def clean_tasks_comment(
             or not user_can_access_task_workspace(
                 db, user, workspace_for_task_type(task.task_type), action="update"
             )
+            or not user_can_view_task(db, user_id=user_id, task=task)
             or not _task_hierarchy_scope_allows(db, user_id, task, action="respond")
         ):
-            return RedirectResponse("/v2-clean/tasks?error=forbidden", status_code=303)
+            return clean_task_action_redirect(
+                return_url, task_id=task_id, flag="forbidden"
+            )
         db.add(TaskComment(task_id=task.id, user_id=user_id, comment=clean_comment))
         mark_task_first_response(db, task, actor_user_id=user_id)
         db.commit()
@@ -34589,7 +34836,7 @@ def task_detail(
         task_workspace = workspace_for_task_type(task.task_type)
         if not user_can_access_task_workspace(
             db, current_user, task_workspace
-        ) or not _task_hierarchy_scope_allows(db, current_user.id, task, action="read"):
+        ) or not user_can_view_task(db, user_id=current_user.id, task=task):
             return RedirectResponse("/task-board", status_code=303)
         task_manage_url = task_workspace_manage_url(task_workspace)
         comments = db.scalars(

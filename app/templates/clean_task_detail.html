@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="app-shell">
+  {% set active_menu = "tasks" %}
+  {% include "_sidebar.html" %}
+  <main class="content">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">Centro de Tarefas · detalhe</p>
+        <h2>{{ task.title }}</h2>
+        <p class="breadcrumb">CF-{{ "%05d"|format(task.id) }} · {{ task_workspace_label }}</p>
+      </div>
+      <a class="button-link secondary-link" href="{{ task_return_url }}">Voltar ao Centro de Tarefas</a>
+    </header>
+
+    {% if error %}<div class="alert" role="alert">{{ error }}</div>{% endif %}
+    {% if commented %}<div class="success" role="status">Nota registada.</div>{% endif %}
+
+    <section class="workshop-page-grid task-detail-page-grid">
+      <div class="workshop-main-column">
+        <form method="post" action="/v2-clean/tasks/{{ task.id }}/update" class="form-panel form-stack">
+          <input type="hidden" name="return_url" value="{{ request.url.path }}?{{ request.url.query }}">
+          <input type="hidden" name="workspace" value="{{ task_workspace }}">
+          <input type="hidden" name="status" value="{{ task.status }}">
+          <input type="hidden" name="category" value="{{ task.category or '' }}">
+          <input type="hidden" name="subcategory" value="{{ task.subcategory or '' }}">
+          <div class="panel-heading compact-heading"><p class="eyebrow">Conteúdo real</p><h3>Dados da tarefa</h3></div>
+          <label>Assunto<input name="title" maxlength="200" required value="{{ task.title }}"></label>
+          <label>Descrição<textarea name="description" rows="6">{{ task.description or '' }}</textarea></label>
+          <div class="compact-form-grid">
+            <label>Prioridade<select name="priority">{% for code,label in priorities %}<option value="{{ code }}" {% if task.priority == code %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+            <label>Prazo<input type="date" name="due_on" value="{{ task.due_on or '' }}"></label>
+          </div>
+          {% if can_update_task %}<button type="submit">Guardar alterações</button>{% endif %}
+        </form>
+      </div>
+      <aside class="workshop-side-column">
+        <article class="section">
+          <div class="panel-heading compact-heading"><p class="eyebrow">Estado</p><h3>{{ task_status_labels.get(task.status, task.status) }}</h3></div>
+          <dl>
+            <div><dt>Categoria canónica</dt><dd>{{ task_category_labels.get(task.category, task.category or 'Por classificar') }}</dd></div>
+            <div><dt>Equipa owner</dt><dd>{{ assigned_team.name if assigned_team else 'Por atribuir' }}</dd></div>
+            <div><dt>Executor</dt><dd>{{ assigned_user.name if assigned_user else 'Por atribuir' }}</dd></div>
+          </dl>
+          {% if task_transition_options %}<form method="post" action="/v2-clean/tasks/{{ task.id }}/transition" class="form-stack"><input type="hidden" name="return_url" value="{{ request.url.path }}?{{ request.url.query }}"><label>Alterar estado<select name="status">{% for code in task_transition_options %}<option value="{{ code }}">{{ task_status_labels.get(code, code) }}</option>{% endfor %}</select></label><button type="submit">Confirmar estado</button></form>{% endif %}
+        </article>
+        <article class="section">
+          <div class="panel-heading compact-heading"><p class="eyebrow">Acompanhamento</p><h3>Registar nota</h3></div>
+          {% if can_respond_task %}<form method="post" action="/v2-clean/tasks/{{ task.id }}/comments" class="form-stack"><input type="hidden" name="return_url" value="{{ request.url.path }}?{{ request.url.query }}"><label>Nota<textarea name="comment" rows="4" required maxlength="4000"></textarea></label><button type="submit">Guardar nota</button></form>{% endif %}
+          {% for item in comments[:5] %}<p><strong>{{ user_by_id.get(item.user_id).name if user_by_id.get(item.user_id) else 'Utilizador' }}</strong><br>{{ item.comment }}</p>{% endfor %}
+        </article>
+      </aside>
+    </section>
+  </main>
+</div>
+{% endblock %}

@@ -110,6 +110,29 @@ class WorkHierarchySelection:
     other_text: str | None
 
 
+def work_hierarchy_item_contract(item) -> dict[str, object]:
+    """Canonical server-side contract shared by hierarchy UI and validation."""
+    parent_id = getattr(item, "queue_id", None)
+    if isinstance(item, WorkCategory):
+        parent_id = item.department_id
+    elif isinstance(item, WorkSubcategory):
+        parent_id = item.category_id
+    return {
+        "id": item.id,
+        "parent_id": parent_id,
+        "name": item.name,
+        "requires_description": bool(item.requires_description),
+    }
+
+
+def work_hierarchy_requires_description(*items) -> bool:
+    return any(
+        work_hierarchy_item_contract(item)["requires_description"]
+        for item in items
+        if item is not None
+    )
+
+
 def work_hierarchy_context(db, *, active_only: bool = True) -> dict[str, object]:
     queues_query = select(WorkQueue)
     departments_query = select(WorkDepartment)
@@ -166,34 +189,15 @@ def work_hierarchy_context(db, *, active_only: bool = True) -> dict[str, object]
         "work_department_labels": {item.id: item.name for item in all_departments},
         "work_category_labels": {item.id: item.name for item in all_categories},
         "work_subcategory_labels": {item.id: item.name for item in all_subcategories},
+        "work_hierarchy_contract": {
+            "departments": {item.id: work_hierarchy_item_contract(item) for item in departments},
+            "categories": {item.id: work_hierarchy_item_contract(item) for item in categories},
+            "subcategories": {item.id: work_hierarchy_item_contract(item) for item in subcategories},
+        },
         "work_hierarchy_json": {
-            "departments": [
-                {
-                    "id": item.id,
-                    "parent_id": item.queue_id,
-                    "name": item.name,
-                    "requires_description": item.requires_description,
-                }
-                for item in departments
-            ],
-            "categories": [
-                {
-                    "id": item.id,
-                    "parent_id": item.department_id,
-                    "name": item.name,
-                    "requires_description": item.requires_description,
-                }
-                for item in categories
-            ],
-            "subcategories": [
-                {
-                    "id": item.id,
-                    "parent_id": item.category_id,
-                    "name": item.name,
-                    "requires_description": item.requires_description,
-                }
-                for item in subcategories
-            ],
+            "departments": [work_hierarchy_item_contract(item) for item in departments],
+            "categories": [work_hierarchy_item_contract(item) for item in categories],
+            "subcategories": [work_hierarchy_item_contract(item) for item in subcategories],
             "proposals": [
                 {
                     "id": item.id,
@@ -240,8 +244,8 @@ def validate_work_hierarchy(
     ):
         return None
     cleaned_other = other_text.strip() or None
-    requires_description = any(
-        item and item.requires_description for item in (department, category, subcategory)
+    requires_description = work_hierarchy_requires_description(
+        department, category, subcategory
     )
     if requires_description and not cleaned_other:
         return None

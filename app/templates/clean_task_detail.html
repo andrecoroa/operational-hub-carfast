@@ -31,7 +31,7 @@
             <label>Prioridade<select name="priority">{% for code,label in priorities %}<option value="{{ code }}" {% if task.priority == code %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
             <label>Prazo<input type="date" name="due_on" value="{{ task.due_on or '' }}"></label>
           </div>
-          {{ task_classification_fields(work_queues, work_departments, work_categories, work_subcategories, task=task) }}
+          {{ task_classification_fields(work_queues, work_departments, work_categories, work_subcategories, work_hierarchy_contract, task=task) }}
           <fieldset class="compact-form-grid task-assignment-exclusive">
             <legend>Atribuição — escolha equipa ou executor</legend>
             <label>Atribuir à equipa<select name="assigned_team_id" data-assignment-exclusive><option value="">Sem equipa owner</option>{% for team in teams %}<option value="{{ team.id }}" {% if task.team_id == team.id %}selected{% endif %}>{{ team.name }}</option>{% endfor %}</select></label>

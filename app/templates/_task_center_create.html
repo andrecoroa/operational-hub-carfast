@@ -16,7 +16,7 @@
     <p class="task-create-model-heading" data-create-model-heading></p>
     <label data-create-title-label><span>Assunto</span><input name="title" maxlength="200" required></label>
     <label data-create-description-label><span>Descrição</span><textarea name="description" rows="3"></textarea></label>
-    {{ task_classification_fields(work_queues, work_departments, work_categories, work_subcategories, eligible_team_ids_by_category=eligible_team_ids_by_category, eligible_user_ids_by_category=eligible_user_ids_by_category) }}
+    {{ task_classification_fields(work_queues, work_departments, work_categories, work_subcategories, work_hierarchy_contract, eligible_team_ids_by_category=eligible_team_ids_by_category, eligible_user_ids_by_category=eligible_user_ids_by_category) }}
     <fieldset class="task-create-relation">
       <legend>Relação (opcional)</legend>
       <label>Tipo<select name="entity_type"><option value="">Sem relação</option><option value="vehicle">Viatura</option><option value="process">Processo</option><option value="task">Tarefa</option><option value="partner">Parceiro</option></select></label>

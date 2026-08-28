@@ -15,6 +15,7 @@ TEMPLATE = "\n".join(
         "app/templates/clean_task_center.html",
         "app/templates/_task_center_approved.html",
         "app/templates/_task_center_create.html",
+        "app/templates/_task_classification_fields.html",
     )
 )
 CSS = (ROOT / "app/static/css/ui-contract-v1.css").read_text(encoding="utf-8")

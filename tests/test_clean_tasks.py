@@ -42,6 +42,8 @@ def test_clean_task_shortcut_opens_creation_form(authenticated_client):
         assert 'name="work_department_id" required' in form.text
         assert 'name="work_category_id" required' in form.text
         assert 'name="work_subcategory_id"' in form.text
+        assert 'name="classification_other_text"' in form.text
+        assert 'data-requires-description=' in form.text
         assert 'action="/v2-clean/tasks"' in form.text
     else:
         assert 'id="new-task" open' in form.text
@@ -64,6 +66,7 @@ def test_clean_task_creation_models_have_distinct_persisted_contracts(
         code="functional_models",
         name="Modelos funcionais",
         active=True,
+        requires_description=True,
     )
     db_session.add(category)
     db_session.flush()
@@ -81,7 +84,27 @@ def test_clean_task_creation_models_have_distinct_persisted_contracts(
         "work_department_id": str(department.id),
         "work_category_id": str(category.id),
         "work_subcategory_id": str(subcategory.id) if subcategory else "",
+        "classification_other_text": "Contrato partilhado validado",
     }
+
+    incomplete = authenticated_client.post(
+        "/v2-clean/tasks",
+        data={
+            "record_type": "request",
+            "title": "Modelo incompleto bloqueado",
+            "classification_version": "3",
+            "work_queue_id": str(queue.id),
+            "work_department_id": str(department.id),
+            "work_category_id": str(category.id),
+            "work_subcategory_id": str(subcategory.id),
+        },
+        follow_redirects=False,
+    )
+    assert incomplete.status_code == 303
+    assert "missing_classification" in incomplete.headers["location"]
+    assert db_session.scalar(
+        select(Task).where(Task.title == "Modelo incompleto bloqueado")
+    ) is None
 
     cases = (
         (
@@ -116,6 +139,7 @@ def test_clean_task_creation_models_have_distinct_persisted_contracts(
         assert task.work_queue_id == queue.id
         assert task.work_department_id == department.id
         assert task.work_category_id == category.id
+        assert task.classification_other_text == "Contrato partilhado validado"
 
     request_task = db_session.scalar(select(Task).where(Task.title == "Necessidade de apoio"))
     information_task = db_session.scalar(select(Task).where(Task.title == "Informação recebida"))
@@ -125,6 +149,23 @@ def test_clean_task_creation_models_have_distinct_persisted_contracts(
     assert information_task.due_on is None
     assert complete_task.priority == "high"
     assert complete_task.due_on == date(2026, 9, 5)
+
+    update = authenticated_client.post(
+        f"/v2-clean/tasks/{request_task.id}/update",
+        data={
+            "title": "Necessidade de apoio editada",
+            "description": "Destino revisto",
+            "status": request_task.status,
+            "priority": "high",
+            "workspace": "operational",
+            **hierarchy,
+        },
+        follow_redirects=False,
+    )
+    assert update.status_code == 303
+    db_session.refresh(request_task)
+    assert request_task.task_type == "request"
+    assert request_task.classification_other_text == "Contrato partilhado validado"
 
 
 def test_clean_task_v3_attachment_is_persisted_and_fixture_is_cleaned(

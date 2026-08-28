@@ -22,7 +22,15 @@ from sqlalchemy import select  # noqa: E402
 
 from app.core.database import SessionLocal, engine  # noqa: E402
 from app.main import app  # noqa: E402
-from app.models import Base, Task, User  # noqa: E402
+from app.models import (  # noqa: E402
+    Base,
+    Task,
+    User,
+    WorkCategory,
+    WorkDepartment,
+    WorkQueue,
+    WorkSubcategory,
+)
 from app.services.bootstrap import seed_initial_data  # noqa: E402
 from app.services.users import create_user  # noqa: E402
 
@@ -53,6 +61,33 @@ def prepare_fixture() -> None:
                 organizational_unit_codes=["carfast"],
             )
             db.flush()
+        queue = db.scalar(select(WorkQueue).where(WorkQueue.code == "tasks_support"))
+        department = db.scalar(
+            select(WorkDepartment).where(WorkDepartment.queue_id == queue.id)
+        )
+        category = db.scalar(
+            select(WorkCategory).where(
+                WorkCategory.department_id == department.id,
+                WorkCategory.code == "synthetic_preview",
+            )
+        )
+        if not category:
+            category = WorkCategory(
+                department_id=department.id,
+                code="synthetic_preview",
+                name="Operação sintética",
+                active=True,
+            )
+            db.add(category)
+            db.flush()
+            db.add(
+                WorkSubcategory(
+                    category_id=category.id,
+                    code="synthetic_triage",
+                    name="Triagem sintética",
+                    active=True,
+                )
+            )
         if not db.scalar(select(Task.id).where(Task.source == "synthetic_task_center_preview")):
             now = datetime.now(UTC)
             for index, (title, category, priority, status, day_delta, closed) in enumerate(FIXTURES, 1):

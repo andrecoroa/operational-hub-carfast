@@ -1,0 +1,40 @@
+{% if task_creation_options %}
+<dialog id="new-task" data-task-create-dialog aria-labelledby="task-create-title">
+  <form method="dialog"><header><h2 id="task-create-title">Nova tarefa</h2><button type="submit" class="secondary" aria-label="Fechar criação de tarefa">Fechar</button></header></form>
+  <section class="task-create-models" aria-label="Escolher modelo de criação">
+    {% if task_creation_options.get('operational') %}
+    <button type="button" class="task-create-model" data-create-model="request" data-create-workspace="operational" onclick="window.selectTaskCreationModel?.(this)"><strong>Pedido simples</strong><span>Necessidade, destino, relação e anexos para triagem.</span></button>
+    <button type="button" class="task-create-model" data-create-model="information" data-create-workspace="operational" onclick="window.selectTaskCreationModel?.(this)"><strong>Informação / Comunicação</strong><span>Conteúdo recebido, relação e anexos, sem planeamento obrigatório.</span></button>
+    {% endif %}
+    <button type="button" class="task-create-model" data-create-model="task" onclick="window.selectTaskCreationModel?.(this)"><strong>Tarefa completa</strong><span>Classificação, owner/executor, prioridade e prazo.</span></button>
+  </section>
+  <form method="post" action="/v2-clean/tasks" enctype="multipart/form-data" data-task-create-form hidden>
+    <input type="hidden" name="record_type" value="task">
+    <input type="hidden" name="classification_version" value="3">
+    <input type="hidden" name="return_url">
+    <p class="task-create-model-heading" data-create-model-heading></p>
+    <label data-create-title-label><span>Assunto</span><input name="title" maxlength="200" required></label>
+    <label data-create-description-label><span>Descrição</span><textarea name="description" rows="3"></textarea></label>
+    <fieldset class="task-create-hierarchy" data-work-hierarchy>
+      <legend>Classificação operacional</legend>
+      <label>Fila<select name="work_queue_id" required data-work-level="queue"><option value="">Selecionar fila</option>{% for item in work_queues %}<option value="{{ item.id }}">{{ item.name }}</option>{% endfor %}</select></label>
+      <label>Departamento<select name="work_department_id" required data-work-level="department"><option value="">Selecionar departamento</option>{% for item in work_departments %}<option value="{{ item.id }}" data-parent="{{ item.queue_id }}">{{ item.name }}</option>{% endfor %}</select></label>
+      <label>Categoria<select name="work_category_id" required data-work-level="category"><option value="">Selecionar categoria</option>{% for item in work_categories %}<option value="{{ item.id }}" data-parent="{{ item.department_id }}" data-team-ids="{{ eligible_team_ids_by_category.get(item.id, [])|join(',') }}" data-user-ids="{{ eligible_user_ids_by_category.get(item.id, [])|join(',') }}">{{ item.name }}</option>{% endfor %}</select></label>
+      <label>Subcategoria<select name="work_subcategory_id" data-work-level="subcategory"><option value="">Sem subcategoria</option>{% for item in work_subcategories %}<option value="{{ item.id }}" data-parent="{{ item.category_id }}">{{ item.name }}</option>{% endfor %}</select></label>
+    </fieldset>
+    <fieldset class="task-create-relation">
+      <legend>Relação (opcional)</legend>
+      <label>Tipo<select name="entity_type"><option value="">Sem relação</option><option value="vehicle">Viatura</option><option value="process">Processo</option><option value="task">Tarefa</option><option value="partner">Parceiro</option></select></label>
+      <label>Referência<input name="entity_id" maxlength="120" placeholder="ID ou referência"></label>
+    </fieldset>
+    <label class="task-create-attachments">Anexos<input type="file" name="attachments" multiple></label>
+    <details data-create-more><summary>Mais opções</summary><div>
+      <label>Equipa owner<select name="assigned_team_id"><option value="">Por atribuir</option>{% for team in all_teams %}<option value="{{ team.id }}" data-team-option>{{ team.name }}</option>{% endfor %}</select></label>
+      <label>Executor<select name="assigned_to_id"><option value="">Por atribuir</option>{% for user in all_users %}<option value="{{ user.id }}" data-user-option>{{ user.name }}</option>{% endfor %}</select></label>
+      <label>Prioridade<select name="priority"><option value="normal">Normal</option><option value="high">Alta</option><option value="urgent">Urgente</option><option value="low">Baixa</option></select></label>
+      <label>Prazo<input type="date" name="due_on"></label>
+    </div></details>
+    <footer><button type="button" class="secondary" data-task-create-back>Voltar aos modelos</button><button type="submit">Criar</button></footer>
+  </form>
+</dialog>
+{% endif %}

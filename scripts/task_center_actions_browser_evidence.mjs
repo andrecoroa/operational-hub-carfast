@@ -42,28 +42,16 @@ if (process.env.TASK_CENTER_BASELINE_ONLY === "1") {
 await page.screenshot({ path: path.join(output, "01-selected-1440x731.png") });
 
 await page.locator('[data-task-preview-action="open"]').click();
-await page.waitForURL(/open_task=/);
-if (page.url().startsWith(`${base}/v2-clean` ) === false) throw new Error(`Open escaped clean UI: ${page.url()}`);
-await page.screenshot({ path: path.join(output, "02-open-return-context-1440x731.png") });
-
-await page.locator('[data-task-preview-action="context"]').click();
-await page.locator("[data-task-work-context]").evaluate((element) => {
-  if (document.activeElement !== element) throw new Error("Continue did not focus work context");
-});
-
-await page.locator('[data-task-preview-action="state"]').click();
-await page.locator("[data-task-state-dialog]").waitFor({ state: "visible" });
-await page.screenshot({ path: path.join(output, "03-state-editor-1440x731.png") });
-await page.locator("[data-task-state-dialog] [data-task-dialog-cancel]").click();
-
-await page.locator('[data-task-preview-action="note"]').click();
-await page.locator("[data-task-note-dialog]").waitFor({ state: "visible" });
-await page.locator('[data-task-note-form] textarea[name="comment"]').fill("Nota sintética de validação browser");
-await page.screenshot({ path: path.join(output, "04-note-editor-1440x731.png") });
-await Promise.all([
-  page.waitForURL(/commented=1/),
-  page.locator('[data-task-note-form] button[type="submit"]').click(),
-]);
+await page.waitForURL(/\/v2-clean\/tasks\/\d+\/detail\?return_context=/);
+if ((await page.locator('form[action*="/update"] input[name="title"]').count()) !== 1) throw new Error("Real editable detail did not open");
+for (const field of ["work_queue_id", "work_department_id", "work_category_id", "work_subcategory_id", "assigned_team_id", "assigned_to_id"]) {
+  if ((await page.locator(`form[action*="/update"] [name="${field}"]`).count()) !== 1) throw new Error(`Detail field missing: ${field}`);
+}
+await page.screenshot({ path: path.join(output, "02-real-detail-return-context-1440x731.png") });
+const returnHref = await page.locator('a:has-text("Voltar ao Centro de Tarefas")').getAttribute("href");
+if (!returnHref?.includes("#task-")) throw new Error(`ReturnContext missing selection: ${returnHref}`);
+await page.locator('a:has-text("Voltar ao Centro de Tarefas")').click();
+await page.waitForURL(/\/v2-clean\/tasks/);
 
 await page.locator('[data-task-create-open]').click();
 await page.locator("[data-task-create-dialog]").waitFor({ state: "visible" });
@@ -71,7 +59,19 @@ const createReturn = await page.locator('[data-task-create-form] [name="return_u
 if (!createReturn.includes("workspace=all") || !createReturn.includes("category=all") || !createReturn.includes("open_task=")) {
   throw new Error(`Create ReturnContext incomplete: ${createReturn}`);
 }
-await page.screenshot({ path: path.join(output, "05-create-editor-1440x731.png") });
+await page.screenshot({ path: path.join(output, "03-three-models-1440x731.png") });
+for (const model of ["request", "information", "task"]) {
+  await page.locator(`[data-create-model="${model}"]`).click();
+  const recordType = await page.locator('[data-task-create-form] [name="record_type"]').inputValue();
+  if (recordType !== model) throw new Error(`Wrong record type for ${model}: ${recordType}`);
+  const moreHidden = await page.locator('[data-create-more]').evaluate((element) => element.hidden);
+  if ((model === "task") === moreHidden) throw new Error(`Wrong planning fields visibility for ${model}`);
+  for (const field of ["work_queue_id", "work_department_id", "work_category_id", "work_subcategory_id", "entity_type", "entity_id", "attachments"]) {
+    if ((await page.locator(`[data-task-create-form] [name="${field}"]`).count()) !== 1) throw new Error(`Create field missing: ${field}`);
+  }
+  await page.screenshot({ path: path.join(output, `04-${model}-1440x731.png`) });
+  await page.locator('[data-task-create-back]').click();
+}
 
 const geometry = await page.evaluate(() => ({
   width: innerWidth,

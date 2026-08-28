@@ -5309,6 +5309,57 @@ def clean_tasks_center(
         }
         prefill_nature = prefill_nature_aliases.get(raw_prefill_category.lower(), raw_prefill_category)
         hierarchy = work_hierarchy_context(db)
+        departments_by_id = {
+            item.id: item for item in hierarchy["work_departments"]
+        }
+        scoped_categories = [
+            item
+            for item in hierarchy["work_categories"]
+            if user_work_scope_allows(
+                db,
+                user_id=user_id,
+                queue_id=departments_by_id[item.department_id].queue_id,
+                department_id=item.department_id,
+                category_id=item.id,
+                subcategory_id=None,
+                action="create",
+            )
+        ]
+        scoped_category_ids = {item.id for item in scoped_categories}
+        scoped_categories_by_id = {item.id: item for item in scoped_categories}
+        scoped_subcategories = [
+            item
+            for item in hierarchy["work_subcategories"]
+            if item.category_id in scoped_category_ids
+            and user_work_scope_allows(
+                db,
+                user_id=user_id,
+                queue_id=departments_by_id[
+                    scoped_categories_by_id[item.category_id].department_id
+                ].queue_id,
+                department_id=scoped_categories_by_id[item.category_id].department_id,
+                category_id=item.category_id,
+                subcategory_id=item.id,
+                action="create",
+            )
+        ]
+        scoped_department_ids = {item.department_id for item in scoped_categories}
+        scoped_departments = [
+            item
+            for item in hierarchy["work_departments"]
+            if item.id in scoped_department_ids
+        ]
+        scoped_queue_ids = {item.queue_id for item in scoped_departments}
+        hierarchy.update(
+            {
+                "work_queues": [
+                    item for item in hierarchy["work_queues"] if item.id in scoped_queue_ids
+                ],
+                "work_departments": scoped_departments,
+                "work_categories": scoped_categories,
+                "work_subcategories": scoped_subcategories,
+            }
+        )
         category_ids = [item.id for item in hierarchy["work_categories"]]
         eligible_user_ids_by_category = {
             category_id: [
@@ -35018,6 +35069,17 @@ def task_detail(
             for code in task_allowed_status_transitions(task)
             if can_update_task and (code not in TASK_ARCHIVE_STATUSES or can_close_task)
         )
+        hierarchy = work_hierarchy_context(db)
+        detail_assignable_users = (
+            eligible_category_users(db, task.work_category_id)
+            if task.work_category_id
+            else assignable_users
+        )
+        detail_assignable_teams = (
+            eligible_category_teams(db, task.work_category_id)
+            if task.work_category_id
+            else teams
+        )
         return templates.TemplateResponse(
             request,
             "clean_task_detail.html" if is_clean_detail else "task_detail.html",
@@ -35041,10 +35103,10 @@ def task_detail(
                 "guided_flow_step_status_class": GUIDED_FLOW_STEP_STATUS_CLASS,
                 "recurrence_rule_labels": RECURRENCE_RULE_LABELS,
                 "users": users,
-                "assignable_users": assignable_users,
+                "assignable_users": detail_assignable_users,
                 "current_user": current_user,
                 "user_by_id": user_by_id,
-                "teams": teams,
+                "teams": detail_assignable_teams,
                 "team_by_id": team_by_id,
                 "assigned_user": assigned_user,
                 "assigned_team": assigned_team,
@@ -35081,6 +35143,7 @@ def task_detail(
                 "document_area_labels": DOCUMENT_AREA_LABELS,
                 "document_type_labels": DOCUMENT_TYPE_LABELS,
                 "document_sources": DOCUMENT_SOURCES,
+                **hierarchy,
             },
         )
 

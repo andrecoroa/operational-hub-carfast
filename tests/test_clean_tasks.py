@@ -13,6 +13,10 @@ from app.models import (
     User,
     Vehicle,
     VehicleDocumentRecord,
+    WorkCategory,
+    WorkDepartment,
+    WorkQueue,
+    WorkSubcategory,
     WorkshopPhasedProcess,
 )
 from app.services.users import create_user
@@ -27,8 +31,14 @@ def test_clean_task_shortcut_opens_creation_form(authenticated_client):
     form = authenticated_client.get(shortcut.headers["location"])
     assert form.status_code == 200
     if 'data-task-create-dialog' in form.text:
-        assert 'name="workspace"' in form.text
-        assert 'name="category"' in form.text
+        assert 'data-create-model="request"' in form.text
+        assert 'data-create-model="information"' in form.text
+        assert 'data-create-model="task"' in form.text
+        assert 'name="classification_version" value="3"' in form.text
+        assert 'name="work_queue_id" required' in form.text
+        assert 'name="work_department_id" required' in form.text
+        assert 'name="work_category_id" required' in form.text
+        assert 'name="work_subcategory_id"' in form.text
         assert 'action="/v2-clean/tasks"' in form.text
     else:
         assert 'id="new-task" open' in form.text
@@ -36,6 +46,82 @@ def test_clean_task_shortcut_opens_creation_form(authenticated_client):
         assert 'name="work_department_id" required' in form.text
         assert 'name="work_category_id"' in form.text
         assert 'name="work_subcategory_id"' in form.text
+
+
+def test_clean_task_creation_models_have_distinct_persisted_contracts(
+    authenticated_client,
+    db_session,
+):
+    queue = db_session.scalar(select(WorkQueue).where(WorkQueue.code == "tasks_support"))
+    department = db_session.scalar(
+        select(WorkDepartment).where(WorkDepartment.queue_id == queue.id)
+    )
+    category = WorkCategory(
+        department_id=department.id,
+        code="functional_models",
+        name="Modelos funcionais",
+        active=True,
+    )
+    db_session.add(category)
+    db_session.flush()
+    subcategory = WorkSubcategory(
+        category_id=category.id,
+        code="initial_triage",
+        name="Triagem inicial",
+        active=True,
+    )
+    db_session.add(subcategory)
+    db_session.commit()
+    hierarchy = {
+        "classification_version": "3",
+        "work_queue_id": str(queue.id),
+        "work_department_id": str(department.id),
+        "work_category_id": str(category.id),
+        "work_subcategory_id": str(subcategory.id) if subcategory else "",
+    }
+
+    cases = (
+        (
+            "request",
+            "Necessidade de apoio",
+            {"description": "Destino: equipa operacional", "entity_type": "vehicle", "entity_id": "42"},
+            "request",
+        ),
+        (
+            "information",
+            "Informação recebida",
+            {"description": "Comunicação para registo", "entity_type": "process", "entity_id": "PROC-7"},
+            "request_info",
+        ),
+        (
+            "task",
+            "Trabalho planeado",
+            {"description": "Executar validação", "priority": "high", "due_on": "2026-09-05"},
+            "operational_task",
+        ),
+    )
+    for record_type, title, fields, expected_type in cases:
+        response = authenticated_client.post(
+            "/v2-clean/tasks",
+            data={"record_type": record_type, "title": title, **hierarchy, **fields},
+            follow_redirects=False,
+        )
+        assert response.status_code == 303, response.text
+        task = db_session.scalar(select(Task).where(Task.title == title))
+        assert task is not None
+        assert task.task_type == expected_type
+        assert task.work_queue_id == queue.id
+        assert task.work_department_id == department.id
+        assert task.work_category_id == category.id
+
+    request_task = db_session.scalar(select(Task).where(Task.title == "Necessidade de apoio"))
+    information_task = db_session.scalar(select(Task).where(Task.title == "Informação recebida"))
+    complete_task = db_session.scalar(select(Task).where(Task.title == "Trabalho planeado"))
+    assert (request_task.entity_type, request_task.entity_id) == ("vehicle", "42")
+    assert (information_task.entity_type, information_task.entity_id) == ("process", "PROC-7")
+    assert information_task.due_on is None
+    assert complete_task.priority == "high"
+    assert complete_task.due_on == date(2026, 9, 5)
 
 
 def test_clean_task_creation_requires_three_classifications(authenticated_client):

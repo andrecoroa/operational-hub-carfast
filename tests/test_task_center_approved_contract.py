@@ -14,6 +14,7 @@ TEMPLATE = "\n".join(
     for path in (
         "app/templates/clean_task_center.html",
         "app/templates/_task_center_approved.html",
+        "app/templates/_task_center_create.html",
     )
 )
 CSS = (ROOT / "app/static/css/ui-contract-v1.css").read_text(encoding="utf-8")
@@ -299,8 +300,14 @@ def test_creation_uses_three_approved_models_and_never_labels_workspaces_as_queu
     assert 'data-create-model="information"' in creation_dialog
     assert 'data-create-model="task"' in creation_dialog
     assert 'href="/task-board/new' not in creation_dialog
-    assert "setWorkspaceLock(button.dataset.createWorkspace||'')" in creation_dialog
-    assert "option.disabled=Boolean(value)&&option.value!==value" in creation_dialog
+    assert 'name="classification_version" value="3"' in creation_dialog
+    for level in ("queue", "department", "category", "subcategory"):
+        assert f'data-work-level="{level}"' in creation_dialog
+    assert 'name="entity_type"' in creation_dialog
+    assert 'name="entity_id"' in creation_dialog
+    assert 'name="attachments" multiple' in creation_dialog
+    assert "more.hidden=model!=='task'" in TEMPLATE
+    assert "filterChildren(department,queue.value)" in TEMPLATE
     css = (ROOT / "app/static/css/ui-contract-v1.css").read_text(encoding="utf-8")
     assert "[data-task-create-dialog]{width:min(720px,calc(100vw - 32px))" in css
     assert "[data-task-create-form]{display:grid;grid-template-columns:repeat(2" in css

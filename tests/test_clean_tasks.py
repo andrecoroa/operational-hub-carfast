@@ -1,4 +1,5 @@
 from datetime import date
+from pathlib import Path
 
 from sqlalchemy import select
 
@@ -10,9 +11,15 @@ from app.models import (
     TaskHelpRequest,
     TaskHistory,
     TaskParticipant,
+    ServiceDeskCategoryExecutor,
+    Team,
     User,
     Vehicle,
     VehicleDocumentRecord,
+    WorkCategory,
+    WorkDepartment,
+    WorkQueue,
+    WorkSubcategory,
     WorkshopPhasedProcess,
 )
 from app.services.users import create_user
@@ -27,8 +34,14 @@ def test_clean_task_shortcut_opens_creation_form(authenticated_client):
     form = authenticated_client.get(shortcut.headers["location"])
     assert form.status_code == 200
     if 'data-task-create-dialog' in form.text:
-        assert 'name="workspace"' in form.text
-        assert 'name="category"' in form.text
+        assert 'data-create-model="request"' in form.text
+        assert 'data-create-model="information"' in form.text
+        assert 'data-create-model="task"' in form.text
+        assert 'name="classification_version" value="3"' in form.text
+        assert 'name="work_queue_id" required' in form.text
+        assert 'name="work_department_id" required' in form.text
+        assert 'name="work_category_id" required' in form.text
+        assert 'name="work_subcategory_id"' in form.text
         assert 'action="/v2-clean/tasks"' in form.text
     else:
         assert 'id="new-task" open' in form.text
@@ -36,6 +49,280 @@ def test_clean_task_shortcut_opens_creation_form(authenticated_client):
         assert 'name="work_department_id" required' in form.text
         assert 'name="work_category_id"' in form.text
         assert 'name="work_subcategory_id"' in form.text
+
+
+def test_clean_task_creation_models_have_distinct_persisted_contracts(
+    authenticated_client,
+    db_session,
+):
+    queue = db_session.scalar(select(WorkQueue).where(WorkQueue.code == "tasks_support"))
+    department = db_session.scalar(
+        select(WorkDepartment).where(WorkDepartment.queue_id == queue.id)
+    )
+    category = WorkCategory(
+        department_id=department.id,
+        code="functional_models",
+        name="Modelos funcionais",
+        active=True,
+    )
+    db_session.add(category)
+    db_session.flush()
+    subcategory = WorkSubcategory(
+        category_id=category.id,
+        code="initial_triage",
+        name="Triagem inicial",
+        active=True,
+    )
+    db_session.add(subcategory)
+    db_session.commit()
+    hierarchy = {
+        "classification_version": "3",
+        "work_queue_id": str(queue.id),
+        "work_department_id": str(department.id),
+        "work_category_id": str(category.id),
+        "work_subcategory_id": str(subcategory.id) if subcategory else "",
+    }
+
+    cases = (
+        (
+            "request",
+            "Necessidade de apoio",
+            {"description": "Destino: equipa operacional", "entity_type": "vehicle", "entity_id": "42"},
+            "request",
+        ),
+        (
+            "information",
+            "Informação recebida",
+            {"description": "Comunicação para registo", "entity_type": "process", "entity_id": "PROC-7"},
+            "request_info",
+        ),
+        (
+            "task",
+            "Trabalho planeado",
+            {"description": "Executar validação", "priority": "high", "due_on": "2026-09-05"},
+            "operational_task",
+        ),
+    )
+    for record_type, title, fields, expected_type in cases:
+        response = authenticated_client.post(
+            "/v2-clean/tasks",
+            data={"record_type": record_type, "title": title, **hierarchy, **fields},
+            follow_redirects=False,
+        )
+        assert response.status_code == 303, response.text
+        task = db_session.scalar(select(Task).where(Task.title == title))
+        assert task is not None
+        assert task.task_type == expected_type
+        assert task.work_queue_id == queue.id
+        assert task.work_department_id == department.id
+        assert task.work_category_id == category.id
+
+    request_task = db_session.scalar(select(Task).where(Task.title == "Necessidade de apoio"))
+    information_task = db_session.scalar(select(Task).where(Task.title == "Informação recebida"))
+    complete_task = db_session.scalar(select(Task).where(Task.title == "Trabalho planeado"))
+    assert (request_task.entity_type, request_task.entity_id) == ("vehicle", "42")
+    assert (information_task.entity_type, information_task.entity_id) == ("process", "PROC-7")
+    assert information_task.due_on is None
+    assert complete_task.priority == "high"
+    assert complete_task.due_on == date(2026, 9, 5)
+
+
+def test_clean_task_v3_attachment_is_persisted_and_fixture_is_cleaned(
+    authenticated_client,
+    db_session,
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setattr("app.web.router.document_archive_root", lambda: tmp_path)
+    queue = db_session.scalar(select(WorkQueue).where(WorkQueue.code == "tasks_support"))
+    department = db_session.scalar(
+        select(WorkDepartment).where(WorkDepartment.queue_id == queue.id)
+    )
+    category = WorkCategory(
+        department_id=department.id,
+        code="v3_attachment",
+        name="Anexo V3",
+        active=True,
+    )
+    db_session.add(category)
+    db_session.commit()
+    response = authenticated_client.post(
+        "/v2-clean/tasks",
+        data={
+            "record_type": "request",
+            "title": "Fixture V3 com anexo",
+            "classification_version": "3",
+            "work_queue_id": str(queue.id),
+            "work_department_id": str(department.id),
+            "work_category_id": str(category.id),
+        },
+        files={"attachments": ("fixture-v3.txt", b"synthetic-only", "text/plain")},
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    task = db_session.scalar(select(Task).where(Task.title == "Fixture V3 com anexo"))
+    document = db_session.scalar(select(Document).where(Document.task_id == task.id))
+    stored_path = Path(document.storage_path)
+    assert stored_path.exists()
+    assert stored_path.read_bytes() == b"synthetic-only"
+
+    stored_path.unlink()
+    link = db_session.scalar(select(TaskDocument).where(TaskDocument.task_id == task.id))
+    db_session.delete(link)
+    db_session.delete(document)
+    db_session.delete(task)
+    db_session.commit()
+    assert not stored_path.exists()
+    assert db_session.scalar(select(Task).where(Task.title == "Fixture V3 com anexo")) is None
+
+
+def test_clean_task_update_round_trips_hierarchy_and_exclusive_assignment(
+    authenticated_client,
+    db_session,
+):
+    queue = db_session.scalar(select(WorkQueue).where(WorkQueue.code == "tasks_support"))
+    department = db_session.scalar(
+        select(WorkDepartment).where(WorkDepartment.queue_id == queue.id)
+    )
+    category = WorkCategory(
+        department_id=department.id,
+        code="update_round_trip",
+        name="Atualização integral",
+        active=True,
+    )
+    db_session.add(category)
+    db_session.flush()
+    subcategory = WorkSubcategory(
+        category_id=category.id,
+        code="validated",
+        name="Validada",
+        active=True,
+    )
+    executor = db_session.scalar(
+        select(User).where(User.email == "admin.tests@carfast.local")
+    )
+    team = db_session.scalar(select(Team).where(Team.code == "operations"))
+    db_session.add_all(
+        [
+            subcategory,
+            ServiceDeskCategoryExecutor(
+                category_id=category.id,
+                user_id=executor.id,
+                active=True,
+            ),
+            ServiceDeskCategoryExecutor(
+                category_id=category.id,
+                team_id=team.id,
+                active=True,
+            ),
+        ]
+    )
+    db_session.flush()
+    task = Task(
+        title="Antes do read-back",
+        description="Descrição anterior",
+        task_type="operational_task",
+        status="new",
+        priority="normal",
+        work_queue_id=queue.id,
+        work_department_id=department.id,
+        work_category_id=category.id,
+        work_subcategory_id=subcategory.id,
+        classification_status="classified",
+        created_by_id=executor.id,
+    )
+    db_session.add(task)
+    db_session.commit()
+
+    response = authenticated_client.post(
+        f"/v2-clean/tasks/{task.id}/update",
+        data={
+            "return_url": f"/v2-clean/tasks/{task.id}/detail",
+            "post_action": "stay",
+            "workspace": "operational",
+            "status": "new",
+            "title": "Depois do read-back",
+            "description": "Descrição atualizada",
+            "priority": "high",
+            "due_on": "2026-09-09",
+            "classification_version": "3",
+            "work_queue_id": str(queue.id),
+            "work_department_id": str(department.id),
+            "work_category_id": str(category.id),
+            "work_subcategory_id": str(subcategory.id),
+            "assigned_to_id": str(executor.id),
+            "assigned_team_id": "",
+        },
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    db_session.refresh(task)
+    assert (
+        task.title,
+        task.description,
+        task.priority,
+        task.due_on,
+        task.work_queue_id,
+        task.work_department_id,
+        task.work_category_id,
+        task.work_subcategory_id,
+        task.assigned_to_id,
+        task.team_id,
+    ) == (
+        "Depois do read-back",
+        "Descrição atualizada",
+        "high",
+        date(2026, 9, 9),
+        queue.id,
+        department.id,
+        category.id,
+        subcategory.id,
+        executor.id,
+        None,
+    )
+
+    rejected_update = authenticated_client.post(
+        f"/v2-clean/tasks/{task.id}/update",
+        data={
+            "return_url": f"/v2-clean/tasks/{task.id}/detail",
+            "post_action": "stay",
+            "workspace": "operational",
+            "status": "new",
+            "title": "Combinação inválida no detalhe",
+            "description": task.description,
+            "priority": task.priority,
+            "classification_version": "3",
+            "work_queue_id": str(queue.id),
+            "work_department_id": str(department.id),
+            "work_category_id": str(category.id),
+            "work_subcategory_id": str(subcategory.id),
+            "assigned_to_id": str(executor.id),
+            "assigned_team_id": str(team.id),
+        },
+        follow_redirects=False,
+    )
+    assert rejected_update.status_code == 303
+    assert "assignment_not_allowed" in rejected_update.headers["location"]
+    db_session.refresh(task)
+    assert task.title == "Depois do read-back"
+
+    rejected = authenticated_client.post(
+        "/v2-clean/tasks",
+        data={
+            "record_type": "task",
+            "title": "Combinação rejeitada",
+            "classification_version": "3",
+            "work_queue_id": str(queue.id),
+            "work_department_id": str(department.id),
+            "work_category_id": str(category.id),
+            "assigned_to_id": str(executor.id),
+            "assigned_team_id": str(team.id),
+        },
+        follow_redirects=False,
+    )
+    assert rejected.status_code == 303
+    assert "assignment_not_allowed" in rejected.headers["location"]
+    assert db_session.scalar(select(Task).where(Task.title == "Combinação rejeitada")) is None
 
 
 def test_clean_task_creation_requires_three_classifications(authenticated_client):

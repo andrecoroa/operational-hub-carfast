@@ -22,8 +22,7 @@
           <input type="hidden" name="return_url" value="{{ request.url.path }}?{{ request.url.query }}">
           <input type="hidden" name="workspace" value="{{ task_workspace }}">
           <input type="hidden" name="status" value="{{ task.status }}">
-          <input type="hidden" name="category" value="{{ task.category or '' }}">
-          <input type="hidden" name="subcategory" value="{{ task.subcategory or '' }}">
+          <input type="hidden" name="classification_version" value="3">
           <div class="panel-heading compact-heading"><p class="eyebrow">Conteúdo real</p><h3>Dados da tarefa</h3></div>
           <label>Assunto<input name="title" maxlength="200" required value="{{ task.title }}"></label>
           <label>Descrição<textarea name="description" rows="6">{{ task.description or '' }}</textarea></label>
@@ -31,6 +30,18 @@
             <label>Prioridade<select name="priority">{% for code,label in priorities %}<option value="{{ code }}" {% if task.priority == code %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
             <label>Prazo<input type="date" name="due_on" value="{{ task.due_on or '' }}"></label>
           </div>
+          <fieldset class="task-create-hierarchy" data-work-hierarchy>
+            <legend>Classificação operacional</legend>
+            <label>Fila<select name="work_queue_id" required data-work-level="queue"><option value="">Selecionar fila</option>{% for item in work_queues %}<option value="{{ item.id }}" {% if task.work_queue_id == item.id %}selected{% endif %}>{{ item.name }}</option>{% endfor %}</select></label>
+            <label>Departamento<select name="work_department_id" required data-work-level="department"><option value="">Selecionar departamento</option>{% for item in work_departments %}<option value="{{ item.id }}" data-parent="{{ item.queue_id }}" {% if task.work_department_id == item.id %}selected{% endif %}>{{ item.name }}</option>{% endfor %}</select></label>
+            <label>Categoria<select name="work_category_id" required data-work-level="category"><option value="">Selecionar categoria</option>{% for item in work_categories %}<option value="{{ item.id }}" data-parent="{{ item.department_id }}" {% if task.work_category_id == item.id %}selected{% endif %}>{{ item.name }}</option>{% endfor %}</select></label>
+            <label>Subcategoria<select name="work_subcategory_id" data-work-level="subcategory"><option value="">Sem subcategoria</option>{% for item in work_subcategories %}<option value="{{ item.id }}" data-parent="{{ item.category_id }}" {% if task.work_subcategory_id == item.id %}selected{% endif %}>{{ item.name }}</option>{% endfor %}</select></label>
+          </fieldset>
+          <fieldset class="compact-form-grid task-assignment-exclusive">
+            <legend>Atribuição — escolha equipa ou executor</legend>
+            <label>Atribuir à equipa<select name="assigned_team_id" data-assignment-exclusive><option value="">Sem equipa owner</option>{% for team in teams %}<option value="{{ team.id }}" {% if task.team_id == team.id %}selected{% endif %}>{{ team.name }}</option>{% endfor %}</select></label>
+            <label>Ou atribuir ao executor<select name="assigned_to_id" data-assignment-exclusive><option value="">Sem executor individual</option>{% for user in assignable_users %}<option value="{{ user.id }}" {% if task.assigned_to_id == user.id %}selected{% endif %}>{{ user.name }}</option>{% endfor %}</select></label>
+          </fieldset>
           {% if can_update_task %}<button type="submit">Guardar alterações</button>{% endif %}
         </form>
       </div>
@@ -53,4 +64,8 @@
     </section>
   </main>
 </div>
+<script>
+document.querySelectorAll('[data-work-hierarchy]').forEach(root=>{const queue=root.querySelector('[data-work-level="queue"]'),department=root.querySelector('[data-work-level="department"]'),category=root.querySelector('[data-work-level="category"]'),subcategory=root.querySelector('[data-work-level="subcategory"]');const filter=(select,parent)=>{[...select.options].forEach((option,index)=>{if(index)option.hidden=option.dataset.parent!==parent});if(select.selectedOptions[0]?.hidden)select.value=''};const sync=()=>{filter(department,queue.value);filter(category,department.value);filter(subcategory,category.value)};queue.addEventListener('change',()=>{department.value='';category.value='';subcategory.value='';sync()});department.addEventListener('change',()=>{category.value='';subcategory.value='';sync()});category.addEventListener('change',()=>{subcategory.value='';sync()});sync()});
+document.querySelectorAll('[data-assignment-exclusive]').forEach(select=>select.addEventListener('change',()=>{if(!select.value)return;document.querySelectorAll('[data-assignment-exclusive]').forEach(other=>{if(other!==select)other.value=''})}));
+</script>
 {% endblock %}

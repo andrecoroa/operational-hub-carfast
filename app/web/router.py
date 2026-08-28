@@ -6653,6 +6653,11 @@ def clean_tasks_update(
                     return_url, task_id=task_id, flag="assignment_not_allowed"
                 )
         target_config = TASK_WORKSPACE_CONFIG[target_workspace]
+        target_task_type = (
+            task.task_type
+            if target_workspace == task_workspace
+            else target_config["default_task_type"]
+        )
         prior_status = task.status
         changes = {
             "ticket_type_id": (
@@ -6664,7 +6669,7 @@ def clean_tasks_update(
             "status": (task.status, clean_status),
             "priority": (task.priority, clean_priority),
             "due_on": (task.due_on, parsed_due),
-            "task_type": (task.task_type, target_config["default_task_type"]),
+            "task_type": (task.task_type, target_task_type),
             "plate": (task.plate, normalized_plate),
             "reservation_number": (task.reservation_number, reservation_number.strip()[:120] or None),
             "contract_number": (task.contract_number, contract_number.strip()[:120] or None),

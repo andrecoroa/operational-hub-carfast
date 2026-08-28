@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_task_classification_fields.html" import task_classification_fields %}
 {% block body %}
 <div class="app-shell">
   {% set active_menu = "tasks" %}
@@ -30,14 +31,7 @@
             <label>Prioridade<select name="priority">{% for code,label in priorities %}<option value="{{ code }}" {% if task.priority == code %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
             <label>Prazo<input type="date" name="due_on" value="{{ task.due_on or '' }}"></label>
           </div>
-          <fieldset class="task-create-hierarchy" data-work-hierarchy>
-            <legend>Classificação operacional</legend>
-            <label>Fila<select name="work_queue_id" required data-work-level="queue"><option value="">Selecionar fila</option>{% for item in work_queues %}<option value="{{ item.id }}" {% if task.work_queue_id == item.id %}selected{% endif %}>{{ item.name }}</option>{% endfor %}</select></label>
-            <label>Departamento<select name="work_department_id" required data-work-level="department"><option value="">Selecionar departamento</option>{% for item in work_departments %}<option value="{{ item.id }}" data-parent="{{ item.queue_id }}" data-requires-description="{{ 'true' if item.requires_description else 'false' }}" {% if task.work_department_id == item.id %}selected{% endif %}>{{ item.name }}</option>{% endfor %}</select></label>
-            <label>Categoria<select name="work_category_id" required data-work-level="category"><option value="">Selecionar categoria</option>{% for item in work_categories %}<option value="{{ item.id }}" data-parent="{{ item.department_id }}" data-requires-description="{{ 'true' if item.requires_description else 'false' }}" {% if task.work_category_id == item.id %}selected{% endif %}>{{ item.name }}</option>{% endfor %}</select></label>
-            <label>Subcategoria<select name="work_subcategory_id" data-work-level="subcategory"><option value="">Sem subcategoria</option>{% for item in work_subcategories %}<option value="{{ item.id }}" data-parent="{{ item.category_id }}" data-requires-description="{{ 'true' if item.requires_description else 'false' }}" {% if task.work_subcategory_id == item.id %}selected{% endif %}>{{ item.name }}</option>{% endfor %}</select></label>
-            <label class="span-2" data-work-other hidden>Descrição da classificação<input name="classification_other_text" maxlength="500" value="{{ task.classification_other_text or '' }}" placeholder="Indica a classificação a rever"></label>
-          </fieldset>
+          {{ task_classification_fields(work_queues, work_departments, work_categories, work_subcategories, task=task) }}
           <fieldset class="compact-form-grid task-assignment-exclusive">
             <legend>Atribuição — escolha equipa ou executor</legend>
             <label>Atribuir à equipa<select name="assigned_team_id" data-assignment-exclusive><option value="">Sem equipa owner</option>{% for team in teams %}<option value="{{ team.id }}" {% if task.team_id == team.id %}selected{% endif %}>{{ team.name }}</option>{% endfor %}</select></label>

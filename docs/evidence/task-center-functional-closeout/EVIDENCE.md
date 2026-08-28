@@ -8,7 +8,11 @@ Branch: `codex/task-center-functional-closeout`
 - `Abrir tarefa` mantém o resolver existente e abre `/v2-clean/tasks/{id}/detail`
   com ReturnContext assinado, seleção e filtros.
 - O detalhe real permite editar conteúdo, prioridade, prazo, hierarquia persistida
-  e owner/executor elegíveis.
+  e owner/executor elegíveis. As opções da hierarquia são filtradas pelo resolver
+  existente para a ação `update`; o POST conserva a revalidação fail-closed.
+- Equipa owner e executor individual são escolhas exclusivas no detalhe e na
+  criação. Selecionar uma limpa a outra; o servidor rejeita uma combinação
+  forjada com ambos preenchidos.
 - A criação distingue `request`, `request_info` e tarefa completa. Pedido e
   Informação expõem relação e anexos; planeamento (owner/executor, prioridade e
   prazo) fica em `Mais opções` apenas para a tarefa completa.
@@ -28,15 +32,25 @@ inbound/outbound OFF. Viewport imposto a `1440×731`.
 - `02-detail-1440x731.png`: detalhe real; formulário contém assunto, descrição,
   prioridade, prazo, quatro níveis da hierarquia, equipa owner e executor.
 - `03-models-1440x731.png`: três modelos explícitos antes de qualquer submissão.
-- `geometry.json`: viewport, body width e verificação de overflow.
+- `04-complete-form-1440x731.png`: formulário completo dentro do modal, com os
+  quatro níveis persistidos e `Mais opções`; scroll vertical deliberado.
+- `geometry.json`: `scrollWidth/clientWidth` de body, detalhe, fieldsets, modal,
+  cartões, hierarquia, relação e formulário. Todos os containers relevantes têm
+  overflow horizontal `false`. O primeiro ensaio detetou `nowrap` herdado nos
+  cartões; foi corrigido e a medição foi repetida.
 
 Read-back do detalhe: ReturnContext resolveu para
 `/v2-clean/tasks?workspace=all&status=open&category=all#task-2`.
-Nenhum formulário browser foi submetido.
+Os testes funcionais submetem e fazem read-back conjunto de assunto, descrição,
+prioridade, prazo, fila, departamento, categoria, subcategoria e executor. Um
+segundo teste cria um registo v3 com anexo sintético, confirma bytes persistidos e
+remove documento, ligação, tarefa e ficheiro.
 
 ## Testes
 
-- Regressão focada Centro de Tarefas: `65 passed`.
+- Regressão funcional Centro de Tarefas: `76 passed`. A suite REST de segurança
+  conserva os mesmos `5 failed` da base Green na linha RBAC congelada; este diff
+  não toca nessas rotas/helpers e não mascara o baseline.
 - Baseline modular: `7 passed`.
 - Contrato criação/detalhe: incluído na regressão; três modelos persistidos com
   tipos distintos e hierarquia sintética determinística.

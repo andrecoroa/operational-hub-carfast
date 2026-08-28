@@ -37,10 +37,11 @@
             <label>Categoria<select name="work_category_id" required data-work-level="category"><option value="">Selecionar categoria</option>{% for item in work_categories %}<option value="{{ item.id }}" data-parent="{{ item.department_id }}" {% if task.work_category_id == item.id %}selected{% endif %}>{{ item.name }}</option>{% endfor %}</select></label>
             <label>Subcategoria<select name="work_subcategory_id" data-work-level="subcategory"><option value="">Sem subcategoria</option>{% for item in work_subcategories %}<option value="{{ item.id }}" data-parent="{{ item.category_id }}" {% if task.work_subcategory_id == item.id %}selected{% endif %}>{{ item.name }}</option>{% endfor %}</select></label>
           </fieldset>
-          <div class="compact-form-grid">
-            <label>Equipa owner<select name="assigned_team_id"><option value="">Por atribuir</option>{% for team in teams %}<option value="{{ team.id }}" {% if task.team_id == team.id %}selected{% endif %}>{{ team.name }}</option>{% endfor %}</select></label>
-            <label>Executor<select name="assigned_to_id"><option value="">Por atribuir</option>{% for user in assignable_users %}<option value="{{ user.id }}" {% if task.assigned_to_id == user.id %}selected{% endif %}>{{ user.name }}</option>{% endfor %}</select></label>
-          </div>
+          <fieldset class="compact-form-grid task-assignment-exclusive">
+            <legend>Atribuição — escolha equipa ou executor</legend>
+            <label>Atribuir à equipa<select name="assigned_team_id" data-assignment-exclusive><option value="">Sem equipa owner</option>{% for team in teams %}<option value="{{ team.id }}" {% if task.team_id == team.id %}selected{% endif %}>{{ team.name }}</option>{% endfor %}</select></label>
+            <label>Ou atribuir ao executor<select name="assigned_to_id" data-assignment-exclusive><option value="">Sem executor individual</option>{% for user in assignable_users %}<option value="{{ user.id }}" {% if task.assigned_to_id == user.id %}selected{% endif %}>{{ user.name }}</option>{% endfor %}</select></label>
+          </fieldset>
           {% if can_update_task %}<button type="submit">Guardar alterações</button>{% endif %}
         </form>
       </div>
@@ -65,5 +66,6 @@
 </div>
 <script>
 document.querySelectorAll('[data-work-hierarchy]').forEach(root=>{const queue=root.querySelector('[data-work-level="queue"]'),department=root.querySelector('[data-work-level="department"]'),category=root.querySelector('[data-work-level="category"]'),subcategory=root.querySelector('[data-work-level="subcategory"]');const filter=(select,parent)=>{[...select.options].forEach((option,index)=>{if(index)option.hidden=option.dataset.parent!==parent});if(select.selectedOptions[0]?.hidden)select.value=''};const sync=()=>{filter(department,queue.value);filter(category,department.value);filter(subcategory,category.value)};queue.addEventListener('change',()=>{department.value='';category.value='';subcategory.value='';sync()});department.addEventListener('change',()=>{category.value='';subcategory.value='';sync()});category.addEventListener('change',()=>{subcategory.value='';sync()});sync()});
+document.querySelectorAll('[data-assignment-exclusive]').forEach(select=>select.addEventListener('change',()=>{if(!select.value)return;document.querySelectorAll('[data-assignment-exclusive]').forEach(other=>{if(other!==select)other.value=''})}));
 </script>
 {% endblock %}

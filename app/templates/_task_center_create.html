@@ -29,8 +29,8 @@
     </fieldset>
     <label class="task-create-attachments">Anexos<input type="file" name="attachments" multiple></label>
     <details data-create-more><summary>Mais opções</summary><div>
-      <label>Equipa owner<select name="assigned_team_id"><option value="">Por atribuir</option>{% for team in all_teams %}<option value="{{ team.id }}" data-team-option>{{ team.name }}</option>{% endfor %}</select></label>
-      <label>Executor<select name="assigned_to_id"><option value="">Por atribuir</option>{% for user in all_users %}<option value="{{ user.id }}" data-user-option>{{ user.name }}</option>{% endfor %}</select></label>
+      <label>Atribuir à equipa<select name="assigned_team_id" data-assignment-exclusive><option value="">Sem equipa owner</option>{% for team in all_teams %}<option value="{{ team.id }}" data-team-option>{{ team.name }}</option>{% endfor %}</select></label>
+      <label>Ou atribuir ao executor<select name="assigned_to_id" data-assignment-exclusive><option value="">Sem executor individual</option>{% for user in all_users %}<option value="{{ user.id }}" data-user-option>{{ user.name }}</option>{% endfor %}</select></label>
       <label>Prioridade<select name="priority"><option value="normal">Normal</option><option value="high">Alta</option><option value="urgent">Urgente</option><option value="low">Baixa</option></select></label>
       <label>Prazo<input type="date" name="due_on"></label>
     </div></details>

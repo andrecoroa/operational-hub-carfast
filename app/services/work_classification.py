@@ -233,14 +233,19 @@ def validate_work_hierarchy(
     subcategory = db.get(WorkSubcategory, subcategory_id) if subcategory_id else None
     if not queue or not queue.active or not department or not department.active:
         return None
-    if department.queue_id != queue.id:
+    if work_hierarchy_item_contract(department)["parent_id"] != queue.id:
         return None
     if require_category and not category:
         return None
-    if category and (not category.active or category.department_id != department.id):
+    if category and (
+        not category.active
+        or work_hierarchy_item_contract(category)["parent_id"] != department.id
+    ):
         return None
     if subcategory and (
-        not category or not subcategory.active or subcategory.category_id != category.id
+        not category
+        or not subcategory.active
+        or work_hierarchy_item_contract(subcategory)["parent_id"] != category.id
     ):
         return None
     cleaned_other = other_text.strip() or None

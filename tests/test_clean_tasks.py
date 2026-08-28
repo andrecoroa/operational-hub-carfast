@@ -23,6 +23,10 @@ from app.models import (
     WorkshopPhasedProcess,
 )
 from app.services.users import create_user
+from app.services.work_classification import (
+    validate_work_hierarchy,
+    work_hierarchy_context,
+)
 
 
 def test_clean_task_shortcut_opens_creation_form(authenticated_client):
@@ -166,6 +170,185 @@ def test_clean_task_creation_models_have_distinct_persisted_contracts(
     db_session.refresh(request_task)
     assert request_task.task_type == "request"
     assert request_task.classification_other_text == "Contrato partilhado validado"
+
+
+def test_task_classification_contract_rejects_cross_parent_and_tracks_requirement_changes(
+    authenticated_client,
+    db_session,
+):
+    queue = db_session.scalar(select(WorkQueue).where(WorkQueue.code == "tasks_support"))
+    department_false = WorkDepartment(
+        queue_id=queue.id,
+        code="contract_false",
+        name="Contrato sem descrição",
+        active=True,
+        requires_description=False,
+    )
+    department_true = WorkDepartment(
+        queue_id=queue.id,
+        code="contract_true",
+        name="Contrato com descrição",
+        active=True,
+        requires_description=False,
+    )
+    db_session.add_all([department_false, department_true])
+    db_session.flush()
+    category_false = WorkCategory(
+        department_id=department_false.id,
+        code="duplicate_false",
+        name="Contratos e Reservas",
+        active=True,
+        requires_description=False,
+    )
+    category_true = WorkCategory(
+        department_id=department_true.id,
+        code="duplicate_true",
+        name="Contratos e Reservas",
+        active=True,
+        requires_description=True,
+    )
+    db_session.add_all([category_false, category_true])
+    db_session.flush()
+    subcategory_false = WorkSubcategory(
+        category_id=category_false.id,
+        code="client_process_false",
+        name="Processo com Cliente",
+        active=True,
+        requires_description=False,
+    )
+    subcategory_true = WorkSubcategory(
+        category_id=category_true.id,
+        code="client_process_true",
+        name="Processo com Cliente",
+        active=True,
+        requires_description=False,
+    )
+    db_session.add_all([subcategory_false, subcategory_true])
+    db_session.commit()
+
+    contract = work_hierarchy_context(db_session)["work_hierarchy_contract"]
+    assert contract["categories"][category_false.id] == {
+        "id": category_false.id,
+        "parent_id": department_false.id,
+        "name": "Contratos e Reservas",
+        "requires_description": False,
+    }
+    assert contract["categories"][category_true.id]["requires_description"] is True
+    assert contract["subcategories"][subcategory_true.id]["parent_id"] == category_true.id
+
+    forged = validate_work_hierarchy(
+        db_session,
+        queue_id=queue.id,
+        department_id=department_false.id,
+        category_id=category_false.id,
+        subcategory_id=subcategory_true.id,
+        other_text="forged client metadata cannot repair parentage",
+        require_category=True,
+    )
+    assert forged is None
+
+    create = authenticated_client.post(
+        "/v2-clean/tasks",
+        data={
+            "record_type": "request",
+            "title": "Contrato dinâmico",
+            "classification_version": "3",
+            "work_queue_id": str(queue.id),
+            "work_department_id": str(department_false.id),
+            "work_category_id": str(category_false.id),
+            "work_subcategory_id": str(subcategory_false.id),
+            "requires_description": "true",
+        },
+        follow_redirects=False,
+    )
+    assert create.status_code == 303
+    assert "missing_classification" not in create.headers["location"]
+    task = db_session.scalar(select(Task).where(Task.title == "Contrato dinâmico"))
+    assert task is not None
+    assert task.classification_other_text is None
+
+    forged_update = authenticated_client.post(
+        f"/v2-clean/tasks/{task.id}/update",
+        data={
+            "workspace": "operational",
+            "status": task.status,
+            "title": "Não persiste parent forjado",
+            "priority": task.priority,
+            "classification_version": "3",
+            "work_queue_id": str(queue.id),
+            "work_department_id": str(department_false.id),
+            "work_category_id": str(category_false.id),
+            "work_subcategory_id": str(subcategory_true.id),
+            "classification_other_text": "presente mas inválido",
+        },
+        follow_redirects=False,
+    )
+    assert "missing_classification=1" in forged_update.headers["location"]
+    db_session.refresh(task)
+    assert task.title == "Contrato dinâmico"
+
+    missing_required = authenticated_client.post(
+        f"/v2-clean/tasks/{task.id}/update",
+        data={
+            "workspace": "operational",
+            "status": task.status,
+            "title": "Não persiste sem descrição",
+            "priority": task.priority,
+            "classification_version": "3",
+            "work_queue_id": str(queue.id),
+            "work_department_id": str(department_true.id),
+            "work_category_id": str(category_true.id),
+            "work_subcategory_id": str(subcategory_true.id),
+            "requires_description": "false",
+        },
+        follow_redirects=False,
+    )
+    assert "missing_classification=1" in missing_required.headers["location"]
+
+    valid_required = authenticated_client.post(
+        f"/v2-clean/tasks/{task.id}/update",
+        data={
+            "workspace": "operational",
+            "status": task.status,
+            "title": "Contrato com descrição",
+            "priority": task.priority,
+            "classification_version": "3",
+            "work_queue_id": str(queue.id),
+            "work_department_id": str(department_true.id),
+            "work_category_id": str(category_true.id),
+            "work_subcategory_id": str(subcategory_true.id),
+            "classification_other_text": "Descrição exigida pelo servidor",
+        },
+        follow_redirects=False,
+    )
+    assert valid_required.status_code == 303
+    db_session.refresh(task)
+    assert task.work_category_id == category_true.id
+    assert task.classification_other_text == "Descrição exigida pelo servidor"
+
+    back_to_optional = authenticated_client.post(
+        f"/v2-clean/tasks/{task.id}/update",
+        data={
+            "workspace": "operational",
+            "status": task.status,
+            "title": "Contrato novamente opcional",
+            "priority": task.priority,
+            "classification_version": "3",
+            "work_queue_id": str(queue.id),
+            "work_department_id": str(department_false.id),
+            "work_category_id": str(category_false.id),
+            "work_subcategory_id": str(subcategory_false.id),
+        },
+        follow_redirects=False,
+    )
+    assert back_to_optional.status_code == 303
+    db_session.refresh(task)
+    assert task.work_category_id == category_false.id
+    assert task.classification_other_text is None
+
+    db_session.delete(task)
+    db_session.commit()
+    assert db_session.get(Task, task.id) is None
 
 
 def test_clean_task_v3_attachment_is_persisted_and_fixture_is_cleaned(

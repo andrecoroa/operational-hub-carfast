@@ -81,4 +81,9 @@ prepare_fixture()
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run(app, host="127.0.0.1", port=18766, log_level="warning")
+    uvicorn.run(
+        app,
+        host="127.0.0.1",
+        port=int(os.environ.get("CARFAST_TASK_PREVIEW_PORT", "18766")),
+        log_level="warning",
+    )

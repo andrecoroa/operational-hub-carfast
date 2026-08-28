@@ -256,8 +256,38 @@ def test_creation_options_and_post_share_the_same_capability_resolver() -> None:
     assert "TaskCreationCapabilityResolver(db).options(current_user)" in ROUTER
     service = (ROOT / "app/services/task_templates.py").read_text(encoding="utf-8")
     assert "TaskCreationCapabilityResolver(db).require(user, version)" in service
-    assert 'data-task-create-future disabled' in TEMPLATE
-    assert '?create=1#new-task' not in TEMPLATE
+    assert 'data-task-create-open' in TEMPLATE
+    assert 'data-task-create-future disabled' not in TEMPLATE
+    assert "createDialog.querySelector('[name=return_url]').value=location.pathname+location.search+location.hash" in TEMPLATE
+
+
+def test_preview_actions_use_clean_canonical_routes_and_accessible_editors() -> None:
+    assert "/task-board/${selectedRow.dataset.taskId}" not in TEMPLATE
+    assert "prompt('Registar nota na tarefa')" not in TEMPLATE
+    assert 'data-task-state-dialog' in TEMPLATE
+    assert 'data-task-note-dialog' in TEMPLATE
+    assert '/v2-clean/tasks/${selectedRow.dataset.taskId}/open' in TEMPLATE
+    assert '/v2-clean/tasks/${selectedRow.dataset.taskId}/transition' in TEMPLATE
+    assert '/v2-clean/tasks/${selectedRow.dataset.taskId}/comments' in TEMPLATE
+
+
+def test_category_and_focus_bucket_are_presented_as_distinct_concepts() -> None:
+    assert 'data-preview-category' in TEMPLATE
+    assert 'data-preview-focus' in TEMPLATE
+    assert 'Categoria canónica' in TEMPLATE
+    assert 'Agrupamento de foco' in TEMPLATE
+
+
+def test_list_detail_visibility_uses_one_canonical_resolver() -> None:
+    assert "user_can_view_task(db, user_id=user_id, task=task)" in ROUTER
+    assert '@web_router.get("/v2-clean/tasks/{task_id}/open")' in ROUTER
+    assert 'return clean_task_action_redirect(return_url, task_id=task_id, flag="opened")' in ROUTER
+
+
+def test_inline_transition_is_server_side_and_fail_closed() -> None:
+    assert '@web_router.post("/v2-clean/tasks/{task_id}/transition"' in ROUTER
+    assert "task_allowed_status_transitions" in ROUTER
+    assert 'flag="invalid_transition"' in ROUTER
 
 
 def test_guardrails_keep_owner_executor_support_and_sla_concepts_distinct() -> None:

@@ -6,6 +6,8 @@ from sqlalchemy import select
 from app.models import (
     Task,
     TaskHelpRequest,
+    TaskComment,
+    TaskHistory,
     TaskNotification,
     TaskParticipant,
     Team,
@@ -15,6 +17,7 @@ from app.models import (
     WorkQueue,
 )
 from app.services.users import create_user
+import app.web.router as task_router
 
 
 def _login(client, email: str, password: str = "Secret123!") -> None:
@@ -137,6 +140,222 @@ def test_operator_visibility_and_counters_do_not_leak_unrelated_tasks(
     assert hidden.title not in page.text
     assert '<span>Abertas</span><strong>1</strong>' in page.text
     assert '<span>Por atribuir</span><strong>0</strong>' in page.text
+
+
+def test_listable_direct_task_uses_same_resolver_for_clean_and_legacy_detail(
+    client, db_session
+):
+    operator = create_user(
+        db_session,
+        name="Operador detalhe",
+        email="operator.detail@carfast.local",
+        password="Secret123!",
+        role_codes=["operator"],
+    )
+    task = Task(
+        title="Detalhe com paridade",
+        task_type="operational_task",
+        status="new",
+        assigned_to_id=operator.id,
+    )
+    db_session.add(task)
+    db_session.commit()
+    _login(client, operator.email)
+
+    listed = client.get("/v2-clean/tasks?workspace=all&status=open&category=all")
+    opened = client.get(
+        f"/v2-clean/tasks/{task.id}/open",
+        params={"return_url": "/v2-clean/tasks?workspace=all&status=open&category=all#task-1"},
+        follow_redirects=False,
+    )
+    assert task.title in listed.text
+    assert opened.status_code == 303
+    assert opened.headers["location"].startswith(
+        "/v2-clean/tasks?workspace=all&status=open&category=all"
+    )
+    assert f"open_task={task.id}" in opened.headers["location"]
+
+
+def test_clean_transition_and_note_are_authorized_audited_and_fail_closed(
+    authenticated_client, db_session
+):
+    task = Task(
+        title="Ações inline protegidas",
+        task_type="operational_task",
+        category="Documentação",
+        status="new",
+    )
+    db_session.add(task)
+    db_session.commit()
+    return_url = "/v2-clean/tasks?workspace=all&status=open&category=all#task-1"
+
+    forged = authenticated_client.post(
+        f"/v2-clean/tasks/{task.id}/transition",
+        data={"status": "closed", "return_url": return_url},
+        follow_redirects=False,
+    )
+    assert forged.status_code == 303
+    assert "invalid_transition=1" in forged.headers["location"]
+    db_session.refresh(task)
+    assert task.status == "new"
+
+    changed = authenticated_client.post(
+        f"/v2-clean/tasks/{task.id}/transition",
+        data={"status": "in_execution", "return_url": return_url},
+        follow_redirects=False,
+    )
+    noted = authenticated_client.post(
+        f"/v2-clean/tasks/{task.id}/comments",
+        data={"comment": "Nota operacional", "return_url": return_url},
+        follow_redirects=False,
+    )
+    assert "transitioned=1" in changed.headers["location"]
+    assert "commented=1" in noted.headers["location"]
+    db_session.refresh(task)
+    assert task.status == "in_execution"
+    assert db_session.scalar(
+        select(TaskHistory).where(
+            TaskHistory.task_id == task.id,
+            TaskHistory.field_name == "status",
+            TaskHistory.old_value == "new",
+            TaskHistory.new_value == "in_execution",
+        )
+    )
+    assert db_session.scalar(
+        select(TaskComment).where(
+            TaskComment.task_id == task.id,
+            TaskComment.comment == "Nota operacional",
+        )
+    )
+
+
+def test_terminal_transition_revalidates_close_capability(
+    authenticated_client, db_session, monkeypatch
+):
+    task = Task(
+        title="Cancelamento protegido",
+        task_type="operational_task",
+        category="Documentação",
+        status="new",
+    )
+    db_session.add(task)
+    db_session.commit()
+    original = task_router.user_can_access_task_workspace
+
+    def capability(db, user, workspace, *, write=False, action=None):
+        if action == "close":
+            return False
+        return original(db, user, workspace, write=write, action=action)
+
+    monkeypatch.setattr(task_router, "user_can_access_task_workspace", capability)
+    response = authenticated_client.post(
+        f"/v2-clean/tasks/{task.id}/transition",
+        data={"status": "cancelled", "return_url": "/v2-clean/tasks"},
+        follow_redirects=False,
+    )
+
+    assert "forbidden=1" in response.headers["location"]
+    db_session.refresh(task)
+    assert task.status == "new"
+
+
+def test_inline_transition_preserves_sla_pause_resume_and_terminal_resolution(
+    authenticated_client, db_session
+):
+    task = Task(
+        title="SLA da transição inline",
+        task_type="operational_task",
+        category="Documentação",
+        status="in_execution",
+        sla_resolution_minutes=120,
+    )
+    db_session.add(task)
+    db_session.commit()
+    endpoint = f"/v2-clean/tasks/{task.id}/transition"
+
+    authenticated_client.post(
+        endpoint,
+        data={"status": "waiting", "return_url": "/v2-clean/tasks"},
+        follow_redirects=False,
+    )
+    db_session.refresh(task)
+    assert task.sla_paused_at is not None
+
+    authenticated_client.post(
+        endpoint,
+        data={"status": "in_execution", "return_url": "/v2-clean/tasks"},
+        follow_redirects=False,
+    )
+    db_session.refresh(task)
+    assert task.sla_paused_at is None
+
+    authenticated_client.post(
+        endpoint,
+        data={"status": "resolved", "return_url": "/v2-clean/tasks"},
+        follow_redirects=False,
+    )
+    db_session.refresh(task)
+    assert task.resolved_at is not None
+
+    authenticated_client.post(
+        endpoint,
+        data={"status": "in_execution", "return_url": "/v2-clean/tasks"},
+        follow_redirects=False,
+    )
+    db_session.refresh(task)
+    assert task.resolved_at is None
+    assert task.resolution_due_at is not None
+
+    authenticated_client.post(
+        endpoint,
+        data={"status": "resolved", "return_url": "/v2-clean/tasks"},
+        follow_redirects=False,
+    )
+
+    authenticated_client.post(
+        endpoint,
+        data={"status": "closed", "return_url": "/v2-clean/tasks"},
+        follow_redirects=False,
+    )
+    db_session.refresh(task)
+    assert task.closed_at is not None
+
+
+def test_out_of_scope_user_cannot_open_or_forge_task_actions(client, db_session):
+    outsider = create_user(
+        db_session,
+        name="Operador fora do âmbito",
+        email="operator.outside@carfast.local",
+        password="Secret123!",
+        role_codes=["operator"],
+    )
+    hidden = Task(title="Fora do âmbito", task_type="operational_task", status="new")
+    db_session.add(hidden)
+    db_session.commit()
+    _login(client, outsider.email)
+
+    opened = client.get(
+        f"/v2-clean/tasks/{hidden.id}/open",
+        params={"return_url": "/v2-clean/tasks"},
+        follow_redirects=False,
+    )
+    transition = client.post(
+        f"/v2-clean/tasks/{hidden.id}/transition",
+        data={"status": "in_execution", "return_url": "/v2-clean/tasks"},
+        follow_redirects=False,
+    )
+    note = client.post(
+        f"/v2-clean/tasks/{hidden.id}/comments",
+        data={"comment": "forjada", "return_url": "/v2-clean/tasks"},
+        follow_redirects=False,
+    )
+
+    assert "forbidden=1" in opened.headers["location"]
+    assert "forbidden=1" in transition.headers["location"]
+    assert "forbidden=1" in note.headers["location"]
+    db_session.refresh(hidden)
+    assert hidden.status == "new"
+    assert db_session.scalar(select(TaskComment).where(TaskComment.task_id == hidden.id)) is None
 
 
 def test_assignment_candidates_and_server_validation_use_same_scope(

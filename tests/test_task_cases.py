@@ -299,3 +299,12 @@ def test_case_surface_separates_create_and_update_capabilities() -> None:
     assert "group.case and can_update_cases" in source
     assert "task_cases_enabled and (can_create_cases or can_update_cases)" in source
     assert "task_cases_enabled and can_create_cases" in source
+
+
+def test_grouped_children_define_readable_text_and_visible_focus() -> None:
+    source = (
+        Path(__file__).parents[1] / "app/static/css/ui-contract-v1.css"
+    ).read_text(encoding="utf-8")
+    rule = source.split(".task-group-child{", 1)[1].split("}", 1)[0]
+    assert "color:var(--text,#1d2939)" in rule
+    assert ".task-group-child:focus-visible{outline:2px solid" in source

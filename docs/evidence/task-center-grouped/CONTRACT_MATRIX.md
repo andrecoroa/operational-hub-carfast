@@ -29,9 +29,9 @@
 
 ## Gates executados
 
-- Testes novos: 10 PASS.
+- Testes novos: 11 PASS.
 - Regressão focada Centro de Tarefas: 70 PASS.
-- Lista exata do CI após todas as correções: 167 PASS em 96,04 s.
+- Lista exata do CI após todas as correções: 168 PASS em 102,25 s.
 - Compilação/import: PASS.
 - Baseline arquitetural: PASS.
 - Alembic graph: uma head, `fff6ab1c2d3e`.
@@ -39,7 +39,7 @@
 - Bootstrap da instalação sintética: PASS.
 - Browser real local, apenas com dados sintéticos e feature flags locais: três fluxos completos PASS; agrupamento/preview/workbench PASS; seleção por teclado com `Enter` PASS; foco inicial e sequência `Tab` no modal PASS.
 - Geometria 1440×731: viewport `1440×731`, documento `1440×731`, main `1232×731` após sidebar, zero overflow horizontal. Evidência: `screenshots/live-1440x731.png` e `screenshots/grouped-workbench-1440x731.png`.
-- Responsivo 390×844: documento `390×844`, zero overflow horizontal. Evidência: `screenshots/live-responsive-390x844.png`.
+- Responsivo 390×844 no modo `case`: documento `390×844`, zero overflow horizontal. Evidência: `screenshots/live-responsive-390x844.png`.
 - Revisão independente após três ciclos de correção: zero P0/P1.
 - `git diff --check`: PASS.
 

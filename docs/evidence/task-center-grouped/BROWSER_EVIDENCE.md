@@ -18,10 +18,11 @@ O primeiro ensaio do fluxo 2 falhou fechado porque o utilizador sintético inici
 ## Geometria e acessibilidade
 
 - 1440×731: documento 1440×731; `main` 1232×731 depois da sidebar de 208 px; `scrollWidth=1440`; zero overflow horizontal.
-- 390×844: documento 390×844; `scrollWidth=390`; zero overflow horizontal; navegação colapsada.
+- 390×844 em agrupamento `case`: documento 390×844; `scrollWidth=390`; zero overflow horizontal; navegação colapsada.
 - Foco inicial do modal no título do caso; `Tab` avançou para o assunto.
 - Linha de tarefa selecionável com `Enter`; `aria-selected=true` e foco mantido na tarefa selecionada.
 - Agrupamento por caso, preview na linha e workbench foram verificados na mesma superfície.
+- A revisão independente detetou inicialmente texto herdado claro sobre os filhos brancos do agrupamento (P1). A regra passou a definir `rgb(29, 41, 57)` e foco visível; as capturas desktop e responsiva foram repetidas no modo `case` após a correção.
 
 ## Capturas
 

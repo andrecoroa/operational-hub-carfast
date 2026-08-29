@@ -7614,7 +7614,7 @@ def clean_tasks_help_request(
                     )
                 )
             )
-            allowed_member = any(
+            allowed_members = all(
                 is_task_assignment_allowed(
                     db,
                     actor_user_id=user_id,
@@ -7628,7 +7628,7 @@ def clean_tasks_help_request(
                 )
                 for member_id in member_ids
             )
-            if not member_ids or not allowed_member:
+            if not member_ids or not allowed_members:
                 return RedirectResponse("/v2-clean/tasks?error=forbidden", status_code=303)
         try:
             help_request = request_task_support(

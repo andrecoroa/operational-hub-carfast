@@ -48,9 +48,21 @@ def upgrade() -> None:
         "uq_task_help_active_team", "task_help_requests",
         ["task_id", "requested_team_id"], unique=True, postgresql_where=active, sqlite_where=active,
     )
+    op.create_index(
+        "uq_task_help_active_task", "task_help_requests",
+        ["task_id"], unique=True, postgresql_where=active, sqlite_where=active,
+    )
 
 
 def downgrade() -> None:
+    # Restore task state before removing the only deterministic record of it.
+    op.execute(
+        "UPDATE tasks SET status = COALESCE((SELECT previous_task_status "
+        "FROM task_help_requests WHERE task_help_requests.task_id = tasks.id "
+        "AND status IN ('pending', 'accepted') ORDER BY id DESC LIMIT 1), 'new') "
+        "WHERE status = 'support_requested'"
+    )
+    op.drop_index("uq_task_help_active_task", table_name="task_help_requests")
     op.drop_index("uq_task_help_active_team", table_name="task_help_requests")
     op.drop_index("uq_task_help_active_user", table_name="task_help_requests")
     with op.batch_alter_table("task_help_requests") as batch_op:

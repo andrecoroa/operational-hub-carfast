@@ -33,15 +33,12 @@ def request_task_support(
         raise TaskSupportError("support_reason_required")
     if bool(requested_user_id) == bool(requested_team_id):
         raise TaskSupportError("support_single_target_required")
-    target_match = (
-        TaskHelpRequest.requested_user_id == requested_user_id
-        if requested_user_id
-        else TaskHelpRequest.requested_team_id == requested_team_id
-    )
+    # One active support request per task keeps the task-level
+    # ``support_requested`` state unambiguous. A different recipient is not a
+    # reason to create a second concurrent lifecycle.
     duplicate = db.scalar(
         select(TaskHelpRequest.id).where(
             TaskHelpRequest.task_id == task.id,
-            target_match,
             active_support_predicate(),
         )
     )

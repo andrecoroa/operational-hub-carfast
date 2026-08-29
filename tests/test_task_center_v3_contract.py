@@ -215,6 +215,14 @@ def test_duplicate_and_out_of_scope_support_requests_fail_closed(
     duplicate = authenticated_client.post(
         f"/v2-clean/tasks/{task.id}/help", data=payload, follow_redirects=False
     )
+    eligible_member_id = db_session.scalar(
+        select(TeamMember.user_id).where(TeamMember.team_id == support_team.id)
+    )
+    different_target = authenticated_client.post(
+        f"/v2-clean/tasks/{task.id}/help",
+        data={**payload, "requested_target": f"user:{eligible_member_id}"},
+        follow_redirects=False,
+    )
     forged = authenticated_client.post(
         f"/v2-clean/tasks/{task.id}/help",
         data={**payload, "requested_target": "team:999999"},
@@ -225,6 +233,10 @@ def test_duplicate_and_out_of_scope_support_requests_fail_closed(
     assert duplicate.status_code in {409, 422} or (
         duplicate.status_code == 303
         and any(flag in duplicate.headers["location"] for flag in ("duplicate", "already_active", "error="))
+    )
+    assert different_target.status_code in {409, 422} or (
+        different_target.status_code == 303
+        and any(flag in different_target.headers["location"] for flag in ("duplicate", "already_active", "error="))
     )
     assert forged.status_code in {403, 422} or (
         forged.status_code == 303

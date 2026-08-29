@@ -59,14 +59,17 @@ def upgrade() -> None:
         batch_op.create_index("ix_tasks_case_id", ["case_id"])
     bind = op.get_bind()
     for code, name in PERMISSIONS.items():
-        bind.execute(
-            sa.text(
-                "INSERT INTO permissions (code, name, description) "
-                "SELECT :code, :name, NULL WHERE NOT EXISTS "
-                "(SELECT 1 FROM permissions WHERE code = :code)"
-            ),
-            {"code": code, "name": name},
-        )
+        exists = bind.execute(
+            sa.text("SELECT 1 FROM permissions WHERE code = :code"),
+            {"code": code},
+        ).scalar_one_or_none()
+        if exists is None:
+            bind.execute(
+                sa.text(
+                    "INSERT INTO permissions (code, name, description) VALUES (:code, :name, NULL)"
+                ),
+                {"code": code, "name": name},
+            )
 
 
 def downgrade() -> None:

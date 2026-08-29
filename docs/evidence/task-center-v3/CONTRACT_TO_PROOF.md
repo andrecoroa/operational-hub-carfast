@@ -1,6 +1,6 @@
 # Centro de Tarefas v3 — matriz contrato → prova
 
-Contrato congelado: `carfast-task-center-v3-proposal.html`  
+Contrato congelado: `carfast-task-center-v3-proposal.html`
 SHA-256: `D0AE9B2B33F6BF7C44202392A47AF1733D661E72F7428CA5C71C5AFF14678FB1`
 
 Esta matriz é o índice de aceitação da primeira tranche. Todos os dados usados nas

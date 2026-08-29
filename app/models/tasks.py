@@ -40,6 +40,9 @@ class Task(TimestampMixin, Base):
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    case_id: Mapped[int | None] = mapped_column(
+        ForeignKey("task_cases.id", ondelete="SET NULL"), index=True
+    )
     title: Mapped[str] = mapped_column(String(200))
     description: Mapped[str | None] = mapped_column(Text)
     task_type: Mapped[str] = mapped_column(String(80), default="task", index=True)
@@ -147,6 +150,29 @@ class Task(TimestampMixin, Base):
         ForeignKey("process_instances.id", ondelete="SET NULL"), index=True
     )
     process_step_code: Mapped[str | None] = mapped_column(String(120), index=True)
+
+
+class TaskCase(TimestampMixin, Base):
+    """One-level work container. The case itself is never a counted task."""
+
+    __tablename__ = "task_cases"
+    __table_args__ = (
+        CheckConstraint(
+            "workspace IN ('tasks_support', 'administration')",
+            name="ck_task_cases_workspace",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    title: Mapped[str] = mapped_column(String(200), index=True)
+    description: Mapped[str | None] = mapped_column(Text)
+    workspace: Mapped[str] = mapped_column(String(40), index=True)
+    work_queue_id: Mapped[int | None] = mapped_column(
+        ForeignKey("work_queues.id", ondelete="RESTRICT"), index=True
+    )
+    created_by_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), index=True
+    )
 
 
 class TaskComment(Base):

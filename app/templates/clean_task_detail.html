@@ -1,17 +1,18 @@
 {% extends "base.html" %}
 {% from "_task_classification_fields.html" import task_classification_fields %}
 {% block body %}
-<div class="app-shell">
-  {% set active_menu = "tasks" %}
+<div class="app-shell clean-shell task-center-approved-shell">
+  {% set active_menu = "clean_tasks" %}
   {% include "_sidebar.html" %}
-  <main class="content">
-    <header class="topbar">
+  <main class="content clean-content ui-foundation ui-page-shell task-center-detail-approved">
+    {% set visual_section = "Operação" %}{% set visual_page = "Centro de Tarefas" %}{% include "_visual_topbar.html" %}
+    <header class="task-center-detail-header">
       <div>
-        <p class="eyebrow">Centro de Tarefas · detalhe</p>
+        <p class="eyebrow">Centro de Tarefas · área de trabalho</p>
         <h2>{{ task.title }}</h2>
         <p class="breadcrumb">CF-{{ "%05d"|format(task.id) }} · {{ task_workspace_label }}</p>
       </div>
-      <a class="button-link secondary-link" href="{{ task_return_url }}">Voltar ao Centro de Tarefas</a>
+      <a class="button-link secondary-link" href="{{ task_return_url }}">Voltar à mesma fila</a>
     </header>
 
     {% if error %}<div class="alert" role="alert">{{ error }}</div>{% endif %}

@@ -262,7 +262,7 @@
             <tr class="clean-task-clickable" data-task-open="task-preview-{{ task.id }}" tabindex="0">
               <td data-label="Tarefa">
                 <div class="clean-task-title-line"><strong>{{ task.title }}</strong><span class="clean-task-priority priority-{{ task.priority or 'normal' }}">{{ task_priority_labels.get(task.priority, "Normal") }}</span></div>
-                <small>{{ ticket_types_by_id.get(task.ticket_type_id).name if ticket_types_by_id.get(task.ticket_type_id) else "Tarefa antiga" }} · CF-TASK-{{ "%05d"|format(task.id) }}</small>
+                <small>{{ ticket_types_by_id.get(task.ticket_type_id).name if ticket_types_by_id.get(task.ticket_type_id) else "Tarefa" }} · CF-{{ "%05d"|format(task.id) }}</small>
                 {% if filters.workspace == "mine" and task_relations_by_task.get(task.id) %}
                   <span class="clean-task-relation-list">{% for relation in task_relations_by_task.get(task.id, []) %}<em>{{ relation }}</em>{% endfor %}</span>
                 {% endif %}
@@ -301,6 +301,7 @@
     </section>
   </main>
 </div>
+{% endif %}
 
 {% for task in tasks %}
   {% set task_workspace = "audit" if task.task_type in ["audit_task", "workshop_audit"] else "workshop" if task.task_type == "workshop_task" else "management" if task.task_type == "management_task" else "administration" if task.task_type == "administration_task" else "operational" %}
@@ -310,7 +311,7 @@
     <div class="clean-task-preview-backdrop" data-task-close></div>
     <article class="clean-task-preview-dialog clean-preview-dialog{% if foundation_ui_enabled %} visual-task-drawer{% endif %}">
       <header class="clean-preview-header">
-        <div><small>{{ ticket_types_by_id.get(task.ticket_type_id).name if ticket_types_by_id.get(task.ticket_type_id) else "Tarefa antiga" }} · CF-TASK-{{ "%05d"|format(task.id) }}</small><h2>{{ task.title }}</h2></div>
+        <div><small>{{ ticket_types_by_id.get(task.ticket_type_id).name if ticket_types_by_id.get(task.ticket_type_id) else "Tarefa" }} · CF-{{ "%05d"|format(task.id) }}</small><h2>{{ task.title }}</h2></div>
         <div class="clean-task-preview-actions">
           <span class="clean-task-status">{{ task_status_labels.get(task.status, task.status) }}</span>
           <button type="button" class="button-link secondary-link clean-preview-close" data-task-close>{% if foundation_ui_enabled %}Voltar à fila{% else %}Fechar preview{% endif %}</button>
@@ -319,7 +320,7 @@
       <div class="clean-task-preview-body">
         <div class="clean-task-preview-main">
           <section>
-            <h3>Descrição e contexto</h3>
+            <h3>Contexto operacional</h3>
             {% if can_write %}
               <form method="post" action="/v2-clean/tasks/{{ task.id }}/context" class="clean-task-context-form">
                 <input type="hidden" name="return_url" value="{{ request.url.path }}?{{ request.url.query }}">
@@ -352,7 +353,7 @@
           </section>
           {% if can_write %}
           <section>
-            <h3>Gestão</h3>
+            <h3>Planeamento e atribuição</h3>
             <form method="post" action="/v2-clean/tasks/{{ task.id }}/update" class="clean-task-edit-form">
               <input type="hidden" name="return_url" value="{{ request.url.path }}?{{ request.url.query }}">
               <input type="hidden" name="description" value="{{ task.description or '' }}">
@@ -361,23 +362,23 @@
               <input type="hidden" name="contract_number" value="{{ task.contract_number or '' }}">
               <input type="hidden" name="invoice_number" value="{{ task.invoice_number or '' }}">
               <label class="span-2">Título<input name="title" value="{{ task.title }}" required></label>
-              <label>Tipo de ticket<select name="ticket_type_id"><option value="">Tarefa antiga · manter</option>{% for item in ticket_types %}<option value="{{ item.id }}" {% if task.ticket_type_id == item.id %}selected{% endif %}>{{ item.name }}</option>{% endfor %}</select></label>
+              <label>Modelo<select name="ticket_type_id"><option value="">Tarefa existente · manter</option>{% for item in ticket_types %}<option value="{{ item.id }}" {% if task.ticket_type_id == item.id %}selected{% endif %}>{{ item.name }}</option>{% endfor %}</select></label>
               <label class="span-2">Motivo de espera<input name="waiting_reason" value="{{ task.waiting_reason or '' }}"></label>
               <label class="span-2">Descrição da espera<textarea name="waiting_reason_detail" rows="2">{{ task.waiting_reason_detail or '' }}</textarea></label>
-              <label>Executor<select name="assigned_to_id" data-service-desk-executor="user"><option value="">Por atribuir</option>{% for user in all_users %}{% set category_ids %}{% for category_id, ids in eligible_user_ids_by_category.items() if user.id in ids %} {{ category_id }}{% endfor %}{% endset %}{% if category_ids|trim or task.assigned_to_id == user.id %}<option value="{{ user.id }}" data-categories="{{ category_ids }}{% if task.assigned_to_id == user.id %} {{ task.work_category_id or '' }}{% endif %}" {% if task.assigned_to_id == user.id %}selected{% endif %}>{{ user.name }}{% if task.assigned_to_id == user.id and user.id not in eligible_user_ids_by_category.get(task.work_category_id, []) %} · histórico{% endif %}</option>{% endif %}{% endfor %}</select></label>
-              <label>Equipa executora<select name="assigned_team_id" data-service-desk-executor="team"><option value="">Sem equipa</option>{% for team in all_teams %}{% set category_ids %}{% for category_id, ids in eligible_team_ids_by_category.items() if team.id in ids %} {{ category_id }}{% endfor %}{% endset %}{% if category_ids|trim or task.team_id == team.id %}<option value="{{ team.id }}" data-categories="{{ category_ids }}{% if task.team_id == team.id %} {{ task.work_category_id or '' }}{% endif %}" {% if task.team_id == team.id %}selected{% endif %}>{{ team.name }}{% if task.team_id == team.id and team.id not in eligible_team_ids_by_category.get(task.work_category_id, []) %} · histórico{% endif %}</option>{% endif %}{% endfor %}</select></label>
+              <label>Executor individual<select name="assigned_to_id" data-service-desk-executor="user" data-assignment-exclusive><option value="">Por atribuir</option>{% for user in all_users %}{% set category_ids %}{% for category_id, ids in eligible_user_ids_by_category.items() if user.id in ids %} {{ category_id }}{% endfor %}{% endset %}{% if category_ids|trim or task.assigned_to_id == user.id %}<option value="{{ user.id }}" data-categories="{{ category_ids }}{% if task.assigned_to_id == user.id %} {{ task.work_category_id or '' }}{% endif %}" {% if task.assigned_to_id == user.id %}selected{% endif %}>{{ user.name }}{% if task.assigned_to_id == user.id and user.id not in eligible_user_ids_by_category.get(task.work_category_id, []) %} · histórico{% endif %}</option>{% endif %}{% endfor %}</select></label>
+              <label>Ou equipa responsável<select name="assigned_team_id" data-service-desk-executor="team" data-assignment-exclusive><option value="">Sem equipa</option>{% for team in all_teams %}{% set category_ids %}{% for category_id, ids in eligible_team_ids_by_category.items() if team.id in ids %} {{ category_id }}{% endfor %}{% endset %}{% if category_ids|trim or task.team_id == team.id %}<option value="{{ team.id }}" data-categories="{{ category_ids }}{% if task.team_id == team.id %} {{ task.work_category_id or '' }}{% endif %}" {% if task.team_id == team.id %}selected{% endif %}>{{ team.name }}{% if task.team_id == team.id and team.id not in eligible_team_ids_by_category.get(task.work_category_id, []) %} · histórico{% endif %}</option>{% endif %}{% endfor %}</select></label>
               <label class="checkbox-label visual-task-claim-check"><input type="checkbox" name="team_requires_claim" {% if task.assignment_state == 'team_unclaimed' %}checked{% endif %}><span>Equipa fica por assumir</span></label>
-              <label>Estado<select name="status">{% for code, label in [("new","Nova"),("in_execution","Em curso"),("waiting","Em espera"),("resolved","Resolvida"),("closed","Fechada"),("cancelled","Cancelada")] %}<option value="{{ code }}" {% if task.status == code %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+              <input type="hidden" name="status" value="{{ task.status }}">
               <label>Prioridade<select name="priority">{% for code, label in [("low","Baixa"),("normal","Normal"),("high","Alta"),("urgent","Urgente")] %}<option value="{{ code }}" {% if task.priority == code %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
               <label>Prazo<input type="date" name="due_on" value="{{ task.due_on.isoformat() if task.due_on else '' }}"></label>
               {% if task.legacy_classification or (not task.work_queue_id and (task.category or task.subcategory)) %}
                 <div class="clean-task-legacy span-2"><b>Classificação anterior</b><span>{{ task.legacy_classification or ((task.category or '-') ~ ' · ' ~ (task.subcategory or '-')) }}</span></div>
               {% endif %}
               <div class="clean-task-classification-row span-2" data-work-hierarchy>
-                <label>Fila<select name="work_queue_id" data-work-level="queue" data-selected="{{ task.work_queue_id or '' }}"><option value="">Manter classificação anterior</option>{% for item in work_queues %}<option value="{{ item.id }}" {% if task.work_queue_id == item.id %}selected{% endif %}>{{ item.name }}</option>{% endfor %}</select></label>
-                <label>Departamento<select name="work_department_id" data-work-level="department" data-selected="{{ task.work_department_id or '' }}"><option value="">Por classificar</option>{% for item in work_departments %}<option value="{{ item.id }}" data-parent="{{ item.queue_id }}" {% if task.work_department_id == item.id %}selected{% endif %}>{{ item.name }}</option>{% endfor %}</select></label>
-                <label>Categoria<select name="work_category_id" data-work-level="category" data-selected="{{ 'proposal:' ~ task.provisional_category_id if task.provisional_category_id else task.work_category_id or '' }}"><option value="">Por classificar</option>{% for item in work_categories %}<option value="{{ item.id }}" data-parent="{{ item.department_id }}" {% if task.work_category_id == item.id and not task.provisional_category_id %}selected{% endif %}>{{ item.name }}</option>{% endfor %}{% if can_use_provisional_classification %}{% for item in classification_proposals if item.kind == "category" %}<option value="proposal:{{ item.id }}" data-parent="{{ item.department_id }}" data-provisional {% if task.provisional_category_id == item.id %}selected{% endif %}>{{ item.proposed_name }} · Provisório ({{ item.provisional_code }})</option>{% endfor %}{% endif %}{% if can_propose_classification %}{% for item in work_departments %}<option value="__propose_category__:{{ item.id }}" data-parent="{{ item.id }}" data-propose>+ Propor nova categoria</option>{% endfor %}{% endif %}</select></label>
-                <label>Subcategoria<select name="work_subcategory_id" data-work-level="subcategory" data-selected="{{ 'proposal:' ~ task.provisional_subcategory_id if task.provisional_subcategory_id else task.work_subcategory_id or '' }}"><option value="">Por classificar</option>{% for item in work_subcategories %}<option value="{{ item.id }}" data-parent="{{ item.category_id }}" {% if task.work_subcategory_id == item.id and not task.provisional_subcategory_id %}selected{% endif %}>{{ item.name }}</option>{% endfor %}{% if can_use_provisional_classification %}{% for item in classification_proposals if item.kind == "subcategory" %}<option value="proposal:{{ item.id }}" data-parent="{{ item.category_id if item.category_id else 'proposal:' ~ item.parent_proposal_id }}" data-provisional {% if task.provisional_subcategory_id == item.id %}selected{% endif %}>{{ item.proposed_name }} · Provisório ({{ item.provisional_code }})</option>{% endfor %}{% endif %}{% if can_propose_classification %}{% for item in work_categories %}<option value="__propose_subcategory__:{{ item.id }}" data-parent="{{ item.id }}" data-propose>+ Propor nova subcategoria</option>{% endfor %}{% for item in classification_proposals if item.kind == "category" %}<option value="__propose_subcategory__:proposal:{{ item.id }}" data-parent="proposal:{{ item.id }}" data-propose>+ Propor nova subcategoria</option>{% endfor %}{% endif %}</select></label>
+                <label>Fila<select name="work_queue_id" data-work-level="queue" data-selected="{{ task.work_queue_id or '' }}"><option value="">Manter classificação anterior</option>{% for item in task_update_work_queues %}<option value="{{ item.id }}" {% if task.work_queue_id == item.id %}selected{% endif %}>{{ item.name }}</option>{% endfor %}</select></label>
+                <label>Departamento<select name="work_department_id" data-work-level="department" data-selected="{{ task.work_department_id or '' }}"><option value="">Por classificar</option>{% for item in task_update_work_departments %}<option value="{{ item.id }}" data-parent="{{ item.queue_id }}" {% if task.work_department_id == item.id %}selected{% endif %}>{{ item.name }}</option>{% endfor %}</select></label>
+                <label>Categoria<select name="work_category_id" data-work-level="category" data-selected="{{ 'proposal:' ~ task.provisional_category_id if task.provisional_category_id else task.work_category_id or '' }}"><option value="">Por classificar</option>{% for item in task_update_work_categories %}<option value="{{ item.id }}" data-parent="{{ item.department_id }}" {% if task.work_category_id == item.id and not task.provisional_category_id %}selected{% endif %}>{{ item.name }}</option>{% endfor %}{% if can_use_provisional_classification %}{% for item in classification_proposals if item.kind == "category" %}<option value="proposal:{{ item.id }}" data-parent="{{ item.department_id }}" data-provisional {% if task.provisional_category_id == item.id %}selected{% endif %}>{{ item.proposed_name }} · Provisório ({{ item.provisional_code }})</option>{% endfor %}{% endif %}{% if can_propose_classification %}{% for item in task_update_work_departments %}<option value="__propose_category__:{{ item.id }}" data-parent="{{ item.id }}" data-propose>+ Propor nova categoria</option>{% endfor %}{% endif %}</select></label>
+                <label>Subcategoria<select name="work_subcategory_id" data-work-level="subcategory" data-selected="{{ 'proposal:' ~ task.provisional_subcategory_id if task.provisional_subcategory_id else task.work_subcategory_id or '' }}"><option value="">Por classificar</option>{% for item in task_update_work_subcategories %}<option value="{{ item.id }}" data-parent="{{ item.category_id }}" {% if task.work_subcategory_id == item.id and not task.provisional_subcategory_id %}selected{% endif %}>{{ item.name }}</option>{% endfor %}{% if can_use_provisional_classification %}{% for item in classification_proposals if item.kind == "subcategory" %}<option value="proposal:{{ item.id }}" data-parent="{{ item.category_id if item.category_id else 'proposal:' ~ item.parent_proposal_id }}" data-provisional {% if task.provisional_subcategory_id == item.id %}selected{% endif %}>{{ item.proposed_name }} · Provisório ({{ item.provisional_code }})</option>{% endfor %}{% endif %}{% if can_propose_classification %}{% for item in task_update_work_categories %}<option value="__propose_subcategory__:{{ item.id }}" data-parent="{{ item.id }}" data-propose>+ Propor nova subcategoria</option>{% endfor %}{% for item in classification_proposals if item.kind == "category" %}<option value="__propose_subcategory__:proposal:{{ item.id }}" data-parent="proposal:{{ item.id }}" data-propose>+ Propor nova subcategoria</option>{% endfor %}{% endif %}</select></label>
                 <label class="clean-work-other span-2" {% if task.classification_status != 'review' %}hidden{% endif %}>Descrição de “Outro”<input name="classification_other_text" value="{{ task.classification_other_text or '' }}" placeholder="Indica a classificação a rever"></label>
               </div>
               <div class="clean-task-edit-meta span-2"><span>As alterações ficam no histórico.</span>{% if foundation_ui_enabled %}<div class="visual-task-save-actions"><button type="submit" name="post_action" value="stay" class="secondary">Guardar</button><button type="submit" name="post_action" value="close">Guardar e fechar</button></div>{% else %}<button type="submit">Guardar</button>{% endif %}</div>
@@ -491,6 +492,7 @@
 {% endfor %}
 
 <script>
+(() => {
   const workHierarchy = {{ work_hierarchy_json|tojson }};
   const configureWorkHierarchy = (root) => {
     const form = root.closest('form');
@@ -554,8 +556,11 @@
       filter(category, department.value);
       filter(subcategory, category.value);
       const showOther = requiresDescription();
-      other.hidden = !showOther;
-      other.querySelector('input').required = showOther;
+      if (other) {
+        other.hidden = !showOther;
+        const otherInput = other.querySelector('input');
+        if (otherInput) otherInput.required = showOther;
+      }
       executorSelects.forEach((select) => {
         Array.from(select.options).forEach((option, index) => {
           if (!index) return;
@@ -576,6 +581,15 @@
     refresh({loadAssignees: true});
   };
   document.querySelectorAll('[data-work-hierarchy]').forEach(configureWorkHierarchy);
+  document.querySelectorAll('.clean-task-edit-form').forEach((form) => {
+    const assignmentTargets = [...form.querySelectorAll('[data-assignment-exclusive]')];
+    assignmentTargets.forEach((target) => target.addEventListener('change', () => {
+      if (!target.value) return;
+      assignmentTargets.forEach((otherTarget) => {
+        if (otherTarget !== target) otherTarget.value = '';
+      });
+    }));
+  });
   document.querySelector("[data-task-create-open]")?.addEventListener("click", () => {
     const creator = document.getElementById("new-task"); if (!creator) return;
     creator.open = true; creator.scrollIntoView({behavior:"smooth", block:"start"});
@@ -604,6 +618,7 @@
     history.replaceState(null, "", `#${id}`);
     (taskPreviewFocusable(preview)[0] || preview).focus();
   };
+  window.openTaskWorkbench = (taskId, trigger = null) => openTaskPreview(`task-preview-${taskId}`, trigger);
   document.querySelectorAll("[data-task-open]").forEach((row) => {
     row.addEventListener("click", (event) => { if (!event.target.closest("a,button,input,select,textarea")) openTaskPreview(row.dataset.taskOpen, row); });
     row.addEventListener("keydown", (event) => { if (event.key === "Enter") openTaskPreview(row.dataset.taskOpen, row); });
@@ -622,6 +637,6 @@
   const requested = new URLSearchParams(location.search).get("open_task");
   if (requested) openTaskPreview(`task-preview-${requested}`);
   else if (location.hash.startsWith("#task-preview-")) openTaskPreview(location.hash.slice(1));
+})();
 </script>
-{% endif %}
 {% endblock %}

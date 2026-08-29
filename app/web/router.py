@@ -77,6 +77,7 @@ from app.models.tasks import (
     Task,
     TaskAssignmentEvent,
     TaskComment,
+    TaskCase,
     TaskDocument,
     TaskEmailOrigin,
     TaskGuidedFlowRun,
@@ -136,6 +137,12 @@ from app.models.workshop_phased import (
 )
 from app.services.audit import record_audit
 from app.services.task_support import TaskSupportError, request_task_support, resolve_task_support
+from app.services.task_cases import (
+    TaskCaseError,
+    add_task_to_case,
+    create_case_with_first_task,
+    create_related_case,
+)
 from app.services.authorization import get_user_authorized_unit_codes, get_user_permission_codes
 from app.services.classification_proposals import (
     attach_selection_to_entity,
@@ -4665,6 +4672,7 @@ def clean_tasks_center(
     closed: str | None = None,
     reopened: str | None = None,
     page: int = 1,
+    grouping: str = "flat",
 ):
     denied = clean_experience_denied(request)
     if denied:
@@ -4685,6 +4693,10 @@ def clean_tasks_center(
         classification_permissions = (
             get_user_permission_codes(db, current_user) if current_user else set()
         )
+        cases_enabled = settings.task_cases_enabled and "cases.read" in classification_permissions
+        active_grouping = grouping if grouping in {"flat", "category", "case"} else "flat"
+        if not cases_enabled:
+            active_grouping = "flat"
         opportunistic_generate_recurring_tasks(db)
         readable_workspaces = user_task_workspace_codes(db, current_user)
         # The clean Task Center is the operational workspace. Administrative
@@ -5472,6 +5484,139 @@ def clean_tasks_center(
             )
             for task in tasks
         }
+        visible_case_ids = {task.case_id for task in tasks if task.case_id}
+        task_cases_by_id = {
+            item.id: item
+            for item in db.scalars(
+                select(TaskCase).where(TaskCase.id.in_(visible_case_ids))
+            )
+        } if cases_enabled and visible_case_ids else {}
+        active_case_child = and_(
+            Task.closed_at.is_(None), ~Task.status.in_(TASK_ARCHIVE_STATUSES)
+        )
+        summary_columns = (
+            func.count(Task.id).label("count"),
+            func.sum(
+                case(
+                    (
+                        and_(
+                            active_case_child,
+                            Task.due_on.is_not(None),
+                            Task.due_on < date.today(),
+                        ),
+                        1,
+                    ),
+                    else_=0,
+                )
+            ).label("overdue"),
+            func.sum(
+                case(
+                    (
+                        and_(
+                            active_case_child,
+                            Task.due_on.is_not(None),
+                            Task.due_on >= date.today(),
+                            Task.due_on
+                            <= date.today() + timedelta(days=TASK_DUE_SOON_DAYS),
+                        ),
+                        1,
+                    ),
+                    else_=0,
+                )
+            ).label("risk"),
+            func.sum(case((active_case_child, 1), else_=0)).label("active"),
+            func.sum(
+                case(
+                    (
+                        and_(active_case_child, Task.status == "support_requested"),
+                        1,
+                    ),
+                    else_=0,
+                )
+            ).label("support"),
+            func.min(case((active_case_child, Task.due_on), else_=None)).label(
+                "next_due"
+            ),
+        )
+        case_summaries = {}
+        if cases_enabled and visible_case_ids:
+            case_summaries = {
+                row.case_id: row
+                for row in db.execute(
+                    select(Task.case_id, *summary_columns)
+                    .where(*filters, Task.case_id.in_(visible_case_ids))
+                    .group_by(Task.case_id)
+                )
+            }
+        task_case_states = {}
+        for case_id, summary in case_summaries.items():
+            task_case_states[case_id] = (
+                "completed"
+                if not summary.active
+                else "overdue"
+                if summary.overdue
+                else "support_requested"
+                if summary.support
+                else "at_risk"
+                if summary.risk
+                else "active"
+            )
+        visible_categories = {
+            (task.work_category_id, task.category) for task in tasks
+        }
+        category_summaries = {}
+        if cases_enabled and active_grouping == "category" and visible_categories:
+            category_summaries = {
+                (row.work_category_id, row.category): row
+                for row in db.execute(
+                    select(Task.work_category_id, Task.category, *summary_columns)
+                    .where(*filters)
+                    .group_by(Task.work_category_id, Task.category)
+                )
+                if (row.work_category_id, row.category) in visible_categories
+            }
+        task_groups: list[dict[str, object]] = []
+        if cases_enabled and active_grouping != "flat":
+            grouped: dict[str, list[Task]] = defaultdict(list)
+            for task in tasks:
+                if active_grouping == "case":
+                    key = f"case:{task.case_id}" if task.case_id else f"task:{task.id}"
+                else:
+                    key = f"category:{task.work_category_id or task.category or 'unclassified'}"
+                grouped[key].append(task)
+            for key, child_tasks in grouped.items():
+                case_id = child_tasks[0].case_id if key.startswith("case:") else None
+                case_item = task_cases_by_id.get(case_id) if case_id else None
+                label = (
+                    case_item.title
+                    if case_item
+                    else child_tasks[0].title
+                    if key.startswith("task:")
+                    else work_category_labels.get(
+                        child_tasks[0].work_category_id,
+                        child_tasks[0].category or "Por classificar",
+                    )
+                )
+                summary = (
+                    case_summaries.get(case_id)
+                    if case_id
+                    else category_summaries.get(
+                        (child_tasks[0].work_category_id, child_tasks[0].category)
+                    )
+                    if key.startswith("category:")
+                    else None
+                )
+                task_groups.append({
+                    "key": key,
+                    "label": label,
+                    "case": case_item,
+                    "tasks": child_tasks,
+                    "count": int(summary.count) if summary else len(child_tasks),
+                    "overdue": int(summary.overdue or 0) if summary else 0,
+                    "risk": int(summary.risk or 0) if summary else 0,
+                    "next_due": summary.next_due if summary else child_tasks[0].due_on,
+                    "state": task_case_states.get(case_id, "active"),
+                })
         task_origin_labels = {task.id: task_origin_label(task) for task in tasks}
         task_relation_labels = {
             task.id: " · ".join(
@@ -5562,6 +5707,12 @@ def clean_tasks_center(
                 "task_sla_by_id": task_sla_by_id,
                 "task_sla_labels_by_id": task_sla_labels_by_id,
                 "task_assignment_labels": task_assignment_labels,
+                "task_cases_enabled": cases_enabled,
+                "can_create_cases": cases_enabled and "cases.create" in classification_permissions,
+                "can_update_cases": cases_enabled and "cases.update" in classification_permissions,
+                "task_cases_by_id": task_cases_by_id,
+                "task_case_states": task_case_states,
+                "task_groups": task_groups,
                 "task_origin_labels": task_origin_labels,
                 "task_relation_labels": task_relation_labels,
                 "participants_by_task": participants_by_task,
@@ -5622,6 +5773,7 @@ def clean_tasks_center(
                     "sort": active_sort,
                     "category": active_task_category,
                     "conflict": filter_conflict,
+                    "grouping": active_grouping,
                 },
                 "prefill": {
                     "record_type": effective_record_type,
@@ -5665,6 +5817,186 @@ def clean_tasks_center(
                 **hierarchy,
             },
         )
+
+
+def _manual_case_task(
+    *,
+    title: str,
+    actor_user_id: int,
+    original: Task | None = None,
+    due_on: str = "",
+    priority: str = "normal",
+) -> Task:
+    parsed_due = parse_iso_or_dmy_date(due_on)
+    return Task(
+        title=title.strip()[:200],
+        description=None,
+        task_type=original.task_type if original else "operational_task",
+        source="case_manual",
+        category=original.category if original else "operations",
+        subcategory=original.subcategory if original else "task",
+        status="new",
+        priority=priority if priority in {"low", "normal", "high", "urgent"} else "normal",
+        plate=original.plate if original else None,
+        entity_type=original.entity_type if original else None,
+        entity_id=original.entity_id if original else None,
+        team_id=original.team_id if original else None,
+        work_queue_id=original.work_queue_id if original else None,
+        work_department_id=original.work_department_id if original else None,
+        work_category_id=original.work_category_id if original else None,
+        work_subcategory_id=original.work_subcategory_id if original else None,
+        classification_status=original.classification_status if original else "unclassified",
+        created_by_id=actor_user_id,
+        due_on=parsed_due,
+        assignment_mode="manual",
+        assignment_state="assigned_team" if original and original.team_id else "waiting_assignment",
+    )
+
+
+def _case_feature_access(db: Session, request: Request, permission: str) -> tuple[User, set[str]] | None:
+    user_id = get_web_user_id(request)
+    user = db.get(User, user_id) if user_id else None
+    permissions = get_user_permission_codes(db, user) if user and user.active else set()
+    if not settings.task_cases_enabled or permission not in permissions:
+        return None
+    return user, permissions
+
+
+def _case_action_redirect(return_url: str, **params: str) -> RedirectResponse:
+    target = _clean_v2_return_url(return_url, "/v2-clean/tasks?grouping=case")
+    parsed = urlsplit(target)
+    query = list(parse_qsl(parsed.query, keep_blank_values=True))
+    query.extend(params.items())
+    return RedirectResponse(
+        urlunsplit(("", "", parsed.path, urlencode(query), parsed.fragment)),
+        status_code=303,
+    )
+
+
+@web_router.post("/v2-clean/task-cases")
+def clean_task_case_create(
+    request: Request,
+    case_title: str = Form(""),
+    task_title: str = Form(""),
+    priority: str = Form("normal"),
+    due_on: str = Form(""),
+    return_url: str = Form(""),
+):
+    with SessionLocal() as db:
+        access = _case_feature_access(db, request, "cases.create")
+        if not access or not task_title.strip():
+            return RedirectResponse("/v2-clean/tasks?error=forbidden", status_code=303)
+        user, _ = access
+        if not user_can_access_task_workspace(db, user, "operational", action="create"):
+            return RedirectResponse("/v2-clean/tasks?error=forbidden", status_code=303)
+        task = _manual_case_task(
+            title=task_title, actor_user_id=user.id, due_on=due_on, priority=priority
+        )
+        try:
+            case = create_case_with_first_task(
+                db, title=case_title, first_task=task, actor_user_id=user.id
+            )
+            case_id = case.id
+            db.commit()
+        except (TaskCaseError, IntegrityError):
+            db.rollback()
+            return RedirectResponse("/v2-clean/tasks?error=case_invalid", status_code=303)
+    return _case_action_redirect(return_url, case_created=str(case_id))
+
+
+@web_router.post("/v2-clean/task-cases/{case_id}/tasks")
+def clean_task_case_add_task(
+    request: Request,
+    case_id: int,
+    task_title: str = Form(""),
+    priority: str = Form("normal"),
+    due_on: str = Form(""),
+    return_url: str = Form(""),
+):
+    with SessionLocal() as db:
+        access = _case_feature_access(db, request, "cases.update")
+        if not access or not task_title.strip():
+            return RedirectResponse("/v2-clean/tasks?error=forbidden", status_code=303)
+        user, _ = access
+        visibility = task_visibility_filter(db, user_id=user.id, task_model=Task)
+        case = db.scalar(
+            select(TaskCase)
+            .join(Task, Task.case_id == TaskCase.id)
+            .where(TaskCase.id == case_id, visibility)
+            .distinct()
+        )
+        if not case:
+            return RedirectResponse("/v2-clean/tasks?error=forbidden", status_code=303)
+        workspace = "administration" if case.workspace == "administration" else "operational"
+        if not user_can_access_task_workspace(db, user, workspace, action="create"):
+            return RedirectResponse("/v2-clean/tasks?error=forbidden", status_code=303)
+        exemplar = db.scalar(
+            select(Task).where(Task.case_id == case.id, visibility).order_by(Task.id)
+        )
+        if not exemplar:
+            return RedirectResponse("/v2-clean/tasks?error=case_invalid", status_code=303)
+        task = _manual_case_task(
+            title=task_title,
+            actor_user_id=user.id,
+            original=exemplar,
+            due_on=due_on,
+            priority=priority,
+        )
+        try:
+            add_task_to_case(db, case=case, task=task, actor_user_id=user.id)
+            db.commit()
+        except (TaskCaseError, IntegrityError):
+            db.rollback()
+            return RedirectResponse("/v2-clean/tasks?error=case_invalid", status_code=303)
+    return _case_action_redirect(return_url, case_updated=str(case_id))
+
+
+@web_router.post("/v2-clean/tasks/{task_id}/related-case")
+def clean_task_related_case_create(
+    request: Request,
+    task_id: int,
+    case_title: str = Form(""),
+    task_title: str = Form(""),
+    priority: str = Form("normal"),
+    due_on: str = Form(""),
+    return_url: str = Form(""),
+):
+    with SessionLocal() as db:
+        access = _case_feature_access(db, request, "cases.create")
+        if not access or not task_title.strip():
+            return RedirectResponse("/v2-clean/tasks?error=forbidden", status_code=303)
+        user, _ = access
+        visibility = task_visibility_filter(db, user_id=user.id, task_model=Task)
+        original = db.scalar(select(Task).where(Task.id == task_id, visibility))
+        if not original or not user_can_access_task_workspace(
+            db, user, workspace_for_task_type(original.task_type), action="update"
+        ):
+            return RedirectResponse("/v2-clean/tasks?error=forbidden", status_code=303)
+        if not user_can_access_task_workspace(
+            db, user, workspace_for_task_type(original.task_type), action="create"
+        ):
+            return RedirectResponse("/v2-clean/tasks?error=forbidden", status_code=303)
+        related = _manual_case_task(
+            title=task_title,
+            actor_user_id=user.id,
+            original=original,
+            due_on=due_on,
+            priority=priority,
+        )
+        try:
+            case = create_related_case(
+                db,
+                title=case_title,
+                original_task=original,
+                related_task=related,
+                actor_user_id=user.id,
+            )
+            case_id = case.id
+            db.commit()
+        except (TaskCaseError, IntegrityError):
+            db.rollback()
+            return RedirectResponse("/v2-clean/tasks?error=case_invalid", status_code=303)
+    return _case_action_redirect(return_url, case_created=str(case_id))
 
 
 def _recurrence_form_datetime(value: str) -> datetime | None:

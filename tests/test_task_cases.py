@@ -1,3 +1,4 @@
+import re
 from datetime import date, timedelta
 from pathlib import Path
 
@@ -238,8 +239,73 @@ def test_grouped_web_flow_preserves_filters_and_exposes_preview(
     assert "Preparação para venda" in page.text
     assert "Retirar reservas futuras" in page.text
     assert "data-group-task" in page.text
-    assert "+ Criar tarefa relacionada" in page.text
+    assert "Criar caso a partir desta tarefa" in page.text
+    assert len(re.findall(r"<button[^>]+data-task-preview-action=", page.text)) == 4
     assert "Prioridade" in page.text and "Responsável" in page.text and "Prazo" in page.text
+
+
+def test_category_grouping_route_is_fail_safe(
+    authenticated_client, db_session, monkeypatch
+) -> None:
+    _grant_cases(db_session)
+    monkeypatch.setattr(task_router.settings, "task_cases_enabled", True)
+    monkeypatch.setattr(task_router.settings, "visual_foundation_enabled", True)
+    _task(db_session, "Categoria sem erro 500")
+    db_session.commit()
+
+    page = authenticated_client.get(
+        "/v2-clean/tasks?grouping=category&workspace=mine"
+    )
+
+    assert page.status_code == 200, page.text
+    assert 'data-grouping="category"' in page.text
+    assert "Categoria sem erro 500" in page.text
+
+
+def test_case_grouping_only_shows_persisted_cases_and_their_tasks(
+    authenticated_client, db_session, monkeypatch
+) -> None:
+    _grant_cases(db_session)
+    monkeypatch.setattr(task_router.settings, "task_cases_enabled", True)
+    monkeypatch.setattr(task_router.settings, "visual_foundation_enabled", True)
+    actor = _actor(db_session)
+    case_task = _task(db_session, "Tarefa dentro do caso")
+    create_case_with_first_task(
+        db_session,
+        title="Caso persistido visível",
+        first_task=case_task,
+        actor_user_id=actor.id,
+    )
+    _task(db_session, "Tarefa simples excluída")
+    db_session.commit()
+
+    page = authenticated_client.get(
+        "/v2-clean/tasks?grouping=case&workspace=mine"
+    )
+
+    assert page.status_code == 200
+    assert "Caso persistido visível" in page.text
+    assert "Tarefa dentro do caso" in page.text
+    assert "Tarefa simples excluída" not in page.text
+    assert "1 tarefa" in page.text
+
+
+def test_case_grouping_empty_state_explains_that_simple_tasks_are_excluded(
+    authenticated_client, db_session, monkeypatch
+) -> None:
+    _grant_cases(db_session)
+    monkeypatch.setattr(task_router.settings, "task_cases_enabled", True)
+    monkeypatch.setattr(task_router.settings, "visual_foundation_enabled", True)
+    _task(db_session, "Tarefa simples fora dos casos")
+    db_session.commit()
+
+    page = authenticated_client.get(
+        "/v2-clean/tasks?grouping=case&workspace=mine"
+    )
+
+    assert page.status_code == 200
+    assert "Tarefa simples fora dos casos" not in page.text
+    assert "Sem casos neste recorte" in page.text
 
 
 def test_group_summary_counts_all_filtered_children_across_pages(

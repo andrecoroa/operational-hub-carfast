@@ -37,11 +37,13 @@ def test_approved_safe_default_and_reset_are_explicit() -> None:
     assert 'default_task_category' in ROUTER
 
 
-def test_approved_categories_are_exclusive_and_workspace_is_62_38() -> None:
-    for label in ("Documentação", "Oficina", "Sinistros", "Todas"):
+def test_primary_filters_use_operational_views_and_persisted_queues() -> None:
+    for label in ("Minhas", "Por assumir", "Da equipa"):
         assert label in TEMPLATE
-    assert 'role="radiogroup"' in TEMPLATE
-    assert 'name="category"' in TEMPLATE
+    assert 'aria-label="Vista de trabalho"' in TEMPLATE
+    assert 'data-task-queue' in TEMPLATE
+    assert 'name="category" value="all"' in TEMPLATE
+    assert 'Categoria de foco' not in TEMPLATE
     assert "grid-template-columns:minmax(0,62fr) minmax(360px,38fr)" in CSS
 
 
@@ -65,6 +67,20 @@ def test_approved_preview_is_inline_and_has_at_most_four_rbac_actions() -> None:
     assert "data-preview-relation" in TEMPLATE
 
 
+def test_approved_workbench_stays_in_the_center_and_uses_scoped_update_options() -> None:
+    assert "window.openTaskWorkbench" in TEMPLATE
+    assert 'class="clean-task-preview"' in TEMPLATE
+    assert 'action="/v2-clean/tasks/{{ task.id }}/update"' in TEMPLATE
+    assert "task_update_work_queues" in TEMPLATE
+    assert "task_update_work_departments" in TEMPLATE
+    assert "task_update_work_categories" in TEMPLATE
+    assert "task_update_work_subcategories" in TEMPLATE
+    assert "Tarefa antiga" not in TEMPLATE
+    assert "CF-TASK-" not in TEMPLATE
+    assert 'name="status" value="{{ task.status }}"' in TEMPLATE
+    assert TEMPLATE.count("data-assignment-exclusive") >= 2
+
+
 def test_approved_selection_preserves_return_context() -> None:
     assert 'data-task-row' in TEMPLATE
     assert 'data-return-context' in TEMPLATE
@@ -82,7 +98,7 @@ def test_server_side_scope_is_shared_by_list_and_counters() -> None:
     assert "counter_base_filters" in ROUTER
 
 
-def test_initial_default_excludes_closed_and_uses_documentation_focus(
+def test_initial_default_excludes_closed_and_shows_complete_authorized_workload(
     authenticated_client, db_session, monkeypatch
 ) -> None:
     monkeypatch.setattr(task_router.settings, "visual_foundation_enabled", True)
@@ -90,7 +106,7 @@ def test_initial_default_excludes_closed_and_uses_documentation_focus(
     db_session.add_all(
         [
             Task(title="Documento ativo aprovado", task_type="operational_task", category="Documentação", status="new", priority="normal", assigned_to_id=actor.id),
-            Task(title="Oficina fora do foco inicial", task_type="workshop_task", category="Oficina", status="new", priority="normal"),
+            Task(title="Oficina fora do foco inicial", task_type="workshop_task", category="Oficina", status="new", priority="normal", assigned_to_id=actor.id),
             Task(title="Documento fechado excluído", task_type="operational_task", category="Documentação", status="closed", priority="normal"),
             Task(title="Documento cancelado excluído", task_type="operational_task", category="Documentação", status="cancelled", priority="normal"),
             Task(title="Documento sem ação excluído", task_type="operational_task", category="Documentação", status="no_action_needed", priority="normal"),
@@ -102,11 +118,11 @@ def test_initial_default_excludes_closed_and_uses_documentation_focus(
 
     assert page.status_code == 200
     assert "Documento ativo aprovado" in page.text
-    assert "Oficina fora do foco inicial" not in page.text
+    assert "Oficina fora do foco inicial" in page.text
     assert "Documento fechado excluído" not in page.text
     assert "Documento cancelado excluído" not in page.text
     assert "Documento sem ação excluído" not in page.text
-    assert 'value="documentacao" checked' in page.text
+    assert 'name="category" value="all"' in page.text
     assert 'value="open" selected' in page.text
 
 
@@ -150,7 +166,7 @@ def test_counter_values_reconcile_with_authorized_server_filters(
     assert page_count == result_count
 
 
-def test_last_focus_cookie_and_invalid_category_fail_closed(
+def test_legacy_focus_cookie_is_ignored_and_invalid_category_falls_back_to_all(
     authenticated_client, db_session, monkeypatch
 ) -> None:
     monkeypatch.setattr(task_router.settings, "visual_foundation_enabled", True)
@@ -169,8 +185,8 @@ def test_last_focus_cookie_and_invalid_category_fail_closed(
 
     for page in (remembered, invalid):
         assert "Oficina lembrada" in page.text
-        assert "Documento fora do foco lembrado" not in page.text
-        assert 'value="oficina" checked' in page.text
+        assert "Documento fora do foco lembrado" in page.text
+        assert 'name="category" value="all"' in page.text
 
 
 def test_category_buckets_are_mutually_exclusive_under_adversarial_type(
@@ -268,16 +284,17 @@ def test_preview_actions_use_clean_canonical_routes_and_accessible_editors() -> 
     assert "prompt('Registar nota na tarefa')" not in TEMPLATE
     assert 'data-task-state-dialog' in TEMPLATE
     assert 'data-task-note-dialog' in TEMPLATE
-    assert '/v2-clean/tasks/${selectedRow.dataset.taskId}/open' in TEMPLATE
+    assert 'window.openTaskWorkbench' in TEMPLATE
     assert '/v2-clean/tasks/${selectedRow.dataset.taskId}/transition' in TEMPLATE
     assert '/v2-clean/tasks/${selectedRow.dataset.taskId}/comments' in TEMPLATE
 
 
-def test_category_and_focus_bucket_are_presented_as_distinct_concepts() -> None:
+def test_preview_presents_persisted_queue_and_canonical_classification() -> None:
     assert 'data-preview-category' in TEMPLATE
-    assert 'data-preview-focus' in TEMPLATE
-    assert 'Categoria canónica' in TEMPLATE
-    assert 'Agrupamento de foco' in TEMPLATE
+    assert 'data-preview-queue' in TEMPLATE
+    assert '<dt>Classificação</dt>' in TEMPLATE
+    assert '<dt>Fila</dt>' in TEMPLATE
+    assert 'data-preview-focus' not in TEMPLATE
 
 
 def test_list_detail_visibility_uses_one_canonical_resolver() -> None:

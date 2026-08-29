@@ -15,6 +15,8 @@ const browser = await chromium.launch({
     : {}),
 });
 const page = await browser.newPage({ viewport: { width: 1440, height: 731 } });
+const pageErrors = [];
+page.on('pageerror', (error) => pageErrors.push(error.message));
 
 await page.goto(`${base}/login`);
 await page.locator('input[name="email"]').fill("executor.preview@carfast.local");
@@ -41,22 +43,33 @@ if (process.env.TASK_CENTER_BASELINE_ONLY === "1") {
 }
 await page.screenshot({ path: path.join(output, "01-selected-1440x731.png") });
 
-await page.locator('[data-task-preview-action="open"]').click();
-await page.waitForURL(/\/v2-clean\/tasks\/\d+\/detail\?return_context=/);
-if ((await page.locator('form[action*="/update"] input[name="title"]').count()) !== 1) throw new Error("Real editable detail did not open");
-for (const field of ["work_queue_id", "work_department_id", "work_category_id", "work_subcategory_id", "assigned_team_id", "assigned_to_id"]) {
-  if ((await page.locator(`form[action*="/update"] [name="${field}"]`).count()) !== 1) throw new Error(`Detail field missing: ${field}`);
+const workbenchPreflight = await page.evaluate(() => ({
+  previewCount: document.querySelectorAll('.clean-task-preview').length,
+  openerType: typeof window.openTaskWorkbench,
+}));
+if (workbenchPreflight.previewCount < 1 || workbenchPreflight.openerType !== 'function') {
+  throw new Error(`Workbench preflight failed: ${JSON.stringify(workbenchPreflight)} errors=${JSON.stringify(pageErrors)}`);
 }
-await page.screenshot({ path: path.join(output, "02-real-detail-return-context-1440x731.png") });
-const returnHref = await page.locator('a:has-text("Voltar ao Centro de Tarefas")').getAttribute("href");
-if (!returnHref?.includes("#task-")) throw new Error(`ReturnContext missing selection: ${returnHref}`);
-await page.locator('a:has-text("Voltar ao Centro de Tarefas")').click();
-await page.waitForURL(/\/v2-clean\/tasks/);
+await page.locator('[data-task-preview-action="open"]').click();
+await page.waitForTimeout(500);
+if ((await page.locator('.clean-task-preview.is-open').count()) !== 1) {
+  throw new Error(`Workbench did not open at ${page.url()}; previews=${await page.locator('.clean-task-preview').count()}`);
+}
+await page.locator('.clean-task-preview.is-open').waitFor({ state: "visible" });
+if (!page.url().includes('/v2-clean/tasks')) throw new Error(`Workbench left the Task Center: ${page.url()}`);
+if ((await page.locator('.clean-task-preview.is-open form[action*="/update"] input[name="title"]').count()) !== 1) throw new Error("Unified editable workbench did not open");
+for (const field of ["work_queue_id", "work_department_id", "work_category_id", "work_subcategory_id", "assigned_team_id", "assigned_to_id"]) {
+  if ((await page.locator(`.clean-task-preview.is-open form[action*="/update"] [name="${field}"]`).count()) !== 1) throw new Error(`Workbench field missing: ${field}`);
+}
+await page.screenshot({ path: path.join(output, "02-unified-workbench-1440x731.png") });
+await page.locator('.clean-task-preview.is-open [data-task-close]').last().click();
+await page.locator('.clean-task-preview.is-open').waitFor({ state: "hidden" });
+if (!page.url().includes('#task-')) throw new Error(`Selection context was not preserved: ${page.url()}`);
 
 await page.locator('[data-task-create-open]').click();
 await page.locator("[data-task-create-dialog]").waitFor({ state: "visible" });
 const createReturn = await page.locator('[data-task-create-form] [name="return_url"]').inputValue();
-if (!createReturn.includes("workspace=all") || !createReturn.includes("category=all") || !createReturn.includes("open_task=")) {
+if (!createReturn.includes("workspace=all") || !createReturn.includes("category=all") || !createReturn.includes("#task-preview-")) {
   throw new Error(`Create ReturnContext incomplete: ${createReturn}`);
 }
 await page.screenshot({ path: path.join(output, "03-three-models-1440x731.png") });

@@ -175,7 +175,7 @@ def test_listable_direct_task_uses_same_resolver_for_clean_and_legacy_detail(
     assert detail.status_code == 200
     assert not detail.history, [(item.status_code, item.headers.get("location")) for item in detail.history]
     assert task.title in detail.text
-    assert "Voltar ao Centro de Tarefas" in detail.text
+    assert "Voltar à mesma fila" in detail.text
     assert "/v2-clean/tasks?workspace=all&amp;status=open&amp;category=all#task-1" in detail.text
 
 

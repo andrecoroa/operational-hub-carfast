@@ -4882,18 +4882,16 @@ def clean_tasks_center(
         active_department_id = parse_int_from_text(department)
         if active_department_id:
             filters.append(Task.work_department_id == active_department_id)
-        default_task_category = "documentacao"
+        # Focus buckets are compatibility shortcuts, not the persisted work
+        # hierarchy. Start on the complete authorized workload; only apply a
+        # legacy focus bucket when the user explicitly requests one.
+        default_task_category = "all"
         approved_category_codes = {"documentacao", "oficina", "sinistros", "all"}
         requested_category = category.strip().lower()
-        remembered_task_category = request.cookies.get("carfast_task_category", "").strip().lower()
-        if remembered_task_category not in approved_category_codes - {"all"}:
-            remembered_task_category = default_task_category
         active_task_category = (
             requested_category
             if requested_category in approved_category_codes
-            else remembered_task_category
-            if settings.visual_foundation_enabled
-            else "all"
+            else default_task_category
         )
         clean_nature = nature.strip()[:80]
         if clean_nature:
@@ -5371,7 +5369,18 @@ def clean_tasks_center(
         hierarchy = task_scoped_hierarchy_context(
             db, user_id=user_id, action="create"
         )
-        category_ids = [item.id for item in hierarchy["work_categories"]]
+        update_hierarchy = task_scoped_hierarchy_context(
+            db, user_id=user_id, action="update"
+        )
+        category_ids = sorted(
+            {
+                item.id
+                for item in (
+                    *hierarchy["work_categories"],
+                    *update_hierarchy["work_categories"],
+                )
+            }
+        )
         eligible_user_ids_by_category = {
             category_id: [
                 item.id
@@ -5590,6 +5599,10 @@ def clean_tasks_center(
                     "previous_page": active_page - 1,
                     "next_page": active_page + 1,
                 },
+                "task_update_work_queues": update_hierarchy["work_queues"],
+                "task_update_work_departments": update_hierarchy["work_departments"],
+                "task_update_work_categories": update_hierarchy["work_categories"],
+                "task_update_work_subcategories": update_hierarchy["work_subcategories"],
                 **hierarchy,
             },
         )

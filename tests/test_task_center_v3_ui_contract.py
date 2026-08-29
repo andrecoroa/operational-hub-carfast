@@ -21,8 +21,8 @@ def _enable_v3_surface(monkeypatch):
 def test_queue_selector_never_offers_an_aggregate() -> None:
     assert 'name="queue" data-task-queue' in TEMPLATE
     assert '<option value="">Todas autorizadas</option>' not in TEMPLATE
-    assert "requested_queue in visible_queue_codes" in ROUTER
-    assert "never expand to an aggregate" in ROUTER
+    assert "authorized_task_queue" in ROUTER
+    assert 'queue_error == "forbidden"' in ROUTER
 
 
 def test_work_views_and_queue_are_independent_and_fail_closed() -> None:

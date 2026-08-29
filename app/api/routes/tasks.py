@@ -44,6 +44,12 @@ from app.services.service_desk import (
     pause_task_sla,
     resume_task_sla,
 )
+from app.services.task_queues import (
+    TASK_QUEUE_TASK_TYPES,
+    authorized_task_queue,
+    resolve_task_queue_capabilities,
+    task_queue_for_task_type,
+)
 from app.services.work_classification import (
     user_work_scope_allows,
     user_work_scope_filter,
@@ -146,6 +152,7 @@ def list_tasks(
     db: DbSession,
     current_user: CurrentUser,
     _: TaskReader,
+    queue: str | None = None,
     status_filter: str | None = None,
     task_type: str | None = None,
     team_id: int | None = None,
@@ -155,7 +162,15 @@ def list_tasks(
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
 ):
+    inferred_queue = task_queue_for_task_type(task_type)
+    if task_type and inferred_queue is None:
+        raise HTTPException(status_code=400, detail="Invalid task type.")
+    requested_queue = queue or inferred_queue or "tasks_support"
+    queue_capability = _require_queue_capability(db, current_user, requested_queue)
+    if task_type and task_type not in TASK_QUEUE_TASK_TYPES[queue_capability.code]:
+        raise HTTPException(status_code=400, detail="Task type does not belong to queue.")
     stmt = select(Task).order_by(Task.id.desc())
+    stmt = stmt.where(Task.task_type.in_(tuple(TASK_QUEUE_TASK_TYPES[queue_capability.code])))
     scope_filter = user_work_scope_filter(
         db, user_id=current_user.id, task_model=Task, action="read"
     )
@@ -176,6 +191,38 @@ def list_tasks(
     return db.scalars(stmt.limit(limit).offset(offset)).all()
 
 
+@router.get("/queues")
+def list_task_queue_capabilities(
+    db: DbSession, current_user: CurrentUser, _: TaskReader
+):
+    return [
+        {
+            "code": item.code,
+            "label": item.label,
+            "can_read": item.can_read,
+            "can_write": item.can_write,
+        }
+        for item in resolve_task_queue_capabilities(db, current_user)
+    ]
+
+
+@router.get("/queues/{queue_code}")
+def get_task_queue_capability(
+    queue_code: str, db: DbSession, current_user: CurrentUser, _: TaskReader
+):
+    capability, queue_error = authorized_task_queue(db, current_user, queue_code)
+    if queue_error == "invalid":
+        raise HTTPException(status_code=400, detail="Invalid task queue.")
+    if queue_error == "forbidden":
+        raise HTTPException(status_code=403, detail="Task queue permission denied.")
+    return {
+        "code": capability.code,
+        "label": capability.label,
+        "can_read": capability.can_read,
+        "can_write": capability.can_write,
+    }
+
+
 @router.post("", response_model=ServiceDeskTaskRead, status_code=status.HTTP_201_CREATED)
 def create_task(
     payload: ServiceDeskTaskCreate,
@@ -183,6 +230,7 @@ def create_task(
     current_user: CurrentUser,
     _: TaskWriter,
 ):
+    _require_task_type_queue(db, current_user, payload.task_type, write=True)
     values = payload.model_dump(
         exclude={
             "team_requires_claim",
@@ -364,6 +412,9 @@ def update_task(
 ):
     task = _get_visible_task(db, task_id, current_user, action="update")
     changes = payload.model_dump(exclude_unset=True)
+    _require_task_type_queue(
+        db, current_user, changes.get("task_type", task.task_type), write=True
+    )
     team_requires_claim = bool(changes.pop("team_requires_claim", False))
     proposed_category_id = changes.pop("provisional_category_id", None)
     proposed_subcategory_id = changes.pop("provisional_subcategory_id", None)
@@ -843,8 +894,33 @@ def _get_visible_task(
     task = db.get(Task, task_id)
     if not task:
         raise HTTPException(status_code=404, detail="Task not found.")
+    _require_task_type_queue(
+        db, user, task.task_type, write=action != "read"
+    )
     _require_task_scope(db, user, task, action=action)
     return task
+
+
+def _require_queue_capability(
+    db: DbSession, user: User, requested_queue: str, *, write: bool = False
+):
+    capability, queue_error = authorized_task_queue(db, user, requested_queue)
+    if queue_error == "invalid":
+        raise HTTPException(status_code=400, detail="Invalid task queue.")
+    if queue_error == "forbidden":
+        raise HTTPException(status_code=403, detail="Task queue permission denied.")
+    if write and not capability.can_write:
+        raise HTTPException(status_code=403, detail="Task queue write permission denied.")
+    return capability
+
+
+def _require_task_type_queue(
+    db: DbSession, user: User, task_type: str | None, *, write: bool
+):
+    queue_code = task_queue_for_task_type(task_type)
+    if queue_code is None:
+        raise HTTPException(status_code=400, detail="Invalid task type.")
+    return _require_queue_capability(db, user, queue_code, write=write)
 
 
 def _require_task_scope(db: DbSession, user: User, task: Task, *, action: str) -> None:

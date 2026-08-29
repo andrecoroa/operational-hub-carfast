@@ -144,6 +144,7 @@ from app.services.task_cases import (
     create_related_case,
 )
 from app.services.authorization import get_user_authorized_unit_codes, get_user_permission_codes
+from app.services.task_queues import authorized_task_queue, resolve_task_queue_capabilities
 from app.services.classification_proposals import (
     attach_selection_to_entity,
     detach_entity_proposals,
@@ -4729,14 +4730,15 @@ def clean_tasks_center(
             if item["code"] in readable_workspaces
         ]
         legacy_divisions = {item["code"]: item for item in task_divisions}
-        administration_workspaces = set(readable_workspaces).intersection(
-            {"audit", "administration"}
+        queue_capabilities = resolve_task_queue_capabilities(db, current_user)
+        queue_capabilities_by_code = {item.code: item for item in queue_capabilities}
+        visible_queue_codes = set(queue_capabilities_by_code)
+        administration_workspaces = (
+            set(queue_capabilities_by_code["administration"].workspaces)
+            .intersection(readable_workspaces)
+            if "administration" in queue_capabilities_by_code
+            else set()
         )
-        visible_queue_codes = set()
-        if task_center_workspaces:
-            visible_queue_codes.add("tasks_support")
-        if administration_workspaces:
-            visible_queue_codes.add("administration")
         task_divisions = [
             {
                 "code": queue_code,
@@ -4765,23 +4767,20 @@ def clean_tasks_center(
             if queue_code in visible_queue_codes
         ]
         legacy_queue_aliases = {
-            "operational": "tasks_support",
-            "workshop": "tasks_support",
-            "management": "tasks_support",
-            "audit": "administration",
+            "operational": "tasks_support", "workshop": "tasks_support",
+            "management": "tasks_support", "audit": "administration",
             "administration": "administration",
         }
         requested_workspace = legacy_queue_aliases.get(workspace, workspace)
         requested_queue = legacy_queue_aliases.get(queue, queue)
-        # A queue is always singular. Unknown or unauthorized values fail
-        # closed to one authorized queue and never expand to an aggregate.
-        active_queue = (
-            requested_queue
-            if requested_queue in visible_queue_codes
-            else "tasks_support"
-            if "tasks_support" in visible_queue_codes
-            else next(iter(sorted(visible_queue_codes)), "")
+        queue_capability, queue_error = authorized_task_queue(
+            db, current_user, requested_queue
         )
+        if queue_error == "invalid":
+            return HTMLResponse("Fila de tarefas inválida.", status_code=400)
+        if queue_error == "forbidden":
+            return HTMLResponse("Fila de tarefas não autorizada.", status_code=403)
+        active_queue = queue_capability.code
         if requested_workspace == "tasks_support":
             # Compatibility for bookmarks from the former overloaded
             # workspace selector. Canonical URLs use the queue parameter.

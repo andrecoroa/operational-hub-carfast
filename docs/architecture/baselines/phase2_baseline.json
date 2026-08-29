@@ -30,12 +30,12 @@
   "routes": {
     "by_method": {
       "DELETE": 2,
-      "GET": 43,
+      "GET": 45,
       "PATCH": 8,
       "POST": 63
     },
-    "count": 116,
-    "sha256": "158004af3bad6055757934539486b80d9a88f2914f9e82c7a328724dc9981fe2"
+    "count": 118,
+    "sha256": "ee4e7b0b4f65a84763a8ea4a5513966101d40631a41742d43a1374f99921bec2"
   },
   "schema_version": 1,
   "source_base": "integration/modular-architecture@0491b84d"

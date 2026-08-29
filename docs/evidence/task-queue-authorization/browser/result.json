@@ -1,0 +1,17 @@
+{
+  "queueOptions": [],
+  "readonlyQueue": [
+    "Tarefas e Suporte"
+  ],
+  "forged": 403,
+  "legacyForged": 403,
+  "desktop": {
+    "width": 1440,
+    "bodyWidth": 1440,
+    "activeQueue": "tasks_support"
+  },
+  "mobile": {
+    "width": 390,
+    "bodyWidth": 390
+  }
+}

@@ -15,6 +15,7 @@ os.environ.setdefault("DATABASE_URL", f"sqlite+pysqlite:///{(PREVIEW_ROOT / 'fix
 os.environ.setdefault("APP_ENV", "local")
 os.environ.setdefault("APP_SECRET_KEY", "synthetic-task-center-preview-only")
 os.environ.setdefault("VISUAL_FOUNDATION_ENABLED", "true")
+os.environ.setdefault("TASK_CASES_ENABLED", "true")
 os.environ.setdefault("EMAIL_INBOUND_ENABLED", "false")
 os.environ.setdefault("EMAIL_OUTBOUND_ENABLED", "false")
 
@@ -24,6 +25,9 @@ from app.core.database import SessionLocal, engine  # noqa: E402
 from app.main import app  # noqa: E402
 from app.models import (  # noqa: E402
     Base,
+    Permission,
+    Role,
+    RolePermission,
     Task,
     User,
     WorkCategory,
@@ -58,6 +62,38 @@ def prepare_fixture() -> None:
                 email="executor.preview@carfast.local",
                 password="PreviewOnly123!",
                 role_codes=["admin"],
+                organizational_unit_codes=["carfast"],
+            )
+            db.flush()
+        queue_user = db.scalar(
+            select(User).where(User.email == "queue.preview@carfast.local")
+        )
+        if not queue_user:
+            role = Role(
+                code="queue_preview",
+                name="Queue Preview",
+                description="Synthetic queue authorization evidence",
+                active=True,
+            )
+            db.add(role)
+            db.flush()
+            for code in (
+                "navigation.tasks.access", "tasks.read", "tasks.operational.read",
+                "tasks.operational.write", "tasks.audit.read", "cases.read",
+                "cases.create", "cases.update",
+            ):
+                permission = db.scalar(select(Permission).where(Permission.code == code))
+                if not permission:
+                    permission = Permission(code=code, name=code)
+                    db.add(permission)
+                    db.flush()
+                db.add(RolePermission(role_id=role.id, permission_id=permission.id))
+            queue_user = create_user(
+                db,
+                name="Queue Preview",
+                email="queue.preview@carfast.local",
+                password="PreviewOnly123!",
+                role_codes=["operator", role.code],
                 organizational_unit_codes=["carfast"],
             )
             db.flush()

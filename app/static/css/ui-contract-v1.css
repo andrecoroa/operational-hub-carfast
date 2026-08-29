@@ -133,6 +133,29 @@
 .ui-contract-v1 .visual-service-desk .clean-task-relation-list em { padding: 1px 4px; overflow: hidden; font-size: 9px; line-height: 12px; text-overflow: ellipsis; white-space: nowrap; }
 .ui-contract-v1 .visual-service-desk .clean-task-table .button-link { min-height: 30px; padding: 5px 8px; white-space: nowrap; }
 
+/* Task Center v3 UX fidelity tranche: contract filters, dense queue and progressive workbench. */
+.task-center-approved .task-center-approved-filters{height:101px;min-height:101px;gap:4px!important;padding:5px 8px}
+.task-center-approved .task-center-approved-filter-row{grid-template-columns:minmax(210px,1.15fr) minmax(122px,.7fr) 105px minmax(130px,.75fr) 105px minmax(175px,1fr) minmax(135px,.75fr) auto}
+.task-center-approved-chips{display:flex;align-items:center;gap:5px;min-height:23px}
+.task-center-approved-chips button{min-height:23px;padding:2px 8px;border:1px solid #b8c9dc;border-radius:999px;background:#f8fbff;color:#315675;font-size:10px}
+.task-center-approved-chips button[aria-pressed=true]{border-color:#1f63d7;background:#1f63d7;color:#fff}
+.task-center-approved-chips span{margin-left:auto;color:#657689;font-size:10px}
+.task-center-approved th button{border:0;background:transparent;padding:0;color:inherit;font:inherit;text-transform:inherit}
+.task-center-approved th button:hover{color:#1459bf}
+.task-center-approved td{height:42px}
+.task-center-approved td strong,.task-center-approved td small{display:block;overflow:hidden;text-overflow:ellipsis}
+.task-center-approved td small{margin-top:2px;color:#6b7b8c;font-size:9px}
+.task-support-followup{display:grid;gap:3px;margin:0 0 10px;padding:9px 10px;border:1px solid #e4c983;border-radius:8px;background:#fff7df;color:#744c00;font-size:10px}
+.task-support-followup[hidden]{display:none}
+.task-center-approved-pagination{min-height:36px;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:4px 10px;border-top:1px solid #dfe6ee;background:#fbfcfd;color:#607084;font-size:10px}
+.task-center-approved-pagination label,.task-center-approved-pagination nav{display:flex;align-items:center;gap:6px}
+.task-center-approved-pagination select,.task-center-approved-pagination button{min-height:26px;border:1px solid #cdd7e2;border-radius:6px;background:#fff;font-size:10px}
+.task-state{display:inline-flex;padding:3px 6px;border-radius:999px;background:#edf3f9}
+.task-state-support_requested,.task-state-waiting{background:#fff4d7;color:#865a00}
+.task-state-closed,.task-state-resolved,.task-state-cancelled{background:#edf0f3;color:#586777}
+@media(max-width:1180px){.task-center-approved{height:auto;min-height:100vh;overflow:auto}.task-center-approved .task-center-approved-filter-row{grid-template-columns:repeat(4,minmax(0,1fr))}.task-center-approved .task-center-approved-filters{height:auto;min-height:0}.task-center-approved .task-search-field{grid-column:span 2}.task-center-approved-workspace{grid-template-columns:minmax(0,1fr) minmax(320px,38fr)}}
+@media(max-width:820px){.task-center-approved .task-center-approved-filter-row{grid-template-columns:repeat(2,minmax(0,1fr))}.task-center-approved-workspace{grid-template-columns:1fr}.task-center-approved-preview{min-height:360px}.task-center-approved-chips{flex-wrap:wrap}.task-center-approved-chips span{width:100%;margin-left:0}}
+
 /* Centro de Processos shares the same compact command-workspace contract. */
 .ui-contract-v1 .process-command-page { gap: 10px; }
 .ui-contract-v1 .process-command-header { min-height: 0; margin: 0; padding: 6px 0 8px; align-items: center; }

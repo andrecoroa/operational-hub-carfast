@@ -40,7 +40,8 @@
 - Browser real local, apenas com dados sintéticos e feature flags locais: três fluxos completos PASS; agrupamento/preview/workbench PASS; seleção por teclado com `Enter` PASS; foco inicial e sequência `Tab` no modal PASS.
 - Geometria 1440×731: viewport `1440×731`, documento `1440×731`, main `1232×731` após sidebar, zero overflow horizontal. Evidência: `screenshots/live-1440x731.png` e `screenshots/grouped-workbench-1440x731.png`.
 - Responsivo 390×844 no modo `case`: documento `390×844`, zero overflow horizontal. Evidência: `screenshots/live-responsive-390x844.png`.
-- Revisão independente após três ciclos de correção: zero P0/P1.
+- Revisão independente final após corrigir o P1 de contraste dos filhos agrupados e repetir capturas em modo `case`: zero P0/P1.
+- Cleanup local: uvicorn parado, tabs temporárias fechadas, viewport reposto e base sintética `carfast_task_cases_test` removida; read-back nominal sem resultado.
 - `git diff --check`: PASS.
 
 ## Observações e gates restantes

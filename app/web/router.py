@@ -4631,6 +4631,7 @@ def clean_tasks_new_shortcut(request: Request):
 def clean_tasks_center(
     request: Request,
     workspace: str = "mine",
+    queue: str = "tasks_support",
     mine_kind: str = "all",
     status: str = "open",
     kind: str = "all",
@@ -4698,7 +4699,14 @@ def clean_tasks_center(
             if item["code"] in readable_workspaces
         ]
         legacy_divisions = {item["code"]: item for item in task_divisions}
-        visible_queue_codes = {"tasks_support"} if task_center_workspaces else set()
+        administration_workspaces = set(readable_workspaces).intersection(
+            {"audit", "administration"}
+        )
+        visible_queue_codes = set()
+        if task_center_workspaces:
+            visible_queue_codes.add("tasks_support")
+        if administration_workspaces:
+            visible_queue_codes.add("administration")
         task_divisions = [
             {
                 "code": queue_code,
@@ -4734,6 +4742,20 @@ def clean_tasks_center(
             "administration": "administration",
         }
         requested_workspace = legacy_queue_aliases.get(workspace, workspace)
+        requested_queue = legacy_queue_aliases.get(queue, queue)
+        # A queue is always singular. Unknown or unauthorized values fail
+        # closed to one authorized queue and never expand to an aggregate.
+        active_queue = (
+            requested_queue
+            if requested_queue in visible_queue_codes
+            else "tasks_support"
+            if "tasks_support" in visible_queue_codes
+            else next(iter(sorted(visible_queue_codes)), "")
+        )
+        if requested_workspace == "tasks_support":
+            # Compatibility for bookmarks from the former overloaded
+            # workspace selector. Canonical URLs use the queue parameter.
+            active_queue = requested_workspace
         active_workspace = (
             requested_workspace
             if requested_workspace in visible_queue_codes | {"mine", "all"}
@@ -4773,7 +4795,8 @@ def clean_tasks_center(
         ]
         selected_legacy_workspaces = {
             "tasks_support": task_center_workspaces,
-        }.get(active_workspace, task_center_workspaces)
+            "administration": administration_workspaces,
+        }.get(active_queue, set())
         task_type_codes = [
             code
             for workspace_code, codes in TASK_WORKSPACE_TASK_TYPES.items()
@@ -4851,6 +4874,11 @@ def clean_tasks_center(
             }
             if team_condition is not None:
                 mine_relation_conditions["team"] = team_condition
+            else:
+                # Preserve an explicitly selected team view as an empty,
+                # fail-closed result. Never substitute the broader "Minhas"
+                # relation when the actor has no eligible team relation.
+                mine_relation_conditions["team"] = literal(False)
             all_conditions = [
                 Task.assigned_to_id == user_id,
                 Task.team_id.in_(member_team_ids),
@@ -4921,6 +4949,11 @@ def clean_tasks_center(
         if active_task_category != "all":
             filters.append(category_conditions[active_task_category])
         active_due = due if due in {"today", "due_soon", "overdue"} else ""
+        filter_conflict = active_status == "closed" and active_due == "due_soon"
+        if filter_conflict:
+            # "Em risco" is an active-SLA concept. Applying it to the closed
+            # archive would silently produce a misleading operational view.
+            active_due = ""
         if active_due == "today":
             filters.append(Task.due_on == date.today())
         elif active_due:
@@ -5203,7 +5236,7 @@ def clean_tasks_center(
         recent_documents = db.scalars(
             select(Document).order_by(Document.created_at.desc()).limit(80)
         ).all()
-        counter_base_filters = [Task.task_type.in_(tuple(readable_task_type_codes))]
+        counter_base_filters = [Task.task_type.in_(tuple(task_type_codes))]
         if visibility_filter is not None:
             counter_base_filters.append(visibility_filter)
         open_filter = list(counter_base_filters)
@@ -5549,6 +5582,7 @@ def clean_tasks_center(
                 "foundation_ui_enabled": settings.visual_foundation_enabled,
                 "filters": {
                     "workspace": active_workspace,
+                    "queue": active_queue,
                     "mine_kind": active_mine_kind,
                     "status": active_status,
                     "kind": active_kind,
@@ -5561,6 +5595,7 @@ def clean_tasks_center(
                     "assignment": active_assignment,
                     "sort": active_sort,
                     "category": active_task_category,
+                    "conflict": filter_conflict,
                 },
                 "prefill": {
                     "record_type": effective_record_type,

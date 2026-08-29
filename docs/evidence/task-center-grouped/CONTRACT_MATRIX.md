@@ -11,7 +11,7 @@
 |---|---|---|
 | `TaskCase` separado; caso não conta | `task_cases` e `Task.case_id` anulável | `test_case_is_not_a_task_and_state_is_calculated` |
 | Um nível | Caso não possui `parent_case_id`; associação única em `Task` | `test_three_atomic_case_flows_and_one_level_rule` |
-| Três fluxos manuais | Serviço transacional e três endpoints web | teste acima + `test_grouped_web_flow_preserves_filters_and_exposes_preview` |
+| Três fluxos manuais | Serviço transacional e três endpoints web | teste acima + `test_grouped_web_flow_preserves_filters_and_exposes_preview` + browser local PostgreSQL: três fluxos PASS |
 | Atomicidade | Savepoint, rollback e lock pessimista com refresh da identity map | `test_failed_related_flow_rolls_back_new_task`; revisão independente |
 | `cases.*` sem grants | Migration cataloga read/create/update sem `role_permissions` | `test_migration_is_additive_and_downgrade_fails_closed` |
 | Downgrade não destrutivo | Bloqueia se houver casos/grants; retém permissões de origem incerta | teste estático da migration |
@@ -31,22 +31,26 @@
 
 - Testes novos: 10 PASS.
 - Regressão focada Centro de Tarefas: 70 PASS.
-- Lista exata do CI após todas as correções: 167 PASS em 52,88 s.
+- Lista exata do CI após todas as correções: 167 PASS em 96,04 s.
 - Compilação/import: PASS.
 - Baseline arquitetural: PASS.
 - Alembic graph: uma head, `fff6ab1c2d3e`.
+- PostgreSQL 17 isolado: upgrade vazio→head, downgrade `fff6ab1c2d3e`→`fff59a0b1c2d`, upgrade→head e `current --check-heads`: PASS. O primeiro upgrade identificou uma ambiguidade de parâmetro PostgreSQL no seed de permissões; a transação reverteu integralmente, a migration foi corrigida para `SELECT`/`INSERT` separados e o ciclo completo passou.
+- Bootstrap da instalação sintética: PASS.
+- Browser real local, apenas com dados sintéticos e feature flags locais: três fluxos completos PASS; agrupamento/preview/workbench PASS; seleção por teclado com `Enter` PASS; foco inicial e sequência `Tab` no modal PASS.
+- Geometria 1440×731: viewport `1440×731`, documento `1440×731`, main `1232×731` após sidebar, zero overflow horizontal. Evidência: `screenshots/live-1440x731.png` e `screenshots/grouped-workbench-1440x731.png`.
+- Responsivo 390×844: documento `390×844`, zero overflow horizontal. Evidência: `screenshots/live-responsive-390x844.png`.
 - Revisão independente após três ciclos de correção: zero P0/P1.
 - `git diff --check`: PASS.
 
-## Gates bloqueados neste host
+## Observações e gates restantes
 
-- PostgreSQL local: BLOCKED. O host não possui Docker, PostgreSQL nem `psql`; a ligação configurada não disponibiliza uma instância isolada. Upgrade/downgrade/upgrade real não foi declarado PASS.
-- Browser sintético 1440×731/responsivo: BLOCKED pelo mesmo pré-requisito PostgreSQL. Nenhum dado real foi usado e não existem screenshots válidos desta tranche.
+- A tentativa de abrir diretamente o `file://` do protótipo no browser foi bloqueada pela política de segurança do browser; não foi contornada. A comparação contratual usa os hashes congelados, inspeção integral do HTML, matriz elemento→teste e screenshots Live nas dimensões exatas. Esta limitação de captura da referência está documentada, sem divergência funcional conhecida.
 - Regressão `pytest` integral: o primeiro erro reproduzido é preexistente e alheio a esta tranche (`test_admin_evolution_email_batch.py`, expectativa de texto com mojibake). A lista exata de CI e a regressão focada passam.
-- PR/CI remoto: não aberto. O contrato exige todos os gates locais antes do PR; PostgreSQL/browser continuam bloqueantes.
+- Restam repetir a lista exata de CI após a correção PostgreSQL, atualizar/commitar esta evidência, confirmar ausência de drift da base e abrir o PR. O CI remoto só começa depois do PR.
 
 ## Segurança e fora de âmbito
 
 - Feature flag permanece OFF.
 - Sem Green, deploy, merge, Email, RBAC nominal ou dados reais.
-- A migration é apenas aditiva e ainda não foi aplicada fora de testes de metadata SQLite.
+- A migration é apenas aditiva e foi exercitada somente numa base PostgreSQL sintética local descartável.

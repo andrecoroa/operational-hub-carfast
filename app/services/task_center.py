@@ -25,6 +25,7 @@ TASK_ELEVATED_ROLE_CODES = {
     "manager",
     "auditor",
 }
+ACTIVE_SUPPORT_STATUSES = ("pending", "accepted")
 
 
 def task_role_codes(db, user_id: int) -> set[str]:
@@ -55,7 +56,7 @@ def task_direct_relation_filter(*, user_id: int, task_model=Task):
     )
     support_ids = select(TaskHelpRequest.task_id).where(
         TaskHelpRequest.requested_user_id == user_id,
-        TaskHelpRequest.status != "cancelled",
+        TaskHelpRequest.status.in_(ACTIVE_SUPPORT_STATUSES),
     )
     return or_(
         task_model.assigned_to_id == user_id,
@@ -73,7 +74,7 @@ def task_team_relation_filter(db, *, user_id: int, task_model=Task):
         return None
     support_team_ids = select(TaskHelpRequest.task_id).where(
         TaskHelpRequest.requested_team_id.in_(tuple(team_ids)),
-        TaskHelpRequest.status != "cancelled",
+        TaskHelpRequest.status.in_(ACTIVE_SUPPORT_STATUSES),
     )
     return or_(
         task_model.team_id.in_(tuple(team_ids)),
@@ -219,7 +220,7 @@ def task_notification_recipient_ids(
         db.scalars(
             select(TaskHelpRequest).where(
                 TaskHelpRequest.task_id == task.id,
-                TaskHelpRequest.status != "cancelled",
+                TaskHelpRequest.status.in_(ACTIVE_SUPPORT_STATUSES),
             )
         )
     )

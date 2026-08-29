@@ -770,7 +770,10 @@ def create_task_comment(
     _: TaskWriter,
 ):
     task = _get_visible_task(db, task_id, current_user, action="respond")
-    comment = TaskComment(task_id=task_id, user_id=current_user.id, comment=payload.comment)
+    clean_comment = payload.comment.strip()
+    if not clean_comment:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="comment_required")
+    comment = TaskComment(task_id=task_id, user_id=current_user.id, comment=clean_comment)
     db.add(comment)
     mark_task_first_response(db, task, actor_user_id=current_user.id)
     record_audit(
@@ -779,6 +782,12 @@ def create_task_comment(
         entity_type="task",
         entity_id=task_id,
         user_id=current_user.id,
+    )
+    from app.services.task_center import create_task_notifications
+    create_task_notifications(
+        db, task=task, event_type="task_commented",
+        title=f"Novo comentário: {task.title}", actor_user_id=current_user.id,
+        detail=clean_comment,
     )
     db.commit()
     db.refresh(comment)

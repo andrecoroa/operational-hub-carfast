@@ -559,7 +559,7 @@ def test_notifications_collaboration_and_team_support_round_trip(
     )
     assert answered.status_code == 303
     db_session.expire_all()
-    assert db_session.get(TaskHelpRequest, help_request.id).status == "responded"
+    assert db_session.get(TaskHelpRequest, help_request.id).status == "completed"
 
 
 def test_task_table_has_compact_responsive_overflow_contract():

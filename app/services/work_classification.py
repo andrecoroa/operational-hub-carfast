@@ -343,7 +343,7 @@ def _task_direct_relation_filter(*, user_id: int, task_model):
     )
     help_task_ids = select(TaskHelpRequest.task_id).where(
         TaskHelpRequest.requested_user_id == user_id,
-        TaskHelpRequest.status == "pending",
+        TaskHelpRequest.status.in_(("pending", "accepted")),
     )
     return or_(
         task_model.assigned_to_id == user_id,
@@ -384,7 +384,7 @@ def _task_has_direct_relation(db, *, user_id: int, task) -> bool:
             select(TaskHelpRequest.id).where(
                 TaskHelpRequest.task_id == task.id,
                 TaskHelpRequest.requested_user_id == user_id,
-                TaskHelpRequest.status == "pending",
+                TaskHelpRequest.status.in_(("pending", "accepted")),
             )
         )
     )

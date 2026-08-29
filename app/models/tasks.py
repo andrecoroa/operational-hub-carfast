@@ -247,6 +247,17 @@ class TaskEmailOrigin(Base):
 
 class TaskHelpRequest(Base):
     __tablename__ = "task_help_requests"
+    __table_args__ = (
+        CheckConstraint(
+            "(requested_user_id IS NOT NULL AND requested_team_id IS NULL) OR "
+            "(requested_user_id IS NULL AND requested_team_id IS NOT NULL)",
+            name="ck_task_help_requests_single_target",
+        ),
+        CheckConstraint(
+            "status IN ('pending', 'accepted', 'completed', 'cancelled')",
+            name="ck_task_help_requests_status",
+        ),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     task_id: Mapped[int] = mapped_column(ForeignKey("tasks.id", ondelete="CASCADE"), index=True)
@@ -259,8 +270,13 @@ class TaskHelpRequest(Base):
     requested_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
     message: Mapped[str | None] = mapped_column(Text)
     status: Mapped[str] = mapped_column(String(40), default="pending", index=True)
+    due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
+    previous_task_status: Mapped[str] = mapped_column(String(80), default="new")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     responded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class TaskNotification(Base):

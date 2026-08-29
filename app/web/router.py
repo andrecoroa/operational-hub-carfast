@@ -24,6 +24,7 @@ from fastapi import APIRouter, File, Form, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import and_, case, delete, func, literal, or_, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, aliased
 
 from app.core.change_notice import (
@@ -134,6 +135,7 @@ from app.models.workshop_phased import (
     WorkshopTemplateVersion,
 )
 from app.services.audit import record_audit
+from app.services.task_support import TaskSupportError, request_task_support, resolve_task_support
 from app.services.authorization import get_user_authorized_unit_codes, get_user_permission_codes
 from app.services.classification_proposals import (
     attach_selection_to_entity,
@@ -2258,6 +2260,7 @@ TASK_STATUSES = [
     ("in_execution", "Em execução"),
     ("delegated", "Execução delegada"),
     ("waiting", "A aguardar"),
+    ("support_requested", "Suporte solicitado"),
     ("execution_done", "Execução concluída"),
     ("ready_validation", "Pronta para validação"),
     ("closed", "Fechada"),
@@ -2275,6 +2278,7 @@ TASK_STATUS_TRANSITIONS = {
     "new": ("in_execution", "waiting", "resolved", "cancelled"),
     "in_execution": ("waiting", "resolved", "cancelled"),
     "waiting": ("in_execution", "resolved", "cancelled"),
+    "support_requested": (),
     "delegated": ("in_execution", "waiting", "resolved", "cancelled"),
     "execution_done": ("ready_validation", "in_execution"),
     "ready_validation": ("resolved", "in_execution"),
@@ -4631,6 +4635,11 @@ def clean_tasks_new_shortcut(request: Request):
 def clean_tasks_center(
     request: Request,
     workspace: str = "mine",
+    queue: str = "tasks_support",
+    view: str = "",
+    preset: str = "",
+    risk: str = "",
+    direction: str = "",
     mine_kind: str = "all",
     status: str = "open",
     kind: str = "all",
@@ -4660,6 +4669,16 @@ def clean_tasks_center(
     denied = clean_experience_denied(request)
     if denied:
         return denied
+    if queue in {"all", "authorized", "todas"}:
+        return HTMLResponse("Fila agregada não permitida.", status_code=400)
+    if view and view not in {"mine", "unassigned", "team"}:
+        return HTMLResponse("Vista de trabalho inválida.", status_code=400)
+    if preset and preset not in {"mine", "unassigned", "team"}:
+        return HTMLResponse("Preset incompatível com a vista.", status_code=400)
+    if preset and view and preset != view:
+        return HTMLResponse("Preset incompatível com a vista.", status_code=400)
+    if status == "closed" and risk == "at_risk":
+        return HTMLResponse("Fechadas e Em risco são incompatíveis.", status_code=400)
     user_id = get_web_user_id(request)
     with SessionLocal() as db:
         current_user = db.get(User, user_id) if user_id else None
@@ -4698,7 +4717,14 @@ def clean_tasks_center(
             if item["code"] in readable_workspaces
         ]
         legacy_divisions = {item["code"]: item for item in task_divisions}
-        visible_queue_codes = {"tasks_support"} if task_center_workspaces else set()
+        administration_workspaces = set(readable_workspaces).intersection(
+            {"audit", "administration"}
+        )
+        visible_queue_codes = set()
+        if task_center_workspaces:
+            visible_queue_codes.add("tasks_support")
+        if administration_workspaces:
+            visible_queue_codes.add("administration")
         task_divisions = [
             {
                 "code": queue_code,
@@ -4734,6 +4760,20 @@ def clean_tasks_center(
             "administration": "administration",
         }
         requested_workspace = legacy_queue_aliases.get(workspace, workspace)
+        requested_queue = legacy_queue_aliases.get(queue, queue)
+        # A queue is always singular. Unknown or unauthorized values fail
+        # closed to one authorized queue and never expand to an aggregate.
+        active_queue = (
+            requested_queue
+            if requested_queue in visible_queue_codes
+            else "tasks_support"
+            if "tasks_support" in visible_queue_codes
+            else next(iter(sorted(visible_queue_codes)), "")
+        )
+        if requested_workspace == "tasks_support":
+            # Compatibility for bookmarks from the former overloaded
+            # workspace selector. Canonical URLs use the queue parameter.
+            active_queue = requested_workspace
         active_workspace = (
             requested_workspace
             if requested_workspace in visible_queue_codes | {"mine", "all"}
@@ -4747,6 +4787,12 @@ def clean_tasks_center(
             in {"all", "assigned", "identified", "following", "team", "created", "support"}
             else "all"
         )
+        if view == "mine":
+            active_workspace, active_mine_kind, assignment = "mine", "all", ""
+        elif view == "unassigned":
+            active_workspace, active_mine_kind, assignment = "all", "all", "unassigned"
+        elif view == "team":
+            active_workspace, active_mine_kind, assignment = "mine", "team", ""
         active_status = status if status in {"open", "closed", "all"} else "open"
         incoming_record_type = (record_type or type or "").strip().lower()
         effective_record_type = incoming_record_type if incoming_record_type in {"task", "problem"} else "task"
@@ -4773,7 +4819,8 @@ def clean_tasks_center(
         ]
         selected_legacy_workspaces = {
             "tasks_support": task_center_workspaces,
-        }.get(active_workspace, task_center_workspaces)
+            "administration": administration_workspaces,
+        }.get(active_queue, set())
         task_type_codes = [
             code
             for workspace_code, codes in TASK_WORKSPACE_TASK_TYPES.items()
@@ -4818,14 +4865,14 @@ def clean_tasks_center(
             support_user_condition = Task.id.in_(
                 select(TaskHelpRequest.task_id).where(
                     TaskHelpRequest.requested_user_id == user_id,
-                    TaskHelpRequest.status != "cancelled",
+                    TaskHelpRequest.status.in_(("pending", "accepted")),
                 )
             )
             support_team_condition = (
                 Task.id.in_(
                     select(TaskHelpRequest.task_id).where(
                         TaskHelpRequest.requested_team_id.in_(tuple(team_ids)),
-                        TaskHelpRequest.status != "cancelled",
+                        TaskHelpRequest.status.in_(("pending", "accepted")),
                     )
                 )
                 if team_ids
@@ -4851,6 +4898,11 @@ def clean_tasks_center(
             }
             if team_condition is not None:
                 mine_relation_conditions["team"] = team_condition
+            else:
+                # Preserve an explicitly selected team view as an empty,
+                # fail-closed result. Never substitute the broader "Minhas"
+                # relation when the actor has no eligible team relation.
+                mine_relation_conditions["team"] = literal(False)
             all_conditions = [
                 Task.assigned_to_id == user_id,
                 Task.team_id.in_(member_team_ids),
@@ -4921,6 +4973,11 @@ def clean_tasks_center(
         if active_task_category != "all":
             filters.append(category_conditions[active_task_category])
         active_due = due if due in {"today", "due_soon", "overdue"} else ""
+        filter_conflict = active_status == "closed" and active_due == "due_soon"
+        if filter_conflict:
+            # "Em risco" is an active-SLA concept. Applying it to the closed
+            # archive would silently produce a misleading operational view.
+            active_due = ""
         if active_due == "today":
             filters.append(Task.due_on == date.today())
         elif active_due:
@@ -4983,6 +5040,8 @@ def clean_tasks_center(
             "created_asc",
             "updated_desc",
         }
+        if sort == "due_on" and direction in {"asc", "desc"}:
+            sort = f"due_{direction}"
         active_sort = sort if sort in valid_sorts else "priority"
         sort_expressions = {
             "priority": (
@@ -5203,7 +5262,7 @@ def clean_tasks_center(
         recent_documents = db.scalars(
             select(Document).order_by(Document.created_at.desc()).limit(80)
         ).all()
-        counter_base_filters = [Task.task_type.in_(tuple(readable_task_type_codes))]
+        counter_base_filters = [Task.task_type.in_(tuple(task_type_codes))]
         if visibility_filter is not None:
             counter_base_filters.append(visibility_filter)
         open_filter = list(counter_base_filters)
@@ -5549,6 +5608,7 @@ def clean_tasks_center(
                 "foundation_ui_enabled": settings.visual_foundation_enabled,
                 "filters": {
                     "workspace": active_workspace,
+                    "queue": active_queue,
                     "mine_kind": active_mine_kind,
                     "status": active_status,
                     "kind": active_kind,
@@ -5561,6 +5621,7 @@ def clean_tasks_center(
                     "assignment": active_assignment,
                     "sort": active_sort,
                     "category": active_task_category,
+                    "conflict": filter_conflict,
                 },
                 "prefill": {
                     "record_type": effective_record_type,
@@ -7348,6 +7409,15 @@ def clean_tasks_comment(
             )
         db.add(TaskComment(task_id=task.id, user_id=user_id, comment=clean_comment))
         mark_task_first_response(db, task, actor_user_id=user_id)
+        create_task_notifications(
+            db, task=task, event_type="task_commented",
+            title=f"Novo comentário: {task.title}", actor_user_id=user_id,
+            detail=clean_comment,
+        )
+        record_audit(
+            db, action="task.comment.created", entity_type="task",
+            entity_id=task.id, detail=clean_comment, user_id=user_id,
+        )
         db.commit()
     return clean_task_action_redirect(return_url, task_id=task_id, flag="commented")
 
@@ -7494,12 +7564,20 @@ def clean_tasks_help_request(
     requested_user_id: str = Form(""),
     requested_target: str = Form(""),
     message: str = Form(""),
+    due_at: str = Form(""),
     return_url: str = Form(""),
 ):
     user_id = get_web_user_id(request)
     parsed_target_user_id, parsed_team_id = parse_delegation_target(requested_target)
     parsed_user_id = parsed_target_user_id or parse_int_from_text(requested_user_id)
-    if not user_id or (not parsed_user_id and not parsed_team_id):
+    clean_reason = message.strip()
+    if not user_id or (not parsed_user_id and not parsed_team_id) or not clean_reason:
+        return clean_task_action_redirect(return_url, task_id=task_id, flag="error")
+    try:
+        parsed_due_at = datetime.fromisoformat(due_at.strip()) if due_at.strip() else None
+        if parsed_due_at and parsed_due_at.tzinfo is None:
+            parsed_due_at = parsed_due_at.replace(tzinfo=UTC)
+    except ValueError:
         return clean_task_action_redirect(return_url, task_id=task_id, flag="error")
     with SessionLocal() as db:
         task = db.get(Task, task_id)
@@ -7536,7 +7614,7 @@ def clean_tasks_help_request(
                     )
                 )
             )
-            allowed_member = any(
+            allowed_members = all(
                 is_task_assignment_allowed(
                     db,
                     actor_user_id=user_id,
@@ -7550,25 +7628,35 @@ def clean_tasks_help_request(
                 )
                 for member_id in member_ids
             )
-            if not member_ids or not allowed_member:
+            if not member_ids or not allowed_members:
                 return RedirectResponse("/v2-clean/tasks?error=forbidden", status_code=303)
-        help_request = TaskHelpRequest(
-            task_id=task.id,
-            requested_user_id=requested_user.id if requested_user else None,
-            requested_team_id=requested_team.id if requested_team else None,
-            requested_by_id=user_id,
-            message=message.strip() or None,
-        )
-        db.add(help_request)
-        db.flush()
+        try:
+            help_request = request_task_support(
+                db, task=task, actor_user_id=user_id, reason=clean_reason,
+                requested_user_id=requested_user.id if requested_user else None,
+                requested_team_id=requested_team.id if requested_team else None,
+                due_at=parsed_due_at,
+            )
+            db.flush()
+        except (TaskSupportError, IntegrityError) as exc:
+            db.rollback()
+            flag = "duplicate" if isinstance(exc, IntegrityError) or str(exc) == "support_duplicate" else "error"
+            return clean_task_action_redirect(return_url, task_id=task_id, flag=flag)
         create_task_notifications(
             db,
             task=task,
             event_type="support_requested",
             title=f"Suporte solicitado: {task.title}",
             actor_user_id=user_id,
-            detail=message.strip() or "Foi solicitado apoio nesta tarefa.",
+            detail=clean_reason,
             extra_user_ids=(requested_user.id,) if requested_user else (),
+        )
+        record_audit(
+            db, action="task.support.requested", entity_type="task_help_request",
+            entity_id=help_request.id, detail=clean_reason,
+            before_json={"task_status": help_request.previous_task_status},
+            after_json={"task_status": "support_requested", "due_at": parsed_due_at.isoformat() if parsed_due_at else None},
+            user_id=user_id,
         )
         db.commit()
     return clean_task_action_redirect(return_url, task_id=task_id, flag="help_requested")
@@ -7581,10 +7669,15 @@ def clean_tasks_help_response(
     help_id: int,
     response: str = Form("accepted"),
     comment: str = Form(""),
+    next_status: str = Form(""),
     return_url: str = Form(""),
 ):
     user_id = get_web_user_id(request)
-    clean_response = response if response in {"responded", "cancelled"} else "responded"
+    action = {
+        "accepted": "accept", "accept": "accept",
+        "responded": "complete", "completed": "complete", "complete": "complete",
+        "cancelled": "cancel", "cancel": "cancel",
+    }.get(response)
     if not user_id:
         return RedirectResponse("/v2-clean/tasks?error=forbidden", status_code=303)
     with SessionLocal() as db:
@@ -7629,13 +7722,24 @@ def clean_tasks_help_response(
             not help_request
             or help_request.task_id != task_id
             or not task
-            or (clean_response == "responded" and not can_respond)
-            or (clean_response == "cancelled" and not can_cancel)
+            or not action
+            or (action in {"accept", "complete"} and not can_respond)
+            or (action == "cancel" and not can_cancel)
         ):
             return RedirectResponse("/v2-clean/tasks?error=forbidden", status_code=303)
-        help_request.status = clean_response
-        help_request.responded_at = datetime.now(UTC)
-        if clean_response == "responded" and comment.strip():
+        effective_next_status = next_status.strip()
+        if response == "responded" and not effective_next_status:
+            effective_next_status = help_request.previous_task_status
+        try:
+            resolve_task_support(
+                db, task=task, item=help_request, actor_user_id=user_id,
+                action=action, next_status=effective_next_status or None,
+                detail=comment,
+            )
+        except TaskSupportError:
+            db.rollback()
+            return clean_task_action_redirect(return_url, task_id=task_id, flag="error")
+        if action == "complete" and comment.strip():
             db.add(
                 TaskComment(
                     task_id=task_id,
@@ -7643,24 +7747,11 @@ def clean_tasks_help_response(
                     comment=f"Resposta ao pedido de suporte: {comment.strip()}",
                 )
             )
-        create_task_notifications(
-            db,
-            task=task,
-            event_type=(
-                "support_responded"
-                if clean_response == "responded"
-                else "support_cancelled"
-            ),
-            title=(
-                f"Suporte respondido: {task.title}"
-                if clean_response == "responded"
-                else f"Pedido de suporte cancelado: {task.title}"
-            ),
-            actor_user_id=user_id,
-            detail=comment.strip() or None,
-            extra_user_ids=(help_request.requested_by_id,)
-            if help_request.requested_by_id
-            else (),
+        record_audit(
+            db, action=f"task.support.{action}", entity_type="task_help_request",
+            entity_id=help_request.id, detail=comment.strip() or None,
+            after_json={"support_status": help_request.status, "task_status": task.status},
+            user_id=user_id,
         )
         db.commit()
     return clean_task_action_redirect(return_url, task_id=task_id, flag="help_answered")

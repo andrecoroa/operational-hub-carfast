@@ -11,7 +11,7 @@
     "effective_permission_semantics": "legacy_set_membership",
     "legacy_composer_default": true,
     "operational_data_read": false,
-    "sqlalchemy_table_count_after_additive_catalogue": 173
+    "sqlalchemy_table_count_after_additive_catalogue": 174
   },
   "permissions": {
     "legacy_alias_roots": 14,
@@ -20,12 +20,12 @@
     "web_rules_sha256": "b0bb7c56bffd2234deda7cd72eec85f561094b978af64bfff15a18b13ae43a40"
   },
   "post_actions": {
-    "form_action_count": 562,
-    "form_action_occurrence_count": 761,
-    "form_actions_sha256": "7d3c4d54ef2dfc471757812ad372c2bb6d96c4c395a8b9cae393f42d0901689f",
-    "redirect_destination_count": 418,
-    "redirect_destinations_sha256": "7fcbe12c5b2560ae859d07b9966fabe279c927728faddf04caf5f3b190be4ce4",
-    "redirect_occurrence_count": 921
+    "form_action_count": 566,
+    "form_action_occurrence_count": 769,
+    "form_actions_sha256": "04e5967f88c7fa82d5644939fcb75f458c9222b7f651e5939b954edef9bf0730",
+    "redirect_destination_count": 419,
+    "redirect_destinations_sha256": "f4cd8bda7fafba4b9a0fe58eefd6b7ad305b4d6cddb2a81eee5fb120f17703c1",
+    "redirect_occurrence_count": 933
   },
   "routes": {
     "by_method": {

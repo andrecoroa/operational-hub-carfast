@@ -95,6 +95,7 @@ jobs:
           tests/test_task_center_access_notifications.py
           tests/test_task_center_v3_contract.py
           tests/test_task_center_v3_ui_contract.py
+          tests/test_task_center_v3_ux_fidelity.py
           tests/test_email_postmark.py
           tests/test_service_desk_operations.py
           tests/test_modular_foundation.py

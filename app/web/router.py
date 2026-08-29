@@ -23,7 +23,7 @@ from urllib.parse import parse_qsl, quote, quote_plus, urlencode, urlsplit, urlu
 from fastapi import APIRouter, File, Form, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import and_, case, delete, func, literal, or_, select
+from sqlalchemy import String, and_, case, cast, delete, func, literal, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, aliased
 
@@ -4647,6 +4647,9 @@ def clean_tasks_center(
     department: str = "",
     due: str = "",
     assignment: str = "",
+    owner: str = "",
+    priority: str = "",
+    condition: str = "",
     plate: str = "",
     q: str = "",
     sort: str = "priority",
@@ -4665,6 +4668,7 @@ def clean_tasks_center(
     closed: str | None = None,
     reopened: str | None = None,
     page: int = 1,
+    per_page: int = 50,
 ):
     denied = clean_experience_denied(request)
     if denied:
@@ -4985,15 +4989,46 @@ def clean_tasks_center(
         active_assignment = assignment if assignment == "unassigned" else ""
         if active_assignment:
             filters.append(Task.assigned_to_id.is_(None))
+        active_owner = owner.strip().lower()
+        if active_owner == "me" and user_id:
+            filters.append(Task.assigned_to_id == user_id)
+        elif active_owner == "unassigned":
+            filters.append(Task.assigned_to_id.is_(None))
+        elif active_owner.startswith("user:"):
+            owner_user_id = parse_int_from_text(active_owner.removeprefix("user:"))
+            owner_user = db.get(User, owner_user_id) if owner_user_id else None
+            if owner_user and owner_user.active:
+                filters.append(Task.assigned_to_id == owner_user_id)
+            else:
+                active_owner = ""
+        elif active_owner:
+            active_owner = ""
+        active_priority = priority if priority in {"urgent", "high", "normal", "low"} else ""
+        if active_priority:
+            filters.append(Task.priority == active_priority)
+        active_condition = condition if condition in {"waiting", "risk", "overdue"} else ""
+        if active_status == "closed" and active_condition == "risk":
+            active_condition = ""
+            filter_conflict = True
+        if active_condition == "waiting":
+            filters.append(Task.status == "waiting")
+        elif active_condition == "risk":
+            filters.append(task_due_condition("due_soon", task_model=Task))
+        elif active_condition == "overdue":
+            filters.append(task_due_condition("overdue", task_model=Task))
         if q.strip():
             search = f"%{q.strip()}%"
+            normalized_reference = re.sub(r"^CF-0*", "", q.strip(), flags=re.IGNORECASE)
             filters.append(
                 or_(
+                    cast(Task.id, String).ilike(f"%{normalized_reference}%"),
                     Task.title.ilike(search),
                     Task.description.ilike(search),
                     Task.category.ilike(search),
                     Task.subcategory.ilike(search),
                     Task.external_source_id.ilike(search),
+                    Task.plate.ilike(search),
+                    cast(Task.process_instance_id, String).ilike(search),
                 )
             )
         mine_counts = {
@@ -5026,7 +5061,7 @@ def clean_tasks_center(
             mine_counts = {
                 code: int(getattr(counter_row, code, 0) or 0) for code in mine_counts
             }
-        page_size = 50
+        page_size = per_page if per_page in {25, 50} else 50
         total_tasks = db.scalar(
             select(func.count()).select_from(Task).where(*filters)
         ) or 0
@@ -5034,23 +5069,57 @@ def clean_tasks_center(
         active_page = min(max(page, 1), total_pages)
         valid_sorts = {
             "priority",
+            "priority_asc",
             "due_asc",
             "due_desc",
             "created_desc",
             "created_asc",
             "updated_desc",
+            "updated_asc",
+            "state_asc",
+            "state_desc",
+            "owner_asc",
+            "owner_desc",
+            "reference_asc",
+            "reference_desc",
         }
-        if sort == "due_on" and direction in {"asc", "desc"}:
-            sort = f"due_{direction}"
+        canonical_sort_aliases = {
+            "due_on": "due",
+            "created_at": "created",
+            "updated_at": "updated",
+            "state": "state",
+            "owner": "owner",
+            "reference": "reference",
+            "priority": "priority",
+        }
+        if sort in canonical_sort_aliases and direction in {"asc", "desc"}:
+            base_sort = canonical_sort_aliases[sort]
+            sort = "priority" if base_sort == "priority" and direction == "desc" else f"{base_sort}_{direction}"
         active_sort = sort if sort in valid_sorts else "priority"
+        priority_urgency = case(
+            (Task.priority == "urgent", 0),
+            (Task.priority == "high", 1),
+            (Task.priority == "normal", 2),
+            (Task.priority == "low", 3),
+            else_=4,
+        )
+        priority_relaxed = case(
+            (Task.priority == "low", 0),
+            (Task.priority == "normal", 1),
+            (Task.priority == "high", 2),
+            (Task.priority == "urgent", 3),
+            else_=4,
+        )
+        owner_name_sort = select(User.name).where(User.id == Task.assigned_to_id).scalar_subquery()
         sort_expressions = {
             "priority": (
                 Task.closed_at.is_not(None),
-                Task.priority.desc(),
+                priority_urgency.asc(),
                 Task.due_on.is_(None),
                 Task.due_on,
                 Task.id.desc(),
             ),
+            "priority_asc": (priority_relaxed.asc(), Task.due_on.is_(None), Task.due_on.asc(), Task.id.asc()),
             "due_asc": (
                 Task.closed_at.is_not(None),
                 Task.due_on.is_(None),
@@ -5066,6 +5135,13 @@ def clean_tasks_center(
             "created_desc": (Task.created_at.desc(), Task.id.desc()),
             "created_asc": (Task.created_at.asc(), Task.id.asc()),
             "updated_desc": (Task.updated_at.desc(), Task.id.desc()),
+            "updated_asc": (Task.updated_at.asc(), Task.id.asc()),
+            "state_asc": (Task.status.asc(), Task.due_on.is_(None), Task.due_on.asc(), Task.id.asc()),
+            "state_desc": (Task.status.desc(), Task.due_on.is_(None), Task.due_on.asc(), Task.id.desc()),
+            "owner_asc": (Task.assigned_to_id.is_(None), owner_name_sort.asc(), Task.id.asc()),
+            "owner_desc": (Task.assigned_to_id.is_(None), owner_name_sort.desc(), Task.id.desc()),
+            "reference_asc": (Task.id.asc(),),
+            "reference_desc": (Task.id.desc(),),
         }
         tasks = db.scalars(
             select(Task)
@@ -5620,6 +5696,11 @@ def clean_tasks_center(
                     "due": active_due,
                     "assignment": active_assignment,
                     "sort": active_sort,
+                    "direction": direction if direction in {"asc", "desc"} else "",
+                    "owner": active_owner,
+                    "priority": active_priority,
+                    "condition": active_condition,
+                    "per_page": page_size,
                     "category": active_task_category,
                     "conflict": filter_conflict,
                 },
@@ -5652,7 +5733,10 @@ def clean_tasks_center(
                 "pagination": {
                     "page": active_page,
                     "total_pages": total_pages,
+                    "pages": total_pages,
                     "total": total_tasks,
+                    "start": ((active_page - 1) * page_size + 1) if total_tasks else 0,
+                    "end": min(active_page * page_size, total_tasks),
                     "has_previous": active_page > 1,
                     "has_next": active_page < total_pages,
                     "previous_page": active_page - 1,

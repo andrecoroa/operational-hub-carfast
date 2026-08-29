@@ -16,6 +16,30 @@ depends_on = None
 
 
 def upgrade() -> None:
+    bind = op.get_bind()
+    invalid_targets = bind.execute(
+        sa.text(
+            "SELECT COUNT(*) FROM task_help_requests WHERE "
+            "(requested_user_id IS NULL AND requested_team_id IS NULL) OR "
+            "(requested_user_id IS NOT NULL AND requested_team_id IS NOT NULL)"
+        )
+    ).scalar_one()
+    duplicate_active_tasks = bind.execute(
+        sa.text(
+            "SELECT COUNT(*) FROM (SELECT task_id FROM task_help_requests "
+            "WHERE status IN ('pending', 'accepted') GROUP BY task_id "
+            "HAVING COUNT(*) > 1) AS duplicate_support_tasks"
+        )
+    ).scalar_one()
+    if invalid_targets or duplicate_active_tasks:
+        raise RuntimeError(
+            "Task support migration preflight failed: "
+            f"invalid_targets={invalid_targets}, "
+            f"duplicate_active_tasks={duplicate_active_tasks}. "
+            "No automatic data reconciliation is permitted; export and resolve "
+            "these synthetic/legacy records before retrying."
+        )
+
     with op.batch_alter_table("task_help_requests") as batch_op:
         batch_op.add_column(sa.Column("due_at", sa.DateTime(timezone=True), nullable=True))
         batch_op.add_column(sa.Column("previous_task_status", sa.String(80), nullable=True))

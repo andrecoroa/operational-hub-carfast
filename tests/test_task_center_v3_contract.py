@@ -1,6 +1,7 @@
 """Contract-first acceptance tests for the approved Task Center v3 tranche."""
 
 from datetime import date, timedelta
+from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
 from sqlalchemy import func, select
@@ -24,6 +25,10 @@ RETURN_CONTEXT = (
     "/v2-clean/tasks?queue=tasks_support&view=team&status=open"
     "&risk=all&sort=due_on&direction=asc#task-42"
 )
+MIGRATION = (
+    Path(__file__).resolve().parents[1]
+    / "migrations/versions/fff59a0b1c2d_add_transactional_task_support.py"
+).read_text(encoding="utf-8")
 
 
 @pytest.fixture(autouse=True)
@@ -71,6 +76,14 @@ def _support_team_with_eligible_member(db_session) -> Team:
         db_session.add(TeamMember(team_id=team.id, user_id=actor.id))
         db_session.commit()
     return team
+
+
+def test_support_migration_fails_before_ddl_on_legacy_inconsistencies() -> None:
+    assert "invalid_targets" in MIGRATION
+    assert "duplicate_active_tasks" in MIGRATION
+    assert MIGRATION.index("Task support migration preflight failed") < MIGRATION.index(
+        'batch_op.add_column(sa.Column("due_at"'
+    )
 
 
 def test_queue_and_view_contract_rejects_aggregation_and_silent_fallback(

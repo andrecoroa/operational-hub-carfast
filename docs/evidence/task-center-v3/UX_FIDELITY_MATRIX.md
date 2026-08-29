@@ -32,6 +32,9 @@ Base canónica da tranche: `7aadc5a49e8be0bc21ef03e1334cb9bb49f1b9b4`.
 - Baseline arquitetural: PASS. A atualização intencional ficou limitada ao inventário de ações de formulário (562→564 ações únicas; 761→764 ocorrências); redirects inalterados.
 - Revisão independente: zero P0/P1 após corrigir normalização `Fechadas + Em risco`, ordenação semântica de prioridade/responsável e persistência da densidade.
 - Browser real sintético: BLOCKED. A base SQLite descartável não consegue atravessar a migration legada `e4f5a6b7c8d9`, que usa alteração de constraint não suportada por SQLite; o PostgreSQL sintético necessário não está disponível neste ambiente local. Nenhum dado real foi usado. Não há screenshots/geometria desta tranche e este gate não pode ser declarado PASS nem autoriza merge/deploy.
+- Commits publicados: `aee87f85` (implementação e testes) e `c5b80179` (gates/evidência inicial).
+- PR draft: [#98](https://github.com/andrecoroa/operational-hub-carfast/pull/98), contra `integration/modular-architecture`; explicitamente marcada como não mergeável enquanto o gate browser estiver pendente.
+- GitHub Actions CI, run `33253769451` / número 304: SUCCESS sobre `c5b80179dab54567f2ed67682c848a83e98870cf`.
 
 ## Divergências deliberadamente não improvisadas
 

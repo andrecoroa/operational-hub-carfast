@@ -4668,6 +4668,12 @@ def clean_tasks_center(
         )
         opportunistic_generate_recurring_tasks(db)
         readable_workspaces = user_task_workspace_codes(db, current_user)
+        # The clean Task Center is the operational workspace. Administrative
+        # work is managed from its own module and must never be mixed into the
+        # default operational queue, even when the user can read both areas.
+        task_center_workspaces = set(readable_workspaces).intersection(
+            {"operational", "workshop", "management"}
+        )
         creatable_workspaces = [
             code
             for code in TASK_WORKSPACE_CONFIG
@@ -4692,14 +4698,7 @@ def clean_tasks_center(
             if item["code"] in readable_workspaces
         ]
         legacy_divisions = {item["code"]: item for item in task_divisions}
-        visible_queue_codes = {
-            code
-            for code, members in {
-                "tasks_support": {"operational", "workshop", "management"},
-                "administration": {"audit", "administration"},
-            }.items()
-            if set(readable_workspaces).intersection(members)
-        }
+        visible_queue_codes = {"tasks_support"} if task_center_workspaces else set()
         task_divisions = [
             {
                 "code": queue_code,
@@ -4773,9 +4772,8 @@ def clean_tasks_center(
             for code in codes
         ]
         selected_legacy_workspaces = {
-            "tasks_support": {"operational", "workshop", "management"},
-            "administration": {"audit", "administration"},
-        }.get(active_workspace, set(readable_workspaces))
+            "tasks_support": task_center_workspaces,
+        }.get(active_workspace, task_center_workspaces)
         task_type_codes = [
             code
             for workspace_code, codes in TASK_WORKSPACE_TASK_TYPES.items()

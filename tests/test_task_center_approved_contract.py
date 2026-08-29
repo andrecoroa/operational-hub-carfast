@@ -222,7 +222,7 @@ def test_null_category_uses_authorized_task_type_bucket(
 
     assert "Oficina sem categoria" in workshop.text
     assert "Admin sem categoria" not in workshop.text
-    assert "Admin sem categoria" in documents.text
+    assert "Admin sem categoria" not in documents.text
     assert "Oficina sem categoria" not in documents.text
 
 

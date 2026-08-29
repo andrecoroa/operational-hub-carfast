@@ -681,6 +681,37 @@ def test_clean_task_center_supports_explicit_sorting(authenticated_client, db_se
     assert page.text.index("Prazo próximo") < page.text.index("Prazo distante")
 
 
+def test_clean_task_center_never_mixes_administration_into_operational_default(
+    authenticated_client,
+    db_session,
+):
+    operational = Task(
+        title="Trabalho operacional visível",
+        task_type="operational_task",
+        category="Operação",
+        status="new",
+        priority="normal",
+    )
+    administrative = Task(
+        title="Trabalho administrativo separado",
+        task_type="administration_task",
+        category="Administração",
+        status="new",
+        priority="normal",
+    )
+    db_session.add_all([operational, administrative])
+    db_session.commit()
+
+    page = authenticated_client.get("/v2-clean/tasks?workspace=all")
+
+    assert page.status_code == 200
+    assert "Trabalho operacional visível" in page.text
+    assert "Trabalho administrativo separado" not in page.text
+    assert '<option value="administration">' not in page.text
+    assert "Todas autorizadas" not in page.text
+    assert "Tarefas e Suporte" in page.text
+
+
 def test_clean_task_center_creates_document_task_with_audit(authenticated_client, db_session):
     response = authenticated_client.post(
         "/v2-clean/tasks",
@@ -1059,8 +1090,8 @@ def test_clean_task_can_move_to_audit_and_keeps_business_context(authenticated_c
 
     audit_page = authenticated_client.get("/v2-clean/tasks?workspace=audit")
     assert audit_page.status_code == 200
-    assert "Auditar fatura" in audit_page.text
-    assert "FAC/2026/88" in audit_page.text
+    assert "Auditar fatura" not in audit_page.text
+    assert "FAC/2026/88" not in audit_page.text
 
 
 def test_clean_task_context_is_editable_without_changing_management(authenticated_client, db_session):

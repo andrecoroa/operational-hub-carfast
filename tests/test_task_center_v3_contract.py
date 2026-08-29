@@ -4,6 +4,8 @@ from datetime import date, timedelta
 from urllib.parse import parse_qs, urlsplit
 
 from sqlalchemy import func, select
+import pytest
+import app.web.router as task_router
 
 from app.models import (
     Task,
@@ -22,6 +24,11 @@ RETURN_CONTEXT = (
     "/v2-clean/tasks?queue=tasks_support&view=team&status=open"
     "&risk=all&sort=due_on&direction=asc#task-42"
 )
+
+
+@pytest.fixture(autouse=True)
+def _enable_v3_surface(monkeypatch):
+    monkeypatch.setattr(task_router.settings, "visual_foundation_enabled", True)
 
 
 def _new_task(db_session, *, title: str = "Contrato v3") -> Task:

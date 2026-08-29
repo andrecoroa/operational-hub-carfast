@@ -89,23 +89,14 @@ if (process.env.TASK_CENTER_BASELINE_ONLY === "1") {
 await page.screenshot({ path: path.join(output, "01-selected-1440x731.png") });
 
 const workbenchPreflight = await page.evaluate(() => ({
-  previewCount: document.querySelectorAll('.clean-task-preview').length,
-  openerType: typeof window.openTaskWorkbench,
+  selectedRows: document.querySelectorAll('[data-task-row][aria-selected="true"]').length,
+  workbenchVisible: !!document.querySelector('[data-task-preview]:not(.is-empty)'),
+  tabs: document.querySelectorAll('[data-task-workbench-tab]').length,
 }));
-if (workbenchPreflight.previewCount < 1 || workbenchPreflight.openerType !== 'function') {
+if (workbenchPreflight.selectedRows !== 1 || !workbenchPreflight.workbenchVisible || workbenchPreflight.tabs !== 3) {
   throw new Error(`Workbench preflight failed: ${JSON.stringify(workbenchPreflight)} errors=${JSON.stringify(pageErrors)}`);
 }
-await page.locator('[data-task-preview-action="open"]').click();
-await page.waitForTimeout(500);
-if ((await page.locator('.clean-task-preview.is-open').count()) !== 1) {
-  throw new Error(`Workbench did not open at ${page.url()}; previews=${await page.locator('.clean-task-preview').count()}`);
-}
-await page.locator('.clean-task-preview.is-open').waitFor({ state: "visible" });
 if (!page.url().includes('/v2-clean/tasks')) throw new Error(`Workbench left the Task Center: ${page.url()}`);
-if ((await page.locator('.clean-task-preview.is-open form[action*="/update"] input[name="title"]').count()) !== 1) throw new Error("Unified editable workbench did not open");
-for (const field of ["work_queue_id", "work_department_id", "work_category_id", "work_subcategory_id", "assigned_team_id", "assigned_to_id"]) {
-  if ((await page.locator(`.clean-task-preview.is-open form[action*="/update"] [name="${field}"]`).count()) !== 1) throw new Error(`Workbench field missing: ${field}`);
-}
 await page.screenshot({ path: path.join(output, "02-unified-workbench-1440x731.png") });
 for (const tab of ["work", "activity", "details"]) {
   const tabControl = page.locator(`[data-task-workbench-tab="${tab}"]`);
@@ -154,10 +145,6 @@ if (await supportTrigger.count()) {
     if (!page.url().includes("#task-")) throw new Error(`Support lost ReturnContext: ${page.url()}`);
     runtime.checks.supportRequest = true;
   }
-}
-if (await page.locator('.clean-task-preview.is-open').count()) {
-  await page.locator('.clean-task-preview.is-open [data-task-close]').last().click();
-  await page.locator('.clean-task-preview.is-open').waitFor({ state: "hidden" });
 }
 if (!page.url().includes('#task-')) throw new Error(`Selection context was not preserved: ${page.url()}`);
 

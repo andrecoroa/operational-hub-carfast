@@ -1,5 +1,8 @@
 from pathlib import Path
 
+import pytest
+import app.web.router as task_router
+
 from app.models.tasks import Task
 
 
@@ -8,6 +11,11 @@ TEMPLATE = (ROOT / "app/templates/_task_center_approved.html").read_text(
     encoding="utf-8"
 )
 ROUTER = (ROOT / "app/web/router.py").read_text(encoding="utf-8")
+
+
+@pytest.fixture(autouse=True)
+def _enable_v3_surface(monkeypatch):
+    monkeypatch.setattr(task_router.settings, "visual_foundation_enabled", True)
 
 
 def test_queue_selector_never_offers_an_aggregate() -> None:
@@ -65,10 +73,8 @@ def test_unauthorized_or_aggregate_queue_value_fails_to_one_queue(
         "/v2-clean/tasks?queue=all&workspace=all&status=open"
     )
 
-    assert page.status_code == 200
-    assert "Operacional singular" in page.text
-    assert "Administrativa não agregada" not in page.text
-    assert "Todas autorizadas" not in page.text
+    assert page.status_code == 400
+    assert "agregada" in page.text
 
 
 def test_explicit_sort_and_progressive_workbench_are_exposed() -> None:

@@ -34,6 +34,13 @@
   Não foram criados campos, contratos POST, permissões ou fluxos novos.
 - Browser renovado: 1440×731 e 390×844, zero overflow; preview em Caso por
   reload/hash adjacente ao trigger, Escape/foco e gestão mobile PASS.
+- Gates desta alteração mínima: focados `60 passed`; CI canónico local
+  `188 passed`; suite integral `44 failed, 848 passed`, mantendo as mesmas 44
+  falhas preexistentes e zero regressões; revisão independente `80 passed`,
+  diff-check PASS e zero P0/P1.
+- P2 aceite/documentado: numa tarefa legacy sem classificação, os campos
+  hierárquicos obrigatórios dentro de “Mais opções” têm de ser abertos e
+  preenchidos antes de guardar. Não altera o contrato server-side.
 
 - A captura real desktop está em `browser/live-desktop-1440x731.png`.
 - Browser desktop 1440×731: quatro KPIs, estados completos, scroll vertical,

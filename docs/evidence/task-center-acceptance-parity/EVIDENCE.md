@@ -46,9 +46,16 @@
   e coloca foco no título. Gestão: Editar, Comentar, Alterar estado e Solicitar
   suporte partilham a mesma linguagem visual e os alvos de suporte são
   resolvidos server-side/fail-closed.
-- A política do browser bloqueou a abertura direta do `file://` contratual.
-  A comparação estrutural foi feita contra o HTML congelado, mas a captura
-  pixel/geometria lado a lado do clicável continua aberta.
+- Comparação visual lado a lado renovada por HTTP local, sem `file://`, em
+  `http://127.0.0.1:18765/task-center-acceptance-standalone.html` e
+  `http://127.0.0.1:18766/v2-clean/tasks`, a 1440×731. Ambas as superfícies
+  ficaram sem overflow horizontal; a implementação preserva a composição do
+  contrato dentro do app-shell canónico.
+- P1 de restauro encerrado: reload por hash e por `sessionStorage` em Categoria
+  e Caso abre o `<details>` correto antes da montagem, deixa o trigger visível,
+  monta o único preview imediatamente depois desse trigger e nunca usa a linha
+  de tabela oculta. Desktop e mobile 390×844 PASS; Escape fecha, limpa a seleção
+  e devolve foco ao trigger.
 
 ## Execuções locais
 
@@ -60,20 +67,20 @@
   comportamento fora do âmbito. Renovação integral final: `44 failed,
   843 passed`; as 44 falhas são as preexistentes da base e não há regressões
   adicionais desta tranche. Após a continuação de paridade, nova execução
-  integral: `44 failed, 846 passed`; mantém exatamente as mesmas 44 falhas
-  preexistentes e acrescenta três testes PASS, sem regressões novas.
+  integral: `44 failed, 847 passed`; mantém exatamente as mesmas 44 falhas
+  preexistentes e acrescenta quatro testes PASS, sem regressões novas.
 - Alembic: head único `fff6ab1c2d3e`.
 - Ruff global: FAIL preexistente (2282 ocorrências em todo o repositório); o CI
   canónico limita Ruff ao conjunto versionado em `.github/workflows/ci.yml`.
 - Compilação de `app` e `scripts`: PASS.
 - Workflow CI canónico local renovado: Ruff restrito PASS, arquitetura
-  congelada PASS, Alembic graph PASS e seleção exata de testes `186 passed`.
+  congelada PASS, Alembic graph PASS e seleção exata de testes `187 passed`.
   O novo formulário de suporte acrescentou uma ocorrência POST ao baseline;
   o delta mecânico foi regenerado e verificado antes desta execução.
-- Revisão independente renovada no HEAD `9de7a93d`: zero P0/P1 de código;
-  suite independente `100 passed`. O revisor manteve como P1 de aceitação
-  documental — não de produto — a comparação visual lado a lado que a política
-  do browser impediu executar sobre `file://`.
+- Revisão independente renovada no candidato `f4778c78`: zero P0/P1, suite
+  independente `61 passed` e diff-check PASS. Risco residual P2 documentado:
+  fechar manualmente o `<details>` enquanto o preview está aberto oculta a
+  seleção até reabrir ou usar Escape; não afeta o bootstrap/restauro corrigido.
 
 Nenhuma divergência P0/P1 pode permanecer para fechar o gate local.
 

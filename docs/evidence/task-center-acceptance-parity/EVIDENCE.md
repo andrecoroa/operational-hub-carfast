@@ -15,7 +15,7 @@
 | Uma fila, Tarefas e Suporte por defeito | Resolver server-side de filas; Administração só quando autorizada | Matriz web/API positiva e negativa |
 | Minhas / Por assumir / Da equipa sem fallback | Relações server-side e vista de equipa vazia fail-closed | Testes focados + browser |
 | Estados completos | Filtros exatos Nova, Em curso, Em espera, Suporte solicitado, Resolvida e Cancelada; agregados ativos/fechados/todos | Teste parametrizado de isolamento |
-| Fechadas + Em risco incompatíveis | Pedido rejeitado com HTTP 400, sem normalização silenciosa | Teste negativo |
+| Fechadas + Em risco incompatíveis | Em risco é desativado e removido explicitamente, com aviso; sem fallback da vista | Teste negativo |
 | Prazo, pesquisa e ordenação | Query server-side e contexto na URL | Percursos browser e testes existentes |
 | Categoria / Caso / Lista | Categoria agrupa; Caso contém apenas `TaskCase` persistidos; Lista mostra tarefas | Testes de agrupamento/contagens |
 | Preview inline | Montagem sob linha/grupo; alternar, trocar e Escape; um único preview | Browser desktop/mobile, teclado/foco |
@@ -35,32 +35,43 @@
 - Recorrentes: utilizador sintético com `tasks.recurring.manage` vê a ação
   secundária, abre `/v2-clean/tasks/recurring` e encontra modelos, estado e
   próxima execução; sem a permissão, a ação continua ausente.
-- O override de viewport do browser integrado não alterou a viewport para
-  390×844. A captura incorretamente dimensionada foi removida e o gate mobile
-  permanece aberto; não é reportado como PASS.
+- Browser mobile real 390×844: viewport confirmada por `innerWidth/innerHeight`,
+  documento e body sem overflow horizontal, filtros numa coluna, KPIs numa
+  coluna, tabela reduzida aos quatro campos úteis, preview abrir/trocar/Escape,
+  Categoria/Caso e restauro por hash PASS. Capturas em
+  `browser/live-mobile-390x844.png`, `browser/mobile-case-preview-390x844.png`
+  e `browser/mobile-management-390x844.png`.
+- Criação: seletor progressivo mostra Pedido simples, Informação/Comunicação,
+  Tarefa completa e Caso; Caso fecha o primeiro diálogo, abre o fluxo canónico
+  e coloca foco no título. Gestão: Editar, Comentar, Alterar estado e Solicitar
+  suporte partilham a mesma linguagem visual e os alvos de suporte são
+  resolvidos server-side/fail-closed.
 - A política do browser bloqueou a abertura direta do `file://` contratual.
   A comparação estrutural foi feita contra o HTML congelado, mas a captura
   pixel/geometria lado a lado do clicável continua aberta.
 
 ## Execuções locais
 
-- Regressão focada final: `68 passed` (Centro aprovado/v3, recorrências,
+- Regressão focada final: `90 passed` (Centro aprovado/v3, recorrências,
   casos e autorização).
 - Suite integral antes da correção diferencial: `45 failed, 842 passed`.
   Uma falha era causada pelo candidato (o teste canónico exige normalização
   explícita de Fechadas + Em risco, não HTTP 400); foi corrigida sem alterar
   comportamento fora do âmbito. Renovação integral final: `44 failed,
   843 passed`; as 44 falhas são as preexistentes da base e não há regressões
-  adicionais desta tranche.
+  adicionais desta tranche. Após a continuação de paridade, nova execução
+  integral: `44 failed, 846 passed`; mantém exatamente as mesmas 44 falhas
+  preexistentes e acrescenta três testes PASS, sem regressões novas.
 - Alembic: head único `fff6ab1c2d3e`.
 - Ruff global: FAIL preexistente (2282 ocorrências em todo o repositório); o CI
   canónico limita Ruff ao conjunto versionado em `.github/workflows/ci.yml`.
 - Compilação de `app` e `scripts`: PASS.
-- Workflow CI canónico local: Ruff restrito PASS, arquitetura congelada PASS,
-  Alembic graph PASS e seleção exata de testes `183 passed`.
-- Revisão independente após correção da reconciliação dos quatro KPIs:
-  código zero P0/P1 (`75 passed`, diff-check PASS). O revisor mantém como
-  bloqueio de aceitação apenas os dois gates visuais ainda abertos acima.
+- Workflow CI canónico local renovado: Ruff restrito PASS, arquitetura
+  congelada PASS, Alembic graph PASS e seleção exata de testes `186 passed`.
+  O novo formulário de suporte acrescentou uma ocorrência POST ao baseline;
+  o delta mecânico foi regenerado e verificado antes desta execução.
+- A revisão independente anterior confirmou código zero P0/P1 (`75 passed`,
+  diff-check PASS). Deve ser renovada depois desta continuação.
 
 Nenhuma divergência P0/P1 pode permanecer para fechar o gate local.
 

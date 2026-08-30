@@ -140,6 +140,7 @@ from app.services.task_support import TaskSupportError, request_task_support, re
 from app.services.task_cases import (
     TaskCaseError,
     add_task_to_case,
+    calculated_case_state,
     create_case_with_first_task,
     create_related_case,
 )
@@ -5623,6 +5624,12 @@ def clean_tasks_center(
                     "risk": int(summary.risk or 0) if summary else 0,
                     "next_due": summary.next_due if summary else child_tasks[0].due_on,
                     "state": task_case_states.get(case_id, "active"),
+                    "can_add_task": bool(
+                        case_id
+                        and _resolve_case_add_task_access(
+                            db, user=current_user, case_id=case_id
+                        )
+                    ),
                 })
         task_origin_labels = {task.id: task_origin_label(task) for task in tasks}
         task_relation_labels = {
@@ -5935,6 +5942,48 @@ def _case_feature_access(db: Session, request: Request, permission: str) -> tupl
     return user, permissions
 
 
+def _resolve_case_add_task_access(
+    db: Session,
+    *,
+    user: User | None,
+    case_id: int,
+) -> tuple[TaskCase, Task] | None:
+    """Resolve the exact capability used by both the case surface and POST.
+
+    A case update grant is necessary but never sufficient: the actor must also
+    retain canonical queue, workspace-create and row/hierarchy scope for an
+    active child. Unknown, empty and completed cases fail closed.
+    """
+    if not settings.task_cases_enabled or not user or not user.active:
+        return None
+    permissions = get_user_permission_codes(db, user)
+    if "cases.update" not in permissions:
+        return None
+    case = db.get(TaskCase, case_id)
+    if not case or case.workspace not in {"tasks_support", "administration"}:
+        return None
+    queue_capability, queue_error = authorized_task_queue(db, user, case.workspace)
+    if queue_error or not queue_capability or not queue_capability.can_write:
+        return None
+    workspace = "administration" if case.workspace == "administration" else "operational"
+    if not user_can_access_task_workspace(db, user, workspace, action="create"):
+        return None
+    all_case_tasks = list(
+        db.scalars(select(Task).where(Task.case_id == case.id).order_by(Task.id))
+    )
+    if calculated_case_state(all_case_tasks) in {"empty", "completed"}:
+        return None
+    visibility = task_visibility_filter(db, user_id=user.id, task_model=Task)
+    visible_statement = select(Task).where(Task.case_id == case.id)
+    if visibility is not None:
+        visible_statement = visible_statement.where(visibility)
+    visible_tasks = list(
+        db.scalars(visible_statement.order_by(Task.id))
+    )
+    exemplar = visible_tasks[0] if visible_tasks else None
+    return (case, exemplar) if exemplar else None
+
+
 def _case_action_redirect(return_url: str, **params: str) -> RedirectResponse:
     target = _clean_v2_return_url(return_url, "/v2-clean/tasks?grouping=case")
     parsed = urlsplit(target)
@@ -5987,27 +6036,12 @@ def clean_task_case_add_task(
     return_url: str = Form(""),
 ):
     with SessionLocal() as db:
-        access = _case_feature_access(db, request, "cases.update")
+        user_id = get_web_user_id(request)
+        user = db.get(User, user_id) if user_id else None
+        access = _resolve_case_add_task_access(db, user=user, case_id=case_id)
         if not access or not task_title.strip():
             return RedirectResponse("/v2-clean/tasks?error=forbidden", status_code=303)
-        user, _ = access
-        visibility = task_visibility_filter(db, user_id=user.id, task_model=Task)
-        case = db.scalar(
-            select(TaskCase)
-            .join(Task, Task.case_id == TaskCase.id)
-            .where(TaskCase.id == case_id, visibility)
-            .distinct()
-        )
-        if not case:
-            return RedirectResponse("/v2-clean/tasks?error=forbidden", status_code=303)
-        workspace = "administration" if case.workspace == "administration" else "operational"
-        if not user_can_access_task_workspace(db, user, workspace, action="create"):
-            return RedirectResponse("/v2-clean/tasks?error=forbidden", status_code=303)
-        exemplar = db.scalar(
-            select(Task).where(Task.case_id == case.id, visibility).order_by(Task.id)
-        )
-        if not exemplar:
-            return RedirectResponse("/v2-clean/tasks?error=case_invalid", status_code=303)
+        case, exemplar = access
         task = _manual_case_task(
             title=task_title,
             actor_user_id=user.id,

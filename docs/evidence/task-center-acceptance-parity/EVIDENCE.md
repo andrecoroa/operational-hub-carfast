@@ -26,6 +26,26 @@
 
 ## Divergências residuais
 
+- P1 de preservação de estado encerrado: os formulários de edição deixaram de
+  transportar `status` e o endpoint de edição preserva sempre o valor
+  persistido, ignorando campos forjados. Read-back parametrizado PASS para
+  Nova, Em curso, Em espera, Suporte solicitado, Resolvida, Fechada e
+  Cancelada; qualquer mudança continua exclusiva do endpoint de transição.
+- P1 de retorno de suporte encerrado: concluir ou cancelar exige um destino
+  explícito, limitado server-side ao estado capturado e às transições legais
+  desse estado, filtradas pelas permissões de conclusão. Valor ausente,
+  `support_requested`, `planned` e destino terminal sem scope falham fechado;
+  histórico, auditoria, notificações e consequências SLA/fecho são mantidos.
+- Browser final numa cópia descartável da fixture: desktop 1440×731 e mobile
+  390×844 PASS; guardar preservou `Nova`, suporte regressou explicitamente a
+  `Nova`, tentativas forjadas foram rejeitadas, ReturnContext foi preservado,
+  scroll chegou ao limite e `bodyWidth == viewportWidth`. Evidência em
+  `browser-p1-final/`; a cópia mutável foi removida após o smoke.
+- Gates renovados: regressão focada `101 passed`; CI canónico local exato
+  `199 passed`; suite integral `44 failed, 866 passed`, mantendo exatamente as
+  44 falhas preexistentes já classificadas e zero regressões adicionais;
+  Alembic head `fff6ab1c2d3e`, compilação, import, Ruff CI e baseline PASS.
+
 - Change request mínimo do PR #104: separadores Atividade/Detalhes sem conteúdo
   operativo foram removidos; os campos úteis permanecem num único preview
   inline, sem alterar ações, montagem, aparência base ou ReturnContext.

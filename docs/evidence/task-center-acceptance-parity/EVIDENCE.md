@@ -120,6 +120,28 @@
 
 Nenhuma divergência P0/P1 pode permanecer para fechar o gate local.
 
+## Fecho P1 de estado e suporte — 2026-08-30
+
+- Guardar a edição já não recebe nem normaliza `status`: o servidor preserva o
+  valor persistido, incluindo `waiting`, `support_requested`, `resolved`,
+  `closed` e `cancelled`, e ignora valores forjados fora da transição dedicada.
+- O retorno de suporte exige destino explícito e valida server-side o estado
+  capturado, o grafo legal e as permissões. `resolved → in_execution` limpa os
+  marcadores de resolução, recalcula o prazo SLA e audita `reopened`; o retorno
+  a `waiting` preserva a pausa.
+- Pedidos duplicados, estado órfão `support_requested`, divergência concorrente,
+  tarefas arquivadas ou com `closed_at`, destinos forjados e superfícies sem
+  autorização falham fechados. Lista, detalhe e POST usam a mesma condição.
+- Browser sintético desktop 1440×731 e mobile 390×844: guardar sem alterar o
+  estado, diálogo Estado atual/transições legais, suporte explícito,
+  ReturnContext, scroll e zero overflow PASS. Capturas e runtime em
+  `browser-p1-final/`.
+- Matriz focada final de suporte/estado: `19 passed`; seleção exata do workflow
+  CI: `206 passed`; suite integral diferencial: `44 failed, 873 passed`, com as
+  mesmas 44 falhas preexistentes da base e zero regressões adicionais.
+- Revisão independente do candidato de código `eb5cb1e9`: `108 passed`,
+  `git diff --check` limpo e zero P0/P1.
+
 ## Limites
 
 Sem publicação de branch/PR, merge, deploy, alteração de Green, Email, RBAC nominal, dados reais ou schema nesta tranche.

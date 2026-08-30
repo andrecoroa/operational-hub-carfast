@@ -49,9 +49,9 @@
 - Suite integral antes da correção diferencial: `45 failed, 842 passed`.
   Uma falha era causada pelo candidato (o teste canónico exige normalização
   explícita de Fechadas + Em risco, não HTTP 400); foi corrigida sem alterar
-  comportamento fora do âmbito. Resultado diferencial esperado: as 44 falhas
-  preexistentes da base e zero regressões desta tranche. A renovação integral
-  final ainda deve confirmar a contagem.
+  comportamento fora do âmbito. Renovação integral final: `44 failed,
+  843 passed`; as 44 falhas são as preexistentes da base e não há regressões
+  adicionais desta tranche.
 - Alembic: head único `fff6ab1c2d3e`.
 - Ruff global: FAIL preexistente (2282 ocorrências em todo o repositório); o CI
   canónico limita Ruff ao conjunto versionado em `.github/workflows/ci.yml`.

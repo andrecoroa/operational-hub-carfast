@@ -70,8 +70,10 @@
   congelada PASS, Alembic graph PASS e seleção exata de testes `186 passed`.
   O novo formulário de suporte acrescentou uma ocorrência POST ao baseline;
   o delta mecânico foi regenerado e verificado antes desta execução.
-- A revisão independente anterior confirmou código zero P0/P1 (`75 passed`,
-  diff-check PASS). Deve ser renovada depois desta continuação.
+- Revisão independente renovada no HEAD `9de7a93d`: zero P0/P1 de código;
+  suite independente `100 passed`. O revisor manteve como P1 de aceitação
+  documental — não de produto — a comparação visual lado a lado que a política
+  do browser impediu executar sobre `file://`.
 
 Nenhuma divergência P0/P1 pode permanecer para fechar o gate local.
 

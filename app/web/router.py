@@ -8821,7 +8821,9 @@ def clean_workshop_dashboard(
     q: str = "",
     sort: str = "updated",
 ):
-    denied = clean_experience_denied(request)
+    denied = require_any_web_permission(request, "navigation.workshop.access")
+    if not denied:
+        denied = require_any_web_permission(request, "workshop.read", "admin.manage")
     if denied:
         return denied
     if scope not in {"open", "closed", "cancelled", "all"}:
@@ -9089,7 +9091,9 @@ def clean_workshop_dashboard(
 
 @web_router.post("/v2-clean/workshop/{process_id}/operational-situation")
 async def clean_workshop_operational_situation_save(request: Request, process_id: int):
-    denied = clean_experience_denied(request)
+    denied = require_any_web_permission(request, "navigation.workshop.access")
+    if not denied:
+        denied = require_any_web_permission(request, "workshop.write", "admin.manage")
     if denied:
         return denied
     form = await request.form()

@@ -3,6 +3,7 @@ from pathlib import Path
 from openpyxl import Workbook
 from sqlalchemy import select
 
+import app.main as app_main
 from app.models.documents import Document, DocumentLink
 from app.models.audit import AuditLog
 from app.models.tasks import Task
@@ -1265,3 +1266,104 @@ def test_historical_workshop_uses_intervention_date_and_preserves_open_status(
     assert process.opened_at.date().isoformat() == "2026-07-14"
     assert process.received_at.date().isoformat() == "2026-07-14"
     assert process.metadata_json["historical_process_status"] == "Em curso"
+
+
+def test_workshop_dashboard_direct_access_requires_navigation_and_read_permission(
+    authenticated_client,
+    monkeypatch,
+):
+    granted = {"tasks.read"}
+    permission_codes = lambda _db, _user: set(granted)
+    monkeypatch.setattr(app_main, "get_user_permission_codes", permission_codes)
+    monkeypatch.setattr(web_router, "get_user_permission_codes", permission_codes)
+
+    missing_navigation = authenticated_client.get(
+        "/v2-clean/workshop", follow_redirects=False
+    )
+    assert missing_navigation.status_code == 403
+
+    granted.clear()
+    granted.add("navigation.workshop.access")
+    missing_read = authenticated_client.get(
+        "/v2-clean/workshop", follow_redirects=False
+    )
+    assert missing_read.status_code == 303
+    assert missing_read.headers["location"] == "/v2-clean?error=forbidden"
+
+    granted.add("workshop.read")
+    allowed = authenticated_client.get("/v2-clean/workshop")
+    assert allowed.status_code == 200
+    assert "Oficina" in allowed.text
+
+
+def test_workshop_operational_situation_requires_write_permission_before_mutation(
+    authenticated_client,
+    db_session,
+    monkeypatch,
+):
+    process = WorkshopPhasedProcess(
+        public_reference="OF-RBAC-GATE",
+        process_type="general",
+        title="Gate de autorização",
+        creation_mode="synthetic_test",
+        status="active",
+        plate_snapshot="RB-11-AC",
+        current_phase_code="validacao",
+        priority="normal",
+        origin="v2_clean",
+        metadata_json={},
+    )
+    db_session.add(process)
+    db_session.commit()
+
+    granted = {"navigation.workshop.access", "workshop.read"}
+    permission_codes = lambda _db, _user: set(granted)
+    monkeypatch.setattr(app_main, "get_user_permission_codes", permission_codes)
+    monkeypatch.setattr(web_router, "get_user_permission_codes", permission_codes)
+    payload = {
+        "action": "wait",
+        "waiting_reason": "A aguardar peças",
+        "scope": "open",
+        "location": "all",
+        "phase": "all",
+        "situation": "all",
+    }
+
+    denied = authenticated_client.post(
+        f"/v2-clean/workshop/{process.id}/operational-situation",
+        data=payload,
+        follow_redirects=False,
+    )
+    assert denied.status_code == 303
+    assert denied.headers["location"] == "/v2-clean?error=forbidden"
+    db_session.expire_all()
+    assert db_session.get(WorkshopPhasedProcess, process.id).metadata_json == {}
+    assert db_session.scalar(
+        select(AuditLog).where(
+            AuditLog.entity_type == "workshop_phased_process",
+            AuditLog.entity_id == str(process.id),
+            AuditLog.action == "workshop.operational_situation.updated",
+        )
+    ) is None
+
+    granted.remove("workshop.read")
+    granted.add("workshop.write")
+    allowed = authenticated_client.post(
+        f"/v2-clean/workshop/{process.id}/operational-situation",
+        data=payload,
+        follow_redirects=False,
+    )
+    assert allowed.status_code == 303
+    assert allowed.headers["location"].endswith(f"#workshop-process-{process.id}")
+    db_session.expire_all()
+    assert db_session.get(WorkshopPhasedProcess, process.id).metadata_json == {
+        "operational_situation": "waiting",
+        "operational_waiting_reason": "A aguardar peças",
+    }
+    assert db_session.scalar(
+        select(AuditLog).where(
+            AuditLog.entity_type == "workshop_phased_process",
+            AuditLog.entity_id == str(process.id),
+            AuditLog.action == "workshop.operational_situation.updated",
+        )
+    ) is not None

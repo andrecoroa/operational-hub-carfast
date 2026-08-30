@@ -110,14 +110,29 @@ def add_task_to_case(
     actor_user_id: int,
 ) -> Task:
     with db.begin_nested():
+        locked_case = db.scalar(
+            select(TaskCase).where(TaskCase.id == case.id).with_for_update()
+        )
+        if not locked_case:
+            raise TaskCaseError("case_not_found")
+        locked_tasks = list(
+            db.scalars(
+                select(Task)
+                .where(Task.case_id == locked_case.id)
+                .order_by(Task.id)
+                .with_for_update()
+            )
+        )
+        if calculated_case_state(locked_tasks) in {"empty", "completed"}:
+            raise TaskCaseError("case_not_active")
         db.add(task)
         db.flush()
-        _attach(db, case=case, task=task, actor_user_id=actor_user_id)
+        _attach(db, case=locked_case, task=task, actor_user_id=actor_user_id)
         record_audit(
             db,
             action="task_case.task_added",
             entity_type="task_case",
-            entity_id=case.id,
+            entity_id=locked_case.id,
             user_id=actor_user_id,
             after_json={"task_id": task.id},
         )

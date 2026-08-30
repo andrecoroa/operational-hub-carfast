@@ -205,6 +205,12 @@ WEB_PERMISSION_RULES = (
         },
     ),
     (
+        ("/v2-clean/task-cases",),
+        {
+            "POST": {"cases.create", "cases.update"},
+        },
+    ),
+    (
         ("/v2-clean/workshop", "/v2-clean/workshop-entry"),
         {
             "GET": {"workshop.read", "workshop.write", "admin.manage"},
@@ -270,12 +276,9 @@ WEB_PERMISSION_RULES = (
                 "vehicles.write",
                 "workshop.write",
                 "tasks.write",
-                "tasks.operational.write",
-                "tasks.workshop.write",
                 "tasks.management.create",
                 "tasks.management.update",
                 "tasks.management.close",
-                "tasks.administration.write",
                 "tasks.recurring.manage",
                 "management_center.write",
                 "documents.write",

@@ -5965,9 +5965,6 @@ def _resolve_case_add_task_access(
     queue_capability, queue_error = authorized_task_queue(db, user, case.workspace)
     if queue_error or not queue_capability or not queue_capability.can_write:
         return None
-    workspace = "administration" if case.workspace == "administration" else "operational"
-    if not user_can_access_task_workspace(db, user, workspace, action="create"):
-        return None
     all_case_tasks = list(
         db.scalars(select(Task).where(Task.case_id == case.id).order_by(Task.id))
     )
@@ -5980,7 +5977,32 @@ def _resolve_case_add_task_access(
     visible_tasks = list(
         db.scalars(visible_statement.order_by(Task.id))
     )
-    exemplar = visible_tasks[0] if visible_tasks else None
+    exemplar = next(
+        (
+            task
+            for task in visible_tasks
+            if user_can_access_task_workspace(
+                db,
+                user,
+                workspace_for_task_type(task.task_type),
+                action="create",
+            )
+            and (
+                not any(
+                    (
+                        task.work_queue_id,
+                        task.work_department_id,
+                        task.work_category_id,
+                        task.work_subcategory_id,
+                    )
+                )
+                or _task_hierarchy_scope_allows(
+                    db, user.id, task, action="create"
+                )
+            )
+        ),
+        None,
+    )
     return (case, exemplar) if exemplar else None
 
 

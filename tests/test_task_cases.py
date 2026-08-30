@@ -195,6 +195,27 @@ def test_calculated_case_state_uses_worst_child_condition(db_session) -> None:
     assert calculated_case_state([overdue, risk]) == "completed"
 
 
+def test_service_revalidates_case_state_inside_transaction(db_session) -> None:
+    actor = _actor(db_session)
+    first = _task(db_session, "Fechada antes do add", status="closed")
+    case = create_case_with_first_task(
+        db_session, title="Caso concluído", first_task=first, actor_user_id=actor.id
+    )
+    db_session.commit()
+    before = db_session.scalar(select(func.count(Task.id)))
+
+    with pytest.raises(TaskCaseError, match="case_not_active"):
+        add_task_to_case(
+            db_session,
+            case=case,
+            task=_task(db_session, "Não anexar"),
+            actor_user_id=actor.id,
+        )
+    db_session.rollback()
+
+    assert db_session.scalar(select(func.count(Task.id))) == before
+
+
 def test_feature_flag_off_hides_surface_and_blocks_endpoint(
     authenticated_client, db_session, monkeypatch
 ) -> None:
@@ -522,6 +543,87 @@ def test_add_to_administration_case_requires_explicit_queue_write_grant(
     assert db_session.scalar(
         select(func.count(Task.id)).where(Task.case_id == case.id)
     ) == 2
+
+
+def test_operational_create_cannot_add_workshop_or_management_case_tasks(
+    authenticated_client, db_session, monkeypatch
+) -> None:
+    _grant_cases(db_session)
+    monkeypatch.setattr(task_router.settings, "task_cases_enabled", True)
+    actor = _actor(db_session)
+    cases = {}
+    for task_type in ("operational_task", "workshop_task", "management_task"):
+        first = _task(db_session, f"Original {task_type}")
+        first.task_type = task_type
+        cases[task_type] = create_case_with_first_task(
+            db_session,
+            title=f"Caso {task_type}",
+            first_task=first,
+            actor_user_id=actor.id,
+        )
+    db_session.commit()
+    monkeypatch.setattr(
+        task_router,
+        "user_can_access_task_workspace",
+        lambda _db, _user, workspace, **_kwargs: workspace == "operational",
+    )
+
+    allowed = authenticated_client.post(
+        f"/v2-clean/task-cases/{cases['operational_task'].id}/tasks",
+        data={"task_title": "Operacional permitida"},
+        follow_redirects=False,
+    )
+    denied = [
+        authenticated_client.post(
+            f"/v2-clean/task-cases/{cases[task_type].id}/tasks",
+            data={"task_title": f"{task_type} indevida"},
+            follow_redirects=False,
+        )
+        for task_type in ("workshop_task", "management_task")
+    ]
+
+    assert allowed.status_code == 303 and "case_updated=" in allowed.headers["location"]
+    assert all(
+        response.status_code == 303 and "forbidden" in response.headers["location"]
+        for response in denied
+    )
+    assert db_session.scalar(
+        select(func.count(Task.id)).where(Task.title.like("% indevida"))
+    ) == 0
+
+
+def test_classified_case_requires_create_hierarchy_scope(
+    authenticated_client, db_session, monkeypatch
+) -> None:
+    _grant_cases(db_session)
+    monkeypatch.setattr(task_router.settings, "task_cases_enabled", True)
+    monkeypatch.setattr(task_router.settings, "visual_foundation_enabled", True)
+    actor = _actor(db_session)
+    first = _task(db_session, "Classificada sem create scope")
+    first.work_queue_id = db_session.scalar(select(task_router.WorkQueue.id))
+    case = create_case_with_first_task(
+        db_session, title="Caso fora do create scope", first_task=first, actor_user_id=actor.id
+    )
+    db_session.commit()
+    monkeypatch.setattr(
+        task_router,
+        "_task_hierarchy_scope_allows",
+        lambda *_args, **_kwargs: False,
+    )
+
+    page = authenticated_client.get("/v2-clean/tasks?grouping=case&workspace=mine")
+    denied = authenticated_client.post(
+        f"/v2-clean/task-cases/{case.id}/tasks",
+        data={"task_title": "Não criar fora do scope"},
+        follow_redirects=False,
+    )
+
+    assert page.status_code == 200
+    assert f'data-case-id="{case.id}"' not in page.text
+    assert denied.status_code == 303 and "forbidden" in denied.headers["location"]
+    assert db_session.scalar(
+        select(func.count(Task.id)).where(Task.title == "Não criar fora do scope")
+    ) == 0
 
 
 def test_case_surface_separates_create_and_update_capabilities() -> None:

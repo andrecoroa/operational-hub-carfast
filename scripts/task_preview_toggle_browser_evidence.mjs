@@ -62,18 +62,35 @@ async function assertSinglePreviewContract(grouping) {
     if (!(await restored.evaluate((el) => el.nextElementSibling?.matches("[data-task-preview]")))) throw new Error(`${grouping}: hash/session restore mounted preview offscreen`);
   }
 
+  const openState = await page.evaluate((activeSelector) => {
+    const active = document.querySelector(activeSelector);
+    const preview = document.querySelector("[data-task-preview]:not(.is-empty)");
+    return {
+      active: active?.dataset.taskId || active?.dataset.groupTask || null,
+      bodyWidth: document.body.scrollWidth,
+      width: innerWidth,
+      hash: location.hash,
+      search: location.search,
+      adjacent: Boolean(active && preview && active.nextElementSibling === preview),
+      previewCount: document.querySelectorAll("[data-task-preview]:not(.is-empty)").length,
+    };
+  }, `${selector}[aria-selected="true"]`);
+  if (!openState.active || !openState.hash || !openState.adjacent || openState.previewCount !== 1 || openState.bodyWidth > openState.width) {
+    throw new Error(`${grouping}: open preview mismatch ${JSON.stringify(openState)}`);
+  }
+
   await page.screenshot({ path: path.join(output, `${grouping}-${page.viewportSize().width}x${page.viewportSize().height}.png`), fullPage: true });
 
   await page.locator(`${selector}[aria-selected="true"]`).press("Escape");
-  const state = await page.evaluate(() => ({
+  const closedState = await page.evaluate(() => ({
     active: document.activeElement?.dataset.taskId || document.activeElement?.dataset.groupTask || null,
     bodyWidth: document.body.scrollWidth,
     width: innerWidth,
     hash: location.hash,
     search: location.search,
   }));
-  if (state.hash || state.search !== originalSearch || state.bodyWidth > state.width || !state.active) throw new Error(`${grouping}: close/context/focus/overflow mismatch ${JSON.stringify(state)}`);
-  return state;
+  if (closedState.hash || closedState.search !== originalSearch || closedState.bodyWidth > closedState.width || !closedState.active) throw new Error(`${grouping}: close/context/focus/overflow mismatch ${JSON.stringify(closedState)}`);
+  return openState;
 }
 
 for (const viewport of [{ width: 1440, height: 731 }, { width: 390, height: 844 }]) {

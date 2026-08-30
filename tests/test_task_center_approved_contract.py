@@ -279,12 +279,42 @@ def test_counter_values_reconcile_with_authorized_server_filters(
     )
     db_session.commit()
 
-    page = authenticated_client.get("/v2-clean/tasks?workspace=all&status=open&category=all")
-    unassigned = authenticated_client.get("/v2-clean/tasks?workspace=all&status=open&category=all&assignment=unassigned")
+    actor = db_session.scalar(select(User).where(User.email == "admin.tests@carfast.local"))
+    personal = Task(
+        title="Minha tarefa em risco",
+        task_type="operational_task",
+        category="Documentação",
+        status="new",
+        priority="high",
+        assigned_to_id=actor.id,
+        due_on=today + timedelta(days=1),
+    )
+    db_session.add(personal)
+    db_session.commit()
 
-    page_count = int(re.search(r'data-task-counter="unassigned"[^>]+aria-label="Ver (\d+) tarefas', page.text).group(1))
-    result_count = int(re.search(r'<section class="task-center-approved-queue[^>]*>.*?<header>.*?<span>(\d+) tarefas', unassigned.text, re.S).group(1))
-    assert page_count == result_count
+    page = authenticated_client.get("/v2-clean/tasks?workspace=mine&status=open&category=all")
+    unassigned = authenticated_client.get("/v2-clean/tasks?workspace=all&status=open&category=all&assignment=unassigned")
+    destinations = {
+        "active": authenticated_client.get("/v2-clean/tasks?workspace=mine&status=open&category=all"),
+        "risk": authenticated_client.get("/v2-clean/tasks?workspace=mine&status=open&category=all&due=due_soon"),
+        "late": authenticated_client.get("/v2-clean/tasks?workspace=mine&status=open&category=all&due=overdue"),
+        "unassigned": unassigned,
+    }
+    for counter, destination in destinations.items():
+        page_count = int(
+            re.search(
+                rf'data-task-counter="{counter}"[^>]+aria-label="Ver (\d+) tarefas',
+                page.text,
+            ).group(1)
+        )
+        result_count = int(
+            re.search(
+                r'<section class="task-center-approved-queue[^>]*>.*?<header>.*?<span>(\d+) tarefas?',
+                destination.text,
+                re.S,
+            ).group(1)
+        )
+        assert page_count == result_count, counter
 
 
 def test_legacy_focus_cookie_is_ignored_and_invalid_category_falls_back_to_all(

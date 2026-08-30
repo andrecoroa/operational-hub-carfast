@@ -5301,6 +5301,11 @@ def clean_tasks_center(
             Task.closed_at.is_(None),
             ~Task.status.in_(TASK_ARCHIVE_STATUSES),
         ]
+        personal_open_task_filter = list(open_task_filter)
+        if mine_relation_conditions:
+            personal_open_task_filter.append(mine_relation_conditions["all"])
+        else:
+            personal_open_task_filter.append(literal(False))
         due_soon_condition = task_due_condition("due_soon", task_model=Task)
         overdue_condition = task_due_condition("overdue", task_model=Task)
         task_metrics = {
@@ -5365,9 +5370,9 @@ def clean_tasks_center(
         }
         task_counter_metrics = {
             "unassigned": db.scalar(select(func.count()).select_from(Task).where(*open_task_filter, Task.assigned_to_id.is_(None))) or 0,
-            "risk": db.scalar(select(func.count()).select_from(Task).where(*open_task_filter, due_soon_condition)) or 0,
-            "late": db.scalar(select(func.count()).select_from(Task).where(*open_task_filter, overdue_condition)) or 0,
-            "active": db.scalar(select(func.count()).select_from(Task).where(*open_task_filter)) or 0,
+            "risk": db.scalar(select(func.count()).select_from(Task).where(*personal_open_task_filter, due_soon_condition)) or 0,
+            "late": db.scalar(select(func.count()).select_from(Task).where(*personal_open_task_filter, overdue_condition)) or 0,
+            "active": db.scalar(select(func.count()).select_from(Task).where(*personal_open_task_filter)) or 0,
         }
         task_category_counts = {
             code: db.scalar(

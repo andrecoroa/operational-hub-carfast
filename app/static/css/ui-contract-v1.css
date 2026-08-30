@@ -408,3 +408,8 @@
 
 .task-grouped-list,.task-group,.task-group-children{min-width:0;max-width:100%}.task-group-child{grid-template-columns:82px 72px minmax(180px,1fr) 110px 90px 120px 90px 96px}.task-group-child>*{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.task-center-approved .task-center-approved-preview{width:100%;max-width:100%;min-width:0}
 @media(max-width:900px){.task-center-approved{grid-template-columns:minmax(0,1fr)}.task-center-approved-workspace{width:100%;max-width:100%;overflow:hidden}.task-group-children{overflow:hidden}.task-group-child{min-width:0;grid-template-columns:70px 64px minmax(0,1fr)}.task-group-child>*{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}}
+
+/* Acceptance parity: the document scrolls vertically and the four contractual KPIs share the row. */
+.task-center-approved{min-height:100vh;height:auto;overflow:visible}
+.task-center-approved-metrics{grid-template-columns:repeat(4,minmax(0,1fr))}
+@media(max-width:900px){.task-center-approved-metrics{height:auto;grid-template-columns:repeat(2,minmax(0,1fr))}.task-center-approved-filter-row{grid-template-columns:minmax(0,1fr)}.task-center-approved-filters{height:auto!important;min-height:0!important}}

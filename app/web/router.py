@@ -4805,7 +4805,18 @@ def clean_tasks_center(
             active_workspace, active_mine_kind, assignment = "all", "all", "unassigned"
         elif view == "team":
             active_workspace, active_mine_kind, assignment = "mine", "team", ""
-        active_status = status if status in {"open", "closed", "all"} else "open"
+        task_filter_status_labels = {
+            "open": "Estados ativos",
+            "new": "Nova",
+            "in_execution": "Em curso",
+            "waiting": "Em espera",
+            "support_requested": "Suporte solicitado",
+            "resolved": "Resolvida",
+            "cancelled": "Cancelada",
+            "closed": "Fechadas",
+            "all": "Todos os estados",
+        }
+        active_status = status if status in task_filter_status_labels else "open"
         incoming_record_type = (record_type or type or "").strip().lower()
         effective_record_type = incoming_record_type if incoming_record_type in {"task", "problem"} else "task"
         prefill_context = clean_task_prefill_from_context(
@@ -4935,6 +4946,8 @@ def clean_tasks_center(
             filters.extend([Task.closed_at.is_(None), ~Task.status.in_(TASK_ARCHIVE_STATUSES)])
         elif active_status == "closed":
             filters.append(or_(Task.closed_at.is_not(None), Task.status.in_(TASK_ARCHIVE_STATUSES)))
+        elif active_status != "all":
+            filters.append(Task.status == active_status)
         if active_kind == "problem":
             filters.append(or_(Task.subcategory == "problem", Task.task_type.ilike("%problem%")))
         elif active_kind == "task":
@@ -5353,7 +5366,6 @@ def clean_tasks_center(
         task_counter_metrics = {
             "unassigned": db.scalar(select(func.count()).select_from(Task).where(*open_task_filter, Task.assigned_to_id.is_(None))) or 0,
             "risk": db.scalar(select(func.count()).select_from(Task).where(*open_task_filter, due_soon_condition)) or 0,
-            "today": db.scalar(select(func.count()).select_from(Task).where(*open_task_filter, Task.due_on == date.today())) or 0,
             "late": db.scalar(select(func.count()).select_from(Task).where(*open_task_filter, overdue_condition)) or 0,
             "active": db.scalar(select(func.count()).select_from(Task).where(*open_task_filter)) or 0,
         }
@@ -5383,7 +5395,7 @@ def clean_tasks_center(
                 if code in visible_queue_codes
             ],
         ]
-        task_status_options = [("open", "Abertas"), ("closed", "Fechadas"), ("all", "Todas")]
+        task_status_options = list(task_filter_status_labels.items())
         task_nature_options = [
             value
             for value in db.scalars(
@@ -5428,7 +5440,7 @@ def clean_tasks_center(
             "administration": "Administração",
             "all": "Todas",
         }
-        task_status_labels = {"open": "Aberta", "closed": "Fechada", "cancelled": "Cancelada", "resolved": "Resolvida", "new": "Nova", "in_execution": "Em curso", "waiting": "Em espera", "delegated": "Delegada", "planned": "Planeada", "execution_done": "Execução concluída", "ready_validation": "Para validar", "no_action_needed": "Sem ação"}
+        task_status_labels = {"open": "Aberta", "closed": "Fechada", "cancelled": "Cancelada", "resolved": "Resolvida", "new": "Nova", "in_execution": "Em curso", "waiting": "Em espera", "support_requested": "Suporte solicitado", "delegated": "Delegada", "planned": "Planeada", "execution_done": "Execução concluída", "ready_validation": "Para validar", "no_action_needed": "Sem ação"}
         task_priority_labels = {"urgent": "Urgente", "high": "Alta", "normal": "Normal", "low": "Baixa"}
         raw_prefill_category = str(prefill_context["category"] or "").strip()
         prefill_nature_aliases = {
@@ -5764,6 +5776,7 @@ def clean_tasks_center(
                 "tasks": tasks,
                 "task_workspace_options": task_workspace_options,
                 "task_status_options": task_status_options,
+                "task_filter_status_labels": task_filter_status_labels,
                 "task_nature_options": task_nature_options,
                 "task_nature_edit_options": task_nature_edit_options,
                 "task_category_options": task_category_options,

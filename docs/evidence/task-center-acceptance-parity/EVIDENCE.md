@@ -26,6 +26,15 @@
 
 ## Divergências residuais
 
+- Change request mínimo do PR #104: separadores Atividade/Detalhes sem conteúdo
+  operativo foram removidos; os campos úteis permanecem num único preview
+  inline, sem alterar ações, montagem, aparência base ou ReturnContext.
+- Gestão: “Estado atual” e apenas transições legais server-side ficam explícitos;
+  classificação/hierarquia e atribuição existentes passam para “Mais opções”.
+  Não foram criados campos, contratos POST, permissões ou fluxos novos.
+- Browser renovado: 1440×731 e 390×844, zero overflow; preview em Caso por
+  reload/hash adjacente ao trigger, Escape/foco e gestão mobile PASS.
+
 - A captura real desktop está em `browser/live-desktop-1440x731.png`.
 - Browser desktop 1440×731: quatro KPIs, estados completos, scroll vertical,
   zero overflow horizontal e preview inline abrir/fechar/trocar/Escape PASS.

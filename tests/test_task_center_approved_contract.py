@@ -23,15 +23,24 @@ CSS = (ROOT / "app/static/css/ui-contract-v1.css").read_text(encoding="utf-8")
 ROUTER = (ROOT / "app/web/router.py").read_text(encoding="utf-8")
 
 
-def test_approved_task_center_has_five_independent_keyboard_counters() -> None:
+def test_approved_task_center_has_four_contractual_keyboard_counters() -> None:
     assert 'class="task-center-approved-metrics"' in TEMPLATE
-    assert TEMPLATE.count('data-task-counter=') == 5
+    assert TEMPLATE.count('data-task-counter=') == 4
+    for label in ("Por tratar", "Por assumir", "Atrasadas", "Em risco"):
+        assert label in TEMPLATE
     assert '<button' in TEMPLATE
+
+
+def test_recurrence_remains_a_permission_scoped_secondary_action() -> None:
+    assert "can_manage_recurrence" in TEMPLATE
+    assert 'href="/v2-clean/tasks/recurring">Recorrentes</a>' in TEMPLATE
+    assert '@web_router.get("/v2-clean/tasks/recurring"' in ROUTER
 
 
 def test_approved_safe_default_and_reset_are_explicit() -> None:
     assert '("mine","Minhas")' in TEMPLATE
-    assert 'value="open"' in TEMPLATE
+    assert 'task_filter_status_labels' in ROUTER
+    assert 'value="{{ code }}"' in TEMPLATE
     assert 'name="category"' in TEMPLATE
     assert 'data-task-safe-reset' in TEMPLATE
     assert 'Fechadas excluídas' in TEMPLATE
@@ -209,6 +218,52 @@ def test_explicit_closed_and_category_filters_are_server_side(
     assert "Oficina ativa contratual" in workshop.text
     assert "Fechada contratual" not in workshop.text
     assert "Fechada contratual" in closed.text
+
+
+def test_each_approved_status_filter_is_server_side(
+    authenticated_client, db_session, monkeypatch
+) -> None:
+    monkeypatch.setattr(task_router.settings, "visual_foundation_enabled", True)
+    statuses = {
+        "new": "Filtro Nova",
+        "in_execution": "Filtro Em curso",
+        "waiting": "Filtro Em espera",
+        "support_requested": "Filtro Suporte",
+        "resolved": "Filtro Resolvida",
+        "cancelled": "Filtro Cancelada",
+    }
+    db_session.add_all(
+        Task(
+            title=title,
+            task_type="operational_task",
+            category="Documentação",
+            status=status,
+            priority="normal",
+        )
+        for status, title in statuses.items()
+    )
+    db_session.commit()
+
+    for status, title in statuses.items():
+        page = authenticated_client.get(
+            f"/v2-clean/tasks?workspace=all&category=all&status={status}"
+        )
+        assert page.status_code == 200
+        assert title in page.text
+        for other_title in set(statuses.values()) - {title}:
+            assert other_title not in page.text
+
+
+def test_closed_and_risk_query_is_explicitly_normalized(
+    authenticated_client, monkeypatch
+) -> None:
+    monkeypatch.setattr(task_router.settings, "visual_foundation_enabled", True)
+    response = authenticated_client.get(
+        "/v2-clean/tasks?status=closed&due=due_soon"
+    )
+    assert response.status_code == 200
+    assert "incompatíveis" in response.text
+    assert '<option value="due_soon" selected' not in response.text
 
 
 def test_counter_values_reconcile_with_authorized_server_filters(

@@ -136,7 +136,16 @@ from app.models.workshop_phased import (
     WorkshopTemplateVersion,
 )
 from app.services.audit import record_audit
-from app.services.task_support import TaskSupportError, request_task_support, resolve_task_support
+from app.services.task_support import (
+    ACTIVE_SUPPORT_STATUSES,
+    TaskSupportError,
+    request_task_support,
+    resolve_task_support,
+)
+from app.services.task_workflow import (
+    task_allowed_status_transitions,
+    task_support_return_statuses,
+)
 from app.services.task_cases import (
     TaskCaseError,
     add_task_to_case,
@@ -2282,26 +2291,6 @@ TASK_STATUS_LABELS = dict(TASK_STATUSES)
 # The clean task centre deliberately exposes only the established task states.
 # Keeping the graph here makes both rendered options and forged POSTs use the
 # same fail-closed contract without changing the legacy task workflow.
-TASK_STATUS_TRANSITIONS = {
-    "planned": ("new", "cancelled"),
-    "new": ("in_execution", "waiting", "resolved", "cancelled"),
-    "in_execution": ("waiting", "resolved", "cancelled"),
-    "waiting": ("in_execution", "resolved", "cancelled"),
-    "support_requested": (),
-    "delegated": ("in_execution", "waiting", "resolved", "cancelled"),
-    "execution_done": ("ready_validation", "in_execution"),
-    "ready_validation": ("resolved", "in_execution"),
-    "resolved": ("closed", "in_execution"),
-    "closed": (),
-    "cancelled": (),
-    "no_action_needed": (),
-}
-
-
-def task_allowed_status_transitions(task: Task) -> tuple[str, ...]:
-    return TASK_STATUS_TRANSITIONS.get(task.status, ())
-
-
 def task_focus_bucket(task: Task) -> str:
     """Mirror the mutually-exclusive server filters with an explainable label."""
     category = (task.category or "").casefold()
@@ -2332,6 +2321,21 @@ TASK_LEGACY_STATUS_LABELS = {
     "cancelled": "Cancelada",
 }
 TASK_STATUS_DISPLAY_LABELS = {**TASK_STATUS_LABELS, **TASK_LEGACY_STATUS_LABELS}
+TASK_CLEAN_STATUS_LABELS = {
+    "open": "Aberta",
+    "closed": "Fechada",
+    "cancelled": "Cancelada",
+    "resolved": "Resolvida",
+    "new": "Nova",
+    "in_execution": "Em curso",
+    "waiting": "Em espera",
+    "support_requested": "Suporte solicitado",
+    "delegated": "Delegada",
+    "planned": "Planeada",
+    "execution_done": "Execução concluída",
+    "ready_validation": "Para validar",
+    "no_action_needed": "Sem ação",
+}
 
 PRIORITIES = [
     ("normal", "Normal"),
@@ -5255,6 +5259,21 @@ def clean_tasks_center(
                     task_relations_by_task[task.id].append("Equipa")
                 if task.created_by_id == user_id:
                     task_relations_by_task[task.id].append("Criador")
+        support_return_options_by_help_id = {
+            help_request.id: [
+                (code, TASK_CLEAN_STATUS_LABELS.get(code, code))
+                for code in task_support_return_statuses(
+                    help_request.previous_task_status
+                )
+                if (
+                    code not in TASK_ARCHIVE_STATUSES
+                    or task_close_allowed_by_id.get(help_request.task_id, False)
+                )
+            ]
+            for task_help_requests in help_requests_by_task.values()
+            for help_request in task_help_requests
+            if help_request.status in ACTIVE_SUPPORT_STATUSES
+        }
         task_notifications: list[TaskNotification] = []
         task_notification_unread_count = 0
         if user_id and readable_task_type_codes:
@@ -5445,7 +5464,7 @@ def clean_tasks_center(
             "administration": "Administração",
             "all": "Todas",
         }
-        task_status_labels = {"open": "Aberta", "closed": "Fechada", "cancelled": "Cancelada", "resolved": "Resolvida", "new": "Nova", "in_execution": "Em curso", "waiting": "Em espera", "support_requested": "Suporte solicitado", "delegated": "Delegada", "planned": "Planeada", "execution_done": "Execução concluída", "ready_validation": "Para validar", "no_action_needed": "Sem ação"}
+        task_status_labels = TASK_CLEAN_STATUS_LABELS
         task_priority_labels = {"urgent": "Urgente", "high": "Alta", "normal": "Normal", "low": "Baixa"}
         raw_prefill_category = str(prefill_context["category"] or "").strip()
         prefill_nature_aliases = {
@@ -5815,6 +5834,7 @@ def clean_tasks_center(
                 "comments_by_task": comments_by_task,
                 "history_by_task": history_by_task,
                 "help_requests_by_task": help_requests_by_task,
+                "support_return_options_by_help_id": support_return_options_by_help_id,
                 "documents_by_task": documents_by_task,
                 "email_by_task": email_by_task,
                 "task_relations_by_task": task_relations_by_task,
@@ -6968,7 +6988,6 @@ def clean_tasks_update(
     ticket_type_id: str = Form(""),
     title: str = Form(""),
     description: str = Form(""),
-    status: str = Form("new"),
     priority: str = Form("normal"),
     due_on: str = Form(""),
     category: str = Form(""),
@@ -7001,8 +7020,6 @@ def clean_tasks_update(
     clean_title = title.strip()
     if not clean_title:
         return RedirectResponse("/v2-clean/tasks?error=missing_title", status_code=303)
-    allowed_statuses = {"new", "in_execution", "waiting", "resolved", "closed", "cancelled"}
-    clean_status = status if status in allowed_statuses else "new"
     clean_priority = priority if priority in {"low", "normal", "high", "urgent"} else "normal"
     parsed_due = parse_iso_or_dmy_date(due_on)
     normalized_plate = normalize_identifier(plate) if plate.strip() else None
@@ -7011,6 +7028,10 @@ def clean_tasks_update(
         task = db.get(Task, task_id)
         if not task:
             return RedirectResponse("/v2-clean/tasks?error=not_found", status_code=303)
+        # Editing task fields must never double as a state transition.  Preserve
+        # the persisted value even when an old or forged client submits status;
+        # the dedicated transition endpoint is the only state mutation surface.
+        clean_status = task.status
         current_user = db.get(User, user_id)
         task_workspace = workspace_for_task_type(task.task_type)
         if not user_can_access_task_workspace(
@@ -8207,12 +8228,38 @@ def clean_tasks_help_response(
         ):
             return RedirectResponse("/v2-clean/tasks?error=forbidden", status_code=303)
         effective_next_status = next_status.strip()
-        if response == "responded" and not effective_next_status:
-            effective_next_status = help_request.previous_task_status
+        permitted_next_statuses = tuple(
+            code
+            for code in task_support_return_statuses(
+                help_request.previous_task_status
+            )
+            if (
+                code not in TASK_ARCHIVE_STATUSES
+                or (
+                    task
+                    and user_can_access_task_workspace(
+                        db,
+                        db.get(User, user_id),
+                        workspace_for_task_type(task.task_type),
+                        action="close",
+                    )
+                    and _task_hierarchy_scope_allows(
+                        db, user_id, task, action="complete"
+                    )
+                )
+            )
+        )
+        if effective_next_status in {"resolved", "closed"} and required_photo_blockers(
+            db, task_id=task.id
+        ):
+            return clean_task_action_redirect(
+                return_url, task_id=task_id, flag="transition_blocked"
+            )
         try:
             resolve_task_support(
                 db, task=task, item=help_request, actor_user_id=user_id,
                 action=action, next_status=effective_next_status or None,
+                permitted_next_statuses=permitted_next_statuses,
                 detail=comment,
             )
         except TaskSupportError:

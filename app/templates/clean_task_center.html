@@ -325,14 +325,19 @@
               <form method="post" action="/v2-clean/tasks/{{ task.id }}/context" class="clean-task-context-form">
                 <input type="hidden" name="return_url" value="{{ request.url.path }}?{{ request.url.query }}">
                 <label class="span-all">Descrição<textarea name="description" rows="3">{{ task.description or '' }}</textarea></label>
-                <label>Matrícula<input name="plate" value="{{ task.plate or '' }}"></label>
-                <label>Reserva<input name="reservation_number" value="{{ task.reservation_number or '' }}"></label>
-                <label>Contrato<input name="contract_number" value="{{ task.contract_number or '' }}"></label>
-                <label>N.º fatura<input name="invoice_number" value="{{ task.invoice_number or '' }}"></label>
-                <div class="clean-task-context-static">
-                  <span>Origem <b>{{ task.entity_type or ("Email" if email_by_task.get(task.id) else "Manual") }}</b></span>
-                  <span>Fila <b>{{ work_queue_labels.get(task.work_queue_id, "Fila inativa") if task.work_queue_id else task_workspace_labels.get(task_workspace) }}</b></span>
-                </div>
+                <details class="clean-task-more-options span-all">
+                  <summary>Mais opções de contexto</summary>
+                  <div class="clean-task-more-grid">
+                    <label>Matrícula<input name="plate" value="{{ task.plate or '' }}"></label>
+                    <label>Reserva<input name="reservation_number" value="{{ task.reservation_number or '' }}"></label>
+                    <label>Contrato<input name="contract_number" value="{{ task.contract_number or '' }}"></label>
+                    <label>N.º fatura<input name="invoice_number" value="{{ task.invoice_number or '' }}"></label>
+                    <div class="clean-task-context-static span-all">
+                      <span>Origem <b>{{ task.entity_type or ("Email" if email_by_task.get(task.id) else "Manual") }}</b></span>
+                      <span>Fila <b>{{ work_queue_labels.get(task.work_queue_id, "Fila inativa") if task.work_queue_id else task_workspace_labels.get(task_workspace) }}</b></span>
+                    </div>
+                  </div>
+                </details>
                 <div class="clean-task-context-actions"><button type="submit">Guardar contexto</button></div>
               </form>
             {% else %}
@@ -362,15 +367,17 @@
               <input type="hidden" name="contract_number" value="{{ task.contract_number or '' }}">
               <input type="hidden" name="invoice_number" value="{{ task.invoice_number or '' }}">
               <label class="span-2">Título<input name="title" value="{{ task.title }}" required></label>
+              <label>Prioridade<select name="priority">{% for code, label in [("low","Baixa"),("normal","Normal"),("high","Alta"),("urgent","Urgente")] %}<option value="{{ code }}" {% if task.priority == code %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+              <label>Prazo<input type="date" name="due_on" value="{{ task.due_on.isoformat() if task.due_on else '' }}"></label>
+              <details class="clean-task-more-options span-2">
+                <summary>Mais opções de planeamento e atribuição</summary>
+                <div class="clean-task-more-grid">
               <label>Modelo<select name="ticket_type_id"><option value="">Tarefa existente · manter</option>{% for item in ticket_types %}<option value="{{ item.id }}" {% if task.ticket_type_id == item.id %}selected{% endif %}>{{ item.name }}</option>{% endfor %}</select></label>
-              <label class="span-2">Motivo de espera<input name="waiting_reason" value="{{ task.waiting_reason or '' }}"></label>
+              <label>Motivo de espera<input name="waiting_reason" value="{{ task.waiting_reason or '' }}"></label>
               <label class="span-2">Descrição da espera<textarea name="waiting_reason_detail" rows="2">{{ task.waiting_reason_detail or '' }}</textarea></label>
               <label>Executor individual<select name="assigned_to_id" data-service-desk-executor="user" data-assignment-exclusive><option value="">Por atribuir</option>{% for user in all_users %}{% set category_ids %}{% for category_id, ids in eligible_user_ids_by_category.items() if user.id in ids %} {{ category_id }}{% endfor %}{% endset %}{% if category_ids|trim or task.assigned_to_id == user.id %}<option value="{{ user.id }}" data-categories="{{ category_ids }}{% if task.assigned_to_id == user.id %} {{ task.work_category_id or '' }}{% endif %}" {% if task.assigned_to_id == user.id %}selected{% endif %}>{{ user.name }}{% if task.assigned_to_id == user.id and user.id not in eligible_user_ids_by_category.get(task.work_category_id, []) %} · histórico{% endif %}</option>{% endif %}{% endfor %}</select></label>
               <label>Ou equipa responsável<select name="assigned_team_id" data-service-desk-executor="team" data-assignment-exclusive><option value="">Sem equipa</option>{% for team in all_teams %}{% set category_ids %}{% for category_id, ids in eligible_team_ids_by_category.items() if team.id in ids %} {{ category_id }}{% endfor %}{% endset %}{% if category_ids|trim or task.team_id == team.id %}<option value="{{ team.id }}" data-categories="{{ category_ids }}{% if task.team_id == team.id %} {{ task.work_category_id or '' }}{% endif %}" {% if task.team_id == team.id %}selected{% endif %}>{{ team.name }}{% if task.team_id == team.id and team.id not in eligible_team_ids_by_category.get(task.work_category_id, []) %} · histórico{% endif %}</option>{% endif %}{% endfor %}</select></label>
               <label class="checkbox-label visual-task-claim-check"><input type="checkbox" name="team_requires_claim" {% if task.assignment_state == 'team_unclaimed' %}checked{% endif %}><span>Equipa fica por assumir</span></label>
-              <input type="hidden" name="status" value="{{ task.status }}">
-              <label>Prioridade<select name="priority">{% for code, label in [("low","Baixa"),("normal","Normal"),("high","Alta"),("urgent","Urgente")] %}<option value="{{ code }}" {% if task.priority == code %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
-              <label>Prazo<input type="date" name="due_on" value="{{ task.due_on.isoformat() if task.due_on else '' }}"></label>
               {% if task.legacy_classification or (not task.work_queue_id and (task.category or task.subcategory)) %}
                 <div class="clean-task-legacy span-2"><b>Classificação anterior</b><span>{{ task.legacy_classification or ((task.category or '-') ~ ' · ' ~ (task.subcategory or '-')) }}</span></div>
               {% endif %}
@@ -381,6 +388,8 @@
                 <label>Subcategoria<select name="work_subcategory_id" data-work-level="subcategory" data-selected="{{ 'proposal:' ~ task.provisional_subcategory_id if task.provisional_subcategory_id else task.work_subcategory_id or '' }}"><option value="">Por classificar</option>{% for item in task_update_work_subcategories %}<option value="{{ item.id }}" data-parent="{{ item.category_id }}" {% if task.work_subcategory_id == item.id and not task.provisional_subcategory_id %}selected{% endif %}>{{ item.name }}</option>{% endfor %}{% if can_use_provisional_classification %}{% for item in classification_proposals if item.kind == "subcategory" %}<option value="proposal:{{ item.id }}" data-parent="{{ item.category_id if item.category_id else 'proposal:' ~ item.parent_proposal_id }}" data-provisional {% if task.provisional_subcategory_id == item.id %}selected{% endif %}>{{ item.proposed_name }} · Provisório ({{ item.provisional_code }})</option>{% endfor %}{% endif %}{% if can_propose_classification %}{% for item in task_update_work_categories %}<option value="__propose_subcategory__:{{ item.id }}" data-parent="{{ item.id }}" data-propose>+ Propor nova subcategoria</option>{% endfor %}{% for item in classification_proposals if item.kind == "category" %}<option value="__propose_subcategory__:proposal:{{ item.id }}" data-parent="proposal:{{ item.id }}" data-propose>+ Propor nova subcategoria</option>{% endfor %}{% endif %}</select></label>
                 <label class="clean-work-other span-2" {% if task.classification_status != 'review' %}hidden{% endif %}>Descrição de “Outro”<input name="classification_other_text" value="{{ task.classification_other_text or '' }}" placeholder="Indica a classificação a rever"></label>
               </div>
+                </div>
+              </details>
               <div class="clean-task-edit-meta span-2"><span>As alterações ficam no histórico.</span>{% if foundation_ui_enabled %}<div class="visual-task-save-actions"><button type="submit" name="post_action" value="stay" class="secondary">Guardar</button><button type="submit" name="post_action" value="close">Guardar e fechar</button></div>{% else %}<button type="submit">Guardar</button>{% endif %}</div>
             </form>
           </section>
@@ -453,10 +462,13 @@
                 {% set can_answer_help = help.requested_user_id == current_user_id or (help.requested_team_id and help.requested_team_id in current_user_team_ids) %}
                 {% set can_cancel_help = help.requested_by_id == current_user_id or can_write %}
                 {% if help.status == "pending" and (can_answer_help or can_cancel_help) %}
+                  {% set support_return_options = support_return_options_by_help_id.get(help.id, []) %}
                   <form method="post" action="/v2-clean/tasks/{{ task.id }}/help/{{ help.id }}">
                     <input type="hidden" name="return_url" value="{{ request.url.path }}?{{ request.url.query }}">
+                    {% if support_return_options %}<label>Após fechar o pedido<select name="next_status" required>{% for code, label in support_return_options %}<option value="{{ code }}">{{ "Retomar " ~ label if loop.first else "Transitar para " ~ label }}</option>{% endfor %}</select></label>
                     {% if can_answer_help %}<textarea name="comment" rows="2" placeholder="Resposta ou indicação do apoio prestado" required></textarea><button name="response" value="responded">Responder e concluir</button>{% endif %}
                     {% if can_cancel_help %}<button name="response" value="cancelled" class="secondary" formnovalidate>Cancelar pedido</button>{% endif %}
+                    {% else %}<p role="alert">Este pedido não tem um estado de retorno válido. Contacte um administrador.</p>{% endif %}
                   </form>
                 {% endif %}
               </div>

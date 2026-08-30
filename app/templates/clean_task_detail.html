@@ -24,7 +24,6 @@
         <form method="post" action="/v2-clean/tasks/{{ task.id }}/update" class="form-panel form-stack" id="task-edit">
           <input type="hidden" name="return_url" value="{{ request.url.path }}?{{ request.url.query }}">
           <input type="hidden" name="workspace" value="{{ task_workspace }}">
-          <input type="hidden" name="status" value="{{ task.status }}">
           <input type="hidden" name="classification_version" value="3">
           <div class="panel-heading compact-heading"><p class="eyebrow">Conteúdo real</p><h3>Dados da tarefa</h3></div>
           <label>Assunto<input name="title" maxlength="200" required value="{{ task.title }}"></label>

@@ -21258,6 +21258,50 @@ body.clean-doc-modal-open {
   grid-column: 1 / -1;
 }
 
+.clean-task-more-options {
+  border: 1px solid var(--border-color, #d8dee9);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.clean-task-more-options > summary {
+  cursor: pointer;
+  padding: 0.7rem 0.8rem;
+  font-weight: 700;
+}
+
+.clean-task-more-options[open] > summary {
+  border-bottom: 1px solid var(--border-color, #d8dee9);
+}
+
+.clean-task-more-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+  padding: 0.8rem;
+}
+
+.task-state-current {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.65rem 0.75rem;
+  border-radius: 8px;
+  background: var(--surface-muted, #f3f6fb);
+}
+
+.task-state-current span,
+.task-state-guidance {
+  color: var(--text-muted, #526173);
+}
+
+.task-state-guidance {
+  margin: 0;
+  font-size: 0.82rem;
+  line-height: 1.35;
+}
+
 .clean-task-context-static {
   align-items: center;
   display: flex;

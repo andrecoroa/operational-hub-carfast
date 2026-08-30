@@ -170,7 +170,8 @@ def test_approved_workbench_stays_in_the_center_and_uses_scoped_update_options()
     assert "task_update_work_subcategories" in TEMPLATE
     assert "Tarefa antiga" not in TEMPLATE
     assert "CF-TASK-" not in TEMPLATE
-    assert 'name="status" value="{{ task.status }}"' in TEMPLATE
+    assert 'name="status" value="{{ task.status }}"' not in TEMPLATE
+    assert "/transition`;" in TEMPLATE
     assert TEMPLATE.count("data-assignment-exclusive") >= 2
 
 
@@ -501,6 +502,25 @@ def test_preview_actions_use_clean_canonical_routes_and_accessible_editors() -> 
     assert 'window.openTaskWorkbench' in TEMPLATE
     assert '/v2-clean/tasks/${selectedRow.dataset.taskId}/transition' in TEMPLATE
     assert '/v2-clean/tasks/${selectedRow.dataset.taskId}/comments' in TEMPLATE
+
+
+def test_state_editor_separates_current_state_and_only_builds_legal_destinations() -> None:
+    assert 'data-task-current-state' in TEMPLATE
+    assert 'Transição disponível' in TEMPLATE
+    assert 'taskStatusLabels={{ task_status_labels|tojson }}' in TEMPLATE
+    assert "select.replaceChildren(...allowed.map" in TEMPLATE
+    assert 'Novo estado<select' not in TEMPLATE
+
+
+def test_workbench_keeps_primary_planning_visible_and_hides_rare_fields_progressively() -> None:
+    assert '<summary>Mais opções de contexto</summary>' in TEMPLATE
+    assert '<summary>Mais opções de planeamento e atribuição</summary>' in TEMPLATE
+    planning = TEMPLATE[TEMPLATE.index('<h3>Planeamento e atribuição</h3>'):]
+    more = planning.index('<summary>Mais opções de planeamento e atribuição</summary>')
+    assert planning.index('name="priority"') < more
+    assert planning.index('name="due_on"') < more
+    assert planning.index('name="waiting_reason"') > more
+    assert planning.index('data-work-hierarchy') > more
 
 
 def test_preview_presents_persisted_queue_and_canonical_classification() -> None:

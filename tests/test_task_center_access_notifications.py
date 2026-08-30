@@ -554,7 +554,11 @@ def test_notifications_collaboration_and_team_support_round_trip(
 
     answered = client.post(
         f"/v2-clean/tasks/{task.id}/help/{help_request.id}",
-        data={"response": "responded", "comment": "Apoio concluído"},
+        data={
+            "response": "responded",
+            "comment": "Apoio concluído",
+            "next_status": help_request.previous_task_status,
+        },
         follow_redirects=False,
     )
     assert answered.status_code == 303

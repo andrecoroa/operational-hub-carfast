@@ -212,6 +212,126 @@ def test_support_request_is_transactional_audited_and_preserves_return_context(
     )
 
 
+def test_support_resolution_requires_explicit_bounded_return_and_fails_closed(
+    authenticated_client, db_session
+) -> None:
+    task = _new_task(db_session, title="Retorno explícito do suporte")
+    support_team = _support_team_with_eligible_member(db_session)
+    requested = authenticated_client.post(
+        f"/v2-clean/tasks/{task.id}/help",
+        data={
+            "requested_target": f"team:{support_team.id}",
+            "message": "Apoio técnico",
+            "return_url": RETURN_CONTEXT,
+        },
+        follow_redirects=False,
+    )
+    assert requested.status_code == 303
+    item = db_session.scalar(
+        select(TaskHelpRequest).where(TaskHelpRequest.task_id == task.id)
+    )
+
+    for next_status in ("", "planned", "support_requested", "closed"):
+        rejected = authenticated_client.post(
+            f"/v2-clean/tasks/{task.id}/help/{item.id}",
+            data={
+                "response": "responded",
+                "comment": "Tentativa inválida",
+                "next_status": next_status,
+                "return_url": RETURN_CONTEXT,
+            },
+            follow_redirects=False,
+        )
+        assert rejected.status_code == 303
+        assert "error=" in rejected.headers["location"]
+        db_session.expire_all()
+        assert db_session.get(Task, task.id).status == "support_requested"
+        assert db_session.get(TaskHelpRequest, item.id).status == "pending"
+
+    page = authenticated_client.get(RETURN_CONTEXT.split("#", 1)[0])
+    assert page.status_code == 200
+    assert "Após fechar o pedido" in page.text
+    assert 'value="in_execution"' in page.text
+    assert 'value="waiting"' in page.text
+
+    completed = authenticated_client.post(
+        f"/v2-clean/tasks/{task.id}/help/{item.id}",
+        data={
+            "response": "responded",
+            "comment": "Apoio concluído",
+            "next_status": "waiting",
+            "return_url": RETURN_CONTEXT,
+        },
+        follow_redirects=False,
+    )
+    assert completed.status_code == 303
+    assert completed.headers["location"].endswith(f"#task-{task.id}")
+    db_session.expire_all()
+    assert db_session.get(Task, task.id).status == "waiting"
+    assert db_session.get(TaskHelpRequest, item.id).status == "completed"
+
+
+def test_support_cancellation_explicitly_restores_captured_state(
+    authenticated_client, db_session
+) -> None:
+    task = _new_task(db_session, title="Cancelar suporte explicitamente")
+    support_team = _support_team_with_eligible_member(db_session)
+    authenticated_client.post(
+        f"/v2-clean/tasks/{task.id}/help",
+        data={
+            "requested_target": f"team:{support_team.id}",
+            "message": "Pedido cancelável",
+            "return_url": RETURN_CONTEXT,
+        },
+        follow_redirects=False,
+    )
+    item = db_session.scalar(
+        select(TaskHelpRequest).where(TaskHelpRequest.task_id == task.id)
+    )
+
+    cancelled = authenticated_client.post(
+        f"/v2-clean/tasks/{task.id}/help/{item.id}",
+        data={
+            "response": "cancelled",
+            "next_status": "in_execution",
+            "return_url": RETURN_CONTEXT,
+        },
+        follow_redirects=False,
+    )
+
+    assert cancelled.status_code == 303
+    db_session.expire_all()
+    assert db_session.get(Task, task.id).status == "in_execution"
+    assert db_session.get(TaskHelpRequest, item.id).status == "cancelled"
+
+
+@pytest.mark.parametrize(
+    "persisted_status",
+    ("new", "in_execution", "waiting", "support_requested", "resolved", "closed", "cancelled"),
+)
+def test_edit_never_changes_status_without_explicit_transition(
+    authenticated_client, db_session, persisted_status
+) -> None:
+    task = _new_task(db_session, title=f"Edição preserva {persisted_status}")
+    task.status = persisted_status
+    db_session.commit()
+
+    response = authenticated_client.post(
+        f"/v2-clean/tasks/{task.id}/update",
+        data={
+            "title": f"{task.title} revista",
+            "priority": "normal",
+            "status": "closed" if persisted_status != "closed" else "new",
+            "return_url": RETURN_CONTEXT,
+        },
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    db_session.expire_all()
+    assert db_session.get(Task, task.id).status == persisted_status
+
+
 def test_duplicate_and_out_of_scope_support_requests_fail_closed(
     authenticated_client, db_session
 ) -> None:

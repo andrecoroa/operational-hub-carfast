@@ -1,6 +1,7 @@
 from datetime import date
 from pathlib import Path
 
+import pytest
 from sqlalchemy import select
 
 from app.models import (
@@ -881,9 +882,21 @@ def test_clean_task_center_limits_problems_to_workshop_and_updates_inline(authen
     assert updated.status_code == 303
     db_session.refresh(task)
     assert task.title == "Registo operacional revisto"
-    assert task.status == "in_execution"
+    assert task.status == "new"
     assert task.priority == "high"
     assert task.plate == "AA-11-BB"
+
+    transitioned = authenticated_client.post(
+        f"/v2-clean/tasks/{task.id}/transition",
+        data={
+            "status": "in_execution",
+            "return_url": "/v2-clean/tasks?workspace=operational",
+        },
+        follow_redirects=False,
+    )
+    assert transitioned.status_code == 303
+    db_session.refresh(task)
+    assert task.status == "in_execution"
     assert task.due_on.isoformat() == "2026-08-03"
     assert db_session.scalar(
         select(TaskHistory).where(
@@ -1172,6 +1185,43 @@ def test_clean_task_update_supports_save_and_save_close(authenticated_client, db
     assert f"open_task={task.id}" in stay.headers["location"]
     assert close.status_code == 303
     assert "open_task=" not in close.headers["location"]
+    db_session.refresh(task)
+    assert task.status == "new"
+
+
+@pytest.mark.parametrize(
+    "persisted_status",
+    ("new", "in_execution", "waiting", "support_requested", "resolved", "closed", "cancelled"),
+)
+def test_clean_task_edit_preserves_every_persisted_status_and_ignores_forged_status(
+    authenticated_client, db_session, persisted_status
+):
+    task = Task(
+        title=f"Preservar {persisted_status}",
+        source="v2_clean",
+        task_type="operational_task",
+        status=persisted_status,
+        priority="normal",
+    )
+    db_session.add(task)
+    db_session.commit()
+
+    response = authenticated_client.post(
+        f"/v2-clean/tasks/{task.id}/update",
+        data={
+            "title": f"{task.title} revista",
+            "priority": "high",
+            "status": "new" if persisted_status != "new" else "closed",
+            "return_url": "/v2-clean/tasks?workspace=mine",
+        },
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    db_session.expire_all()
+    persisted = db_session.get(Task, task.id)
+    assert persisted.status == persisted_status
+    assert persisted.priority == "high"
 
 
 def test_clean_task_center_paginates_without_hiding_total(authenticated_client, db_session):

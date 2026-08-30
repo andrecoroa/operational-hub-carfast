@@ -15,6 +15,7 @@ from app.services.task_cases import (
     create_case_with_first_task,
     create_related_case,
 )
+from app.services.users import create_user
 
 MIGRATION = (
     Path(__file__).parents[1] / "migrations/versions/fff6ab1c2d3e_add_task_cases.py"
@@ -194,6 +195,27 @@ def test_calculated_case_state_uses_worst_child_condition(db_session) -> None:
     assert calculated_case_state([overdue, risk]) == "completed"
 
 
+def test_service_revalidates_case_state_inside_transaction(db_session) -> None:
+    actor = _actor(db_session)
+    first = _task(db_session, "Fechada antes do add", status="closed")
+    case = create_case_with_first_task(
+        db_session, title="Caso concluído", first_task=first, actor_user_id=actor.id
+    )
+    db_session.commit()
+    before = db_session.scalar(select(func.count(Task.id)))
+
+    with pytest.raises(TaskCaseError, match="case_not_active"):
+        add_task_to_case(
+            db_session,
+            case=case,
+            task=_task(db_session, "Não anexar"),
+            actor_user_id=actor.id,
+        )
+    db_session.rollback()
+
+    assert db_session.scalar(select(func.count(Task.id))) == before
+
+
 def test_feature_flag_off_hides_surface_and_blocks_endpoint(
     authenticated_client, db_session, monkeypatch
 ) -> None:
@@ -358,11 +380,261 @@ def test_add_to_case_fails_closed_outside_task_scope(
     )
 
 
+def test_add_to_case_surface_and_post_share_positive_capability(
+    authenticated_client, db_session, monkeypatch
+) -> None:
+    _grant_cases(db_session)
+    monkeypatch.setattr(task_router.settings, "task_cases_enabled", True)
+    monkeypatch.setattr(task_router.settings, "visual_foundation_enabled", True)
+    actor = _actor(db_session)
+    first = _task(db_session, "Primeira autorizada")
+    case = create_case_with_first_task(
+        db_session, title="Caso autorizável", first_task=first, actor_user_id=actor.id
+    )
+    db_session.commit()
+    assert "cases.update" in task_router.get_user_permission_codes(db_session, actor)
+    capability, queue_error = task_router.authorized_task_queue(
+        db_session, actor, case.workspace
+    )
+    assert not queue_error and capability and capability.can_write
+    assert task_router.user_can_access_task_workspace(
+        db_session, actor, "operational", action="create"
+    )
+    assert calculated_case_state([first]) == "active"
+    visibility = task_router.task_visibility_filter(
+        db_session, user_id=actor.id, task_model=Task
+    )
+    assert visibility is None
+    assert task_router._resolve_case_add_task_access(
+        db_session, user=actor, case_id=case.id
+    ) is not None
+
+    page = authenticated_client.get("/v2-clean/tasks?grouping=case&workspace=mine")
+    added = authenticated_client.post(
+        f"/v2-clean/task-cases/{case.id}/tasks",
+        data={
+            "task_title": "Segunda autorizada",
+            "return_url": "/v2-clean/tasks?grouping=case&q=autorizada#task-11",
+        },
+        follow_redirects=False,
+    )
+
+    assert page.status_code == 200
+    assert f'data-case-id="{case.id}"' in page.text
+    assert added.status_code == 303
+    assert "grouping=case" in added.headers["location"]
+    assert "q=autorizada" in added.headers["location"]
+    assert f"case_updated={case.id}" in added.headers["location"].split("#", 1)[0]
+    assert added.headers["location"].endswith("#task-11")
+    assert db_session.scalar(
+        select(func.count(Task.id)).where(Task.case_id == case.id)
+    ) == 2
+    assert db_session.scalar(
+        select(func.count(AuditLog.id)).where(
+            AuditLog.action == "task_case.task_added",
+            AuditLog.entity_id == str(case.id),
+        )
+    ) == 1
+
+
+def test_add_to_case_hides_and_blocks_completed_missing_and_blank_cases(
+    authenticated_client, db_session, monkeypatch
+) -> None:
+    _grant_cases(db_session)
+    monkeypatch.setattr(task_router.settings, "task_cases_enabled", True)
+    monkeypatch.setattr(task_router.settings, "visual_foundation_enabled", True)
+    actor = _actor(db_session)
+    first = _task(db_session, "Caso concluído", status="closed")
+    case = create_case_with_first_task(
+        db_session, title="Caso inativo", first_task=first, actor_user_id=actor.id
+    )
+    db_session.commit()
+
+    page = authenticated_client.get(
+        "/v2-clean/tasks?grouping=case&workspace=mine&status=all"
+    )
+    completed = authenticated_client.post(
+        f"/v2-clean/task-cases/{case.id}/tasks",
+        data={"task_title": "Forjada"},
+        follow_redirects=False,
+    )
+    missing = authenticated_client.post(
+        "/v2-clean/task-cases/999999/tasks",
+        data={"task_title": "Forjada"},
+        follow_redirects=False,
+    )
+    blank = authenticated_client.post(
+        f"/v2-clean/task-cases/{case.id}/tasks",
+        data={"task_title": "  "},
+        follow_redirects=False,
+    )
+
+    assert page.status_code == 200
+    assert f'data-case-id="{case.id}"' not in page.text
+    for response in (completed, missing, blank):
+        assert response.status_code == 303
+        assert "error=forbidden" in response.headers["location"]
+    assert db_session.scalar(
+        select(func.count(Task.id)).where(Task.title == "Forjada")
+    ) == 0
+
+
+def test_add_to_administration_case_requires_explicit_queue_write_grant(
+    client, db_session, monkeypatch
+) -> None:
+    _grant_cases(db_session)
+    monkeypatch.setattr(task_router.settings, "task_cases_enabled", True)
+    role = Role(code="case_operator", name="Case operator")
+    db_session.add(role)
+    db_session.flush()
+    for code in ("dashboard.read", "cases.read", "cases.update"):
+        permission = db_session.scalar(select(Permission).where(Permission.code == code))
+        db_session.add(RolePermission(role_id=role.id, permission_id=permission.id))
+    actor = create_user(
+        db_session,
+        name="Case Operator",
+        email="case.operator@carfast.local",
+        password="Secret123!",
+        role_codes=[role.code],
+        organizational_unit_codes=["carfast"],
+    )
+    first = _task(db_session, "Administrativa original")
+    first.created_by_id = actor.id
+    first.task_type = "administration_task"
+    case = create_case_with_first_task(
+        db_session, title="Caso Administração", first_task=first, actor_user_id=actor.id
+    )
+    db_session.commit()
+    login = client.post(
+        "/login",
+        data={"email": actor.email, "password": "Secret123!"},
+        follow_redirects=False,
+    )
+    assert login.status_code == 303
+    client.post("/change-notice", data={"next_url": "/v2-clean"})
+
+    denied = client.post(
+        f"/v2-clean/task-cases/{case.id}/tasks",
+        data={"task_title": "Sem grant direto"},
+        follow_redirects=False,
+    )
+    permission = db_session.scalar(
+        select(Permission).where(Permission.code == "tasks.administration.write")
+    )
+    db_session.add(RolePermission(role_id=role.id, permission_id=permission.id))
+    db_session.commit()
+    assert "tasks.administration.write" in task_router.get_user_permission_codes(
+        db_session, actor
+    )
+    client.post(
+        "/login",
+        data={"email": actor.email, "password": "Secret123!"},
+        follow_redirects=False,
+    )
+    client.post("/change-notice", data={"next_url": "/v2-clean"})
+    allowed = client.post(
+        f"/v2-clean/task-cases/{case.id}/tasks",
+        data={"task_title": "Com grant direto"},
+        follow_redirects=False,
+    )
+
+    assert denied.status_code == 303 and "forbidden" in denied.headers["location"]
+    assert allowed.status_code == 303 and f"case_updated={case.id}" in allowed.headers["location"]
+    assert db_session.scalar(
+        select(func.count(Task.id)).where(Task.case_id == case.id)
+    ) == 2
+
+
+def test_operational_create_cannot_add_workshop_or_management_case_tasks(
+    authenticated_client, db_session, monkeypatch
+) -> None:
+    _grant_cases(db_session)
+    monkeypatch.setattr(task_router.settings, "task_cases_enabled", True)
+    actor = _actor(db_session)
+    cases = {}
+    for task_type in ("operational_task", "workshop_task", "management_task"):
+        first = _task(db_session, f"Original {task_type}")
+        first.task_type = task_type
+        cases[task_type] = create_case_with_first_task(
+            db_session,
+            title=f"Caso {task_type}",
+            first_task=first,
+            actor_user_id=actor.id,
+        )
+    db_session.commit()
+    monkeypatch.setattr(
+        task_router,
+        "user_can_access_task_workspace",
+        lambda _db, _user, workspace, **_kwargs: workspace == "operational",
+    )
+
+    allowed = authenticated_client.post(
+        f"/v2-clean/task-cases/{cases['operational_task'].id}/tasks",
+        data={"task_title": "Operacional permitida"},
+        follow_redirects=False,
+    )
+    denied = [
+        authenticated_client.post(
+            f"/v2-clean/task-cases/{cases[task_type].id}/tasks",
+            data={"task_title": f"{task_type} indevida"},
+            follow_redirects=False,
+        )
+        for task_type in ("workshop_task", "management_task")
+    ]
+
+    assert allowed.status_code == 303 and "case_updated=" in allowed.headers["location"]
+    assert all(
+        response.status_code == 303 and "forbidden" in response.headers["location"]
+        for response in denied
+    )
+    assert db_session.scalar(
+        select(func.count(Task.id)).where(Task.title.like("% indevida"))
+    ) == 0
+
+
+def test_classified_case_requires_create_hierarchy_scope(
+    authenticated_client, db_session, monkeypatch
+) -> None:
+    _grant_cases(db_session)
+    monkeypatch.setattr(task_router.settings, "task_cases_enabled", True)
+    monkeypatch.setattr(task_router.settings, "visual_foundation_enabled", True)
+    actor = _actor(db_session)
+    first = _task(db_session, "Classificada sem create scope")
+    first.work_queue_id = db_session.scalar(select(task_router.WorkQueue.id))
+    case = create_case_with_first_task(
+        db_session, title="Caso fora do create scope", first_task=first, actor_user_id=actor.id
+    )
+    db_session.commit()
+    monkeypatch.setattr(
+        task_router,
+        "_task_hierarchy_scope_allows",
+        lambda *_args, **_kwargs: False,
+    )
+
+    page = authenticated_client.get("/v2-clean/tasks?grouping=case&workspace=mine")
+    denied = authenticated_client.post(
+        f"/v2-clean/task-cases/{case.id}/tasks",
+        data={"task_title": "Não criar fora do scope"},
+        follow_redirects=False,
+    )
+
+    assert page.status_code == 200
+    assert f'data-case-id="{case.id}"' not in page.text
+    assert denied.status_code == 303 and "forbidden" in denied.headers["location"]
+    assert db_session.scalar(
+        select(func.count(Task.id)).where(Task.title == "Não criar fora do scope")
+    ) == 0
+
+
 def test_case_surface_separates_create_and_update_capabilities() -> None:
     source = (
         Path(__file__).parents[1] / "app/templates/_task_center_approved.html"
     ).read_text(encoding="utf-8")
-    assert "group.case and can_update_cases" in source
+    assert "group.case and group.can_add_task" in source
+    router_source = (
+        Path(__file__).parents[1] / "app/web/router.py"
+    ).read_text(encoding="utf-8")
+    assert router_source.count("_resolve_case_add_task_access(") >= 3
     assert "task_cases_enabled and (can_create_cases or can_update_cases)" in source
     assert "task_cases_enabled and can_create_cases" in source
 

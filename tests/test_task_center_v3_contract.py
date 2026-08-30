@@ -432,6 +432,68 @@ def test_support_return_to_waiting_preserves_sla_pause(
     assert persisted.sla_paused_at.replace(tzinfo=UTC) == paused_at
 
 
+def test_support_request_rejects_orphan_support_requested_state(
+    authenticated_client, db_session
+) -> None:
+    task = _new_task(db_session, title="Estado de suporte sem pedido ativo")
+    task.status = "support_requested"
+    db_session.commit()
+    support_team = _support_team_with_eligible_member(db_session)
+
+    response = authenticated_client.post(
+        f"/v2-clean/tasks/{task.id}/help",
+        data={
+            "requested_target": f"team:{support_team.id}",
+            "message": "Não duplicar estado órfão",
+            "return_url": RETURN_CONTEXT,
+        },
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert "error=" in response.headers["location"]
+    assert not db_session.scalar(
+        select(TaskHelpRequest.id).where(TaskHelpRequest.task_id == task.id)
+    )
+
+
+def test_support_resolution_rejects_concurrent_task_state_divergence(
+    authenticated_client, db_session
+) -> None:
+    task = _new_task(db_session, title="Divergência concorrente no suporte")
+    support_team = _support_team_with_eligible_member(db_session)
+    authenticated_client.post(
+        f"/v2-clean/tasks/{task.id}/help",
+        data={
+            "requested_target": f"team:{support_team.id}",
+            "message": "Pedido antes da divergência",
+            "return_url": RETURN_CONTEXT,
+        },
+        follow_redirects=False,
+    )
+    item = db_session.scalar(
+        select(TaskHelpRequest).where(TaskHelpRequest.task_id == task.id)
+    )
+    task.status = "waiting"
+    db_session.commit()
+
+    response = authenticated_client.post(
+        f"/v2-clean/tasks/{task.id}/help/{item.id}",
+        data={
+            "response": "cancelled",
+            "next_status": "in_execution",
+            "return_url": RETURN_CONTEXT,
+        },
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert "error=" in response.headers["location"]
+    db_session.expire_all()
+    assert db_session.get(Task, task.id).status == "waiting"
+    assert db_session.get(TaskHelpRequest, item.id).status == "pending"
+
+
 @pytest.mark.parametrize(
     "persisted_status",
     ("new", "in_execution", "waiting", "support_requested", "resolved", "closed", "cancelled"),

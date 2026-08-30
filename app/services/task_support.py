@@ -14,7 +14,12 @@ from app.services.task_center import create_task_notifications
 from app.services.task_workflow import validate_task_support_return_status
 
 ACTIVE_SUPPORT_STATUSES = ("pending", "accepted")
-SUPPORT_INELIGIBLE_TASK_STATUSES = ("closed", "cancelled", "no_action_needed")
+SUPPORT_INELIGIBLE_TASK_STATUSES = (
+    "closed",
+    "cancelled",
+    "no_action_needed",
+    "support_requested",
+)
 
 
 class TaskSupportError(ValueError):
@@ -93,6 +98,8 @@ def resolve_task_support(
     now = datetime.now(UTC)
     if item.status not in ACTIVE_SUPPORT_STATUSES:
         raise TaskSupportError("support_not_active")
+    if task.status != "support_requested":
+        raise TaskSupportError("support_task_state_mismatch")
     if action == "accept":
         if item.status != "pending":
             raise TaskSupportError("support_already_accepted")

@@ -21,6 +21,7 @@ TEMPLATE = "\n".join(
 )
 CSS = (ROOT / "app/static/css/ui-contract-v1.css").read_text(encoding="utf-8")
 ROUTER = (ROOT / "app/web/router.py").read_text(encoding="utf-8")
+DETAIL = (ROOT / "app/templates/clean_task_detail.html").read_text(encoding="utf-8")
 
 
 def test_approved_task_center_has_four_contractual_keyboard_counters() -> None:
@@ -35,6 +36,8 @@ def test_recurrence_remains_a_permission_scoped_secondary_action() -> None:
     assert "can_manage_recurrence" in TEMPLATE
     assert 'href="/v2-clean/tasks/recurring">Recorrentes</a>' in TEMPLATE
     assert '@web_router.get("/v2-clean/tasks/recurring"' in ROUTER
+    assert 'aria-label="Área do Centro de Tarefas"' in TEMPLATE
+    assert 'href="/v2-clean/tasks" aria-current="page">Tarefas</a>' in TEMPLATE
 
 
 def test_approved_safe_default_and_reset_are_explicit() -> None:
@@ -51,10 +54,18 @@ def test_primary_filters_use_operational_views_and_persisted_queues() -> None:
     for label in ("Minhas", "Por assumir", "Da equipa"):
         assert label in TEMPLATE
     assert 'aria-label="Vista de trabalho"' in TEMPLATE
+    assert 'select name="task_scope_view" data-task-scope' in TEMPLATE
+    assert "form.querySelector('[data-task-scope]')" in TEMPLATE
     assert 'data-task-queue' in TEMPLATE
     assert 'name="category" value="all"' in TEMPLATE
     assert 'Categoria de foco' not in TEMPLATE
     assert "grid-template-columns:minmax(0,62fr) minmax(360px,38fr)" in CSS
+
+
+def test_creation_offers_case_in_the_same_progressive_selector() -> None:
+    assert "data-create-case" in TEMPLATE
+    assert "createDialog.close();openCaseFlow('new')" in TEMPLATE
+    assert "Criar e abrir tarefa" in TEMPLATE
 
 
 def test_approved_queue_has_exactly_seven_fields_and_42px_rows() -> None:
@@ -154,6 +165,45 @@ def test_approved_workbench_stays_in_the_center_and_uses_scoped_update_options()
     assert "CF-TASK-" not in TEMPLATE
     assert 'name="status" value="{{ task.status }}"' in TEMPLATE
     assert TEMPLATE.count("data-assignment-exclusive") >= 2
+
+
+def test_management_uses_the_same_comment_state_and_support_language() -> None:
+    for marker in ('href="#task-edit"', '>Comentar</a>', '>Alterar estado</a>', '>Solicitar suporte</a>'):
+        assert marker in DETAIL
+    assert 'name="comment"' in DETAIL and "required maxlength=\"4000\"" in DETAIL
+    assert 'name="requested_target" required' in DETAIL
+    assert 'name="message" rows="3" required' in DETAIL
+    assert "task_support_targets" in ROUTER
+
+
+def test_management_support_surface_fails_closed_without_update_scope(
+    authenticated_client, db_session, monkeypatch
+) -> None:
+    monkeypatch.setattr(task_router.settings, "visual_foundation_enabled", True)
+    actor = db_session.scalar(select(User).where(User.email == "admin.tests@carfast.local"))
+    task = Task(
+        title="Gestão sem suporte autorizado",
+        task_type="operational_task",
+        category="Documentação",
+        status="new",
+        priority="normal",
+        assigned_to_id=actor.id,
+    )
+    db_session.add(task)
+    db_session.commit()
+    original_scope_check = task_router._task_hierarchy_scope_allows
+
+    def scope_check(db, user_id, candidate, *, action):
+        if candidate.id == task.id and action == "update":
+            return False
+        return original_scope_check(db, user_id, candidate, action=action)
+
+    monkeypatch.setattr(task_router, "_task_hierarchy_scope_allows", scope_check)
+    page = authenticated_client.get(f"/v2-clean/tasks/{task.id}/detail")
+
+    assert page.status_code == 200
+    assert 'id="task-support"' not in page.text
+    assert 'href="#task-support"' not in page.text
 
 
 def test_approved_selection_preserves_return_context() -> None:

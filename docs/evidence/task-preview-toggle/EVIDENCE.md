@@ -10,7 +10,9 @@
 - Selecting another task moves the sole preview below that task and clears the prior selection.
 - The explicit close button and Escape close the preview, clear the hash and restore focus.
 - Query/ReturnContext is preserved; only the `#task-*` fragment changes while open.
-- Desktop and 390x844 mobile keep one preview and no uncontained horizontal overflow.
+- Desktop 1440x731 and mobile 390x844 cover all three grouping modes, keep one
+  preview and have no horizontal overflow; screenshots and `result.json` are
+  produced by the reproducible gate.
 - Reproducible test: `scripts/task_preview_toggle_browser_evidence.mjs`.
 
 ## Green containment

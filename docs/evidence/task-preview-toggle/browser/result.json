@@ -1,0 +1,38 @@
+{
+  "case-1440": {
+    "adjacent": true,
+    "bodyWidth": 1440,
+    "hash": "#task-2",
+    "previewCount": 1,
+    "selected": "true",
+    "width": 1440,
+    "focus": true
+  },
+  "category-1440": {
+    "adjacent": true,
+    "bodyWidth": 1440,
+    "hash": "#task-2",
+    "previewCount": 1,
+    "selected": "true",
+    "width": 1440,
+    "focus": true
+  },
+  "case-390": {
+    "adjacent": true,
+    "bodyWidth": 390,
+    "hash": "#task-2",
+    "previewCount": 1,
+    "selected": "true",
+    "width": 390,
+    "focus": true
+  },
+  "category-390": {
+    "adjacent": true,
+    "bodyWidth": 390,
+    "hash": "#task-2",
+    "previewCount": 1,
+    "selected": "true",
+    "width": 390,
+    "focus": true
+  }
+}

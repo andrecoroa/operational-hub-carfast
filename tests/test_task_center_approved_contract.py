@@ -81,6 +81,8 @@ def test_inline_preview_toggles_single_selection_and_restores_keyboard_focus() -
     assert "document.querySelector('dialog[open]')" in TEMPLATE
     assert "row.addEventListener('click',()=>toggleSelection(row))" in TEMPLATE
     assert "if(row)toggleSelection(row,button)" in TEMPLATE
+    assert "groupButtons.find(button=>button.dataset.groupTask===id)" in TEMPLATE
+    assert "if(row)select(row,groupButton||null)" in TEMPLATE
     assert ".task-center-approved-workspace{display:block" in CSS
 
 

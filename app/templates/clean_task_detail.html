@@ -14,13 +14,14 @@
       </div>
       <a class="button-link secondary-link" href="{{ task_return_url }}">Voltar à mesma fila</a>
     </header>
+    <nav class="task-center-detail-actions" aria-label="Ações da tarefa"><a class="button-link" href="#task-edit">Editar</a>{% if can_respond_task %}<a class="button-link secondary-link" href="#task-comment">Comentar</a>{% endif %}{% if task_transition_options %}<a class="button-link secondary-link" href="#task-state">Alterar estado</a>{% endif %}{% if task_support_targets %}<a class="button-link secondary-link" href="#task-support">Solicitar suporte</a>{% endif %}</nav>
 
     {% if error %}<div class="alert" role="alert">{{ error }}</div>{% endif %}
-    {% if commented %}<div class="success" role="status">Nota registada.</div>{% endif %}
+    {% if commented %}<div class="success" role="status">Comentário registado sem alterar o estado.</div>{% endif %}
 
     <section class="workshop-page-grid task-detail-page-grid">
       <div class="workshop-main-column">
-        <form method="post" action="/v2-clean/tasks/{{ task.id }}/update" class="form-panel form-stack">
+        <form method="post" action="/v2-clean/tasks/{{ task.id }}/update" class="form-panel form-stack" id="task-edit">
           <input type="hidden" name="return_url" value="{{ request.url.path }}?{{ request.url.query }}">
           <input type="hidden" name="workspace" value="{{ task_workspace }}">
           <input type="hidden" name="status" value="{{ task.status }}">
@@ -42,7 +43,7 @@
         </form>
       </div>
       <aside class="workshop-side-column">
-        <article class="section">
+        <article class="section" id="task-state">
           <div class="panel-heading compact-heading"><p class="eyebrow">Estado</p><h3>{{ task_status_labels.get(task.status, task.status) }}</h3></div>
           <dl>
             <div><dt>Categoria canónica</dt><dd>{{ task_category_labels.get(task.category, task.category or 'Por classificar') }}</dd></div>
@@ -51,11 +52,12 @@
           </dl>
           {% if task_transition_options %}<form method="post" action="/v2-clean/tasks/{{ task.id }}/transition" class="form-stack"><input type="hidden" name="return_url" value="{{ request.url.path }}?{{ request.url.query }}"><label>Alterar estado<select name="status">{% for code in task_transition_options %}<option value="{{ code }}">{{ task_status_labels.get(code, code) }}</option>{% endfor %}</select></label><button type="submit">Confirmar estado</button></form>{% endif %}
         </article>
-        <article class="section">
-          <div class="panel-heading compact-heading"><p class="eyebrow">Acompanhamento</p><h3>Registar nota</h3></div>
-          {% if can_respond_task %}<form method="post" action="/v2-clean/tasks/{{ task.id }}/comments" class="form-stack"><input type="hidden" name="return_url" value="{{ request.url.path }}?{{ request.url.query }}"><label>Nota<textarea name="comment" rows="4" required maxlength="4000"></textarea></label><button type="submit">Guardar nota</button></form>{% endif %}
+        <article class="section" id="task-comment">
+          <div class="panel-heading compact-heading"><p class="eyebrow">Acompanhamento</p><h3>Comentar</h3></div>
+          {% if can_respond_task %}<form method="post" action="/v2-clean/tasks/{{ task.id }}/comments" class="form-stack"><input type="hidden" name="return_url" value="{{ request.url.path }}?{{ request.url.query }}"><label>Comentário<textarea name="comment" rows="4" required maxlength="4000"></textarea></label><button type="submit">Registar comentário</button></form>{% endif %}
           {% for item in comments[:5] %}<p><strong>{{ user_by_id.get(item.user_id).name if user_by_id.get(item.user_id) else 'Utilizador' }}</strong><br>{{ item.comment }}</p>{% endfor %}
         </article>
+        {% if task_support_targets %}<article class="section" id="task-support"><div class="panel-heading compact-heading"><p class="eyebrow">Colaboração</p><h3>Solicitar suporte</h3></div><form method="post" action="/v2-clean/tasks/{{ task.id }}/help" class="form-stack"><input type="hidden" name="return_url" value="{{ request.url.path }}?{{ request.url.query }}"><label>Pessoa ou equipa<select name="requested_target" required><option value="">Selecionar</option>{% for target in task_support_targets %}<option value="{{ target.value }}">{{ target.kind }} · {{ target.label }}</option>{% endfor %}</select></label><label>Motivo<textarea name="message" rows="3" required maxlength="2000"></textarea></label><label>Prazo opcional<input type="datetime-local" name="due_at"></label><button type="submit">Solicitar suporte</button></form></article>{% endif %}
       </aside>
     </section>
   </main>

@@ -35661,6 +35661,54 @@ def task_detail(
         can_close_task = user_can_access_task_workspace(
             db, current_user, task_workspace, action="close"
         ) and _task_hierarchy_scope_allows(db, current_user.id, task, action="complete")
+        task_support_targets: list[dict[str, str]] = []
+        if can_update_task:
+            support_users = task_assignable_users_for_context(
+                db,
+                users=users,
+                actor_user_id=current_user.id,
+                workspace=task_workspace,
+                queue_id=task.work_queue_id,
+                department_id=task.work_department_id,
+                category_id=task.work_category_id,
+                subcategory_id=task.work_subcategory_id,
+                team_id=task.team_id,
+            )
+            support_members: dict[int, set[int]] = defaultdict(set)
+            for team_id, member_id in db.execute(
+                select(TeamMember.team_id, TeamMember.user_id)
+            ):
+                support_members[team_id].add(member_id)
+            support_teams = []
+            for target in db.scalars(
+                select(Team).where(Team.active.is_(True)).order_by(Team.name)
+            ):
+                member_ids = support_members.get(target.id, set())
+                if member_ids and all(
+                    is_task_assignment_allowed(
+                        db,
+                        actor_user_id=current_user.id,
+                        target_user_id=member_id,
+                        workspace=task_workspace,
+                        queue_id=task.work_queue_id,
+                        department_id=task.work_department_id,
+                        category_id=task.work_category_id,
+                        subcategory_id=task.work_subcategory_id,
+                        team_id=target.id,
+                    )
+                    for member_id in member_ids
+                ):
+                    support_teams.append(target)
+            task_support_targets = [
+                *(
+                    {"value": f"user:{target.id}", "label": target.name, "kind": "Pessoas"}
+                    for target in support_users
+                ),
+                *(
+                    {"value": f"team:{target.id}", "label": target.name, "kind": "Equipas"}
+                    for target in support_teams
+                ),
+            ]
         detail_transition_options = tuple(
             code
             for code in task_allowed_status_transitions(task)
@@ -35727,6 +35775,7 @@ def task_detail(
                 "can_update_task": can_update_task,
                 "can_respond_task": can_respond_task,
                 "can_close_task": can_close_task,
+                "task_support_targets": task_support_targets,
                 "task_status_labels": TASK_STATUS_DISPLAY_LABELS,
                 "waiting_reasons": TASK_WAITING_REASONS,
                 "waiting_reason_labels": TASK_WAITING_REASON_LABELS,

@@ -279,6 +279,7 @@ from app.services.task_center import (
     task_due_condition,
     task_direct_relation_filter,
     task_team_relation_filter,
+    resolve_task_scope_view,
     task_visibility_filter,
     task_role_codes,
     user_can_view_task,
@@ -4679,6 +4680,7 @@ def clean_tasks_center(
     reopened: str | None = None,
     page: int = 1,
     grouping: str = "flat",
+    task_scope_view: str = "",
 ):
     denied = clean_experience_denied(request)
     if denied:
@@ -4696,6 +4698,35 @@ def clean_tasks_center(
     user_id = get_web_user_id(request)
     with SessionLocal() as db:
         current_user = db.get(User, user_id) if user_id else None
+        legacy_view_scope = "claim" if view == "unassigned" else view
+        preset_scope = "claim" if preset == "unassigned" else preset
+        explicit_scopes = {
+            item for item in (task_scope_view, legacy_view_scope, preset_scope) if item
+        }
+        if len(explicit_scopes) > 1:
+            return HTMLResponse("Vista de trabalho incompatível.", status_code=400)
+        requested_scope = next(iter(explicit_scopes), "") or (
+            "team"
+            if mine_kind == "team"
+            else "claim"
+            if assignment == "unassigned"
+            else ""
+        )
+        if task_scope_view and (
+            (task_scope_view != "team" and mine_kind == "team")
+        ):
+            return HTMLResponse("Vista de trabalho incompatível.", status_code=400)
+        if requested_scope == "mine" and assignment == "unassigned":
+            return HTMLResponse("Vista de trabalho incompatível.", status_code=400)
+        resolved_scope = None
+        if requested_scope:
+            resolved_scope, scope_error = resolve_task_scope_view(
+                db, user_id=user_id, requested=requested_scope
+            )
+            if scope_error == "invalid":
+                return HTMLResponse("Vista de trabalho inválida.", status_code=400)
+            if scope_error == "forbidden":
+                return HTMLResponse("Vista Da equipa não autorizada.", status_code=403)
         classification_permissions = (
             get_user_permission_codes(db, current_user) if current_user else set()
         )
@@ -4803,12 +4834,14 @@ def clean_tasks_center(
             in {"all", "assigned", "identified", "following", "team", "created", "support"}
             else "all"
         )
-        if view == "mine":
-            active_workspace, active_mine_kind, assignment = "mine", "all", ""
-        elif view == "unassigned":
-            active_workspace, active_mine_kind, assignment = "all", "all", "unassigned"
-        elif view == "team":
-            active_workspace, active_mine_kind, assignment = "mine", "team", ""
+        if resolved_scope is not None:
+            active_workspace = resolved_scope.workspace
+            active_mine_kind = resolved_scope.mine_kind
+            assignment = (
+                "unassigned"
+                if resolved_scope.code == "team" and assignment == "unassigned"
+                else resolved_scope.assignment
+            )
         task_filter_status_labels = {
             "open": "Estados ativos",
             "new": "Nova",
@@ -5320,49 +5353,54 @@ def clean_tasks_center(
             Task.closed_at.is_(None),
             ~Task.status.in_(TASK_ARCHIVE_STATUSES),
         ]
-        personal_open_task_filter = list(open_task_filter)
-        if mine_relation_conditions:
-            personal_open_task_filter.append(mine_relation_conditions["all"])
-        else:
-            personal_open_task_filter.append(literal(False))
+        scoped_open_task_filter = list(open_task_filter)
+        if active_relation_filter is not None:
+            scoped_open_task_filter.append(active_relation_filter)
+        if active_assignment:
+            scoped_open_task_filter.append(Task.assigned_to_id.is_(None))
+        unassigned_counter_filter = (
+            scoped_open_task_filter
+            if active_mine_kind == "team" or active_assignment
+            else open_task_filter
+        )
         due_soon_condition = task_due_condition("due_soon", task_model=Task)
         overdue_condition = task_due_condition("overdue", task_model=Task)
         task_metrics = {
             "divisions": len(visible_queue_codes),
             "open": db.scalar(
-                select(func.count()).select_from(Task).where(*open_task_filter)
+                select(func.count()).select_from(Task).where(*scoped_open_task_filter)
             )
             or 0,
             "quick": sum(int(item["quick"]) for item in task_divisions),
             "due_today": db.scalar(
                 select(func.count())
                 .select_from(Task)
-                .where(*open_task_filter, Task.due_on == date.today())
+                .where(*scoped_open_task_filter, Task.due_on == date.today())
             )
             or 0,
             "unassigned": db.scalar(
                 select(func.count())
                 .select_from(Task)
-                .where(*open_task_filter, Task.assigned_to_id.is_(None))
+                .where(*scoped_open_task_filter, Task.assigned_to_id.is_(None))
             )
             or 0,
             "due_soon": db.scalar(
                 select(func.count())
                 .select_from(Task)
-                .where(*open_task_filter, due_soon_condition)
+                .where(*scoped_open_task_filter, due_soon_condition)
             )
             or 0,
             "overdue": db.scalar(
                 select(func.count())
                 .select_from(Task)
-                .where(*open_task_filter, overdue_condition)
+                .where(*scoped_open_task_filter, overdue_condition)
             )
             or 0,
             "problems": db.scalar(
                 select(func.count())
                 .select_from(Task)
                 .where(
-                    *open_task_filter,
+                    *scoped_open_task_filter,
                     or_(Task.subcategory == "problem", Task.task_type.ilike("%problem%")),
                 )
             )
@@ -5388,15 +5426,15 @@ def clean_tasks_center(
             ),
         }
         task_counter_metrics = {
-            "unassigned": db.scalar(select(func.count()).select_from(Task).where(*open_task_filter, Task.assigned_to_id.is_(None))) or 0,
-            "risk": db.scalar(select(func.count()).select_from(Task).where(*personal_open_task_filter, due_soon_condition)) or 0,
-            "late": db.scalar(select(func.count()).select_from(Task).where(*personal_open_task_filter, overdue_condition)) or 0,
-            "active": db.scalar(select(func.count()).select_from(Task).where(*personal_open_task_filter)) or 0,
+            "unassigned": db.scalar(select(func.count()).select_from(Task).where(*unassigned_counter_filter, Task.assigned_to_id.is_(None))) or 0,
+            "risk": db.scalar(select(func.count()).select_from(Task).where(*scoped_open_task_filter, due_soon_condition)) or 0,
+            "late": db.scalar(select(func.count()).select_from(Task).where(*scoped_open_task_filter, overdue_condition)) or 0,
+            "active": db.scalar(select(func.count()).select_from(Task).where(*scoped_open_task_filter)) or 0,
         }
         task_category_counts = {
             code: db.scalar(
                 select(func.count()).select_from(Task).where(
-                    *open_task_filter,
+                    *scoped_open_task_filter,
                     *(tuple() if code == "all" else (condition,)),
                 )
             ) or 0
@@ -5813,6 +5851,7 @@ def clean_tasks_center(
                 "task_priority_labels": task_priority_labels,
                 "current_user_id": user_id,
                 "current_user_team_ids": sorted(user_team_ids(db, user_id)) if user_id else [],
+                "task_team_scope_allowed": bool(user_id and user_team_ids(db, user_id)),
                 "users": users,
                 "all_users": all_users,
                 "users_by_id": users_by_id,

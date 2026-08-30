@@ -5721,7 +5721,11 @@ def clean_tasks_center(
             # Keep the GET surface aligned with the POST /help gate.  A task
             # that is readable but not updateable must not leak eligible
             # people or teams to the browser.
-            if not task_update_allowed_by_id.get(task.id, False):
+            if (
+                not task_update_allowed_by_id.get(task.id, False)
+                or task.status in TASK_ARCHIVE_STATUSES
+                or task.closed_at is not None
+            ):
                 task_support_targets_by_id[task.id] = []
                 continue
             workspace = workspace_for_task_type(task.task_type)

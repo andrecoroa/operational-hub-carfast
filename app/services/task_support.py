@@ -14,6 +14,7 @@ from app.services.task_center import create_task_notifications
 from app.services.task_workflow import validate_task_support_return_status
 
 ACTIVE_SUPPORT_STATUSES = ("pending", "accepted")
+SUPPORT_INELIGIBLE_TASK_STATUSES = ("closed", "cancelled", "no_action_needed")
 
 
 class TaskSupportError(ValueError):
@@ -34,6 +35,8 @@ def request_task_support(
     requested_team_id: int | None = None,
     due_at: datetime | None = None,
 ) -> TaskHelpRequest:
+    if task.status in SUPPORT_INELIGIBLE_TASK_STATUSES or task.closed_at is not None:
+        raise TaskSupportError("support_task_ineligible")
     clean_reason = reason.strip()
     if not clean_reason:
         raise TaskSupportError("support_reason_required")

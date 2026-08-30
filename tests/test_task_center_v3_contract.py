@@ -354,6 +354,81 @@ def test_support_return_from_resolved_reopens_sla_consistently(
     )
 
 
+@pytest.mark.parametrize("archived_status", ("closed", "cancelled", "no_action_needed"))
+def test_archived_task_cannot_start_support(
+    authenticated_client, db_session, archived_status
+) -> None:
+    task = _new_task(db_session, title=f"Sem suporte em {archived_status}")
+    task.status = archived_status
+    task.closed_at = datetime(2026, 8, 20, 12, 0, tzinfo=UTC)
+    db_session.commit()
+    support_team = _support_team_with_eligible_member(db_session)
+
+    page = authenticated_client.get(
+        "/v2-clean/tasks?queue=tasks_support&status=closed&view=mine"
+    )
+    assert page.status_code == 200
+    assert f'"{task.id}": []' in page.text
+    response = authenticated_client.post(
+        f"/v2-clean/tasks/{task.id}/help",
+        data={
+            "requested_target": f"team:{support_team.id}",
+            "message": "Pedido forjado em arquivo",
+            "return_url": RETURN_CONTEXT,
+        },
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert "error=" in response.headers["location"]
+    db_session.expire_all()
+    persisted = db_session.get(Task, task.id)
+    assert persisted.status == archived_status
+    assert persisted.closed_at is not None
+    assert not db_session.scalar(
+        select(TaskHelpRequest.id).where(TaskHelpRequest.task_id == task.id)
+    )
+
+
+def test_support_return_to_waiting_preserves_sla_pause(
+    authenticated_client, db_session
+) -> None:
+    task = _new_task(db_session, title="Suporte durante espera")
+    paused_at = datetime(2026, 8, 20, 12, 0, tzinfo=UTC)
+    task.status = "waiting"
+    task.sla_paused_at = paused_at
+    db_session.commit()
+    support_team = _support_team_with_eligible_member(db_session)
+    authenticated_client.post(
+        f"/v2-clean/tasks/{task.id}/help",
+        data={
+            "requested_target": f"team:{support_team.id}",
+            "message": "Apoio sem retomar SLA",
+            "return_url": RETURN_CONTEXT,
+        },
+        follow_redirects=False,
+    )
+    item = db_session.scalar(
+        select(TaskHelpRequest).where(TaskHelpRequest.task_id == task.id)
+    )
+
+    response = authenticated_client.post(
+        f"/v2-clean/tasks/{task.id}/help/{item.id}",
+        data={
+            "response": "cancelled",
+            "next_status": "waiting",
+            "return_url": RETURN_CONTEXT,
+        },
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    db_session.expire_all()
+    persisted = db_session.get(Task, task.id)
+    assert persisted.status == "waiting"
+    assert persisted.sla_paused_at.replace(tzinfo=UTC) == paused_at
+
+
 @pytest.mark.parametrize(
     "persisted_status",
     ("new", "in_execution", "waiting", "support_requested", "resolved", "closed", "cancelled"),

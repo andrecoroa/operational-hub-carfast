@@ -183,6 +183,12 @@ def test_management_uses_the_same_comment_state_and_support_language() -> None:
     assert "task_support_targets" in ROUTER
 
 
+def test_management_clarifies_current_state_and_uses_minimal_disclosure() -> None:
+    assert "Estado atual" in DETAIL
+    assert "Sem transições legais disponíveis" in DETAIL
+    assert "<details><summary>Mais opções</summary>" in DETAIL
+
+
 def test_management_support_surface_fails_closed_without_update_scope(
     authenticated_client, db_session, monkeypatch
 ) -> None:

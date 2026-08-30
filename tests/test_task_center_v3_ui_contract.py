@@ -77,14 +77,13 @@ def test_unauthorized_or_aggregate_queue_value_fails_to_one_queue(
     assert "agregada" in page.text
 
 
-def test_explicit_sort_and_progressive_workbench_are_exposed() -> None:
+def test_explicit_sort_and_compact_inline_workbench_are_exposed() -> None:
     assert 'name="sort" data-task-sort' in TEMPLATE
     assert "Ordenação:" in TEMPLATE
-    for tab in ("work", "activity", "details"):
-        assert f'data-workbench-tab="{tab}"' in TEMPLATE
-        assert f'data-workbench-panel="{tab}"' in TEMPLATE
+    assert "data-workbench-tab" not in TEMPLATE
+    for field in ("queue", "category", "owner", "due", "detail-reference", "detail-origin"):
+        assert f"data-preview-{field}" in TEMPLATE
     assert "Próxima ação:" in TEMPLATE
-    assert "ArrowLeft" in TEMPLATE and "ArrowRight" in TEMPLATE
 
 
 def test_comment_and_return_context_contract_is_explicit() -> None:

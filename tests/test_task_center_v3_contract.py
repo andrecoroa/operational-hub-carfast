@@ -1,6 +1,6 @@
 """Contract-first acceptance tests for the approved Task Center v3 tranche."""
 
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
@@ -13,6 +13,7 @@ from app.models import (
     TaskComment,
     TaskHelpRequest,
     TaskHistory,
+    TaskSlaEvent,
     Team,
     TeamMember,
     User,
@@ -210,6 +211,314 @@ def test_support_request_is_transactional_audited_and_preserves_return_context(
             TaskHistory.new_value == "support_requested",
         )
     )
+
+
+def test_support_resolution_requires_explicit_bounded_return_and_fails_closed(
+    authenticated_client, db_session
+) -> None:
+    task = _new_task(db_session, title="Retorno explícito do suporte")
+    support_team = _support_team_with_eligible_member(db_session)
+    requested = authenticated_client.post(
+        f"/v2-clean/tasks/{task.id}/help",
+        data={
+            "requested_target": f"team:{support_team.id}",
+            "message": "Apoio técnico",
+            "return_url": RETURN_CONTEXT,
+        },
+        follow_redirects=False,
+    )
+    assert requested.status_code == 303
+    item = db_session.scalar(
+        select(TaskHelpRequest).where(TaskHelpRequest.task_id == task.id)
+    )
+
+    for next_status in ("", "planned", "support_requested", "closed"):
+        rejected = authenticated_client.post(
+            f"/v2-clean/tasks/{task.id}/help/{item.id}",
+            data={
+                "response": "responded",
+                "comment": "Tentativa inválida",
+                "next_status": next_status,
+                "return_url": RETURN_CONTEXT,
+            },
+            follow_redirects=False,
+        )
+        assert rejected.status_code == 303
+        assert "error=" in rejected.headers["location"]
+        db_session.expire_all()
+        assert db_session.get(Task, task.id).status == "support_requested"
+        assert db_session.get(TaskHelpRequest, item.id).status == "pending"
+
+    page = authenticated_client.get(RETURN_CONTEXT.split("#", 1)[0])
+    assert page.status_code == 200
+    assert "Após fechar o pedido" in page.text
+    assert 'value="in_execution"' in page.text
+    assert 'value="waiting"' in page.text
+
+    completed = authenticated_client.post(
+        f"/v2-clean/tasks/{task.id}/help/{item.id}",
+        data={
+            "response": "responded",
+            "comment": "Apoio concluído",
+            "next_status": "waiting",
+            "return_url": RETURN_CONTEXT,
+        },
+        follow_redirects=False,
+    )
+    assert completed.status_code == 303
+    assert completed.headers["location"].endswith(f"#task-{task.id}")
+    db_session.expire_all()
+    assert db_session.get(Task, task.id).status == "waiting"
+    assert db_session.get(TaskHelpRequest, item.id).status == "completed"
+
+
+def test_support_cancellation_explicitly_restores_captured_state(
+    authenticated_client, db_session
+) -> None:
+    task = _new_task(db_session, title="Cancelar suporte explicitamente")
+    support_team = _support_team_with_eligible_member(db_session)
+    authenticated_client.post(
+        f"/v2-clean/tasks/{task.id}/help",
+        data={
+            "requested_target": f"team:{support_team.id}",
+            "message": "Pedido cancelável",
+            "return_url": RETURN_CONTEXT,
+        },
+        follow_redirects=False,
+    )
+    item = db_session.scalar(
+        select(TaskHelpRequest).where(TaskHelpRequest.task_id == task.id)
+    )
+
+    cancelled = authenticated_client.post(
+        f"/v2-clean/tasks/{task.id}/help/{item.id}",
+        data={
+            "response": "cancelled",
+            "next_status": "in_execution",
+            "return_url": RETURN_CONTEXT,
+        },
+        follow_redirects=False,
+    )
+
+    assert cancelled.status_code == 303
+    db_session.expire_all()
+    assert db_session.get(Task, task.id).status == "in_execution"
+    assert db_session.get(TaskHelpRequest, item.id).status == "cancelled"
+
+
+def test_support_return_from_resolved_reopens_sla_consistently(
+    authenticated_client, db_session
+) -> None:
+    task = _new_task(db_session, title="Retomar tarefa resolvida após suporte")
+    task.status = "resolved"
+    task.resolved_at = datetime(2026, 8, 20, 12, 0, tzinfo=UTC)
+    task.sla_resolution_minutes = 240
+    db_session.commit()
+    support_team = _support_team_with_eligible_member(db_session)
+    authenticated_client.post(
+        f"/v2-clean/tasks/{task.id}/help",
+        data={
+            "requested_target": f"team:{support_team.id}",
+            "message": "Confirmar reabertura",
+            "return_url": RETURN_CONTEXT,
+        },
+        follow_redirects=False,
+    )
+    item = db_session.scalar(
+        select(TaskHelpRequest).where(TaskHelpRequest.task_id == task.id)
+    )
+
+    response = authenticated_client.post(
+        f"/v2-clean/tasks/{task.id}/help/{item.id}",
+        data={
+            "response": "responded",
+            "comment": "Retomar execução",
+            "next_status": "in_execution",
+            "return_url": RETURN_CONTEXT,
+        },
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    db_session.expire_all()
+    persisted = db_session.get(Task, task.id)
+    assert persisted.status == "in_execution"
+    assert persisted.resolved_at is None
+    assert persisted.sla_paused_at is None
+    assert persisted.resolution_due_at is not None
+    assert db_session.scalar(
+        select(TaskSlaEvent.id).where(
+            TaskSlaEvent.task_id == task.id,
+            TaskSlaEvent.action == "reopened",
+        )
+    )
+
+
+@pytest.mark.parametrize("archived_status", ("closed", "cancelled", "no_action_needed"))
+def test_archived_task_cannot_start_support(
+    authenticated_client, db_session, archived_status
+) -> None:
+    task = _new_task(db_session, title=f"Sem suporte em {archived_status}")
+    task.status = archived_status
+    task.closed_at = datetime(2026, 8, 20, 12, 0, tzinfo=UTC)
+    db_session.commit()
+    support_team = _support_team_with_eligible_member(db_session)
+
+    page = authenticated_client.get(
+        "/v2-clean/tasks?queue=tasks_support&status=closed&view=mine"
+    )
+    assert page.status_code == 200
+    assert f'"{task.id}": []' in page.text
+    detail = authenticated_client.get(f"/v2-clean/tasks/{task.id}/detail")
+    assert detail.status_code == 200
+    assert 'id="task-support"' not in detail.text
+    response = authenticated_client.post(
+        f"/v2-clean/tasks/{task.id}/help",
+        data={
+            "requested_target": f"team:{support_team.id}",
+            "message": "Pedido forjado em arquivo",
+            "return_url": RETURN_CONTEXT,
+        },
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert "error=" in response.headers["location"]
+    db_session.expire_all()
+    persisted = db_session.get(Task, task.id)
+    assert persisted.status == archived_status
+    assert persisted.closed_at is not None
+    assert not db_session.scalar(
+        select(TaskHelpRequest.id).where(TaskHelpRequest.task_id == task.id)
+    )
+
+
+def test_support_return_to_waiting_preserves_sla_pause(
+    authenticated_client, db_session
+) -> None:
+    task = _new_task(db_session, title="Suporte durante espera")
+    paused_at = datetime(2026, 8, 20, 12, 0, tzinfo=UTC)
+    task.status = "waiting"
+    task.sla_paused_at = paused_at
+    db_session.commit()
+    support_team = _support_team_with_eligible_member(db_session)
+    authenticated_client.post(
+        f"/v2-clean/tasks/{task.id}/help",
+        data={
+            "requested_target": f"team:{support_team.id}",
+            "message": "Apoio sem retomar SLA",
+            "return_url": RETURN_CONTEXT,
+        },
+        follow_redirects=False,
+    )
+    item = db_session.scalar(
+        select(TaskHelpRequest).where(TaskHelpRequest.task_id == task.id)
+    )
+
+    response = authenticated_client.post(
+        f"/v2-clean/tasks/{task.id}/help/{item.id}",
+        data={
+            "response": "cancelled",
+            "next_status": "waiting",
+            "return_url": RETURN_CONTEXT,
+        },
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    db_session.expire_all()
+    persisted = db_session.get(Task, task.id)
+    assert persisted.status == "waiting"
+    assert persisted.sla_paused_at.replace(tzinfo=UTC) == paused_at
+
+
+def test_support_request_rejects_orphan_support_requested_state(
+    authenticated_client, db_session
+) -> None:
+    task = _new_task(db_session, title="Estado de suporte sem pedido ativo")
+    task.status = "support_requested"
+    db_session.commit()
+    support_team = _support_team_with_eligible_member(db_session)
+
+    response = authenticated_client.post(
+        f"/v2-clean/tasks/{task.id}/help",
+        data={
+            "requested_target": f"team:{support_team.id}",
+            "message": "Não duplicar estado órfão",
+            "return_url": RETURN_CONTEXT,
+        },
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert "error=" in response.headers["location"]
+    assert not db_session.scalar(
+        select(TaskHelpRequest.id).where(TaskHelpRequest.task_id == task.id)
+    )
+
+
+def test_support_resolution_rejects_concurrent_task_state_divergence(
+    authenticated_client, db_session
+) -> None:
+    task = _new_task(db_session, title="Divergência concorrente no suporte")
+    support_team = _support_team_with_eligible_member(db_session)
+    authenticated_client.post(
+        f"/v2-clean/tasks/{task.id}/help",
+        data={
+            "requested_target": f"team:{support_team.id}",
+            "message": "Pedido antes da divergência",
+            "return_url": RETURN_CONTEXT,
+        },
+        follow_redirects=False,
+    )
+    item = db_session.scalar(
+        select(TaskHelpRequest).where(TaskHelpRequest.task_id == task.id)
+    )
+    task.status = "waiting"
+    db_session.commit()
+
+    response = authenticated_client.post(
+        f"/v2-clean/tasks/{task.id}/help/{item.id}",
+        data={
+            "response": "cancelled",
+            "next_status": "in_execution",
+            "return_url": RETURN_CONTEXT,
+        },
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert "error=" in response.headers["location"]
+    db_session.expire_all()
+    assert db_session.get(Task, task.id).status == "waiting"
+    assert db_session.get(TaskHelpRequest, item.id).status == "pending"
+
+
+@pytest.mark.parametrize(
+    "persisted_status",
+    ("new", "in_execution", "waiting", "support_requested", "resolved", "closed", "cancelled"),
+)
+def test_edit_never_changes_status_without_explicit_transition(
+    authenticated_client, db_session, persisted_status
+) -> None:
+    task = _new_task(db_session, title=f"Edição preserva {persisted_status}")
+    task.status = persisted_status
+    db_session.commit()
+
+    response = authenticated_client.post(
+        f"/v2-clean/tasks/{task.id}/update",
+        data={
+            "title": f"{task.title} revista",
+            "priority": "normal",
+            "status": "closed" if persisted_status != "closed" else "new",
+            "return_url": RETURN_CONTEXT,
+        },
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    db_session.expire_all()
+    assert db_session.get(Task, task.id).status == persisted_status
 
 
 def test_duplicate_and_out_of_scope_support_requests_fail_closed(

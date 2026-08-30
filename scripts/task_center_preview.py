@@ -81,7 +81,7 @@ def prepare_fixture() -> None:
             for code in (
                 "navigation.tasks.access", "tasks.read", "tasks.operational.read",
                 "tasks.operational.write", "tasks.audit.read", "cases.read",
-                "cases.create", "cases.update",
+                "cases.create", "cases.update", "tasks.recurring.manage",
             ):
                 permission = db.scalar(select(Permission).where(Permission.code == code))
                 if not permission:

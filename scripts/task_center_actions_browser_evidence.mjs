@@ -93,23 +93,43 @@ const workbenchPreflight = await page.evaluate(() => ({
   workbenchVisible: !!document.querySelector('[data-task-preview]:not(.is-empty)'),
   tabs: document.querySelectorAll('[data-task-workbench-tab]').length,
 }));
-if (workbenchPreflight.selectedRows !== 1 || !workbenchPreflight.workbenchVisible || workbenchPreflight.tabs !== 3) {
+if (workbenchPreflight.selectedRows !== 1 || !workbenchPreflight.workbenchVisible || workbenchPreflight.tabs !== 0) {
   throw new Error(`Workbench preflight failed: ${JSON.stringify(workbenchPreflight)} errors=${JSON.stringify(pageErrors)}`);
 }
 if (!page.url().includes('/v2-clean/tasks')) throw new Error(`Workbench left the Task Center: ${page.url()}`);
 await page.screenshot({ path: path.join(output, "02-unified-workbench-1440x731.png") });
-for (const tab of ["work", "activity", "details"]) {
-  const tabControl = page.locator(`[data-task-workbench-tab="${tab}"]`);
-  await tabControl.focus();
-  await page.keyboard.press("Enter");
-  const selected = await tabControl.getAttribute("aria-selected");
-  if (selected !== "true") throw new Error(`Workbench tab ${tab} is not keyboard operable`);
+
+const stateTrigger = page.locator('[data-task-preview-action="state"]');
+if (await stateTrigger.count()) {
+  await stateTrigger.click();
+  const stateDialog = page.locator('[data-task-state-dialog]');
+  await stateDialog.waitFor({ state: 'visible' });
+  const stateContract = await stateDialog.evaluate((dialog) => ({
+    current: dialog.querySelector('[data-task-current-state]')?.textContent?.trim(),
+    destinations: [...dialog.querySelectorAll('[name="status"] option')].map((option) => option.textContent.trim()),
+    disabled: dialog.querySelector('[name="status"]')?.disabled,
+  }));
+  if (!stateContract.current || (!stateContract.destinations.length && !stateContract.disabled)) {
+    throw new Error(`State transition contract unclear: ${JSON.stringify(stateContract)}`);
+  }
+  runtime.checks.stateContract = stateContract;
+  await stateDialog.locator('[data-task-dialog-cancel]').click();
 }
-runtime.checks.keyboard = await page.evaluate(() => ({
-  activeTag: document.activeElement?.tagName,
-  activeTab: document.activeElement?.getAttribute("data-task-workbench-tab"),
+
+await page.locator('[data-task-preview-action="open"]').click();
+const management = page.locator('.clean-task-preview[aria-hidden="false"]');
+await management.waitFor({ state: 'visible' });
+runtime.checks.progressiveManagement = await management.evaluate((element) => ({
+  contextClosed: !element.querySelector('summary')?.closest('details')?.open,
+  moreOptions: [...element.querySelectorAll('summary')].map((summary) => summary.textContent.trim()),
+  priorityVisible: !!element.querySelector('[name="priority"]')?.checkVisibility(),
+  dueVisible: !!element.querySelector('[name="due_on"]')?.checkVisibility(),
 }));
-await page.screenshot({ path: path.join(output, "03-tabs-1440x731.png") });
+if (!runtime.checks.progressiveManagement.priorityVisible || !runtime.checks.progressiveManagement.dueVisible || runtime.checks.progressiveManagement.moreOptions.length < 2) {
+  throw new Error(`Progressive management failed: ${JSON.stringify(runtime.checks.progressiveManagement)}`);
+}
+await page.screenshot({ path: path.join(output, "03-progressive-management-1440x731.png") });
+await management.locator('[data-task-close]').last().click();
 
 const taskId = await page.locator("[data-task-row]").first().getAttribute("data-task-id");
 const emptyComment = await page.request.post(`${base}/v2-clean/tasks/${taskId}/comments`, {

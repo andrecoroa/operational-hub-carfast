@@ -21,17 +21,29 @@ TEMPLATE = "\n".join(
 )
 CSS = (ROOT / "app/static/css/ui-contract-v1.css").read_text(encoding="utf-8")
 ROUTER = (ROOT / "app/web/router.py").read_text(encoding="utf-8")
+DETAIL = (ROOT / "app/templates/clean_task_detail.html").read_text(encoding="utf-8")
 
 
-def test_approved_task_center_has_five_independent_keyboard_counters() -> None:
+def test_approved_task_center_has_four_contractual_keyboard_counters() -> None:
     assert 'class="task-center-approved-metrics"' in TEMPLATE
-    assert TEMPLATE.count('data-task-counter=') == 5
+    assert TEMPLATE.count('data-task-counter=') == 4
+    for label in ("Por tratar", "Por assumir", "Atrasadas", "Em risco"):
+        assert label in TEMPLATE
     assert '<button' in TEMPLATE
+
+
+def test_recurrence_remains_a_permission_scoped_secondary_action() -> None:
+    assert "can_manage_recurrence" in TEMPLATE
+    assert 'href="/v2-clean/tasks/recurring">Recorrentes</a>' in TEMPLATE
+    assert '@web_router.get("/v2-clean/tasks/recurring"' in ROUTER
+    assert 'aria-label="Área do Centro de Tarefas"' in TEMPLATE
+    assert 'href="/v2-clean/tasks" aria-current="page">Tarefas</a>' in TEMPLATE
 
 
 def test_approved_safe_default_and_reset_are_explicit() -> None:
     assert '("mine","Minhas")' in TEMPLATE
-    assert 'value="open"' in TEMPLATE
+    assert 'task_filter_status_labels' in ROUTER
+    assert 'value="{{ code }}"' in TEMPLATE
     assert 'name="category"' in TEMPLATE
     assert 'data-task-safe-reset' in TEMPLATE
     assert 'Fechadas excluídas' in TEMPLATE
@@ -42,10 +54,18 @@ def test_primary_filters_use_operational_views_and_persisted_queues() -> None:
     for label in ("Minhas", "Por assumir", "Da equipa"):
         assert label in TEMPLATE
     assert 'aria-label="Vista de trabalho"' in TEMPLATE
+    assert 'select name="task_scope_view" data-task-scope' in TEMPLATE
+    assert "form.querySelector('[data-task-scope]')" in TEMPLATE
     assert 'data-task-queue' in TEMPLATE
     assert 'name="category" value="all"' in TEMPLATE
     assert 'Categoria de foco' not in TEMPLATE
     assert "grid-template-columns:minmax(0,62fr) minmax(360px,38fr)" in CSS
+
+
+def test_creation_offers_case_in_the_same_progressive_selector() -> None:
+    assert "data-create-case" in TEMPLATE
+    assert "createDialog.close();openCaseFlow('new')" in TEMPLATE
+    assert "Criar e abrir tarefa" in TEMPLATE
 
 
 def test_approved_queue_has_exactly_seven_fields_and_42px_rows() -> None:
@@ -82,8 +102,15 @@ def test_inline_preview_toggles_single_selection_and_restores_keyboard_focus() -
     assert "row.addEventListener('click',()=>toggleSelection(row))" in TEMPLATE
     assert "if(row)toggleSelection(row,button)" in TEMPLATE
     assert "groupButtons.find(button=>button.dataset.groupTask===id)" in TEMPLATE
-    assert "if(row)select(row,groupButton||null)" in TEMPLATE
+    assert "if(!grouped||groupButton)select(row,groupButton||null)" in TEMPLATE
     assert ".task-center-approved-workspace{display:block" in CSS
+
+
+def test_grouped_reload_restores_preview_only_under_a_visible_group_trigger() -> None:
+    assert "const group=groupButton.closest('details.task-group');if(group)group.open=true" in TEMPLATE
+    assert "const grouped=document.querySelector('[data-task-groups]')" in TEMPLATE
+    assert "if(!grouped||groupButton)select(row,groupButton||null)" in TEMPLATE
+    assert "groupButton.insertAdjacentElement('afterend',preview)" in TEMPLATE
 
 
 def test_support_targets_are_scoped_server_side_and_not_globally_rendered() -> None:
@@ -143,8 +170,54 @@ def test_approved_workbench_stays_in_the_center_and_uses_scoped_update_options()
     assert "task_update_work_subcategories" in TEMPLATE
     assert "Tarefa antiga" not in TEMPLATE
     assert "CF-TASK-" not in TEMPLATE
-    assert 'name="status" value="{{ task.status }}"' in TEMPLATE
+    assert 'name="status" value="{{ task.status }}"' not in TEMPLATE
+    assert "/transition`;" in TEMPLATE
     assert TEMPLATE.count("data-assignment-exclusive") >= 2
+
+
+def test_management_uses_the_same_comment_state_and_support_language() -> None:
+    for marker in ('href="#task-edit"', '>Comentar</a>', '>Alterar estado</a>', '>Solicitar suporte</a>'):
+        assert marker in DETAIL
+    assert 'name="comment"' in DETAIL and "required maxlength=\"4000\"" in DETAIL
+    assert 'name="requested_target" required' in DETAIL
+    assert 'name="message" rows="3" required' in DETAIL
+    assert "task_support_targets" in ROUTER
+
+
+def test_management_clarifies_current_state_and_uses_minimal_disclosure() -> None:
+    assert "Estado atual" in DETAIL
+    assert "Sem transições legais disponíveis" in DETAIL
+    assert "<details><summary>Mais opções</summary>" in DETAIL
+
+
+def test_management_support_surface_fails_closed_without_update_scope(
+    authenticated_client, db_session, monkeypatch
+) -> None:
+    monkeypatch.setattr(task_router.settings, "visual_foundation_enabled", True)
+    actor = db_session.scalar(select(User).where(User.email == "admin.tests@carfast.local"))
+    task = Task(
+        title="Gestão sem suporte autorizado",
+        task_type="operational_task",
+        category="Documentação",
+        status="new",
+        priority="normal",
+        assigned_to_id=actor.id,
+    )
+    db_session.add(task)
+    db_session.commit()
+    original_scope_check = task_router._task_hierarchy_scope_allows
+
+    def scope_check(db, user_id, candidate, *, action):
+        if candidate.id == task.id and action == "update":
+            return False
+        return original_scope_check(db, user_id, candidate, action=action)
+
+    monkeypatch.setattr(task_router, "_task_hierarchy_scope_allows", scope_check)
+    page = authenticated_client.get(f"/v2-clean/tasks/{task.id}/detail")
+
+    assert page.status_code == 200
+    assert 'id="task-support"' not in page.text
+    assert 'href="#task-support"' not in page.text
 
 
 def test_approved_selection_preserves_return_context() -> None:
@@ -211,6 +284,52 @@ def test_explicit_closed_and_category_filters_are_server_side(
     assert "Fechada contratual" in closed.text
 
 
+def test_each_approved_status_filter_is_server_side(
+    authenticated_client, db_session, monkeypatch
+) -> None:
+    monkeypatch.setattr(task_router.settings, "visual_foundation_enabled", True)
+    statuses = {
+        "new": "Filtro Nova",
+        "in_execution": "Filtro Em curso",
+        "waiting": "Filtro Em espera",
+        "support_requested": "Filtro Suporte",
+        "resolved": "Filtro Resolvida",
+        "cancelled": "Filtro Cancelada",
+    }
+    db_session.add_all(
+        Task(
+            title=title,
+            task_type="operational_task",
+            category="Documentação",
+            status=status,
+            priority="normal",
+        )
+        for status, title in statuses.items()
+    )
+    db_session.commit()
+
+    for status, title in statuses.items():
+        page = authenticated_client.get(
+            f"/v2-clean/tasks?workspace=all&category=all&status={status}"
+        )
+        assert page.status_code == 200
+        assert title in page.text
+        for other_title in set(statuses.values()) - {title}:
+            assert other_title not in page.text
+
+
+def test_closed_and_risk_query_is_explicitly_normalized(
+    authenticated_client, monkeypatch
+) -> None:
+    monkeypatch.setattr(task_router.settings, "visual_foundation_enabled", True)
+    response = authenticated_client.get(
+        "/v2-clean/tasks?status=closed&due=due_soon"
+    )
+    assert response.status_code == 200
+    assert "incompatíveis" in response.text
+    assert '<option value="due_soon" selected' not in response.text
+
+
 def test_counter_values_reconcile_with_authorized_server_filters(
     authenticated_client, db_session, monkeypatch
 ) -> None:
@@ -224,12 +343,42 @@ def test_counter_values_reconcile_with_authorized_server_filters(
     )
     db_session.commit()
 
-    page = authenticated_client.get("/v2-clean/tasks?workspace=all&status=open&category=all")
-    unassigned = authenticated_client.get("/v2-clean/tasks?workspace=all&status=open&category=all&assignment=unassigned")
+    actor = db_session.scalar(select(User).where(User.email == "admin.tests@carfast.local"))
+    personal = Task(
+        title="Minha tarefa em risco",
+        task_type="operational_task",
+        category="Documentação",
+        status="new",
+        priority="high",
+        assigned_to_id=actor.id,
+        due_on=today + timedelta(days=1),
+    )
+    db_session.add(personal)
+    db_session.commit()
 
-    page_count = int(re.search(r'data-task-counter="unassigned"[^>]+aria-label="Ver (\d+) tarefas', page.text).group(1))
-    result_count = int(re.search(r'<section class="task-center-approved-queue[^>]*>.*?<header>.*?<span>(\d+) tarefas', unassigned.text, re.S).group(1))
-    assert page_count == result_count
+    page = authenticated_client.get("/v2-clean/tasks?workspace=mine&status=open&category=all")
+    unassigned = authenticated_client.get("/v2-clean/tasks?workspace=all&status=open&category=all&assignment=unassigned")
+    destinations = {
+        "active": authenticated_client.get("/v2-clean/tasks?workspace=mine&status=open&category=all"),
+        "risk": authenticated_client.get("/v2-clean/tasks?workspace=mine&status=open&category=all&due=due_soon"),
+        "late": authenticated_client.get("/v2-clean/tasks?workspace=mine&status=open&category=all&due=overdue"),
+        "unassigned": unassigned,
+    }
+    for counter, destination in destinations.items():
+        page_count = int(
+            re.search(
+                rf'data-task-counter="{counter}"[^>]+aria-label="Ver (\d+) tarefas',
+                page.text,
+            ).group(1)
+        )
+        result_count = int(
+            re.search(
+                r'<section class="task-center-approved-queue[^>]*>.*?<header>.*?<span>(\d+) tarefas?',
+                destination.text,
+                re.S,
+            ).group(1)
+        )
+        assert page_count == result_count, counter
 
 
 def test_legacy_focus_cookie_is_ignored_and_invalid_category_falls_back_to_all(
@@ -353,6 +502,25 @@ def test_preview_actions_use_clean_canonical_routes_and_accessible_editors() -> 
     assert 'window.openTaskWorkbench' in TEMPLATE
     assert '/v2-clean/tasks/${selectedRow.dataset.taskId}/transition' in TEMPLATE
     assert '/v2-clean/tasks/${selectedRow.dataset.taskId}/comments' in TEMPLATE
+
+
+def test_state_editor_separates_current_state_and_only_builds_legal_destinations() -> None:
+    assert 'data-task-current-state' in TEMPLATE
+    assert 'Transição disponível' in TEMPLATE
+    assert 'taskStatusLabels={{ task_status_labels|tojson }}' in TEMPLATE
+    assert "select.replaceChildren(...allowed.map" in TEMPLATE
+    assert 'Novo estado<select' not in TEMPLATE
+
+
+def test_workbench_keeps_primary_planning_visible_and_hides_rare_fields_progressively() -> None:
+    assert '<summary>Mais opções de contexto</summary>' in TEMPLATE
+    assert '<summary>Mais opções de planeamento e atribuição</summary>' in TEMPLATE
+    planning = TEMPLATE[TEMPLATE.index('<h3>Planeamento e atribuição</h3>'):]
+    more = planning.index('<summary>Mais opções de planeamento e atribuição</summary>')
+    assert planning.index('name="priority"') < more
+    assert planning.index('name="due_on"') < more
+    assert planning.index('name="waiting_reason"') > more
+    assert planning.index('data-work-hierarchy') > more
 
 
 def test_preview_presents_persisted_queue_and_canonical_classification() -> None:

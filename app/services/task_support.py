@@ -1,13 +1,25 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import and_, or_, select
+from sqlalchemy import select
 
-from app.models.tasks import Task, TaskHelpRequest, TaskHistory
+from app.models.tasks import Task, TaskHelpRequest, TaskHistory, TaskSlaEvent
+from app.services.service_desk import (
+    mark_task_resolved,
+    pause_task_sla,
+    resume_task_sla,
+)
 from app.services.task_center import create_task_notifications
+from app.services.task_workflow import validate_task_support_return_status
 
 ACTIVE_SUPPORT_STATUSES = ("pending", "accepted")
+SUPPORT_INELIGIBLE_TASK_STATUSES = (
+    "closed",
+    "cancelled",
+    "no_action_needed",
+    "support_requested",
+)
 
 
 class TaskSupportError(ValueError):
@@ -28,6 +40,8 @@ def request_task_support(
     requested_team_id: int | None = None,
     due_at: datetime | None = None,
 ) -> TaskHelpRequest:
+    if task.status in SUPPORT_INELIGIBLE_TASK_STATUSES or task.closed_at is not None:
+        raise TaskSupportError("support_task_ineligible")
     clean_reason = reason.strip()
     if not clean_reason:
         raise TaskSupportError("support_reason_required")
@@ -78,11 +92,14 @@ def resolve_task_support(
     actor_user_id: int,
     action: str,
     next_status: str | None = None,
+    permitted_next_statuses: tuple[str, ...] | None = None,
     detail: str | None = None,
 ) -> None:
     now = datetime.now(UTC)
     if item.status not in ACTIVE_SUPPORT_STATUSES:
         raise TaskSupportError("support_not_active")
+    if task.status != "support_requested":
+        raise TaskSupportError("support_task_state_mismatch")
     if action == "accept":
         if item.status != "pending":
             raise TaskSupportError("support_already_accepted")
@@ -91,14 +108,75 @@ def resolve_task_support(
         event_type = "support_accepted"
         title = f"Suporte aceite: {task.title}"
     elif action in {"complete", "cancel"}:
-        if not next_status:
-            raise TaskSupportError("support_next_status_required")
-        # Restoration is explicit and bounded to the state captured transactionally.
-        if next_status != item.previous_task_status:
-            raise TaskSupportError("support_next_status_invalid")
+        try:
+            next_status = validate_task_support_return_status(
+                item.previous_task_status,
+                next_status,
+                permitted_statuses=permitted_next_statuses,
+            )
+        except ValueError as exc:
+            raise TaskSupportError(str(exc)) from exc
         old_status = task.status
         task.status = next_status
-        db.add(TaskHistory(task_id=task.id, user_id=actor_user_id, field_name="status", old_value=old_status, new_value=next_status))
+        prior_operational_status = item.previous_task_status
+        if next_status == "waiting" and prior_operational_status != "waiting":
+            pause_task_sla(
+                db,
+                task,
+                actor_user_id=actor_user_id,
+                reason="Support completed into waiting",
+                now=now,
+            )
+        elif next_status != "waiting" and prior_operational_status == "waiting":
+            resume_task_sla(
+                db,
+                task,
+                actor_user_id=actor_user_id,
+                reason="Support completed and task resumed",
+                now=now,
+            )
+        if next_status in {"closed", "cancelled", "no_action_needed"}:
+            task.closed_at = task.closed_at or now
+            mark_task_resolved(
+                db, task, actor_user_id=actor_user_id, now=now
+            )
+        else:
+            task.closed_at = None
+            if next_status == "resolved":
+                mark_task_resolved(
+                    db, task, actor_user_id=actor_user_id, now=now
+                )
+            elif prior_operational_status == "resolved" and task.resolved_at:
+                task.resolved_at = None
+                task.sla_paused_at = None
+                task.resolution_due_at = (
+                    now + timedelta(minutes=task.sla_resolution_minutes)
+                    if task.sla_resolution_minutes is not None
+                    else None
+                )
+                db.add(
+                    TaskSlaEvent(
+                        task_id=task.id,
+                        actor_user_id=actor_user_id,
+                        action="reopened",
+                        details_json={
+                            "resolution_due_at": (
+                                task.resolution_due_at.isoformat()
+                                if task.resolution_due_at
+                                else None
+                            )
+                        },
+                    )
+                )
+        db.add(
+            TaskHistory(
+                task_id=task.id,
+                user_id=actor_user_id,
+                field_name="status",
+                old_value=old_status,
+                new_value=next_status,
+            )
+        )
         if action == "complete":
             item.status = "completed"
             item.completed_at = now

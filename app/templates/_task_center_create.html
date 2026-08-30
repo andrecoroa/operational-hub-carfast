@@ -8,6 +8,7 @@
     <button type="button" class="task-create-model" data-create-model="information" data-create-workspace="operational" onclick="window.selectTaskCreationModel?.(this)"><strong>Informação / Comunicação</strong><span>Conteúdo recebido, relação e anexos, sem planeamento obrigatório.</span></button>
     {% endif %}
     <button type="button" class="task-create-model" data-create-model="task" onclick="window.selectTaskCreationModel?.(this)"><strong>Tarefa completa</strong><span>Classificação, owner/executor, prioridade e prazo.</span></button>
+    {% if task_cases_enabled and can_create_cases %}<button type="button" class="task-create-model" data-create-case><strong>Caso</strong><span>Cria um caso persistido com a primeira tarefa, sem duplicar a contagem.</span></button>{% endif %}
   </section>
   <form method="post" action="/v2-clean/tasks" enctype="multipart/form-data" data-task-create-form hidden>
     <input type="hidden" name="record_type" value="task">
@@ -29,7 +30,7 @@
       <label>Prioridade<select name="priority"><option value="normal">Normal</option><option value="high">Alta</option><option value="urgent">Urgente</option><option value="low">Baixa</option></select></label>
       <label>Prazo<input type="date" name="due_on"></label>
     </div></details>
-    <footer><button type="button" class="secondary" data-task-create-back>Voltar aos modelos</button><button type="submit">Criar</button></footer>
+    <footer><button type="button" class="secondary" data-task-create-back>Voltar aos modelos</button><button type="submit">Criar e abrir tarefa</button></footer>
   </form>
 </dialog>
 {% endif %}

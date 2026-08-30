@@ -69,6 +69,20 @@ def test_approved_preview_is_inline_and_has_at_most_four_rbac_actions() -> None:
     assert "function mountPreview(row,groupButton=null)" in TEMPLATE
     assert "row.insertAdjacentElement('afterend',inlinePreviewRow)" in TEMPLATE
     assert "groupButton.insertAdjacentElement('afterend',preview)" in TEMPLATE
+
+
+def test_inline_preview_toggles_single_selection_and_restores_keyboard_focus() -> None:
+    assert "const toggleSelection=(row,groupButton=null)" in TEMPLATE
+    assert "selectedRow===row&&!preview.classList.contains('is-empty')" in TEMPLATE
+    assert "selectedTrigger=groupButton||row" in TEMPLATE
+    assert "selectedRow=null;selectedTrigger=null" in TEMPLATE
+    assert "trigger?.isConnected)trigger.focus()" in TEMPLATE
+    assert "event.key!=='Escape'" in TEMPLATE
+    assert "document.querySelector('dialog[open]')" in TEMPLATE
+    assert "row.addEventListener('click',()=>toggleSelection(row))" in TEMPLATE
+    assert "if(row)toggleSelection(row,button)" in TEMPLATE
+    assert "groupButtons.find(button=>button.dataset.groupTask===id)" in TEMPLATE
+    assert "if(row)select(row,groupButton||null)" in TEMPLATE
     assert ".task-center-approved-workspace{display:block" in CSS
 
 

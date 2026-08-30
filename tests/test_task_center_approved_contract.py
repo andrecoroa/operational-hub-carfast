@@ -102,8 +102,15 @@ def test_inline_preview_toggles_single_selection_and_restores_keyboard_focus() -
     assert "row.addEventListener('click',()=>toggleSelection(row))" in TEMPLATE
     assert "if(row)toggleSelection(row,button)" in TEMPLATE
     assert "groupButtons.find(button=>button.dataset.groupTask===id)" in TEMPLATE
-    assert "if(row)select(row,groupButton||null)" in TEMPLATE
+    assert "if(!grouped||groupButton)select(row,groupButton||null)" in TEMPLATE
     assert ".task-center-approved-workspace{display:block" in CSS
+
+
+def test_grouped_reload_restores_preview_only_under_a_visible_group_trigger() -> None:
+    assert "const group=groupButton.closest('details.task-group');if(group)group.open=true" in TEMPLATE
+    assert "const grouped=document.querySelector('[data-task-groups]')" in TEMPLATE
+    assert "if(!grouped||groupButton)select(row,groupButton||null)" in TEMPLATE
+    assert "groupButton.insertAdjacentElement('afterend',preview)" in TEMPLATE
 
 
 def test_support_targets_are_scoped_server_side_and_not_globally_rendered() -> None:

@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
 
-from app.models.tasks import Task, TaskHelpRequest, TaskHistory
+from app.models.tasks import Task, TaskHelpRequest, TaskHistory, TaskSlaEvent
 from app.services.service_desk import (
     mark_task_resolved,
     pause_task_sla,
@@ -135,6 +135,28 @@ def resolve_task_support(
             if next_status == "resolved":
                 mark_task_resolved(
                     db, task, actor_user_id=actor_user_id, now=now
+                )
+            elif prior_operational_status == "resolved" and task.resolved_at:
+                task.resolved_at = None
+                task.sla_paused_at = None
+                task.resolution_due_at = (
+                    now + timedelta(minutes=task.sla_resolution_minutes)
+                    if task.sla_resolution_minutes is not None
+                    else None
+                )
+                db.add(
+                    TaskSlaEvent(
+                        task_id=task.id,
+                        actor_user_id=actor_user_id,
+                        action="reopened",
+                        details_json={
+                            "resolution_due_at": (
+                                task.resolution_due_at.isoformat()
+                                if task.resolution_due_at
+                                else None
+                            )
+                        },
+                    )
                 )
         db.add(
             TaskHistory(

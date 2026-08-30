@@ -1,6 +1,6 @@
 """Contract-first acceptance tests for the approved Task Center v3 tranche."""
 
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
@@ -13,6 +13,7 @@ from app.models import (
     TaskComment,
     TaskHelpRequest,
     TaskHistory,
+    TaskSlaEvent,
     Team,
     TeamMember,
     User,
@@ -303,6 +304,54 @@ def test_support_cancellation_explicitly_restores_captured_state(
     db_session.expire_all()
     assert db_session.get(Task, task.id).status == "in_execution"
     assert db_session.get(TaskHelpRequest, item.id).status == "cancelled"
+
+
+def test_support_return_from_resolved_reopens_sla_consistently(
+    authenticated_client, db_session
+) -> None:
+    task = _new_task(db_session, title="Retomar tarefa resolvida após suporte")
+    task.status = "resolved"
+    task.resolved_at = datetime(2026, 8, 20, 12, 0, tzinfo=UTC)
+    task.sla_resolution_minutes = 240
+    db_session.commit()
+    support_team = _support_team_with_eligible_member(db_session)
+    authenticated_client.post(
+        f"/v2-clean/tasks/{task.id}/help",
+        data={
+            "requested_target": f"team:{support_team.id}",
+            "message": "Confirmar reabertura",
+            "return_url": RETURN_CONTEXT,
+        },
+        follow_redirects=False,
+    )
+    item = db_session.scalar(
+        select(TaskHelpRequest).where(TaskHelpRequest.task_id == task.id)
+    )
+
+    response = authenticated_client.post(
+        f"/v2-clean/tasks/{task.id}/help/{item.id}",
+        data={
+            "response": "responded",
+            "comment": "Retomar execução",
+            "next_status": "in_execution",
+            "return_url": RETURN_CONTEXT,
+        },
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    db_session.expire_all()
+    persisted = db_session.get(Task, task.id)
+    assert persisted.status == "in_execution"
+    assert persisted.resolved_at is None
+    assert persisted.sla_paused_at is None
+    assert persisted.resolution_due_at is not None
+    assert db_session.scalar(
+        select(TaskSlaEvent.id).where(
+            TaskSlaEvent.task_id == task.id,
+            TaskSlaEvent.action == "reopened",
+        )
+    )
 
 
 @pytest.mark.parametrize(

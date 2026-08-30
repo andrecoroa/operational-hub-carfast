@@ -369,6 +369,9 @@ def test_archived_task_cannot_start_support(
     )
     assert page.status_code == 200
     assert f'"{task.id}": []' in page.text
+    detail = authenticated_client.get(f"/v2-clean/tasks/{task.id}/detail")
+    assert detail.status_code == 200
+    assert 'id="task-support"' not in detail.text
     response = authenticated_client.post(
         f"/v2-clean/tasks/{task.id}/help",
         data={

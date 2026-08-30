@@ -35713,7 +35713,11 @@ def task_detail(
             db, current_user, task_workspace, action="close"
         ) and _task_hierarchy_scope_allows(db, current_user.id, task, action="complete")
         task_support_targets: list[dict[str, str]] = []
-        if can_update_task:
+        if (
+            can_update_task
+            and task.status not in TASK_ARCHIVE_STATUSES
+            and task.closed_at is None
+        ):
             support_users = task_assignable_users_for_context(
                 db,
                 users=users,

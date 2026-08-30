@@ -14416,6 +14416,14 @@ button.clean-upload-preview-card {
   align-items: center;
 }
 
+.clean-workshop-mobile-menu {
+  display: none;
+}
+
+@media (max-width: 1199px) {
+  .clean-workshop-mobile-menu { display: inline-grid; margin-bottom: 8px; place-items: center; }
+}
+
 .clean-workshop-dashboard-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -14485,13 +14493,26 @@ button.clean-upload-preview-card {
 
 .clean-workshop-dashboard-filters {
   display: grid;
-  grid-template-columns: repeat(3, minmax(150px, 1fr)) auto auto;
+  position: sticky;
+  z-index: 4;
+  top: 64px;
+  grid-template-columns: minmax(220px, 1.4fr) repeat(4, minmax(130px, 1fr)) auto auto;
   gap: 10px;
   align-items: end;
   padding: 10px;
   border: 1px solid #e5eaf2;
   border-radius: 8px;
   background: #f8fafc;
+}
+
+.clean-workshop-search-field {
+  min-width: 220px;
+}
+
+.clean-workshop-filter-help {
+  margin: 0;
+  color: #667085;
+  font-size: var(--clean-font-xs);
 }
 
 .clean-workshop-dashboard-filters label {
@@ -14536,7 +14557,7 @@ button.clean-upload-preview-card {
   border-radius: 8px;
   background: #fff;
   color: #0f2a5f;
-  padding: 10px 12px;
+  padding: 7px 12px;
 }
 
 .clean-workshop-process-item:hover {
@@ -20943,13 +20964,50 @@ body.clean-doc-modal-open {
   text-transform: uppercase;
 }
 
+.clean-workshop-table-scroll {
+  max-height: min(58vh, 560px);
+  overflow: auto;
+  overscroll-behavior: contain;
+  border: 1px solid #e5eaf2;
+  border-radius: 8px;
+  scrollbar-gutter: stable;
+}
+
+.clean-workshop-table-scroll .clean-workshop-list-head {
+  position: sticky;
+  z-index: 3;
+  top: 0;
+  min-height: 36px;
+  align-items: center;
+  background: #f8fafc;
+  border-bottom: 1px solid #e5eaf2;
+}
+
 .clean-workshop-process-list {
-  overflow-x: auto;
+  overflow: visible;
+}
+
+.clean-workshop-process-item {
+  grid-template-columns: minmax(150px, .9fr) minmax(145px, .9fr) minmax(120px, .7fr) minmax(210px, 1.35fr) minmax(95px, .6fr) minmax(90px, .55fr) minmax(150px, .9fr);
+  align-items: center;
 }
 
 .clean-workshop-process-link {
+  display: block;
+  width: 100%;
+  min-height: 0;
+  border: 0;
+  background: transparent;
   color: #0f2a5f;
+  font: inherit;
+  padding: 0;
+  text-align: left;
   text-decoration: none;
+}
+
+.clean-workshop-process-link:hover {
+  background: transparent;
+  color: #1749af;
 }
 
 .clean-workshop-process-fact strong {
@@ -20981,8 +21039,7 @@ body.clean-doc-modal-open {
 }
 
 .clean-workshop-situation-action,
-.clean-workshop-wait-control summary,
-.clean-workshop-wait-control button {
+.clean-workshop-wait-panel button {
   border: 0;
   background: transparent;
   color: #b42318;
@@ -20999,38 +21056,97 @@ body.clean-doc-modal-open {
   }
 }
 
-.clean-workshop-wait-control {
-  position: relative;
-}
-
-.clean-workshop-wait-control summary {
-  list-style: none;
-}
-
-.clean-workshop-wait-control form {
-  position: absolute;
-  z-index: 5;
-  right: 0;
-  top: 22px;
-  width: 210px;
+.clean-workshop-process-preview {
+  position: sticky;
+  left: 0;
+  width: min(920px, calc(100vw - 280px));
+  min-width: 0;
   display: grid;
-  gap: 8px;
-  border: 1px solid #d0d5dd;
+  gap: 12px;
+  margin: 0 0 8px;
+  padding: 14px 16px;
+  border: 1px solid #b8c9e6;
+  border-radius: 8px;
+  background: #f8fbff;
+  box-shadow: inset 3px 0 0 #2875e8;
+}
+
+.clean-workshop-process-preview[hidden],
+.clean-workshop-wait-panel[hidden] {
+  display: none;
+}
+
+.clean-workshop-process-preview > header,
+.clean-workshop-preview-actions,
+.clean-workshop-wait-panel,
+.clean-workshop-wait-panel form {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.clean-workshop-process-preview > header {
+  justify-content: space-between;
+}
+
+.clean-workshop-process-preview span,
+.clean-workshop-wait-panel label {
+  color: #667085;
+  font-size: var(--clean-font-xs);
+  font-weight: 800;
+}
+
+.clean-workshop-preview-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0,1fr));
+  gap: 12px;
+}
+
+.clean-workshop-preview-grid > div {
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid #dbe4f1;
   border-radius: 6px;
   background: #fff;
+}
+
+.clean-workshop-preview-grid p {
+  margin: 4px 0 0;
+  color: #475467;
+  font-size: var(--clean-font-xs);
+}
+
+.clean-workshop-wait-panel {
+  flex: 1;
+  justify-content: space-between;
   padding: 10px;
-  box-shadow: 0 10px 24px rgba(16, 24, 40, .12);
+  border: 1px solid #fedf89;
+  border-radius: 6px;
+  background: #fffaeb;
 }
 
-.clean-workshop-wait-control select {
-  width: 100%;
+.clean-workshop-wait-panel > div,
+.clean-workshop-wait-panel label {
+  display: grid;
+  gap: 3px;
 }
 
-.clean-workshop-wait-control button {
-  min-height: 32px;
-  border-radius: 5px;
-  background: #b54732;
-  color: #fff;
+.clean-workshop-wait-panel form {
+  margin: 0;
+}
+
+.clean-workshop-wait-panel button {
+  min-height: 36px;
+  padding: 7px 12px;
+}
+
+@media (max-width: 900px) {
+  .clean-workshop-dashboard-filters { position: static; }
+  .clean-workshop-process-preview { width: calc(100vw - 48px); }
+  .clean-workshop-preview-grid { grid-template-columns: 1fr 1fr; }
+  .clean-workshop-preview-actions,
+  .clean-workshop-wait-panel,
+  .clean-workshop-wait-panel form { align-items: stretch; flex-direction: column; }
 }
 
 .clean-task-classification-row,

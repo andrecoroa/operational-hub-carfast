@@ -309,6 +309,21 @@ def test_workshop_dashboard_shows_operational_context_and_updates_situation(
     assert "Colocar em espera" in dashboard.text
     assert "Fase atual" in dashboard.text
     assert "Em espera" in dashboard.text
+    assert 'data-workshop-preview-toggle' in dashboard.text
+    assert 'id="workshop-preview-' in dashboard.text
+    assert "Fase atual</strong> indica onde o processo está no percurso técnico" in dashboard.text
+
+    searched = authenticated_client.get("/v2-clean/workshop?q=WX-10-AA&sort=age")
+    assert searched.status_code == 200
+    assert "WX-10-AA" in searched.text
+    assert 'name="q" value="WX-10-AA"' in searched.text
+    assert 'value="age" selected' in searched.text
+    assert "Ruído ao travar" in searched.text
+    assert "Histórico recente" in searched.text
+
+    no_match = authenticated_client.get("/v2-clean/workshop?q=SEM-MATCH-999")
+    assert no_match.status_code == 200
+    assert "WX-10-AA" not in no_match.text
 
     filtered = authenticated_client.get(
         "/v2-clean/workshop?scope=open&location=external&phase=entrada&situation=in_progress"

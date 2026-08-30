@@ -8818,6 +8818,8 @@ def clean_workshop_dashboard(
     location: str = "all",
     phase: str = "all",
     situation: str = "all",
+    q: str = "",
+    sort: str = "updated",
 ):
     denied = clean_experience_denied(request)
     if denied:
@@ -8828,6 +8830,9 @@ def clean_workshop_dashboard(
         location = "all"
     if situation not in {"all", "in_progress", "waiting"}:
         situation = "all"
+    q = " ".join(q.strip().split())[:120]
+    if sort not in {"age", "updated", "situation"}:
+        sort = "updated"
     phase_options = [
         {"value": str(step["key"]), "label": str(step["label"])}
         for step in CLEAN_WORKSHOP_STEP_DEFS
@@ -8838,6 +8843,8 @@ def clean_workshop_dashboard(
         "location": location,
         "phase": phase,
         "situation": situation,
+        "q": q,
+        "sort": sort,
     }
     filter_query = urlencode(filter_params)
     with SessionLocal() as db:
@@ -8926,11 +8933,59 @@ def clean_workshop_dashboard(
             recent_query = recent_query.where(WorkshopPhasedProcess.status == "cancelled")
         if phase != "all":
             recent_query = recent_query.where(WorkshopPhasedProcess.current_phase_code == phase)
+        if q:
+            search_term = f"%{q}%"
+            recent_query = recent_query.where(
+                or_(
+                    WorkshopPhasedProcess.plate_snapshot.ilike(search_term),
+                    WorkshopPhasedProcess.public_reference.ilike(search_term),
+                    WorkshopPhasedProcess.title.ilike(search_term),
+                    WorkshopPhasedProcess.initial_observation.ilike(search_term),
+                )
+            )
+        if sort == "age":
+            order_columns = (
+                func.coalesce(
+                    WorkshopPhasedProcess.opened_at,
+                    WorkshopPhasedProcess.received_at,
+                    WorkshopPhasedProcess.created_at,
+                ).asc(),
+                WorkshopPhasedProcess.id.asc(),
+            )
+        else:
+            order_columns = (
+                WorkshopPhasedProcess.updated_at.desc(),
+                WorkshopPhasedProcess.id.desc(),
+            )
         recent_processes = db.scalars(
-            recent_query.order_by(
-                WorkshopPhasedProcess.updated_at.desc(), WorkshopPhasedProcess.id.desc()
-            ).limit(250 if location != "all" or situation != "all" else 40)
+            recent_query.order_by(*order_columns).limit(
+                250 if q or sort != "updated" or location != "all" or situation != "all" else 40
+            )
         ).all()
+        process_ids = [process.id for process in recent_processes]
+        responsible_ids = {
+            process.responsible_user_id
+            for process in recent_processes
+            if process.responsible_user_id
+        }
+        responsible_by_id = {
+            user.id: user.name
+            for user in db.scalars(select(User).where(User.id.in_(responsible_ids))).all()
+        } if responsible_ids else {}
+        recent_phases_by_process: dict[int, list[WorkshopPhasedProcessPhase]] = {}
+        if process_ids:
+            for phase_row in db.scalars(
+                select(WorkshopPhasedProcessPhase)
+                .where(WorkshopPhasedProcessPhase.process_id.in_(process_ids))
+                .order_by(
+                    WorkshopPhasedProcessPhase.process_id,
+                    WorkshopPhasedProcessPhase.updated_at.desc(),
+                    WorkshopPhasedProcessPhase.id.desc(),
+                )
+            ).all():
+                history = recent_phases_by_process.setdefault(phase_row.process_id, [])
+                if len(history) < 3:
+                    history.append(phase_row)
         process_rows: list[dict[str, object]] = []
         now = datetime.now(UTC)
         for process in recent_processes:
@@ -8981,6 +9036,13 @@ def clean_workshop_dashboard(
                     "location_detail": external_name if external_repair and external_name else ("Oficina externa" if external_repair else "Oficina Carfast"),
                     "operational_situation": operational_situation,
                     "waiting_reason": str(metadata.get("operational_waiting_reason") or "").strip(),
+                    "responsible_name": responsible_by_id.get(process.responsible_user_id or 0, "Sem responsável"),
+                    "recent_phases": recent_phases_by_process.get(process.id, []),
+                    "next_action": (
+                        "Retomar o processo"
+                        if operational_situation == "waiting"
+                        else f"Continuar em {str(process.current_phase_code or 'entrada').replace('_', ' ').title()}"
+                    ),
                 }
             if location != "all" and (
                 (location == "external") != (row["location_type"] == "Externa")
@@ -8989,8 +9051,15 @@ def clean_workshop_dashboard(
             if situation != "all" and row["operational_situation"] != situation:
                 continue
             process_rows.append(row)
-            if len(process_rows) == 40:
-                break
+        if sort == "situation":
+            situation_order = {"waiting": 0, "in_progress": 1, "closed": 2, "cancelled": 3}
+            process_rows.sort(
+                key=lambda item: (
+                    situation_order.get(str(item["operational_situation"]), 9),
+                    -int(item["process"].id),
+                )
+            )
+        process_rows = process_rows[:40]
         return templates.TemplateResponse(
             request,
             "clean_workshop_dashboard.html",
@@ -9010,6 +9079,8 @@ def clean_workshop_dashboard(
                 "location": location,
                 "phase": phase,
                 "situation": situation,
+                "q": q,
+                "sort": sort,
                 "phase_options": phase_options,
                 "filter_query": filter_query,
             },
@@ -9032,6 +9103,10 @@ async def clean_workshop_operational_situation_save(request: Request, process_id
         "location": str(form.get("location") or "all"),
         "phase": str(form.get("phase") or "all"),
         "situation": str(form.get("situation") or "all"),
+        "q": " ".join(str(form.get("q") or "").strip().split())[:120],
+        "sort": str(form.get("sort") or "updated")
+        if str(form.get("sort") or "updated") in {"age", "updated", "situation"}
+        else "updated",
     }
     return_query = urlencode(return_filters)
     if action not in {"wait", "resume"} or (action == "wait" and not waiting_reason):

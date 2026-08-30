@@ -1,4 +1,5 @@
 from pathlib import Path
+import json
 import re
 from datetime import date, timedelta
 
@@ -65,6 +66,57 @@ def test_approved_preview_is_inline_and_has_at_most_four_rbac_actions() -> None:
     assert "task_close_allowed_by_id" in TEMPLATE
     assert "data-preview-origin" in TEMPLATE
     assert "data-preview-relation" in TEMPLATE
+    assert "function mountPreview(row,groupButton=null)" in TEMPLATE
+    assert "row.insertAdjacentElement('afterend',inlinePreviewRow)" in TEMPLATE
+    assert "groupButton.insertAdjacentElement('afterend',preview)" in TEMPLATE
+    assert ".task-center-approved-workspace{display:block" in CSS
+
+
+def test_support_targets_are_scoped_server_side_and_not_globally_rendered() -> None:
+    support_dialog = TEMPLATE[TEMPLATE.index("data-task-support-dialog") :]
+    support_dialog = support_dialog[: support_dialog.index("{% include")]
+    assert "task_support_targets_by_id|tojson" in TEMPLATE
+    assert "for user in all_users" not in support_dialog
+    assert "for team in teams" not in support_dialog
+    assert "target.replaceChildren" in TEMPLATE
+
+
+def test_support_targets_fail_closed_without_update_permission(
+    authenticated_client, db_session, monkeypatch
+) -> None:
+    monkeypatch.setattr(task_router.settings, "visual_foundation_enabled", True)
+    original_scope_check = task_router._task_hierarchy_scope_allows
+
+    def scope_check(db, user_id, task, *, action):
+        if action == "update":
+            return False
+        return original_scope_check(db, user_id, task, action=action)
+
+    monkeypatch.setattr(task_router, "_task_hierarchy_scope_allows", scope_check)
+    task = Task(
+        title="Visível sem suporte autorizado",
+        task_type="operational_task",
+        category="Documentação",
+        status="new",
+        priority="normal",
+    )
+    db_session.add(task)
+    db_session.commit()
+
+    page = authenticated_client.get(
+        "/v2-clean/tasks?workspace=all&status=open&category=documentacao"
+    )
+
+    assert page.status_code == 200
+    assert 'data-title="Visível sem suporte autorizado"' in page.text
+    row = re.search(
+        r'<tr[^>]+data-title="Visível sem suporte autorizado"[^>]+>', page.text
+    ).group(0)
+    assert 'data-can-update="0"' in row
+    payload = json.loads(
+        re.search(r"const supportTargets=(\{.*?\});", page.text, re.S).group(1)
+    )
+    assert payload[str(task.id)] == []
 
 
 def test_approved_workbench_stays_in_the_center_and_uses_scoped_update_options() -> None:

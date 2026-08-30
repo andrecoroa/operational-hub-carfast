@@ -5037,6 +5037,11 @@ def clean_tasks_center(
             mine_counts = {
                 code: int(getattr(counter_row, code, 0) or 0) for code in mine_counts
             }
+        if cases_enabled and active_grouping == "case":
+            # "Por caso" is a view over persisted cases, not a presentation
+            # trick for every task. Apply the constraint before pagination so
+            # simple tasks cannot consume a slot or become pseudo-cases.
+            filters.append(Task.case_id.is_not(None))
         page_size = 50
         total_tasks = db.scalar(
             select(func.count()).select_from(Task).where(*filters)
@@ -5437,6 +5442,7 @@ def clean_tasks_center(
         hierarchy = task_scoped_hierarchy_context(
             db, user_id=user_id, action="create"
         )
+        work_category_labels = hierarchy["work_category_labels"]
         update_hierarchy = task_scoped_hierarchy_context(
             db, user_id=user_id, action="update"
         )
@@ -5576,21 +5582,23 @@ def clean_tasks_center(
             }
         task_groups: list[dict[str, object]] = []
         if cases_enabled and active_grouping != "flat":
-            grouped: dict[str, list[Task]] = defaultdict(list)
+            grouped: dict[tuple[object, ...], list[Task]] = defaultdict(list)
             for task in tasks:
                 if active_grouping == "case":
-                    key = f"case:{task.case_id}" if task.case_id else f"task:{task.id}"
+                    if not task.case_id:
+                        continue
+                    key = ("case", task.case_id)
                 else:
-                    key = f"category:{task.work_category_id or task.category or 'unclassified'}"
+                    key = ("category", task.work_category_id, task.category)
                 grouped[key].append(task)
             for key, child_tasks in grouped.items():
-                case_id = child_tasks[0].case_id if key.startswith("case:") else None
+                case_id = child_tasks[0].case_id if key[0] == "case" else None
                 case_item = task_cases_by_id.get(case_id) if case_id else None
+                if key[0] == "case" and case_item is None:
+                    continue
                 label = (
                     case_item.title
                     if case_item
-                    else child_tasks[0].title
-                    if key.startswith("task:")
                     else work_category_labels.get(
                         child_tasks[0].work_category_id,
                         child_tasks[0].category or "Por classificar",
@@ -5602,7 +5610,7 @@ def clean_tasks_center(
                     else category_summaries.get(
                         (child_tasks[0].work_category_id, child_tasks[0].category)
                     )
-                    if key.startswith("category:")
+                    if key[0] == "category"
                     else None
                 )
                 task_groups.append({
@@ -5657,6 +5665,70 @@ def clean_tasks_center(
             ]
             for task in tasks
         }
+        # Mirror the POST authorization for each visible task.  This also
+        # retains the canonical queue-less legacy fallback instead of
+        # guessing support targets from category labels in the browser.
+        support_team_members: dict[int, set[int]] = defaultdict(set)
+        for team_id, member_id in db.execute(
+            select(TeamMember.team_id, TeamMember.user_id)
+        ):
+            support_team_members[team_id].add(member_id)
+        task_support_targets_by_id: dict[int, list[dict[str, str]]] = {}
+        for task in tasks:
+            # Keep the GET surface aligned with the POST /help gate.  A task
+            # that is readable but not updateable must not leak eligible
+            # people or teams to the browser.
+            if not task_update_allowed_by_id.get(task.id, False):
+                task_support_targets_by_id[task.id] = []
+                continue
+            workspace = workspace_for_task_type(task.task_type)
+            user_targets = task_assignable_users_for_context(
+                db,
+                users=all_users,
+                actor_user_id=user_id,
+                workspace=workspace,
+                queue_id=task.work_queue_id,
+                department_id=task.work_department_id,
+                category_id=task.work_category_id,
+                subcategory_id=task.work_subcategory_id,
+                team_id=task.team_id,
+            )
+            team_targets = []
+            for target in all_teams:
+                member_ids = support_team_members.get(target.id, set())
+                if target.active and member_ids and all(
+                    is_task_assignment_allowed(
+                        db,
+                        actor_user_id=user_id,
+                        target_user_id=member_id,
+                        workspace=workspace,
+                        queue_id=task.work_queue_id,
+                        department_id=task.work_department_id,
+                        category_id=task.work_category_id,
+                        subcategory_id=task.work_subcategory_id,
+                        team_id=target.id,
+                    )
+                    for member_id in member_ids
+                ):
+                    team_targets.append(target)
+            task_support_targets_by_id[task.id] = [
+                *[
+                    {
+                        "value": f"user:{target.id}",
+                        "label": target.name,
+                        "kind": "Pessoas",
+                    }
+                    for target in user_targets
+                ],
+                *[
+                    {
+                        "value": f"team:{target.id}",
+                        "label": target.name,
+                        "kind": "Equipas",
+                    }
+                    for target in team_targets
+                ],
+            ]
         allowed_template_ids = {
             item.template_version_id
             for item in TaskCreationCapabilityResolver(db).options(current_user)
@@ -5729,6 +5801,8 @@ def clean_tasks_center(
                 "task_claim_allowed_by_id": task_claim_allowed_by_id,
                 "task_assignable_users_by_id": task_assignable_users_by_id,
                 "task_support_teams_by_id": task_support_teams_by_id,
+                "task_support_targets_by_id": task_support_targets_by_id,
+                "task_case_ids_by_id": {task.id: task.case_id for task in tasks},
                 "task_template_options": task_template_options,
                 "mine_counts": mine_counts,
                 "task_notifications": task_notifications,

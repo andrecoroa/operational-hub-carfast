@@ -29,6 +29,7 @@ from app.models import (  # noqa: E402
     Role,
     RolePermission,
     Task,
+    TaskCase,
     User,
     WorkCategory,
     WorkDepartment,
@@ -126,9 +127,9 @@ def prepare_fixture() -> None:
             )
         if not db.scalar(select(Task.id).where(Task.source == "synthetic_task_center_preview")):
             now = datetime.now(UTC)
+            fixture_tasks: list[Task] = []
             for index, (title, category, priority, status, day_delta, closed) in enumerate(FIXTURES, 1):
-                db.add(
-                    Task(
+                task = Task(
                         title=title,
                         description=f"Caso sintético determinístico {index}. Sem dados reais nem efeitos externos.",
                         task_type="workshop_task" if category == "Oficina" else "operational_task",
@@ -137,12 +138,25 @@ def prepare_fixture() -> None:
                         subcategory="Validação",
                         status=status,
                         priority=priority,
-                        assigned_to_id=None if index in {1, 4} else user.id,
-                        created_by_id=user.id,
+                        assigned_to_id=None if index in {1, 4} else queue_user.id,
+                        created_by_id=queue_user.id,
                         due_on=date.today() + timedelta(days=day_delta),
                         closed_at=now if closed else None,
                     )
-                )
+                db.add(task)
+                fixture_tasks.append(task)
+            db.flush()
+            task_case = TaskCase(
+                title="Dossier sintético de preparação",
+                description="Caso persistido usado apenas na evidência local.",
+                workspace="tasks_support",
+                work_queue_id=queue.id,
+                created_by_id=queue_user.id,
+            )
+            db.add(task_case)
+            db.flush()
+            fixture_tasks[0].case_id = task_case.id
+            fixture_tasks[1].case_id = task_case.id
         db.commit()
 
 

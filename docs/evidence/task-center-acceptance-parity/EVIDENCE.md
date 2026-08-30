@@ -32,6 +32,9 @@
 - Restauro por hash/session em Categoria e Caso volta a montar o preview sob o
   elemento visível PASS; Caso contém apenas as duas tarefas do `TaskCase`
   persistido da fixture.
+- Recorrentes: utilizador sintético com `tasks.recurring.manage` vê a ação
+  secundária, abre `/v2-clean/tasks/recurring` e encontra modelos, estado e
+  próxima execução; sem a permissão, a ação continua ausente.
 - O override de viewport do browser integrado não alterou a viewport para
   390×844. A captura incorretamente dimensionada foi removida e o gate mobile
   permanece aberto; não é reportado como PASS.
@@ -53,6 +56,11 @@
 - Ruff global: FAIL preexistente (2282 ocorrências em todo o repositório); o CI
   canónico limita Ruff ao conjunto versionado em `.github/workflows/ci.yml`.
 - Compilação de `app` e `scripts`: PASS.
+- Workflow CI canónico local: Ruff restrito PASS, arquitetura congelada PASS,
+  Alembic graph PASS e seleção exata de testes `183 passed`.
+- Revisão independente após correção da reconciliação dos quatro KPIs:
+  código zero P0/P1 (`75 passed`, diff-check PASS). O revisor mantém como
+  bloqueio de aceitação apenas os dois gates visuais ainda abertos acima.
 
 Nenhuma divergência P0/P1 pode permanecer para fechar o gate local.
 

@@ -167,6 +167,8 @@ def test_sale_proposal_keeps_vehicle_values_independent(authenticated_client, db
     assert line.snapshot_json["fuel"] == "Diesel"
     assert line.snapshot_json["gearbox"] == "Automática"
     assert line.snapshot_json["debt"] == "20910.00"
+    assert line.snapshot_json["finance_entity"] == "Santander"
+    assert line.snapshot_json["contract_number"] == "PROP-DEBT-1"
 
     saved = authenticated_client.post(
         f"/v2-clean/fleet/sales/proposals/{proposal.id}",
@@ -250,6 +252,8 @@ def test_sale_proposal_keeps_vehicle_values_independent(authenticated_client, db
     assert "Combustível" in headers
     assert "Caixa" in headers
     assert "Valor em dívida" in headers
+    assert "Entidade financeira" in headers
+    assert "N.º contrato" in headers
     assert "Margem CarFast" in headers
     assert "Contraproposta cliente" in headers
     assert "Margem contraproposta" in headers
@@ -263,6 +267,10 @@ def test_sale_proposal_keeps_vehicle_values_independent(authenticated_client, db
     assert sheet.cell(row=4, column=headers.index("Combustível") + 1).value == "Diesel"
     assert sheet.cell(row=4, column=headers.index("Caixa") + 1).value == "Automática"
     assert sheet.cell(row=4, column=headers.index("Valor em dívida") + 1).value == 19680
+    assert sheet.cell(row=4, column=headers.index("Entidade financeira") + 1).value == "Santander"
+    contract_cell = sheet.cell(row=4, column=headers.index("N.º contrato") + 1)
+    assert contract_cell.value == "PROP-DEBT-1"
+    assert contract_cell.number_format == "@"
     assert sheet.cell(row=4, column=headers.index("Margem CarFast") + 1).value == 120
     assert sheet.cell(row=4, column=headers.index("Contraproposta cliente") + 1).value == 19400
     assert sheet.cell(row=4, column=headers.index("Margem contraproposta") + 1).value == -280
@@ -278,6 +286,8 @@ def test_sale_proposal_keeps_vehicle_values_independent(authenticated_client, db
     assert "Proposto CarFast" in customer_headers
     assert "Contraproposta cliente" not in customer_headers
     assert "Valor em dívida" not in customer_headers
+    assert "Entidade financeira" not in customer_headers
+    assert "N.º contrato" not in customer_headers
     assert "Margem CarFast" not in customer_headers
     assert "Valor em dívida" not in customer_headers
     assert "Margem negocial" not in customer_headers

@@ -1947,11 +1947,14 @@ def clean_admin_work_classification(request: Request):
         )
         service_desk_category_ids = {item.id for item in service_desk_categories}
 
-        roles = (
-            db.scalars(select(Role).where(Role.active.is_(True)).order_by(Role.name)).all()
+        all_roles = (
+            db.scalars(select(Role).order_by(Role.name)).all()
             if can_read_global_configuration
             else []
         )
+        # Active roles are the only valid choices for new grants. Keep every
+        # existing role in the lookup so historical grants continue to render.
+        roles = [item for item in all_roles if item.active]
         scopes = (
             db.scalars(select(RoleWorkScope).order_by(RoleWorkScope.role_id)).all()
             if can_read_global_configuration
@@ -2188,7 +2191,7 @@ def clean_admin_work_classification(request: Request):
             work_categories_by_id={item.id: item for item in categories},
             work_subcategories_by_id={item.id: item for item in subcategories},
             roles=roles,
-            roles_by_id={item.id: item for item in roles},
+            roles_by_id={item.id: item for item in all_roles},
             work_scopes=scopes,
             email_channels=channels,
             email_channel_aliases=channel_aliases,
@@ -3773,8 +3776,9 @@ def clean_admin_save_email_channel_role(
     ):
         return _redirect("/v2-clean/admin/work-classification", "error", "invalid_scope")
     with SessionLocal() as db:
-        if not db.get(EmailChannel, channel_id) or not db.get(Role, role_id):
-            return _redirect("/v2-clean/admin/work-classification", "error", "invalid_scope")
+        role = db.get(Role, role_id)
+        if not db.get(EmailChannel, channel_id) or not role or not role.active:
+            return Response("Invalid email access selection.", status_code=400)
         grant = db.scalar(
             select(EmailChannelRole).where(
                 EmailChannelRole.channel_id == channel_id,
@@ -3815,7 +3819,11 @@ def _plan_email_access_from_form(
     selected_roles = set(role_ids)
     selected_channels = set(channel_ids)
     valid_role_ids = set(
-        db.scalars(select(Role.id).where(Role.id.in_(selected_roles or {-1}))).all()
+        db.scalars(
+            select(Role.id).where(
+                Role.id.in_(selected_roles or {-1}), Role.active.is_(True)
+            )
+        ).all()
     )
     valid_channel_ids = set(
         db.scalars(
@@ -3824,8 +3832,10 @@ def _plan_email_access_from_form(
     )
     if selected_roles != valid_role_ids or selected_channels != valid_channel_ids:
         raise ValueError("invalid_selection")
-    if source_role_id and not db.get(Role, source_role_id):
-        raise ValueError("missing_copy_source")
+    if source_role_id:
+        source_role = db.get(Role, source_role_id)
+        if not source_role or not source_role.active:
+            raise ValueError("missing_copy_source")
     if source_channel_id and not db.get(EmailChannel, source_channel_id):
         raise ValueError("missing_copy_source")
     return plan_email_role_batch(
@@ -3885,7 +3895,9 @@ def clean_admin_preview_email_access_batch(
                 }
             )
     except ValueError as exc:
-        return JSONResponse({"error": str(exc)}, status_code=422)
+        error = str(exc)
+        status_code = 400 if error in {"invalid_selection", "missing_copy_source"} else 422
+        return JSONResponse({"error": error}, status_code=status_code)
 
 
 @clean_admin_router.post("/v2-clean/admin/work-classification/email-access/batch")
@@ -3950,6 +3962,8 @@ def clean_admin_apply_email_access_batch(
             )
             db.commit()
     except ValueError as exc:
+        if str(exc) in {"invalid_selection", "missing_copy_source"}:
+            return Response("Invalid email access selection.", status_code=400)
         return _redirect(
             "/v2-clean/admin/work-classification?view=channels", "error", str(exc)
         )

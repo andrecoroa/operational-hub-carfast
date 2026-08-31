@@ -1,0 +1,44 @@
+{
+  "desktop": {
+    "defaultRows": 4,
+    "labels": [
+      "Atribuídas a mim",
+      "Todas as minhas",
+      "Criadas por mim",
+      "A acompanhar"
+    ],
+    "geometry": {
+      "bodyWidth": 1440,
+      "viewportWidth": 1440,
+      "scrollMax": 54
+    },
+    "claim": 200,
+    "forged": 400,
+    "incompatible": 400,
+    "workspaceBypass": 400,
+    "claimFallback": 400,
+    "team": 200,
+    "errors": []
+  },
+  "mobile": {
+    "defaultRows": 4,
+    "labels": [
+      "Atribuídas a mim",
+      "Todas as minhas",
+      "Criadas por mim",
+      "A acompanhar"
+    ],
+    "geometry": {
+      "bodyWidth": 390,
+      "viewportWidth": 390,
+      "scrollMax": 650
+    },
+    "claim": 200,
+    "forged": 400,
+    "incompatible": 400,
+    "workspaceBypass": 400,
+    "claimFallback": 400,
+    "team": 200,
+    "errors": []
+  }
+}

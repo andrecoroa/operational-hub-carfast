@@ -1,10 +1,10 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import date, timedelta
-from typing import Iterable
 
-from sqlalchemy import and_, or_, select
+from sqlalchemy import and_, false, or_, select
 
 from app.models.admin import Role, User, UserRole
 from app.models.organization import Team, TeamMember
@@ -14,9 +14,12 @@ from app.models.tasks import (
     TaskNotification,
     TaskParticipant,
 )
+from app.models.work_hierarchy import ServiceDeskCategoryExecutor
 from app.services.authorization import get_user_permission_codes
-from app.services.work_classification import user_work_scope_allows, user_work_scope_filter
-
+from app.services.work_classification import (
+    user_work_scope_allows,
+    user_work_scope_filter,
+)
 
 TASK_DUE_SOON_DAYS = 3
 TASK_ELEVATED_ROLE_CODES = {
@@ -43,8 +46,8 @@ def resolve_task_scope_view(
     """Resolve the public Task Center view without silently changing scope."""
 
     scopes = {
-        "mine": TaskScopeView("mine", "mine", "all", ""),
-        "claim": TaskScopeView("claim", "all", "all", "unassigned"),
+        "mine": TaskScopeView("mine", "mine", "assigned", ""),
+        "claim": TaskScopeView("claim", "all", "assigned", "unassigned"),
         "team": TaskScopeView("team", "mine", "team", ""),
     }
     scope = scopes.get(requested)
@@ -115,6 +118,37 @@ def task_team_relation_filter(db, *, user_id: int, task_model=Task):
     )
 
 
+def task_claimable_relation_filter(db, *, user_id: int, task_model=Task):
+    """Return tasks the actor may assume through an active team and work scope.
+
+    Team membership alone never makes a task part of ``Minhas``.  It only
+    participates here when the task is unassigned and either targets one of
+    the actor's teams or belongs to a category for which that team is an
+    active eligible executor.  A configured ``assume`` scope is mandatory.
+    """
+
+    team_ids = user_team_ids(db, user_id)
+    if not team_ids:
+        return false()
+    assume_scope = user_work_scope_filter(
+        db, user_id=user_id, task_model=task_model, action="assume"
+    )
+    if assume_scope is None:
+        return false()
+    eligible_category_ids = select(ServiceDeskCategoryExecutor.category_id).where(
+        ServiceDeskCategoryExecutor.team_id.in_(tuple(team_ids)),
+        ServiceDeskCategoryExecutor.active.is_(True),
+    )
+    team_or_category = or_(
+        task_model.team_id.in_(tuple(team_ids)),
+        and_(
+            task_model.team_id.is_(None),
+            task_model.work_category_id.in_(eligible_category_ids),
+        ),
+    )
+    return and_(task_model.assigned_to_id.is_(None), team_or_category, assume_scope)
+
+
 def task_visibility_filter(db, *, user_id: int, task_model=Task):
     """Return the canonical row-level visibility filter for tasks.
 
@@ -130,11 +164,14 @@ def task_visibility_filter(db, *, user_id: int, task_model=Task):
         return hierarchy
     direct = task_direct_relation_filter(user_id=user_id, task_model=task_model)
     team = task_team_relation_filter(db, user_id=user_id, task_model=task_model)
+    claimable = task_claimable_relation_filter(
+        db, user_id=user_id, task_model=task_model
+    )
     if team is None:
-        return direct
+        return or_(direct, claimable)
     if hierarchy is None:
-        return or_(direct, team)
-    return or_(direct, and_(team, hierarchy))
+        return or_(direct, team, claimable)
+    return or_(direct, and_(team, hierarchy), claimable)
 
 
 def user_can_view_task(db, *, user_id: int, task: Task) -> bool:

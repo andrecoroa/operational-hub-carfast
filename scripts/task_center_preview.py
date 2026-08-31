@@ -28,8 +28,11 @@ from app.models import (  # noqa: E402
     Permission,
     Role,
     RolePermission,
+    RoleWorkScope,
     Task,
     TaskCase,
+    Team,
+    TeamMember,
     User,
     WorkCategory,
     WorkDepartment,
@@ -99,6 +102,32 @@ def prepare_fixture() -> None:
             )
             db.flush()
         queue = db.scalar(select(WorkQueue).where(WorkQueue.code == "tasks_support"))
+        support_team = db.scalar(select(Team).where(Team.code == "support"))
+        if support_team and not db.scalar(
+            select(TeamMember).where(
+                TeamMember.team_id == support_team.id,
+                TeamMember.user_id == queue_user.id,
+            )
+        ):
+            db.add(TeamMember(team_id=support_team.id, user_id=queue_user.id))
+        queue_role = db.scalar(select(Role).where(Role.code == "queue_preview"))
+        if queue_role and not db.scalar(
+            select(RoleWorkScope).where(
+                RoleWorkScope.role_id == queue_role.id,
+                RoleWorkScope.queue_id == queue.id,
+                RoleWorkScope.department_id.is_(None),
+                RoleWorkScope.category_id.is_(None),
+                RoleWorkScope.subcategory_id.is_(None),
+            )
+        ):
+            db.add(
+                RoleWorkScope(
+                    role_id=queue_role.id,
+                    queue_id=queue.id,
+                    can_read=True,
+                    can_assume=True,
+                )
+            )
         department = db.scalar(
             select(WorkDepartment).where(WorkDepartment.queue_id == queue.id)
         )
@@ -157,6 +186,14 @@ def prepare_fixture() -> None:
             db.flush()
             fixture_tasks[0].case_id = task_case.id
             fixture_tasks[1].case_id = task_case.id
+        if support_team:
+            for task in db.scalars(
+                select(Task).where(
+                    Task.source == "synthetic_task_center_preview",
+                    Task.assigned_to_id.is_(None),
+                )
+            ):
+                task.team_id = support_team.id
         db.commit()
 
 

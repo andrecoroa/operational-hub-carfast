@@ -3,10 +3,11 @@ from pathlib import Path
 
 from sqlalchemy import select
 
+import app.web.router as task_router
 from app.models import (
     Task,
-    TaskHelpRequest,
     TaskComment,
+    TaskHelpRequest,
     TaskHistory,
     TaskNotification,
     TaskParticipant,
@@ -17,7 +18,6 @@ from app.models import (
     WorkQueue,
 )
 from app.services.users import create_user
-import app.web.router as task_router
 
 
 def _login(client, email: str, password: str = "Secret123!") -> None:
@@ -103,7 +103,12 @@ def test_deadline_and_unassigned_counters_match_filters(authenticated_client, db
     unassigned = authenticated_client.get(
         "/v2-clean/tasks?workspace=all&status=open&assignment=unassigned"
     )
-    assert "Termina dentro da janela" in unassigned.text
+    # A task is only claimable when the actor has both an eligible
+    # team/category relation and the canonical assume scope. Mere absence of
+    # an assignee must never make unrelated work visible.
+    assert "Termina dentro da janela" not in unassigned.text
+    assert "Prazo ultrapassado" not in unassigned.text
+    assert "Prazo distante" not in unassigned.text
     assert 'name="assignment"' in unassigned.text
 
 

@@ -255,7 +255,9 @@ def test_grouped_web_flow_preserves_filters_and_exposes_preview(
     assert "grouping=case" in response.headers["location"]
     assert "case_created=" in response.headers["location"].split("#", 1)[0]
     assert response.headers["location"].endswith("#task-7")
-    page = authenticated_client.get("/v2-clean/tasks?grouping=case&workspace=mine")
+    page = authenticated_client.get(
+        "/v2-clean/tasks?grouping=case&workspace=mine&mine_kind=all"
+    )
     assert page.status_code == 200
     assert 'data-grouping="case"' in page.text
     assert "Preparação para venda" in page.text
@@ -276,7 +278,7 @@ def test_category_grouping_route_is_fail_safe(
     db_session.commit()
 
     page = authenticated_client.get(
-        "/v2-clean/tasks?grouping=category&workspace=mine"
+        "/v2-clean/tasks?grouping=category&workspace=mine&mine_kind=all"
     )
 
     assert page.status_code == 200, page.text
@@ -302,7 +304,7 @@ def test_case_grouping_only_shows_persisted_cases_and_their_tasks(
     db_session.commit()
 
     page = authenticated_client.get(
-        "/v2-clean/tasks?grouping=case&workspace=mine"
+        "/v2-clean/tasks?grouping=case&workspace=mine&mine_kind=all"
     )
 
     assert page.status_code == 200
@@ -322,7 +324,7 @@ def test_case_grouping_empty_state_explains_that_simple_tasks_are_excluded(
     db_session.commit()
 
     page = authenticated_client.get(
-        "/v2-clean/tasks?grouping=case&workspace=mine"
+        "/v2-clean/tasks?grouping=case&workspace=mine&mine_kind=all"
     )
 
     assert page.status_code == 200
@@ -346,7 +348,9 @@ def test_group_summary_counts_all_filtered_children_across_pages(
         child.case_id = case.id
     db_session.commit()
 
-    page = authenticated_client.get("/v2-clean/tasks?grouping=case&workspace=mine&page=1")
+    page = authenticated_client.get(
+        "/v2-clean/tasks?grouping=case&workspace=mine&mine_kind=all&page=1"
+    )
 
     assert page.status_code == 200
     assert "51 tarefas" in page.text
@@ -409,7 +413,9 @@ def test_add_to_case_surface_and_post_share_positive_capability(
         db_session, user=actor, case_id=case.id
     ) is not None
 
-    page = authenticated_client.get("/v2-clean/tasks?grouping=case&workspace=mine")
+    page = authenticated_client.get(
+        "/v2-clean/tasks?grouping=case&workspace=mine&mine_kind=all"
+    )
     added = authenticated_client.post(
         f"/v2-clean/task-cases/{case.id}/tasks",
         data={
@@ -451,7 +457,7 @@ def test_add_to_case_hides_and_blocks_completed_missing_and_blank_cases(
     db_session.commit()
 
     page = authenticated_client.get(
-        "/v2-clean/tasks?grouping=case&workspace=mine&status=all"
+        "/v2-clean/tasks?grouping=case&workspace=mine&mine_kind=all&status=all"
     )
     completed = authenticated_client.post(
         f"/v2-clean/task-cases/{case.id}/tasks",
@@ -611,7 +617,9 @@ def test_classified_case_requires_create_hierarchy_scope(
         lambda *_args, **_kwargs: False,
     )
 
-    page = authenticated_client.get("/v2-clean/tasks?grouping=case&workspace=mine")
+    page = authenticated_client.get(
+        "/v2-clean/tasks?grouping=case&workspace=mine&mine_kind=all"
+    )
     denied = authenticated_client.post(
         f"/v2-clean/task-cases/{case.id}/tasks",
         data={"task_title": "Não criar fora do scope"},

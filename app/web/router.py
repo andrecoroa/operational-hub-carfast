@@ -276,12 +276,13 @@ from app.services.task_center import (
     TASK_DUE_SOON_DAYS,
     create_task_notifications,
     hierarchy_assignment_allows,
-    task_due_condition,
-    task_direct_relation_filter,
-    task_team_relation_filter,
     resolve_task_scope_view,
-    task_visibility_filter,
+    task_claimable_relation_filter,
+    task_direct_relation_filter,
+    task_due_condition,
     task_role_codes,
+    task_team_relation_filter,
+    task_visibility_filter,
     user_can_view_task,
     user_team_ids,
 )
@@ -4654,7 +4655,7 @@ def clean_tasks_center(
     preset: str = "",
     risk: str = "",
     direction: str = "",
-    mine_kind: str = "all",
+    mine_kind: str = "assigned",
     status: str = "open",
     kind: str = "all",
     nature: str = "",
@@ -4695,6 +4696,11 @@ def clean_tasks_center(
         return HTMLResponse("Preset incompatível com a vista.", status_code=400)
     if status == "closed" and risk == "at_risk":
         return HTMLResponse("Fechadas e Em risco são incompatíveis.", status_code=400)
+    if assignment not in {"", "unassigned"}:
+        return HTMLResponse("Atribuição inválida.", status_code=400)
+    allowed_mine_kinds = {"assigned", "all", "created", "following", "team"}
+    if mine_kind not in allowed_mine_kinds:
+        return HTMLResponse("Relação com a tarefa inválida.", status_code=400)
     user_id = get_web_user_id(request)
     with SessionLocal() as db:
         current_user = db.get(User, user_id) if user_id else None
@@ -4712,9 +4718,24 @@ def clean_tasks_center(
             if assignment == "unassigned"
             else ""
         )
-        if task_scope_view and (
-            (task_scope_view != "team" and mine_kind == "team")
+        allowed_workspace_values = {
+            "mine", "all", "tasks_support", "administration",
+            "operational", "workshop", "management", "audit",
+        }
+        if workspace not in allowed_workspace_values:
+            return HTMLResponse("Vista de trabalho inválida.", status_code=400)
+        if settings.visual_foundation_enabled and workspace != "mine" and not (
+            workspace == "all" and requested_scope == "claim"
         ):
+            return HTMLResponse("Vista de trabalho incompatível.", status_code=400)
+        if requested_scope != "team" and mine_kind == "team":
+            return HTMLResponse("Vista de trabalho incompatível.", status_code=400)
+        if requested_scope in {"claim", "team"} and mine_kind not in {
+            "assigned",
+            "team",
+        }:
+            return HTMLResponse("Vista de trabalho incompatível.", status_code=400)
+        if requested_scope == "claim" and workspace != "all":
             return HTMLResponse("Vista de trabalho incompatível.", status_code=400)
         if requested_scope == "mine" and assignment == "unassigned":
             return HTMLResponse("Vista de trabalho incompatível.", status_code=400)
@@ -4828,15 +4849,12 @@ def clean_tasks_center(
         )
         if active_workspace == "all" and not readable_workspaces:
             active_workspace = "mine"
-        active_mine_kind = (
-            mine_kind
-            if mine_kind
-            in {"all", "assigned", "identified", "following", "team", "created", "support"}
-            else "all"
-        )
+        active_mine_kind = mine_kind
         if resolved_scope is not None:
             active_workspace = resolved_scope.workspace
-            active_mine_kind = resolved_scope.mine_kind
+            active_mine_kind = (
+                mine_kind if resolved_scope.code == "mine" else resolved_scope.mine_kind
+            )
             assignment = (
                 "unassigned"
                 if resolved_scope.code == "team" and assignment == "unassigned"
@@ -4898,6 +4916,12 @@ def clean_tasks_center(
             filters.append(visibility_filter)
         mine_relation_conditions: dict[str, object] = {}
         active_relation_filter = None
+        claimable_relation_filter = (
+            task_claimable_relation_filter(db, user_id=user_id, task_model=Task)
+            if user_id
+            else literal(False)
+        )
+        active_claim_scope = requested_scope == "claim"
         if active_workspace == "mine" and user_id:
             member_team_ids = select(TeamMember.team_id).where(
                 TeamMember.user_id == user_id
@@ -4906,13 +4930,6 @@ def clean_tasks_center(
                 TaskParticipant.user_id == user_id,
                 TaskParticipant.status == "active",
             )
-            identified_condition = Task.id.in_(
-                select(TaskParticipant.task_id).where(
-                    TaskParticipant.user_id == user_id,
-                    TaskParticipant.role.in_(("mentioned", "participant")),
-                    TaskParticipant.status == "active",
-                )
-            )
             following_condition = Task.id.in_(
                 select(TaskParticipant.task_id).where(
                     TaskParticipant.user_id == user_id,
@@ -4920,40 +4937,18 @@ def clean_tasks_center(
                     TaskParticipant.status == "active",
                 )
             )
-            team_ids = user_team_ids(db, user_id)
-            current_team_ids = set(team_ids)
             support_user_condition = Task.id.in_(
                 select(TaskHelpRequest.task_id).where(
                     TaskHelpRequest.requested_user_id == user_id,
                     TaskHelpRequest.status.in_(("pending", "accepted")),
                 )
             )
-            support_team_condition = (
-                Task.id.in_(
-                    select(TaskHelpRequest.task_id).where(
-                        TaskHelpRequest.requested_team_id.in_(tuple(team_ids)),
-                        TaskHelpRequest.status.in_(("pending", "accepted")),
-                    )
-                )
-                if team_ids
-                else None
-            )
-            support_condition = (
-                or_(support_user_condition, support_team_condition)
-                if support_team_condition is not None
-                else support_user_condition
-            )
             team_condition = task_team_relation_filter(
                 db, user_id=user_id, task_model=Task
             )
             mine_relation_conditions = {
-                "assigned": or_(
-                    Task.assigned_to_id == user_id,
-                    Task.team_id.in_(member_team_ids),
-                ),
-                "identified": identified_condition,
+                "assigned": Task.assigned_to_id == user_id,
                 "following": following_condition,
-                "support": support_condition,
                 "created": Task.created_by_id == user_id,
             }
             if team_condition is not None:
@@ -4965,20 +4960,19 @@ def clean_tasks_center(
                 mine_relation_conditions["team"] = literal(False)
             all_conditions = [
                 Task.assigned_to_id == user_id,
-                Task.team_id.in_(member_team_ids),
                 Task.created_by_id == user_id,
                 Task.delegated_to_user_id == user_id,
                 Task.waiting_for_user_id == user_id,
                 Task.id.in_(participant_task_ids),
-                support_condition,
+                support_user_condition,
             ]
-            if team_condition is not None:
-                all_conditions.append(team_condition)
             mine_relation_conditions["all"] = or_(*all_conditions)
             if active_mine_kind not in mine_relation_conditions:
-                active_mine_kind = "all"
+                return HTMLResponse("Relação com a tarefa incompatível.", status_code=400)
             active_relation_filter = mine_relation_conditions[active_mine_kind]
             filters.append(active_relation_filter)
+        if active_claim_scope:
+            filters.append(claimable_relation_filter)
         if active_status == "open":
             filters.extend([Task.closed_at.is_(None), ~Task.status.in_(TASK_ARCHIVE_STATUSES)])
         elif active_status == "closed":
@@ -5060,15 +5054,7 @@ def clean_tasks_center(
             )
         mine_counts = {
             code: 0
-            for code in (
-                "all",
-                "assigned",
-                "identified",
-                "following",
-                "team",
-                "support",
-                "created",
-            )
+            for code in ("assigned", "all", "created", "following", "team")
         }
         if mine_relation_conditions:
             counter_filters = [item for item in filters if item is not active_relation_filter]
@@ -5252,6 +5238,7 @@ def clean_tasks_center(
             }
         if active_workspace == "mine" and user_id:
             member_team_id_set = set(db.scalars(member_team_ids))
+            current_team_ids = member_team_id_set
             for task in tasks:
                 if task.assigned_to_id == user_id:
                     task_relations_by_task[task.id].append("Responsável")
@@ -5358,11 +5345,9 @@ def clean_tasks_center(
             scoped_open_task_filter.append(active_relation_filter)
         if active_assignment:
             scoped_open_task_filter.append(Task.assigned_to_id.is_(None))
-        unassigned_counter_filter = (
-            scoped_open_task_filter
-            if active_mine_kind == "team" or active_assignment
-            else open_task_filter
-        )
+        unassigned_counter_filter = [*open_task_filter, claimable_relation_filter]
+        if active_mine_kind == "team" and active_relation_filter is not None:
+            unassigned_counter_filter.append(active_relation_filter)
         due_soon_condition = task_due_condition("due_soon", task_model=Task)
         overdue_condition = task_due_condition("overdue", task_model=Task)
         task_metrics = {

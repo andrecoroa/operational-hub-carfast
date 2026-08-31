@@ -143,9 +143,12 @@ def test_support_targets_fail_closed_without_update_permission(
     )
     db_session.add(task)
     db_session.commit()
+    actor = db_session.scalar(select(User).where(User.email == "admin.tests@carfast.local"))
+    task.created_by_id = actor.id
+    db_session.commit()
 
     page = authenticated_client.get(
-        "/v2-clean/tasks?workspace=all&status=open&category=documentacao"
+        "/v2-clean/tasks?workspace=mine&mine_kind=all&status=open&category=documentacao"
     )
 
     assert page.status_code == 200
@@ -275,9 +278,13 @@ def test_explicit_closed_and_category_filters_are_server_side(
         ]
     )
     db_session.commit()
+    actor = db_session.scalar(select(User).where(User.email == "admin.tests@carfast.local"))
+    for task in db_session.scalars(select(Task).where(Task.created_by_id.is_(None))):
+        task.created_by_id = actor.id
+    db_session.commit()
 
-    workshop = authenticated_client.get("/v2-clean/tasks?workspace=all&status=open&category=oficina")
-    closed = authenticated_client.get("/v2-clean/tasks?workspace=all&status=closed&category=all")
+    workshop = authenticated_client.get("/v2-clean/tasks?workspace=mine&mine_kind=all&status=open&category=oficina")
+    closed = authenticated_client.get("/v2-clean/tasks?workspace=mine&mine_kind=all&status=closed&category=all")
 
     assert "Oficina ativa contratual" in workshop.text
     assert "Fechada contratual" not in workshop.text
@@ -307,10 +314,14 @@ def test_each_approved_status_filter_is_server_side(
         for status, title in statuses.items()
     )
     db_session.commit()
+    actor = db_session.scalar(select(User).where(User.email == "admin.tests@carfast.local"))
+    for task in db_session.scalars(select(Task).where(Task.created_by_id.is_(None))):
+        task.created_by_id = actor.id
+    db_session.commit()
 
     for status, title in statuses.items():
         page = authenticated_client.get(
-            f"/v2-clean/tasks?workspace=all&category=all&status={status}"
+            f"/v2-clean/tasks?workspace=mine&mine_kind=all&category=all&status={status}"
         )
         assert page.status_code == 200
         assert title in page.text
@@ -412,9 +423,13 @@ def test_category_buckets_are_mutually_exclusive_under_adversarial_type(
         Task(title="Sinistro em fluxo de oficina", task_type="workshop_task", category="Sinistros", status="new", priority="high")
     )
     db_session.commit()
+    actor = db_session.scalar(select(User).where(User.email == "admin.tests@carfast.local"))
+    for task in db_session.scalars(select(Task).where(Task.created_by_id.is_(None))):
+        task.created_by_id = actor.id
+    db_session.commit()
 
-    workshop = authenticated_client.get("/v2-clean/tasks?workspace=all&status=open&category=oficina")
-    claims = authenticated_client.get("/v2-clean/tasks?workspace=all&status=open&category=sinistros")
+    workshop = authenticated_client.get("/v2-clean/tasks?workspace=mine&mine_kind=all&status=open&category=oficina")
+    claims = authenticated_client.get("/v2-clean/tasks?workspace=mine&mine_kind=all&status=open&category=sinistros")
 
     assert "Sinistro em fluxo de oficina" not in workshop.text
     assert "Sinistro em fluxo de oficina" in claims.text
@@ -428,12 +443,16 @@ def test_null_category_uses_authorized_task_type_bucket(
         [
             Task(title="Oficina sem categoria", task_type="workshop_task", category=None, status="new", priority="normal"),
             Task(title="Admin sem categoria", task_type="administration_task", category=None, status="new", priority="normal"),
-        ]
+    ]
     )
     db_session.commit()
+    actor = db_session.scalar(select(User).where(User.email == "admin.tests@carfast.local"))
+    for task in db_session.scalars(select(Task).where(Task.created_by_id.is_(None))):
+        task.created_by_id = actor.id
+    db_session.commit()
 
-    workshop = authenticated_client.get("/v2-clean/tasks?workspace=all&status=open&category=oficina")
-    documents = authenticated_client.get("/v2-clean/tasks?workspace=all&status=open&category=documentacao")
+    workshop = authenticated_client.get("/v2-clean/tasks?workspace=mine&mine_kind=all&status=open&category=oficina")
+    documents = authenticated_client.get("/v2-clean/tasks?workspace=mine&mine_kind=all&status=open&category=documentacao")
 
     assert "Oficina sem categoria" in workshop.text
     assert "Admin sem categoria" not in workshop.text
@@ -457,8 +476,12 @@ def test_note_action_visibility_uses_distinct_server_respond_scope(
         Task(title="Atualiza sem responder", task_type="operational_task", category="Documentação", status="new", priority="normal")
     )
     db_session.commit()
+    actor = db_session.scalar(select(User).where(User.email == "admin.tests@carfast.local"))
+    for task in db_session.scalars(select(Task).where(Task.created_by_id.is_(None))):
+        task.created_by_id = actor.id
+    db_session.commit()
 
-    page = authenticated_client.get("/v2-clean/tasks?workspace=all&status=open&category=documentacao")
+    page = authenticated_client.get("/v2-clean/tasks?workspace=mine&mine_kind=all&status=open&category=documentacao")
     row = re.search(r'<tr[^>]+data-title="Atualiza sem responder"[^>]+>', page.text).group(0)
 
     assert 'data-can-update="1"' in row
@@ -477,7 +500,7 @@ def test_origin_and_existing_relations_are_exposed_only_in_preview(
     db_session.add(child)
     db_session.commit()
 
-    page = authenticated_client.get("/v2-clean/tasks?workspace=all&status=open&category=all")
+    page = authenticated_client.get("/v2-clean/tasks?workspace=mine&mine_kind=all&status=open&category=all")
     row = re.search(r'<tr[^>]+data-title="Subtarefa relacionada"[^>]+>', page.text).group(0)
 
     assert 'data-origin="Subtarefa"' in row

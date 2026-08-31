@@ -8818,8 +8818,12 @@ def clean_workshop_dashboard(
     location: str = "all",
     phase: str = "all",
     situation: str = "all",
+    q: str = "",
+    sort: str = "updated",
 ):
-    denied = clean_experience_denied(request)
+    denied = require_any_web_permission(request, "navigation.workshop.access")
+    if not denied:
+        denied = require_any_web_permission(request, "workshop.read", "admin.manage")
     if denied:
         return denied
     if scope not in {"open", "closed", "cancelled", "all"}:
@@ -8828,6 +8832,9 @@ def clean_workshop_dashboard(
         location = "all"
     if situation not in {"all", "in_progress", "waiting"}:
         situation = "all"
+    q = " ".join(q.strip().split())[:120]
+    if sort not in {"age", "updated", "situation"}:
+        sort = "updated"
     phase_options = [
         {"value": str(step["key"]), "label": str(step["label"])}
         for step in CLEAN_WORKSHOP_STEP_DEFS
@@ -8838,6 +8845,8 @@ def clean_workshop_dashboard(
         "location": location,
         "phase": phase,
         "situation": situation,
+        "q": q,
+        "sort": sort,
     }
     filter_query = urlencode(filter_params)
     with SessionLocal() as db:
@@ -8926,11 +8935,59 @@ def clean_workshop_dashboard(
             recent_query = recent_query.where(WorkshopPhasedProcess.status == "cancelled")
         if phase != "all":
             recent_query = recent_query.where(WorkshopPhasedProcess.current_phase_code == phase)
+        if q:
+            search_term = f"%{q}%"
+            recent_query = recent_query.where(
+                or_(
+                    WorkshopPhasedProcess.plate_snapshot.ilike(search_term),
+                    WorkshopPhasedProcess.public_reference.ilike(search_term),
+                    WorkshopPhasedProcess.title.ilike(search_term),
+                    WorkshopPhasedProcess.initial_observation.ilike(search_term),
+                )
+            )
+        if sort == "age":
+            order_columns = (
+                func.coalesce(
+                    WorkshopPhasedProcess.opened_at,
+                    WorkshopPhasedProcess.received_at,
+                    WorkshopPhasedProcess.created_at,
+                ).asc(),
+                WorkshopPhasedProcess.id.asc(),
+            )
+        else:
+            order_columns = (
+                WorkshopPhasedProcess.updated_at.desc(),
+                WorkshopPhasedProcess.id.desc(),
+            )
         recent_processes = db.scalars(
-            recent_query.order_by(
-                WorkshopPhasedProcess.updated_at.desc(), WorkshopPhasedProcess.id.desc()
-            ).limit(250 if location != "all" or situation != "all" else 40)
+            recent_query.order_by(*order_columns).limit(
+                250 if q or sort != "updated" or location != "all" or situation != "all" else 40
+            )
         ).all()
+        process_ids = [process.id for process in recent_processes]
+        responsible_ids = {
+            process.responsible_user_id
+            for process in recent_processes
+            if process.responsible_user_id
+        }
+        responsible_by_id = {
+            user.id: user.name
+            for user in db.scalars(select(User).where(User.id.in_(responsible_ids))).all()
+        } if responsible_ids else {}
+        recent_phases_by_process: dict[int, list[WorkshopPhasedProcessPhase]] = {}
+        if process_ids:
+            for phase_row in db.scalars(
+                select(WorkshopPhasedProcessPhase)
+                .where(WorkshopPhasedProcessPhase.process_id.in_(process_ids))
+                .order_by(
+                    WorkshopPhasedProcessPhase.process_id,
+                    WorkshopPhasedProcessPhase.updated_at.desc(),
+                    WorkshopPhasedProcessPhase.id.desc(),
+                )
+            ).all():
+                history = recent_phases_by_process.setdefault(phase_row.process_id, [])
+                if len(history) < 3:
+                    history.append(phase_row)
         process_rows: list[dict[str, object]] = []
         now = datetime.now(UTC)
         for process in recent_processes:
@@ -8981,7 +9038,32 @@ def clean_workshop_dashboard(
                     "location_detail": external_name if external_repair and external_name else ("Oficina externa" if external_repair else "Oficina Carfast"),
                     "operational_situation": operational_situation,
                     "waiting_reason": str(metadata.get("operational_waiting_reason") or "").strip(),
+                    "responsible_name": responsible_by_id.get(process.responsible_user_id or 0, "Sem responsável"),
+                    "recent_phases": recent_phases_by_process.get(process.id, []),
+                    "next_action": (
+                        "Retomar o processo"
+                        if operational_situation == "waiting"
+                        else f"Continuar em {str(process.current_phase_code or 'entrada').replace('_', ' ').title()}"
+                    ),
                 }
+            return_query = urlencode(
+                {
+                    "scope": scope,
+                    "location": location,
+                    "phase": phase,
+                    "situation": situation,
+                    "q": q,
+                    "sort": sort,
+                    "preview": str(process.id),
+                }
+            )
+            return_context = issue_return_context(
+                settings.app_secret_key,
+                path="/v2-clean/workshop",
+                query=return_query,
+                anchor=f"workshop-process-{process.id}",
+            )
+            row["workbench_url"] = clean_workshop_process_url(process, return_context)
             if location != "all" and (
                 (location == "external") != (row["location_type"] == "Externa")
             ):
@@ -8989,8 +9071,15 @@ def clean_workshop_dashboard(
             if situation != "all" and row["operational_situation"] != situation:
                 continue
             process_rows.append(row)
-            if len(process_rows) == 40:
-                break
+        if sort == "situation":
+            situation_order = {"waiting": 0, "in_progress": 1, "closed": 2, "cancelled": 3}
+            process_rows.sort(
+                key=lambda item: (
+                    situation_order.get(str(item["operational_situation"]), 9),
+                    -int(item["process"].id),
+                )
+            )
+        process_rows = process_rows[:40]
         return templates.TemplateResponse(
             request,
             "clean_workshop_dashboard.html",
@@ -9010,6 +9099,8 @@ def clean_workshop_dashboard(
                 "location": location,
                 "phase": phase,
                 "situation": situation,
+                "q": q,
+                "sort": sort,
                 "phase_options": phase_options,
                 "filter_query": filter_query,
             },
@@ -9018,7 +9109,9 @@ def clean_workshop_dashboard(
 
 @web_router.post("/v2-clean/workshop/{process_id}/operational-situation")
 async def clean_workshop_operational_situation_save(request: Request, process_id: int):
-    denied = clean_experience_denied(request)
+    denied = require_any_web_permission(request, "navigation.workshop.access")
+    if not denied:
+        denied = require_any_web_permission(request, "workshop.write", "admin.manage")
     if denied:
         return denied
     form = await request.form()
@@ -9032,6 +9125,10 @@ async def clean_workshop_operational_situation_save(request: Request, process_id
         "location": str(form.get("location") or "all"),
         "phase": str(form.get("phase") or "all"),
         "situation": str(form.get("situation") or "all"),
+        "q": " ".join(str(form.get("q") or "").strip().split())[:120],
+        "sort": str(form.get("sort") or "updated")
+        if str(form.get("sort") or "updated") in {"age", "updated", "situation"}
+        else "updated",
     }
     return_query = urlencode(return_filters)
     if action not in {"wait", "resume"} or (action == "wait" and not waiting_reason):
@@ -9392,6 +9489,7 @@ def clean_workshop_query_suffix(
     plate: str | None = None,
     historical: bool = False,
     new_entry: bool = False,
+    return_context: str = "",
 ) -> str:
     query: dict[str, str] = {}
     if process_id:
@@ -9404,6 +9502,8 @@ def clean_workshop_query_suffix(
         query["historical"] = "1"
     if new_entry:
         query["new"] = "1"
+    if return_context:
+        query["return_context"] = return_context
     return f"?{urlencode(query)}" if query else ""
 
 
@@ -9414,12 +9514,24 @@ def clean_workshop_process_reference(process: WorkshopPhasedProcess) -> str:
     return f"OFI-{reference_date.year}-{process.id:06d}"
 
 
+def clean_workshop_preserve_return_context(url: str, return_context: str) -> str:
+    if not return_context:
+        return url
+    parsed = urlsplit(url)
+    query = dict(parse_qsl(parsed.query, keep_blank_values=True))
+    query["return_context"] = return_context
+    return urlunsplit(("", "", parsed.path, urlencode(query), parsed.fragment))
 
-def clean_workshop_process_url(process: WorkshopPhasedProcess) -> str:
+
+
+def clean_workshop_process_url(
+    process: WorkshopPhasedProcess,
+    return_context: str = "",
+) -> str:
     phase = process.current_phase_code or "entrada"
     if phase == "entrada":
-        return f"/v2-clean/workshop-entry?process_id={process.id}"
-    return f"{clean_workshop_phase_path(phase)}?process_id={process.id}"
+        return f"/v2-clean/workshop-entry{clean_workshop_query_suffix(process_id=process.id, return_context=return_context)}"
+    return f"{clean_workshop_phase_path(phase)}{clean_workshop_query_suffix(process_id=process.id, return_context=return_context)}"
 
 
 def clean_workshop_admin_context(
@@ -24158,12 +24270,28 @@ async def clean_workshop_entry_save(request: Request):
         return denied
 
     form = await request.form()
+    submitted_return_context = str(form.get("return_context") or "")[:4096]
+    resolved_return = resolve_return_context(
+        settings.app_secret_key,
+        submitted_return_context,
+        allowed_prefixes=("/v2-clean/workshop",),
+        max_age_seconds=8 * 60 * 60,
+    ) if submitted_return_context else None
+    valid_return_context = submitted_return_context if resolved_return else ""
+
+    def redirect_with_context(url: str) -> RedirectResponse:
+        return RedirectResponse(
+            clean_workshop_preserve_return_context(url, valid_return_context),
+            status_code=303,
+        )
     process_id = parse_int_from_text(str(form.get("process_id") or ""))
     action = str(form.get("action") or "save")
     if action not in {"save", "advance"}:
         suffix = f"?process_id={process_id}" if process_id else ""
         separator = "&" if suffix else "?"
-        return RedirectResponse(f"/v2-clean/workshop-entry{suffix}{separator}error=invalid_action", status_code=303)
+        return redirect_with_context(
+            f"/v2-clean/workshop-entry{suffix}{separator}error=invalid_action"
+        )
     now = datetime.now(UTC)
     user_id = get_web_user_id(request)
     is_historical = str(form.get("process_mode") or "").strip().lower() == "historical"
@@ -24182,8 +24310,8 @@ async def clean_workshop_entry_save(request: Request):
     if not process_id and not submitted_plate:
         suffix = clean_workshop_query_suffix(historical=is_historical, new_entry=True)
         separator = "&" if suffix else "?"
-        return RedirectResponse(
-            f"/v2-clean/workshop-entry{suffix}{separator}error=missing_plate", status_code=303
+        return redirect_with_context(
+            f"/v2-clean/workshop-entry{suffix}{separator}error=missing_plate"
         )
     if entry_mode == "Entrada em assistência em viagem" and (
         assistance_destination not in {"internal", "external"}
@@ -24197,9 +24325,8 @@ async def clean_workshop_entry_save(request: Request):
             new_entry=True,
         )
         separator = "&" if suffix else "?"
-        return RedirectResponse(
-            f"/v2-clean/workshop-entry{suffix}{separator}error=travel_assistance_required",
-            status_code=303,
+        return redirect_with_context(
+            f"/v2-clean/workshop-entry{suffix}{separator}error=travel_assistance_required"
         )
     if is_historical and not historical_intervention_date:
         suffix = clean_workshop_query_suffix(
@@ -24209,9 +24336,8 @@ async def clean_workshop_entry_save(request: Request):
             new_entry=True,
         )
         separator = "&" if suffix else "?"
-        return RedirectResponse(
-            f"/v2-clean/workshop-entry{suffix}{separator}error=historical_date_required",
-            status_code=303,
+        return redirect_with_context(
+            f"/v2-clean/workshop-entry{suffix}{separator}error=historical_date_required"
         )
 
     with SessionLocal() as db:
@@ -24220,15 +24346,14 @@ async def clean_workshop_entry_save(request: Request):
             process = db.get(WorkshopPhasedProcess, process_id)
             if not process:
                 suffix = clean_workshop_query_suffix(historical=is_historical, new_entry=True)
-                return RedirectResponse(f"/v2-clean/workshop-entry{suffix}", status_code=303)
+                return redirect_with_context(f"/v2-clean/workshop-entry{suffix}")
             if clean_workshop_process_is_readonly(process):
-                return RedirectResponse(
-                    f"{clean_workshop_process_url(process)}&readonly=1", status_code=303
+                return redirect_with_context(
+                    f"{clean_workshop_process_url(process)}&readonly=1"
                 )
             if process.current_phase_code != "entrada":
-                return RedirectResponse(
-                    f"/v2-clean/workshop-entry?process_id={process.id}&error=invalid_phase_order",
-                    status_code=303,
+                return redirect_with_context(
+                    f"/v2-clean/workshop-entry?process_id={process.id}&error=invalid_phase_order"
                 )
         else:
             process = clean_workshop_create_process(
@@ -24310,9 +24435,8 @@ async def clean_workshop_entry_save(request: Request):
             phase.status = "in_progress"
             process.current_phase_code = "entrada"
             db.commit()
-            return RedirectResponse(
-                f"/v2-clean/workshop-entry?process_id={process_id}&error=missing_km",
-                status_code=303,
+            return redirect_with_context(
+                f"/v2-clean/workshop-entry?process_id={process_id}&error=missing_km"
             )
         if action == "advance":
             photo_blockers = required_photo_blockers(
@@ -24324,9 +24448,8 @@ async def clean_workshop_entry_save(request: Request):
                 process.current_phase_code = "entrada"
                 db.commit()
                 message = quote_plus("Fotografias obrigatórias: " + " ".join(photo_blockers))
-                return RedirectResponse(
-                    f"/v2-clean/workshop-entry?process_id={process.id}&error={message}",
-                    status_code=303,
+                return redirect_with_context(
+                    f"/v2-clean/workshop-entry?process_id={process.id}&error={message}"
                 )
         phase.data_json = entry_data
         phase.status = "completed" if action == "advance" else "in_progress"
@@ -24377,11 +24500,11 @@ async def clean_workshop_entry_save(request: Request):
         db.commit()
 
     if action == "advance":
-        return RedirectResponse(
-            f"/v2-clean/workshop/validacao?process_id={process_id}", status_code=303
+        return redirect_with_context(
+            f"/v2-clean/workshop/validacao?process_id={process_id}"
         )
-    return RedirectResponse(
-        f"/v2-clean/workshop-entry?process_id={process_id}&saved=1", status_code=303
+    return redirect_with_context(
+        f"/v2-clean/workshop-entry?process_id={process_id}&saved=1"
     )
 
 
@@ -24396,10 +24519,19 @@ def clean_workshop_entry(
     new: bool = False,
     saved: bool = False,
     error: str | None = None,
+    return_context: str = "",
 ):
     denied = clean_experience_denied(request)
     if denied:
         return denied
+    resolved_return = resolve_return_context(
+        settings.app_secret_key,
+        return_context,
+        allowed_prefixes=("/v2-clean/workshop",),
+        max_age_seconds=8 * 60 * 60,
+    ) if return_context else None
+    valid_return_context = return_context if resolved_return else ""
+    workshop_return_url = resolved_return.url if resolved_return else "/v2-clean/workshop"
     user_name = "Utilizador atual"
     current_entry_timestamp = datetime.now().strftime("%d/%m/%Y %H:%M")
     user_id = get_web_user_id(request)
@@ -24433,7 +24565,10 @@ def clean_workshop_entry(
                     process.template_snapshot_json.get("template_code") or "general_minimum"
                 )
             historical = process.creation_mode == "historical"
-            query_suffix = clean_workshop_query_suffix(process_id=process.id)
+            query_suffix = clean_workshop_query_suffix(
+                process_id=process.id,
+                return_context=valid_return_context,
+            )
             vehicle_context = clean_workshop_context_for_process(db, process)
             vehicle_detail_href = (
                 f"/v2-clean/fleet/{process.vehicle_id}" if process.vehicle_id else "/v2-clean/fleet"
@@ -24472,6 +24607,7 @@ def clean_workshop_entry(
                 vehicle_id=vehicle_id,
                 plate=plate,
                 historical=historical,
+                return_context=valid_return_context,
             )
             vehicle_context = clean_workshop_vehicle_context(db, vehicle_id=vehicle_id, plate=plate)
             resolved_vehicle = clean_workshop_find_vehicle(db, vehicle_id=vehicle_id, plate=plate)
@@ -24518,6 +24654,8 @@ def clean_workshop_entry(
             "history_preview": history_preview,
             "saved": saved,
             "error": error,
+            "workshop_return_url": workshop_return_url,
+            "return_context": valid_return_context,
         },
     )
 
@@ -24579,17 +24717,34 @@ def clean_workshop_phase(
     historical: bool = False,
     new: bool = False,
     error: str | None = None,
+    return_context: str = "",
 ):
     denied = clean_experience_denied(request)
     if denied:
         return denied
+    resolved_return = resolve_return_context(
+        settings.app_secret_key,
+        return_context,
+        allowed_prefixes=("/v2-clean/workshop",),
+        max_age_seconds=8 * 60 * 60,
+    ) if return_context else None
+    valid_return_context = return_context if resolved_return else ""
+    workshop_return_url = resolved_return.url if resolved_return else "/v2-clean/workshop"
     if new and not process_id:
         query_suffix = clean_workshop_query_suffix(
-            vehicle_id=vehicle_id, plate=plate, historical=historical, new_entry=True
+            vehicle_id=vehicle_id,
+            plate=plate,
+            historical=historical,
+            new_entry=True,
+            return_context=valid_return_context,
         )
         return RedirectResponse(f"/v2-clean/workshop-entry{query_suffix}", status_code=303)
     query_suffix = clean_workshop_query_suffix(
-        process_id=process_id, vehicle_id=vehicle_id, plate=plate, historical=historical
+        process_id=process_id,
+        vehicle_id=vehicle_id,
+        plate=plate,
+        historical=historical,
+        return_context=valid_return_context,
     )
     if phase in {"entrada", "entry"}:
         return RedirectResponse(f"/v2-clean/workshop-entry{query_suffix}", status_code=303)
@@ -24625,7 +24780,10 @@ def clean_workshop_phase(
         process = db.get(WorkshopPhasedProcess, process_id) if process_id else None
         if process:
             historical = process.creation_mode == "historical"
-            query_suffix = clean_workshop_query_suffix(process_id=process.id)
+            query_suffix = clean_workshop_query_suffix(
+                process_id=process.id,
+                return_context=valid_return_context,
+            )
             vehicle_context = clean_workshop_context_for_process(db, process)
             if process.vehicle_id:
                 vehicle_detail_href = f"/v2-clean/fleet/{process.vehicle_id}"
@@ -24847,6 +25005,8 @@ def clean_workshop_phase(
             "stock_request_locations": stock_request_locations,
             "workshop_stock_statuses": WORKSHOP_STOCK_STATUSES,
             "phase_error": CLEAN_WORKSHOP_PHASE_ERROR_MESSAGES.get(error or ""),
+            "workshop_return_url": workshop_return_url,
+            "return_context": valid_return_context,
             "phase_print_report": {
                 "validacao": ("diagnostic-order", "Imprimir ordem de diagnóstico"),
                 "auditoria": ("audit-validation", "Imprimir relatório de auditoria"),
@@ -25433,18 +25593,31 @@ async def clean_workshop_phase_save(request: Request, phase: str):
         return RedirectResponse("/v2-clean/workshop", status_code=303)
 
     form = await request.form()
+    submitted_return_context = str(form.get("return_context") or "")[:4096]
+    resolved_return = resolve_return_context(
+        settings.app_secret_key,
+        submitted_return_context,
+        allowed_prefixes=("/v2-clean/workshop",),
+        max_age_seconds=8 * 60 * 60,
+    ) if submitted_return_context else None
+    valid_return_context = submitted_return_context if resolved_return else ""
+
+    def redirect_with_context(url: str) -> RedirectResponse:
+        return RedirectResponse(
+            clean_workshop_preserve_return_context(url, valid_return_context),
+            status_code=303,
+        )
     process_id = parse_int_from_text(str(form.get("process_id") or ""))
     if not process_id:
-        return RedirectResponse(clean_workshop_phase_path(phase), status_code=303)
+        return redirect_with_context(clean_workshop_phase_path(phase))
 
     action = str(form.get("action") or "save")
     allowed_actions = {"save", "save_substep", "advance_substep", "advance"}
     if phase == "fecho":
         allowed_actions.update({"return_to_repair", "close_process", "close_with_pending"})
     if action not in allowed_actions:
-        return RedirectResponse(
-            f"{clean_workshop_phase_path(phase)}?process_id={process_id}&error=invalid_action",
-            status_code=303,
+        return redirect_with_context(
+            f"{clean_workshop_phase_path(phase)}?process_id={process_id}&error=invalid_action"
         )
     current_substep = str(form.get("current_substep") or "").strip()
     known_substeps = clean_workshop_substeps(phase)
@@ -25456,15 +25629,14 @@ async def clean_workshop_phase_save(request: Request, phase: str):
     with SessionLocal() as db:
         process = db.get(WorkshopPhasedProcess, process_id)
         if not process:
-            return RedirectResponse("/v2-clean/workshop", status_code=303)
+            return redirect_with_context("/v2-clean/workshop")
         if clean_workshop_process_is_readonly(process):
-            return RedirectResponse(
-                f"{clean_workshop_process_url(process)}&readonly=1", status_code=303
+            return redirect_with_context(
+                f"{clean_workshop_process_url(process)}&readonly=1"
             )
         if process.current_phase_code != phase:
-            return RedirectResponse(
-                f"{clean_workshop_phase_path(phase)}?process_id={process.id}&error=invalid_phase_order",
-                status_code=303,
+            return redirect_with_context(
+                f"{clean_workshop_phase_path(phase)}?process_id={process.id}&error=invalid_phase_order"
             )
         known_substeps = clean_workshop_substeps(phase, process)
         if current_substep not in known_substeps:
@@ -25501,7 +25673,13 @@ async def clean_workshop_phase_save(request: Request, phase: str):
                 decoded_state = None
             if isinstance(decoded_state, dict):
                 for key, value in decoded_state.items():
-                    if key in {"action", "process_id", "form_state_json", "current_substep"}:
+                    if key in {
+                        "action",
+                        "process_id",
+                        "form_state_json",
+                        "current_substep",
+                        "return_context",
+                    }:
                         continue
                     if isinstance(value, list):
                         form_snapshot[key] = [str(item) for item in value if item is not None]
@@ -25511,7 +25689,13 @@ async def clean_workshop_phase_save(request: Request, phase: str):
                         form_snapshot[key] = str(value)
         if not form_snapshot:
             for key in form.keys():
-                if key in {"action", "process_id", "form_state_json", "current_substep"}:
+                if key in {
+                    "action",
+                    "process_id",
+                    "form_state_json",
+                    "current_substep",
+                    "return_context",
+                }:
                     continue
                 values = [str(value) for value in form.getlist(key)]
                 form_snapshot[key] = values if len(values) > 1 else (values[0] if values else "")
@@ -25538,10 +25722,9 @@ async def clean_workshop_phase_save(request: Request, phase: str):
                 form_snapshot, "closure_pending_description"
             ).strip()
             if not pending_owner or not pending_due or not pending_description:
-                return RedirectResponse(
+                return redirect_with_context(
                     f"{clean_workshop_phase_path(phase)}?process_id={process.id}"
-                    "&error=closure_pending_required",
-                    status_code=303,
+                    "&error=closure_pending_required"
                 )
             form_snapshot["closure_result"] = "Fechado com reserva"
             form_snapshot["closure_pending_exists"] = "Sim"
@@ -25608,9 +25791,8 @@ async def clean_workshop_phase_save(request: Request, phase: str):
                 after_json={"phase": "reparacao"},
             )
             db.commit()
-            return RedirectResponse(
-                f"{clean_workshop_phase_path('reparacao')}?process_id={process.id}&returned=1",
-                status_code=303,
+            return redirect_with_context(
+                f"{clean_workshop_phase_path('reparacao')}?process_id={process.id}&returned=1"
             )
 
         if action == "advance":
@@ -25622,10 +25804,9 @@ async def clean_workshop_phase_save(request: Request, phase: str):
                 process.current_phase_code = phase
                 db.commit()
                 message = quote_plus("Fotografias obrigatórias: " + " ".join(photo_blockers))
-                return RedirectResponse(
+                return redirect_with_context(
                     f"{clean_workshop_phase_path(phase)}?process_id={process.id}"
-                    f"&error={message}",
-                    status_code=303,
+                    f"&error={message}"
                 )
             phase_reports = (
                 db.scalars(
@@ -25647,7 +25828,7 @@ async def clean_workshop_phase_save(request: Request, phase: str):
                 )
                 if current_substep:
                     redirect_url = f"{redirect_url}#{current_substep}"
-                return RedirectResponse(redirect_url, status_code=303)
+                return redirect_with_context(redirect_url)
 
             saved_substeps.update(known_substeps)
             phase_data["saved_substeps"] = sorted(saved_substeps)
@@ -25717,7 +25898,7 @@ async def clean_workshop_phase_save(request: Request, phase: str):
                     )
                     if current_substep:
                         redirect_url = f"{redirect_url}#{current_substep}"
-                    return RedirectResponse(redirect_url, status_code=303)
+                    return redirect_with_context(redirect_url)
 
                 saved_substeps.update(known_substeps)
                 phase_data["saved_substeps"] = sorted(saved_substeps)
@@ -25759,7 +25940,7 @@ async def clean_workshop_phase_save(request: Request, phase: str):
         )
         db.commit()
 
-    return RedirectResponse(redirect_url, status_code=303)
+    return redirect_with_context(redirect_url)
 
 
 

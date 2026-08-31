@@ -12,8 +12,10 @@ def test_fur_sidebar_has_direct_short_destinations_without_workshop_configuratio
     sidebar = _read("app/templates/_sidebar.html")
     assert '>Oficina</a>' in sidebar
     assert '>Stock</a>' in sidebar
-    assert '>Tarefas<span class="sr-only">Centro de Tarefas</span></a>' in sidebar
-    assert '>Processos<span class="sr-only">Centro de Processos</span></a>' in sidebar
+    assert '>Tarefas</a>' in sidebar
+    assert '>Processos</a>' in sidebar
+    assert 'Tarefas<span class="sr-only">Centro de Tarefas</span>' not in sidebar
+    assert 'Processos<span class="sr-only">Centro de Processos</span>' not in sidebar
     business = sidebar.index('data-nav-section="business"')
     fleet = sidebar.index('{% set fleet_menu_open', business)
     workshop_segment = sidebar[business:fleet]

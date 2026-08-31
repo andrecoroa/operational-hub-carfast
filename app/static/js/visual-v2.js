@@ -29,6 +29,27 @@
 
   const menuButton = document.querySelector(".visual-menu-button");
   const sidebar = document.querySelector("#visual-sidebar");
+  if (sidebar) {
+    const groups = [...sidebar.querySelectorAll(".sidebar-nav-group")];
+    const syncGroup = (group) => {
+      const summary = group.querySelector(":scope > summary");
+      summary?.setAttribute("aria-expanded", String(group.open));
+    };
+    groups.forEach((group) => {
+      syncGroup(group);
+      group.addEventListener("toggle", () => {
+        if (group.open) {
+          groups.forEach((other) => {
+            if (other !== group && !other.contains(group) && !group.contains(other)) {
+              other.open = false;
+              syncGroup(other);
+            }
+          });
+        }
+        syncGroup(group);
+      });
+    });
+  }
   if (!menuButton || !sidebar) return;
 
   const closeNavigation = () => {

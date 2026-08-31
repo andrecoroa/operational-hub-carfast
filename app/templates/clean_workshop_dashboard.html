@@ -7,6 +7,7 @@
     <header class="clean-header-shell clean-card-wide clean-header-shell-dashboard fur-workshop-header">
       <div class="clean-header-hero-row">
         <div class="clean-header-hero-main">
+          <button class="visual-menu-button clean-workshop-mobile-menu" type="button" aria-label="Abrir navegação" aria-controls="visual-sidebar">☰</button>
           <p class="eyebrow">Operações de negócio</p>
           <h2>Oficina</h2>
           <p>Entradas e processos por fases.</p>
@@ -57,8 +58,12 @@
             <strong>{{ metrics.total }}</strong>
           </a>
         </nav>
-        <form class="clean-workshop-dashboard-filters" method="get" action="/v2-clean/workshop">
+        <form class="clean-workshop-dashboard-filters" method="get" action="/v2-clean/workshop" role="search">
           <input type="hidden" name="scope" value="{{ scope }}">
+          <label class="clean-workshop-search-field">
+            <span>Pesquisar</span>
+            <input type="search" name="q" value="{{ q }}" placeholder="Matrícula, processo ou texto" autocomplete="off">
+          </label>
           <label>
             <span>Local</span>
             <select name="location">
@@ -77,16 +82,26 @@
             </select>
           </label>
           <label>
-            <span>Estado</span>
+            <span>Situação</span>
             <select name="situation">
               <option value="all" {% if situation == 'all' %}selected{% endif %}>Todos</option>
               <option value="in_progress" {% if situation == 'in_progress' %}selected{% endif %}>Em curso</option>
               <option value="waiting" {% if situation == 'waiting' %}selected{% endif %}>Em espera</option>
             </select>
           </label>
+          <label>
+            <span>Ordenar</span>
+            <select name="sort">
+              <option value="updated" {% if sort == 'updated' %}selected{% endif %}>Atualização recente</option>
+              <option value="age" {% if sort == 'age' %}selected{% endif %}>Mais antigos primeiro</option>
+              <option value="situation" {% if sort == 'situation' %}selected{% endif %}>Situação</option>
+            </select>
+          </label>
           <button type="submit">Aplicar filtros</button>
           <a href="/v2-clean/workshop?scope={{ scope }}">Limpar</a>
         </form>
+        <p class="clean-workshop-filter-help"><strong>Fase atual</strong> indica onde o processo está no percurso técnico. <strong>Situação</strong> indica se o trabalho está em curso ou temporariamente em espera.</p>
+        <div class="clean-workshop-table-scroll" data-workshop-table-scroll>
         <div class="clean-workshop-list-head">
           <span>Viatura / processo</span>
           <span>Abertura / tempo</span>
@@ -96,16 +111,15 @@
           <span>Fase atual</span>
           <span>Situação</span>
         </div>
-        <div class="clean-workshop-process-list">
+        <div class="clean-workshop-process-list" data-workshop-process-list>
           {% for row in process_rows %}
             {% set process = row.process %}
             {% set phase = process.current_phase_code or "entrada" %}
-            {% set process_url = "/v2-clean/workshop-entry?process_id=" ~ process.id if phase == "entrada" else "/v2-clean/workshop/" ~ phase ~ "?process_id=" ~ process.id %}
-            <div class="clean-workshop-process-item" id="workshop-process-{{ process.id }}">
-              <a class="clean-workshop-process-link" href="{{ process_url }}">
+            <div class="clean-workshop-process-item" id="workshop-process-{{ process.id }}" data-workshop-row data-process-id="{{ process.id }}">
+              <button class="clean-workshop-process-link" type="button" data-workshop-preview-toggle aria-expanded="false" aria-controls="workshop-preview-{{ process.id }}">
                 <strong>{{ process.plate_snapshot or "Sem matrícula" }}</strong>
                 <span>{{ process.public_reference or process.title or "Processo de oficina" }}</span>
-              </a>
+              </button>
               <div class="clean-workshop-process-fact">
                 <strong>{{ row.opened_at.strftime('%d/%m/%Y · %H:%M') if row.opened_at else '-' }}</strong>
                 <span>{% if row.elapsed_days == 0 %}Hoje · 0 dias{% elif row.elapsed_days == 1 %}1 dia decorrido{% else %}{{ row.elapsed_days }} dias decorridos{% endif %}</span>
@@ -132,31 +146,47 @@
                       <input type="hidden" name="location" value="{{ location }}">
                       <input type="hidden" name="phase" value="{{ phase }}">
                       <input type="hidden" name="situation" value="{{ situation }}">
+                      <input type="hidden" name="q" value="{{ q }}">
+                      <input type="hidden" name="sort" value="{{ sort }}">
                       <button type="submit" name="action" value="resume" class="clean-workshop-situation-action">Retomar</button>
                     </form>
                   {% else %}
-                    <details class="clean-workshop-wait-control">
-                      <summary>Colocar em espera</summary>
-                      <form method="post" action="/v2-clean/workshop/{{ process.id }}/operational-situation">
-                        <input type="hidden" name="scope" value="{{ scope }}">
-                        <input type="hidden" name="location" value="{{ location }}">
-                        <input type="hidden" name="phase" value="{{ phase }}">
-                        <input type="hidden" name="situation" value="{{ situation }}">
-                        <select name="waiting_reason" required>
-                          <option value="">Motivo da espera</option>
-                          <option>A aguardar peças</option>
-                          <option>A aguardar orçamento</option>
-                          <option>A aguardar aprovação</option>
-                          <option>A aguardar oficina externa</option>
-                          <option>Outro</option>
-                        </select>
-                        <button type="submit" name="action" value="wait">Confirmar</button>
-                      </form>
-                    </details>
+                    <button type="button" class="clean-workshop-situation-action" data-workshop-wait-open data-preview-target="workshop-preview-{{ process.id }}">Colocar em espera</button>
                   {% endif %}
                 {% endif %}
               </div>
             </div>
+            <section class="clean-workshop-process-preview" id="workshop-preview-{{ process.id }}" data-workshop-preview data-process-id="{{ process.id }}" tabindex="-1" hidden aria-label="Resumo do processo {{ process.public_reference or process.id }}">
+              <header>
+                <div><span>Processo</span><strong>{{ process.public_reference or ('#' ~ process.id) }} · {{ process.plate_snapshot or 'Sem matrícula' }}</strong></div>
+                <button type="button" class="secondary compact-button" data-workshop-preview-close aria-label="Fechar resumo">Fechar</button>
+              </header>
+              <div class="clean-workshop-preview-grid">
+                <div><span>Resumo</span><strong>{{ row.entry_reason }}</strong><p>{{ row.entry_description or 'Sem descrição adicional' }}</p></div>
+                <div><span>Responsável</span><strong>{{ row.responsible_name }}</strong><p>{{ row.next_action }}</p></div>
+                <div><span>Bloqueio</span><strong>{% if row.operational_situation == 'waiting' %}Em espera{% else %}Sem bloqueio registado{% endif %}</strong><p>{{ row.waiting_reason or '—' }}</p></div>
+                <div><span>Histórico recente</span>{% for recent_phase in row.recent_phases %}<p><strong>{{ recent_phase.name }}</strong> · {{ recent_phase.status|replace('_', ' ')|title }}</p>{% else %}<p>Sem histórico recente disponível.</p>{% endfor %}</div>
+              </div>
+              <div class="clean-workshop-preview-actions">
+                <a class="button-link secondary-link" href="{{ row.workbench_url }}">Abrir e trabalhar</a>
+                {% if process.status not in ['closed', 'cancelled'] and row.operational_situation != 'waiting' %}
+                <div class="clean-workshop-wait-panel" data-workshop-wait-panel hidden>
+                  <div><strong>Colocar em espera</strong><span>{{ process.public_reference or ('#' ~ process.id) }} · {{ process.plate_snapshot or 'Sem matrícula' }}</span></div>
+                  <form method="post" action="/v2-clean/workshop/{{ process.id }}/operational-situation">
+                    <input type="hidden" name="scope" value="{{ scope }}">
+                    <input type="hidden" name="location" value="{{ location }}">
+                    <input type="hidden" name="phase" value="{{ phase }}">
+                    <input type="hidden" name="situation" value="{{ situation }}">
+                    <input type="hidden" name="q" value="{{ q }}">
+                    <input type="hidden" name="sort" value="{{ sort }}">
+                    <label>Motivo<select name="waiting_reason" required><option value="">Selecionar motivo</option><option>A aguardar peças</option><option>A aguardar orçamento</option><option>A aguardar aprovação</option><option>A aguardar oficina externa</option><option>Outro</option></select></label>
+                    <button type="button" class="secondary" data-workshop-wait-cancel>Cancelar</button>
+                    <button type="submit" name="action" value="wait">Confirmar</button>
+                  </form>
+                </div>
+                {% endif %}
+              </div>
+            </section>
           {% else %}
             <p class="muted">
               {% if location != 'all' or phase != 'all' or situation != 'all' %}
@@ -175,8 +205,59 @@
             </p>
           {% endfor %}
         </div>
+        </div>
       </article>
     </section>
   </main>
 </div>
+<script>
+  (() => {
+    const list = document.querySelector("[data-workshop-process-list]");
+    if (!list) return;
+    const previews = [...list.querySelectorAll("[data-workshop-preview]")];
+    const closePreview = (preview, restoreFocus = true) => {
+      if (!preview || preview.hidden) return;
+      preview.hidden = true;
+      preview.querySelector("[data-workshop-wait-panel]")?.setAttribute("hidden", "");
+      const toggle = list.querySelector(`[data-workshop-row][data-process-id="${preview.dataset.processId}"] [data-workshop-preview-toggle]`);
+      toggle?.setAttribute("aria-expanded", "false");
+      if (restoreFocus) toggle?.focus();
+    };
+    const syncUrl = (processId) => {
+      const url = new URL(window.location.href);
+      if (processId) url.searchParams.set("preview", processId);
+      else url.searchParams.delete("preview");
+      history.replaceState(null, "", `${url.pathname}${url.search}${processId ? `#workshop-process-${processId}` : ""}`);
+    };
+    const openPreview = (processId, focus = true) => {
+      const preview = list.querySelector(`[data-workshop-preview][data-process-id="${processId}"]`);
+      if (!preview) return;
+      previews.forEach((other) => { if (other !== preview) closePreview(other, false); });
+      preview.hidden = false;
+      const toggle = list.querySelector(`[data-workshop-row][data-process-id="${processId}"] [data-workshop-preview-toggle]`);
+      toggle?.setAttribute("aria-expanded", "true");
+      syncUrl(processId);
+      if (focus) preview.focus({ preventScroll: true });
+    };
+    list.addEventListener("click", (event) => {
+      const close = event.target.closest("[data-workshop-preview-close]");
+      if (close) { const preview = close.closest("[data-workshop-preview]"); closePreview(preview); syncUrl(""); return; }
+      const cancel = event.target.closest("[data-workshop-wait-cancel]");
+      if (cancel) { cancel.closest("[data-workshop-wait-panel]").hidden = true; cancel.closest("[data-workshop-preview]").focus(); return; }
+      const wait = event.target.closest("[data-workshop-wait-open]");
+      if (wait) { openPreview(wait.closest("[data-workshop-row]").dataset.processId, false); const panel = document.getElementById(wait.dataset.previewTarget)?.querySelector("[data-workshop-wait-panel]"); if (panel) { panel.hidden = false; panel.querySelector("select")?.focus(); } return; }
+      const toggle = event.target.closest("[data-workshop-preview-toggle]");
+      if (toggle) { const id = toggle.closest("[data-workshop-row]").dataset.processId; const preview = list.querySelector(`[data-workshop-preview][data-process-id="${id}"]`); if (preview.hidden) openPreview(id); else { closePreview(preview); syncUrl(""); } return; }
+      const row = event.target.closest("[data-workshop-row]");
+      if (row && !event.target.closest("a,button,input,select,form")) openPreview(row.dataset.processId);
+    });
+    document.addEventListener("keydown", (event) => {
+      if (event.key !== "Escape") return;
+      const open = previews.find((preview) => !preview.hidden);
+      if (open) { event.preventDefault(); closePreview(open); syncUrl(""); }
+    });
+    const requested = new URLSearchParams(location.search).get("preview");
+    if (requested) openPreview(requested, false);
+  })();
+</script>
 {% endblock %}

@@ -1,8 +1,13 @@
+import html
+import json
+import re
 from pathlib import Path
+from urllib.parse import parse_qs, urlsplit
 
 from openpyxl import Workbook
 from sqlalchemy import select
 
+import app.main as app_main
 from app.models.documents import Document, DocumentLink
 from app.models.audit import AuditLog
 from app.models.tasks import Task
@@ -38,17 +43,57 @@ def test_workshop_web_actions_reject_forgery_and_adverse_order_and_audit_save(au
     db_session.add(WorkshopPhasedProcessPhase(process_id=process.id, phase_code="validacao", name="Validação", status="in_progress", sort_order=2, data_json={}))
     db_session.commit()
 
-    forged = authenticated_client.post("/v2-clean/workshop/validacao/save", data={"process_id": process.id, "action": "forged"}, follow_redirects=False)
+    return_context = web_router.issue_return_context(
+        web_router.settings.app_secret_key,
+        path="/v2-clean/workshop",
+        query=f"scope=open&preview={process.id}",
+        anchor=f"workshop-process-{process.id}",
+    )
+
+    forged = authenticated_client.post("/v2-clean/workshop/validacao/save", data={"process_id": process.id, "action": "forged", "return_context": return_context}, follow_redirects=False)
     adverse = authenticated_client.post("/v2-clean/workshop/diagnostico/save", data={"process_id": process.id, "action": "advance"}, follow_redirects=False)
     adverse_save = authenticated_client.post("/v2-clean/workshop/diagnostico/save", data={"process_id": process.id, "action": "save"}, follow_redirects=False)
-    adverse_entry = authenticated_client.post("/v2-clean/workshop-entry", data={"process_id": process.id, "plate": process.plate_snapshot, "action": "save"}, follow_redirects=False)
-    saved = authenticated_client.post("/v2-clean/workshop/validacao/save", data={"process_id": process.id, "action": "save"}, follow_redirects=False)
+    adverse_entry = authenticated_client.post(
+        "/v2-clean/workshop-entry",
+        data={
+            "process_id": process.id,
+            "plate": process.plate_snapshot,
+            "action": "save",
+            "return_context": return_context,
+        },
+        follow_redirects=False,
+    )
+    saved = authenticated_client.post(
+        "/v2-clean/workshop/validacao/save",
+        data={
+            "process_id": process.id,
+            "action": "save",
+            "return_context": return_context,
+            "form_state_json": json.dumps(
+                {
+                    "return_context": "must-not-persist",
+                    "validation_observation": "Guardado sem contexto de navegação",
+                }
+            ),
+        },
+        follow_redirects=False,
+    )
 
     assert "error=invalid_action" in forged.headers["location"]
+    assert parse_qs(urlsplit(forged.headers["location"]).query)["return_context"] == [return_context]
     assert "error=invalid_phase_order" in adverse.headers["location"]
     assert "error=invalid_phase_order" in adverse_save.headers["location"]
     assert "error=invalid_phase_order" in adverse_entry.headers["location"]
+    assert parse_qs(urlsplit(adverse_entry.headers["location"]).query)["return_context"] == [return_context]
     assert saved.status_code == 303
+    db_session.expire_all()
+    phase_row = db_session.scalar(
+        select(WorkshopPhasedProcessPhase).where(
+            WorkshopPhasedProcessPhase.process_id == process.id,
+            WorkshopPhasedProcessPhase.phase_code == "validacao",
+        )
+    )
+    assert "return_context" not in phase_row.data_json["form_snapshot"]
     audit = db_session.scalar(select(AuditLog).where(AuditLog.entity_id == str(process.id), AuditLog.action == "workshop.phase.saved"))
     assert audit is not None
 
@@ -309,6 +354,45 @@ def test_workshop_dashboard_shows_operational_context_and_updates_situation(
     assert "Colocar em espera" in dashboard.text
     assert "Fase atual" in dashboard.text
     assert "Em espera" in dashboard.text
+    assert 'data-workshop-preview-toggle' in dashboard.text
+    assert 'id="workshop-preview-' in dashboard.text
+    assert "Fase atual</strong> indica onde o processo está no percurso técnico" in dashboard.text
+
+    searched = authenticated_client.get("/v2-clean/workshop?q=WX-10-AA&sort=age")
+    assert searched.status_code == 200
+    assert "WX-10-AA" in searched.text
+    assert 'name="q" value="WX-10-AA"' in searched.text
+    assert 'value="age" selected' in searched.text
+    assert "Ruído ao travar" in searched.text
+    assert "Histórico recente" in searched.text
+
+    workbench_match = re.search(
+        r'href="([^"]+return_context=[^"]+)">Abrir e trabalhar</a>',
+        searched.text,
+    )
+    assert workbench_match is not None
+    workbench_url = html.unescape(workbench_match.group(1))
+    token = parse_qs(urlsplit(workbench_url).query)["return_context"][0]
+    workbench = authenticated_client.get(workbench_url)
+    assert workbench.status_code == 200
+    expected_return = (
+        f"/v2-clean/workshop?scope=open&amp;location=all&amp;phase=all&amp;"
+        f"situation=all&amp;q=WX-10-AA&amp;sort=age&amp;preview={process.id}"
+        f"#workshop-process-{process.id}"
+    )
+    assert f'href="{expected_return}">Voltar à Oficina</a>' in workbench.text
+    assert f'name="return_context" value="{token}"' in workbench.text
+
+    tampered = authenticated_client.get(
+        f"/v2-clean/workshop-entry?process_id={process.id}&return_context={token}x"
+    )
+    assert tampered.status_code == 200
+    assert 'href="/v2-clean/workshop">Voltar à Oficina</a>' in tampered.text
+    assert 'name="return_context"' not in tampered.text
+
+    no_match = authenticated_client.get("/v2-clean/workshop?q=SEM-MATCH-999")
+    assert no_match.status_code == 200
+    assert "WX-10-AA" not in no_match.text
 
     filtered = authenticated_client.get(
         "/v2-clean/workshop?scope=open&location=external&phase=entrada&situation=in_progress"
@@ -1250,3 +1334,104 @@ def test_historical_workshop_uses_intervention_date_and_preserves_open_status(
     assert process.opened_at.date().isoformat() == "2026-07-14"
     assert process.received_at.date().isoformat() == "2026-07-14"
     assert process.metadata_json["historical_process_status"] == "Em curso"
+
+
+def test_workshop_dashboard_direct_access_requires_navigation_and_read_permission(
+    authenticated_client,
+    monkeypatch,
+):
+    granted = {"tasks.read"}
+    permission_codes = lambda _db, _user: set(granted)
+    monkeypatch.setattr(app_main, "get_user_permission_codes", permission_codes)
+    monkeypatch.setattr(web_router, "get_user_permission_codes", permission_codes)
+
+    missing_navigation = authenticated_client.get(
+        "/v2-clean/workshop", follow_redirects=False
+    )
+    assert missing_navigation.status_code == 403
+
+    granted.clear()
+    granted.add("navigation.workshop.access")
+    missing_read = authenticated_client.get(
+        "/v2-clean/workshop", follow_redirects=False
+    )
+    assert missing_read.status_code == 303
+    assert missing_read.headers["location"] == "/v2-clean?error=forbidden"
+
+    granted.add("workshop.read")
+    allowed = authenticated_client.get("/v2-clean/workshop")
+    assert allowed.status_code == 200
+    assert "Oficina" in allowed.text
+
+
+def test_workshop_operational_situation_requires_write_permission_before_mutation(
+    authenticated_client,
+    db_session,
+    monkeypatch,
+):
+    process = WorkshopPhasedProcess(
+        public_reference="OF-RBAC-GATE",
+        process_type="general",
+        title="Gate de autorização",
+        creation_mode="synthetic_test",
+        status="active",
+        plate_snapshot="RB-11-AC",
+        current_phase_code="validacao",
+        priority="normal",
+        origin="v2_clean",
+        metadata_json={},
+    )
+    db_session.add(process)
+    db_session.commit()
+
+    granted = {"navigation.workshop.access", "workshop.read"}
+    permission_codes = lambda _db, _user: set(granted)
+    monkeypatch.setattr(app_main, "get_user_permission_codes", permission_codes)
+    monkeypatch.setattr(web_router, "get_user_permission_codes", permission_codes)
+    payload = {
+        "action": "wait",
+        "waiting_reason": "A aguardar peças",
+        "scope": "open",
+        "location": "all",
+        "phase": "all",
+        "situation": "all",
+    }
+
+    denied = authenticated_client.post(
+        f"/v2-clean/workshop/{process.id}/operational-situation",
+        data=payload,
+        follow_redirects=False,
+    )
+    assert denied.status_code == 303
+    assert denied.headers["location"] == "/v2-clean?error=forbidden"
+    db_session.expire_all()
+    assert db_session.get(WorkshopPhasedProcess, process.id).metadata_json == {}
+    assert db_session.scalar(
+        select(AuditLog).where(
+            AuditLog.entity_type == "workshop_phased_process",
+            AuditLog.entity_id == str(process.id),
+            AuditLog.action == "workshop.operational_situation.updated",
+        )
+    ) is None
+
+    granted.remove("workshop.read")
+    granted.add("workshop.write")
+    allowed = authenticated_client.post(
+        f"/v2-clean/workshop/{process.id}/operational-situation",
+        data=payload,
+        follow_redirects=False,
+    )
+    assert allowed.status_code == 303
+    assert allowed.headers["location"].endswith(f"#workshop-process-{process.id}")
+    db_session.expire_all()
+    assert db_session.get(WorkshopPhasedProcess, process.id).metadata_json == {
+        "operational_situation": "waiting",
+        "operational_waiting_reason": "A aguardar peças",
+    }
+    assert db_session.scalar(
+        select(AuditLog).where(
+            AuditLog.entity_type == "workshop_phased_process",
+            AuditLog.entity_id == str(process.id),
+            AuditLog.action == "workshop.operational_situation.updated",
+        )
+    ) is not None

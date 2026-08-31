@@ -8,7 +8,7 @@
       <div class="clean-header-topbar">
         <p class="eyebrow">Oficina / experiência nova{% if is_historical %} · processo histórico{% endif %}</p>
         <div class="clean-header-top-actions">
-          <a class="button-link secondary-link" href="/v2-clean/workshop">Voltar</a>
+          <a class="button-link secondary-link" href="{{ workshop_return_url }}">Voltar à Oficina</a>
           {% include "_clean_workshop_admin_actions.html" %}
         </div>
       </div>
@@ -114,6 +114,7 @@
     <div{% if foundation_ui_enabled %} class="visual-workshop-layout"{% endif %} id="workshop-phase-content">
     <form class="clean-workshop-final-grid{% if foundation_ui_enabled %} visual-workshop-workbench{% endif %}" method="post" action="/v2-clean/workshop/{{ phase_key }}/save" enctype="multipart/form-data">
       {% if workshop_process %}<input type="hidden" name="process_id" value="{{ workshop_process.id }}">{% endif %}
+      {% if return_context %}<input type="hidden" name="return_context" value="{{ return_context }}">{% endif %}
       <input type="hidden" name="current_substep" value="">
       <input type="hidden" name="form_state_json" value="">
       {% if phase_key == "validacao" %}
@@ -1127,7 +1128,7 @@
           </div>
           <div class="clean-action-list">
             {% if workshop_process and workshop_process.status == "closed" %}
-              <a class="next-phase-action" href="/v2-clean/workshop">Voltar ao Dashboard Oficina</a>
+              <a class="next-phase-action" href="{{ workshop_return_url }}">Voltar à Oficina</a>
             {% elif phase_key in ["reparacao", "fecho"] %}
               <span class="clean-phase-action-note">As ações desta fase estão disponíveis no painel principal.</span>
             {% else %}

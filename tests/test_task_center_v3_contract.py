@@ -120,6 +120,134 @@ def test_incompatible_team_to_mine_and_closed_risk_filters_fail_closed(
     assert closed_at_risk.status_code in {400, 422}
 
 
+def test_team_scope_is_hidden_and_forged_request_is_rejected_without_team(
+    authenticated_client,
+) -> None:
+    page = authenticated_client.get("/v2-clean/tasks")
+    forged = authenticated_client.get(
+        "/v2-clean/tasks?queue=tasks_support&task_scope_view=team"
+    )
+    forged_legacy = authenticated_client.get(
+        "/v2-clean/tasks?queue=tasks_support&workspace=mine&mine_kind=team"
+    )
+    forged_preset = authenticated_client.get(
+        "/v2-clean/tasks?queue=tasks_support&preset=team"
+    )
+
+    assert page.status_code == 200
+    assert '<option value="team"' not in page.text
+    assert forged.status_code == 403
+    assert "não autorizada" in forged.text
+    assert forged_legacy.status_code == 403
+    assert forged_preset.status_code == 403
+
+
+def test_inactive_team_membership_does_not_authorize_or_leak_team_scope(
+    authenticated_client, db_session
+) -> None:
+    actor = db_session.scalar(
+        select(User).where(User.email == "admin.tests@carfast.local")
+    )
+    team = Team(code="inactive_scope", name="Equipa inativa", active=False)
+    db_session.add(team)
+    db_session.flush()
+    db_session.add(TeamMember(team_id=team.id, user_id=actor.id))
+    task = _new_task(db_session, title="Não expor equipa inativa")
+    task.team_id = team.id
+    db_session.commit()
+
+    page = authenticated_client.get("/v2-clean/tasks")
+    forged = authenticated_client.get(
+        "/v2-clean/tasks?task_scope_view=team&status=all"
+    )
+
+    assert '<option value="team"' not in page.text
+    assert forged.status_code == 403
+
+
+@pytest.mark.parametrize("grouping", ["flat", "category", "case"])
+def test_team_scope_is_preserved_and_limited_to_the_users_team(
+    authenticated_client, db_session, grouping
+) -> None:
+    team = _support_team_with_eligible_member(db_session)
+    team_task = _new_task(db_session, title=f"Visível na equipa {grouping}")
+    team_task.team_id = team.id
+    team_task.assigned_to_id = None
+    personal_task = _new_task(db_session, title=f"Fora da equipa {grouping}")
+    db_session.commit()
+
+    url = (
+        "/v2-clean/tasks?queue=tasks_support&task_scope_view=team"
+        f"&grouping={grouping}&status=all"
+    )
+    page = authenticated_client.get(url)
+    reload = authenticated_client.get(url)
+
+    for response in (page, reload):
+        assert response.status_code == 200
+        assert 'data-active-view="team"' in response.text
+        assert '<option value="team" selected' in response.text
+        assert team_task.title in response.text
+        assert personal_task.title not in response.text
+        assert 'name="task_scope_view"' in response.text
+        assert 'aria-label="Ver 1 tarefas por tratar"' in response.text
+        assert 'aria-label="Ver 1 tarefas por assumir"' in response.text
+
+
+def test_conflicting_public_scope_parameters_are_rejected(
+    authenticated_client, db_session
+) -> None:
+    _support_team_with_eligible_member(db_session)
+    response = authenticated_client.get(
+        "/v2-clean/tasks?task_scope_view=team&view=mine"
+    )
+    forged_mine = authenticated_client.get(
+        "/v2-clean/tasks?task_scope_view=mine&mine_kind=team"
+    )
+    forged_mine_unassigned = authenticated_client.get(
+        "/v2-clean/tasks?task_scope_view=mine&assignment=unassigned"
+    )
+
+    assert response.status_code == 400
+    assert "incompatível" in response.text
+    assert forged_mine.status_code == 400
+    assert forged_mine_unassigned.status_code == 400
+
+
+def test_team_unassigned_filter_preserves_scope_and_filters_the_list(
+    authenticated_client, db_session, monkeypatch
+) -> None:
+    monkeypatch.setattr(task_router.settings, "visual_foundation_enabled", True)
+    team = _support_team_with_eligible_member(db_session)
+    unassigned = _new_task(db_session, title="Equipa por assumir")
+    unassigned.team_id = team.id
+    unassigned.assigned_to_id = None
+    claimed = _new_task(db_session, title="Equipa já assumida")
+    claimed.team_id = team.id
+    outside = _new_task(db_session, title="Por assumir fora da equipa")
+    outside.assigned_to_id = None
+    db_session.commit()
+
+    pages = (
+        authenticated_client.get(
+            "/v2-clean/tasks?task_scope_view=team&assignment=unassigned&status=all"
+        ),
+        authenticated_client.get(
+            "/v2-clean/tasks?workspace=mine&mine_kind=team"
+            "&assignment=unassigned&status=all"
+        ),
+    )
+
+    for page in pages:
+        assert page.status_code == 200
+        assert 'data-active-view="team"' in page.text
+        assert '<option value="team" selected' in page.text
+        assert unassigned.title in page.text
+        assert claimed.title not in page.text
+        assert outside.title not in page.text
+        assert 'name="assignment" value="unassigned"' in page.text
+
+
 def test_sort_contract_is_explicit_and_reflected_in_the_surface(
     authenticated_client, db_session
 ) -> None:

@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import date, timedelta
 from typing import Iterable
 
 from sqlalchemy import and_, or_, select
 
 from app.models.admin import Role, User, UserRole
-from app.models.organization import TeamMember
+from app.models.organization import Team, TeamMember
 from app.models.tasks import (
     Task,
     TaskHelpRequest,
@@ -28,6 +29,32 @@ TASK_ELEVATED_ROLE_CODES = {
 ACTIVE_SUPPORT_STATUSES = ("pending", "accepted")
 
 
+@dataclass(frozen=True)
+class TaskScopeView:
+    code: str
+    workspace: str
+    mine_kind: str
+    assignment: str
+
+
+def resolve_task_scope_view(
+    db, *, user_id: int | None, requested: str
+) -> tuple[TaskScopeView | None, str | None]:
+    """Resolve the public Task Center view without silently changing scope."""
+
+    scopes = {
+        "mine": TaskScopeView("mine", "mine", "all", ""),
+        "claim": TaskScopeView("claim", "all", "all", "unassigned"),
+        "team": TaskScopeView("team", "mine", "team", ""),
+    }
+    scope = scopes.get(requested)
+    if scope is None:
+        return None, "invalid"
+    if requested == "team" and (not user_id or not user_team_ids(db, user_id)):
+        return None, "forbidden"
+    return scope, None
+
+
 def task_role_codes(db, user_id: int) -> set[str]:
     return set(
         db.scalars(
@@ -45,7 +72,11 @@ def user_is_restricted_task_operator(db, user_id: int) -> bool:
 
 def user_team_ids(db, user_id: int) -> set[int]:
     return set(
-        db.scalars(select(TeamMember.team_id).where(TeamMember.user_id == user_id))
+        db.scalars(
+            select(TeamMember.team_id)
+            .join(Team, Team.id == TeamMember.team_id)
+            .where(TeamMember.user_id == user_id, Team.active.is_(True))
+        )
     )
 
 

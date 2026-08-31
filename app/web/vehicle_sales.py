@@ -590,6 +590,8 @@ def _proposal_snapshot(row: dict[str, Any]) -> dict[str, Any]:
         "gearbox": row.get("gearbox") or "-",
         "cost": str(row["cost"]) if row.get("cost") is not None else None,
         "debt": str(row["debt"]) if row.get("debt") is not None else None,
+        "finance_entity": row.get("finance_entity") or "",
+        "contract_number": str(row.get("contract_number") or ""),
         "km": str(row["km"]) if row["km"] is not None else None,
         "status": row["status_label"],
         "vehicle_state": row.get("vehicle_state_label") or "-",
@@ -2073,6 +2075,8 @@ def vehicle_sale_proposal_xlsx(request: Request, proposal_id: int):
         "Cliente",
         "Data de devolução",
         "Proposto CarFast",
+        "Entidade financeira",
+        "N.º contrato",
         "Valor em dívida",
         "Margem CarFast",
         "Contraproposta cliente",
@@ -2098,6 +2102,10 @@ def vehicle_sale_proposal_xlsx(request: Request, proposal_id: int):
             if line.customer_counteroffer is not None and debt is not None
             else None
         )
+        finance_entity = data.get("finance_entity") or current.get("finance_entity") or ""
+        contract_number = str(
+            data.get("contract_number") or current.get("contract_number") or ""
+        )
         sheet.append([
             data.get("plate"), data.get("registration"), data.get("brand"),
             data.get("model"), data.get("version"), data.get("colour"),
@@ -2106,10 +2114,15 @@ def vehicle_sale_proposal_xlsx(request: Request, proposal_id: int):
             data.get("vehicle_state") or current.get("vehicle_state_label") or "-",
             data.get("client") or (current_vehicle.rentway_client if current_vehicle else None) or "-",
             data.get("return_on") or current.get("return_on_display") or "-",
-            line.proposed_price, debt, negotiation_margin,
+            line.proposed_price, finance_entity, contract_number, debt, negotiation_margin,
             line.customer_counteroffer, counteroffer_margin,
             line.notes,
         ])
+        contract_cell = sheet.cell(
+            row=sheet.max_row,
+            column=headers.index("N.º contrato") + 1,
+        )
+        contract_cell.number_format = "@"
     for column in sheet.columns:
         letter = column[0].column_letter
         sheet.column_dimensions[letter].width = min(40, max(12, max(len(str(cell.value or "")) for cell in column) + 2))

@@ -115,7 +115,6 @@
           {% for row in process_rows %}
             {% set process = row.process %}
             {% set phase = process.current_phase_code or "entrada" %}
-            {% set process_url = "/v2-clean/workshop-entry?process_id=" ~ process.id if phase == "entrada" else "/v2-clean/workshop/" ~ phase ~ "?process_id=" ~ process.id %}
             <div class="clean-workshop-process-item" id="workshop-process-{{ process.id }}" data-workshop-row data-process-id="{{ process.id }}">
               <button class="clean-workshop-process-link" type="button" data-workshop-preview-toggle aria-expanded="false" aria-controls="workshop-preview-{{ process.id }}">
                 <strong>{{ process.plate_snapshot or "Sem matrícula" }}</strong>
@@ -169,7 +168,7 @@
                 <div><span>Histórico recente</span>{% for recent_phase in row.recent_phases %}<p><strong>{{ recent_phase.name }}</strong> · {{ recent_phase.status|replace('_', ' ')|title }}</p>{% else %}<p>Sem histórico recente disponível.</p>{% endfor %}</div>
               </div>
               <div class="clean-workshop-preview-actions">
-                <a class="button-link secondary-link" href="{{ process_url }}">Abrir e trabalhar</a>
+                <a class="button-link secondary-link" href="{{ row.workbench_url }}">Abrir e trabalhar</a>
                 {% if process.status not in ['closed', 'cancelled'] and row.operational_situation != 'waiting' %}
                 <div class="clean-workshop-wait-panel" data-workshop-wait-panel hidden>
                   <div><strong>Colocar em espera</strong><span>{{ process.public_reference or ('#' ~ process.id) }} · {{ process.plate_snapshot or 'Sem matrícula' }}</span></div>

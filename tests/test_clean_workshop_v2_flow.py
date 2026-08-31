@@ -1,4 +1,8 @@
+import html
+import json
+import re
 from pathlib import Path
+from urllib.parse import parse_qs, urlsplit
 
 from openpyxl import Workbook
 from sqlalchemy import select
@@ -39,17 +43,57 @@ def test_workshop_web_actions_reject_forgery_and_adverse_order_and_audit_save(au
     db_session.add(WorkshopPhasedProcessPhase(process_id=process.id, phase_code="validacao", name="Validação", status="in_progress", sort_order=2, data_json={}))
     db_session.commit()
 
-    forged = authenticated_client.post("/v2-clean/workshop/validacao/save", data={"process_id": process.id, "action": "forged"}, follow_redirects=False)
+    return_context = web_router.issue_return_context(
+        web_router.settings.app_secret_key,
+        path="/v2-clean/workshop",
+        query=f"scope=open&preview={process.id}",
+        anchor=f"workshop-process-{process.id}",
+    )
+
+    forged = authenticated_client.post("/v2-clean/workshop/validacao/save", data={"process_id": process.id, "action": "forged", "return_context": return_context}, follow_redirects=False)
     adverse = authenticated_client.post("/v2-clean/workshop/diagnostico/save", data={"process_id": process.id, "action": "advance"}, follow_redirects=False)
     adverse_save = authenticated_client.post("/v2-clean/workshop/diagnostico/save", data={"process_id": process.id, "action": "save"}, follow_redirects=False)
-    adverse_entry = authenticated_client.post("/v2-clean/workshop-entry", data={"process_id": process.id, "plate": process.plate_snapshot, "action": "save"}, follow_redirects=False)
-    saved = authenticated_client.post("/v2-clean/workshop/validacao/save", data={"process_id": process.id, "action": "save"}, follow_redirects=False)
+    adverse_entry = authenticated_client.post(
+        "/v2-clean/workshop-entry",
+        data={
+            "process_id": process.id,
+            "plate": process.plate_snapshot,
+            "action": "save",
+            "return_context": return_context,
+        },
+        follow_redirects=False,
+    )
+    saved = authenticated_client.post(
+        "/v2-clean/workshop/validacao/save",
+        data={
+            "process_id": process.id,
+            "action": "save",
+            "return_context": return_context,
+            "form_state_json": json.dumps(
+                {
+                    "return_context": "must-not-persist",
+                    "validation_observation": "Guardado sem contexto de navegação",
+                }
+            ),
+        },
+        follow_redirects=False,
+    )
 
     assert "error=invalid_action" in forged.headers["location"]
+    assert parse_qs(urlsplit(forged.headers["location"]).query)["return_context"] == [return_context]
     assert "error=invalid_phase_order" in adverse.headers["location"]
     assert "error=invalid_phase_order" in adverse_save.headers["location"]
     assert "error=invalid_phase_order" in adverse_entry.headers["location"]
+    assert parse_qs(urlsplit(adverse_entry.headers["location"]).query)["return_context"] == [return_context]
     assert saved.status_code == 303
+    db_session.expire_all()
+    phase_row = db_session.scalar(
+        select(WorkshopPhasedProcessPhase).where(
+            WorkshopPhasedProcessPhase.process_id == process.id,
+            WorkshopPhasedProcessPhase.phase_code == "validacao",
+        )
+    )
+    assert "return_context" not in phase_row.data_json["form_snapshot"]
     audit = db_session.scalar(select(AuditLog).where(AuditLog.entity_id == str(process.id), AuditLog.action == "workshop.phase.saved"))
     assert audit is not None
 
@@ -321,6 +365,30 @@ def test_workshop_dashboard_shows_operational_context_and_updates_situation(
     assert 'value="age" selected' in searched.text
     assert "Ruído ao travar" in searched.text
     assert "Histórico recente" in searched.text
+
+    workbench_match = re.search(
+        r'href="([^"]+return_context=[^"]+)">Abrir e trabalhar</a>',
+        searched.text,
+    )
+    assert workbench_match is not None
+    workbench_url = html.unescape(workbench_match.group(1))
+    token = parse_qs(urlsplit(workbench_url).query)["return_context"][0]
+    workbench = authenticated_client.get(workbench_url)
+    assert workbench.status_code == 200
+    expected_return = (
+        f"/v2-clean/workshop?scope=open&amp;location=all&amp;phase=all&amp;"
+        f"situation=all&amp;q=WX-10-AA&amp;sort=age&amp;preview={process.id}"
+        f"#workshop-process-{process.id}"
+    )
+    assert f'href="{expected_return}">Voltar à Oficina</a>' in workbench.text
+    assert f'name="return_context" value="{token}"' in workbench.text
+
+    tampered = authenticated_client.get(
+        f"/v2-clean/workshop-entry?process_id={process.id}&return_context={token}x"
+    )
+    assert tampered.status_code == 200
+    assert 'href="/v2-clean/workshop">Voltar à Oficina</a>' in tampered.text
+    assert 'name="return_context"' not in tampered.text
 
     no_match = authenticated_client.get("/v2-clean/workshop?q=SEM-MATCH-999")
     assert no_match.status_code == 200

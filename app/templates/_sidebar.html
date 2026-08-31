@@ -47,10 +47,15 @@
       {% if can_nav_workshop %}<a href="/v2-clean/workshop" data-nav-icon="workshop" {% if active_menu == "workshop" %}class="active" aria-current="page"{% endif %}>Oficina</a>{% endif %}
       {% if can_nav_stock %}<a href="/v2-clean/stock" {% if active_menu == "stock" %}class="active" aria-current="page"{% endif %}>Stock</a>{% endif %}
       {% set fleet_menu_open = active_menu in ["fleet", "fleet_sales"] or request.url.path.startswith('/v2-clean/fleet') %}
+      {% set fleet_vehicles_current = active_menu == "fleet" %}
+      {% set fleet_sales_proposals_current = request.url.path.startswith("/v2-clean/fleet/sales/proposals") %}
+      {% set fleet_sales_opportunities_current = request.url.path.startswith("/v2-clean/fleet/sales/opportunities") %}
+      {% set fleet_sales_publications_current = request.url.path.startswith("/v2-clean/fleet/sales/publications") %}
+      {% set fleet_sales_pipeline_current = active_menu == "fleet_sales" and not fleet_sales_proposals_current and not fleet_sales_opportunities_current and not fleet_sales_publications_current %}
       {% if can_nav_fleet %}<details class="sidebar-nav-group" {% if fleet_menu_open %}open{% endif %}>
         <summary data-nav-icon="fleet" {% if fleet_menu_open %}class="group-current"{% endif %}>Frota</summary>
         <div class="sidebar-nav-children">
-          {% if nav_has_permission(request, "vehicles.read", "vehicles.write", "admin.manage") %}<a class="sidebar-sub-link {% if active_menu == 'fleet' %}active{% endif %}" href="/v2-clean/fleet">Viaturas</a>{% endif %}
+          {% if nav_has_permission(request, "vehicles.read", "vehicles.write", "admin.manage") %}<a class="sidebar-sub-link {% if fleet_vehicles_current %}active{% endif %}" href="/v2-clean/fleet"{% if fleet_vehicles_current %} aria-current="page"{% endif %}>Viaturas</a>{% endif %}
           {% if nav_has_permission(request, "vehicles.read", "vehicles.write", "admin.manage") %}<a class="sidebar-sub-link" href="/alerts">Alertas</a>{% endif %}
           {% if nav_has_permission(request, "tasks.read", "tasks.operational.read", "tasks.operational.write", "admin.manage") %}<a class="sidebar-sub-link" href="/v2-clean/tasks?workspace=fleet">Ocorrências</a>{% endif %}
           {% if nav_has_permission(request, "documents.read", "documents.write", "admin.manage") and nav_has_permission(request, "vehicles.read", "vehicles.write", "admin.manage") %}<a class="sidebar-sub-link" href="/v2-clean/documentation/by-vehicle">Documentos</a>{% endif %}
@@ -58,10 +63,10 @@
             <details class="sidebar-sub-group" {% if active_menu == 'fleet_sales' %}open{% endif %}>
               <summary>Vendas</summary>
               <div>
-                <a class="sidebar-sub-link {% if active_menu == 'fleet_sales' %}active{% endif %}" href="/v2-clean/fleet/sales">Pipeline</a>
-                <a class="sidebar-sub-link" href="/v2-clean/fleet/sales/proposals">Processos de venda</a>
-                <a class="sidebar-sub-link" href="/v2-clean/fleet/sales/opportunities">Clientes / comerciantes</a>
-                <a class="sidebar-sub-link" href="/v2-clean/fleet/sales/publications">Publicações</a>
+                <a class="sidebar-sub-link {% if fleet_sales_pipeline_current %}active{% endif %}" href="/v2-clean/fleet/sales"{% if fleet_sales_pipeline_current %} aria-current="page"{% endif %}>Pipeline</a>
+                <a class="sidebar-sub-link {% if fleet_sales_proposals_current %}active{% endif %}" href="/v2-clean/fleet/sales/proposals"{% if fleet_sales_proposals_current %} aria-current="page"{% endif %}>Processos de venda</a>
+                <a class="sidebar-sub-link {% if fleet_sales_opportunities_current %}active{% endif %}" href="/v2-clean/fleet/sales/opportunities"{% if fleet_sales_opportunities_current %} aria-current="page"{% endif %}>Clientes / comerciantes</a>
+                <a class="sidebar-sub-link {% if fleet_sales_publications_current %}active{% endif %}" href="/v2-clean/fleet/sales/publications"{% if fleet_sales_publications_current %} aria-current="page"{% endif %}>Publicações</a>
               </div>
             </details>
           {% endif %}
@@ -74,15 +79,15 @@
       {% if can_nav_partners %}
         <a href="/v2-clean/suppliers" {% if active_menu == "suppliers" %}class="active"{% endif %}>Parceiros</a>
       {% endif %}
-      {% set documentation_menu_open = active_menu in ["documentation_center", "documentation_triage", "documentation_treatment", "documentation_imports", "documentation_invoices", "documentation_diagnostics", "documentation_archive", "documentation_models", "documents", "documents_center"] %}
+      {% set documentation_menu_open = active_menu in ["documentation_center", "documentation_triage", "documentation_treatment", "documentation_by_vehicle", "documentation_imports", "documentation_invoices", "documentation_diagnostics", "documentation_archive", "documentation_models", "documents", "documents_center"] %}
       {% if can_nav_documentation %}<details class="sidebar-nav-group" {% if documentation_menu_open %}open{% endif %}>
         <summary data-nav-icon="documents" {% if documentation_menu_open %}class="group-current"{% endif %}>Documentação</summary>
         <div class="sidebar-nav-children">
-          <a class="sidebar-sub-link" href="/v2-clean/documentation/triage">Triagem</a>
-          <a class="sidebar-sub-link" href="/v2-clean/documentation/treatment">Tratamento</a>
-          <a class="sidebar-sub-link" href="/v2-clean/documentation/by-vehicle">Por viatura</a>
-          <a class="sidebar-sub-link" href="/v2-clean/documentation/imports">Importações</a>
-          <a class="sidebar-sub-link" href="/v2-clean/documentation/archive">Arquivo</a>
+          <a class="sidebar-sub-link {% if active_menu == 'documentation_triage' %}active{% endif %}"{% if active_menu == 'documentation_triage' %} aria-current="page"{% endif %} href="/v2-clean/documentation/triage">Triagem</a>
+          <a class="sidebar-sub-link {% if active_menu == 'documentation_treatment' %}active{% endif %}"{% if active_menu == 'documentation_treatment' %} aria-current="page"{% endif %} href="/v2-clean/documentation/treatment">Tratamento</a>
+          <a class="sidebar-sub-link {% if active_menu == 'documentation_by_vehicle' %}active{% endif %}"{% if active_menu == 'documentation_by_vehicle' %} aria-current="page"{% endif %} href="/v2-clean/documentation/by-vehicle">Por viatura</a>
+          <a class="sidebar-sub-link {% if active_menu == 'documentation_imports' %}active{% endif %}"{% if active_menu == 'documentation_imports' %} aria-current="page"{% endif %} href="/v2-clean/documentation/imports">Importações</a>
+          <a class="sidebar-sub-link {% if active_menu == 'documentation_archive' %}active{% endif %}"{% if active_menu == 'documentation_archive' %} aria-current="page"{% endif %} href="/v2-clean/documentation/archive">Arquivo</a>
         </div>
       </details>{% endif %}
       {% if can_nav_admin %}

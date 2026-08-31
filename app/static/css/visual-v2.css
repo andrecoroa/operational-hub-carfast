@@ -396,7 +396,10 @@ dialog { border: 1px solid var(--cf-gray-200); border-radius: 12px; box-shadow: 
   .visual-fleet-workbench-header { align-items: flex-start; }
   .visual-fleet-workbench-header > span { min-width: 76px; }
   .visual-fleet-filters input,.visual-fleet-filters select,.visual-fleet-filters summary,.visual-fleet-filters button { min-height: 48px; }
-  .visual-fleet-table-scroll::before { display: block; padding: 7px 12px; content: "Deslize para consultar todos os dados →"; color: var(--cf-gray-600); background: var(--cf-gray-050); border-bottom: 1px solid var(--cf-gray-200); font-size: 10px; }
+  .visual-fleet .fleet-compact-table { width: 100%; min-width: 0; }
+  .visual-fleet .fleet-compact-table td { width: 100%; min-width: 0; height: auto; }
+  .visual-fleet .fleet-vehicle-link { width: auto; max-width: 100%; }
+  .visual-fleet-table-scroll::before { display: none; }
   .visual-fleet-context-nav { position: sticky; top: 0; z-index: 4; margin-inline: -2px; }
   .visual-fleet-context-nav a { min-height: 44px; }
   .visual-fleet-vehicle-hero .clean-vehicle-identity strong { font-size: 24px; }

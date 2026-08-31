@@ -1095,6 +1095,19 @@ def can_view_fleet(request: Request) -> bool:
     return has_any_web_permission(request, "vehicles.read", "vehicles.write", "admin.manage")
 
 
+def fleet_rentway_status_label(value: str | None) -> str:
+    raw = str(value or "").strip()
+    normalized = raw.upper()
+    labels = {
+        "FREE": "Disponível",
+        "RENT": "Em contrato",
+        "SHORT/MID TERM RA": "Contrato curto/médio prazo",
+        "IMPRO": "Imobilizada",
+        "SOLD": "Vendida",
+    }
+    return labels.get(normalized, raw or "-")
+
+
 def can_view_documentation(request: Request) -> bool:
     return has_any_web_permission(
         request,
@@ -11656,6 +11669,7 @@ def clean_fleet_page(
     q: str | None = None,
     scope: str = "active",
     page: int = 1,
+    sort: str = "updated_desc",
 ):
     denied = clean_experience_denied(request)
     if denied:
@@ -11672,6 +11686,8 @@ def clean_fleet_page(
     selected_groups = [value.strip() for value in query_params.getlist("rentway_group") if value.strip()]
     selected_statuses = [value.strip() for value in query_params.getlist("rentway_status") if value.strip()]
     client = query_params.get("client", "").strip()
+    alerts = query_params.get("alerts", "all")
+    alerts = alerts if alerts in {"all", "with"} else "all"
     registration_from = parse_iso_or_dmy_date(query_params.get("registration_from", ""))
     registration_to = parse_iso_or_dmy_date(query_params.get("registration_to", ""))
     return_from = parse_iso_or_dmy_date(query_params.get("return_from", ""))
@@ -11753,6 +11769,19 @@ def clean_fleet_page(
         if ipo_to:
             stmt = stmt.where(Vehicle.rentway_ipo_date <= ipo_to)
 
+        if alerts == "with":
+            stmt = stmt.where(Vehicle.rentway_ipo_date <= date.today() + timedelta(days=60))
+
+        sort_options = {
+            "updated_desc": (Vehicle.updated_at.desc(), Vehicle.id.desc()),
+            "return_asc": (Vehicle.rentway_return_date.asc().nulls_last(), Vehicle.id.desc()),
+            "ipo_asc": (Vehicle.rentway_ipo_date.asc().nulls_last(), Vehicle.id.desc()),
+            "client_asc": (Vehicle.rentway_client.asc().nulls_last(), Vehicle.id.desc()),
+            "status_asc": (Vehicle.rentway_status.asc().nulls_last(), Vehicle.id.desc()),
+            "vehicle_asc": (Vehicle.brand.asc().nulls_last(), Vehicle.model.asc().nulls_last(), Vehicle.id.desc()),
+        }
+        sort = sort if sort in sort_options else "updated_desc"
+
         page_size = 50
         total_rows = db.scalar(
             select(func.count()).select_from(stmt.order_by(None).subquery())
@@ -11761,12 +11790,25 @@ def clean_fleet_page(
         active_page = min(max(page, 1), total_pages)
         page_start = (active_page - 1) * page_size
         vehicles = db.scalars(
-            stmt.order_by(Vehicle.updated_at.desc(), Vehicle.id.desc())
+            stmt.order_by(*sort_options[sort])
             .offset(page_start)
             .limit(page_size)
         ).all()
+        vehicle_ids = [vehicle.id for vehicle in vehicles]
+        plans = db.scalars(
+            select(VehicleFinancialPlan)
+            .where(
+                VehicleFinancialPlan.vehicle_id.in_(vehicle_ids),
+                VehicleFinancialPlan.active.is_(True),
+            )
+            .order_by(VehicleFinancialPlan.updated_at.desc(), VehicleFinancialPlan.id.desc())
+        ).all() if vehicle_ids else []
+        plan_by_vehicle = {}
+        for plan in plans:
+            plan_by_vehicle.setdefault(plan.vehicle_id, plan)
         rows = []
         for vehicle in vehicles:
+            financial_plan = plan_by_vehicle.get(vehicle.id)
             alert = None
             if vehicle.rentway_ipo_date:
                 days_to_ipo = (vehicle.rentway_ipo_date - date.today()).days
@@ -11795,7 +11837,12 @@ def clean_fleet_page(
                     "group": vehicle.rentway_group or "-",
                     "fuel": vehicle.rentway_fuel or "-",
                     "rentway_status": vehicle.rentway_status or "-",
+                    "rentway_status_label": fleet_rentway_status_label(vehicle.rentway_status),
                     "client": vehicle.rentway_client or "-",
+                    "location": vehicle.rentway_location or "-",
+                    "operational_status": vehicle.operational_status or "-",
+                    "finance_entity": financial_plan.finance_entity if financial_plan else "-",
+                    "contract_number": financial_plan.contract_number if financial_plan else "-",
                     "return_date": clean_date(
                         vehicle.rentway_return_date.isoformat()
                         if vehicle.rentway_return_date
@@ -11867,6 +11914,7 @@ def clean_fleet_page(
             "counts": counts,
             "q": q or "",
             "scope": scope,
+            "sort": sort,
             "filter_options": filter_options,
             "filters": {
                 "brands": selected_brands,
@@ -11875,6 +11923,7 @@ def clean_fleet_page(
                 "groups": selected_groups,
                 "statuses": selected_statuses,
                 "client": client,
+                "alerts": alerts,
                 "registration_from": query_params.get("registration_from", ""),
                 "registration_to": query_params.get("registration_to", ""),
                 "return_from": query_params.get("return_from", ""),
@@ -11884,6 +11933,13 @@ def clean_fleet_page(
             },
             "query_without_page": urlencode(
                 [(key, value) for key, value in query_params.multi_items() if key != "page"]
+            ),
+            "query_without_sort_page": urlencode(
+                [
+                    (key, value)
+                    for key, value in query_params.multi_items()
+                    if key not in {"page", "sort"}
+                ]
             ),
             "current_list_url": str(request.url.path)
             + (f"?{request.url.query}" if request.url.query else ""),

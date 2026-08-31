@@ -25,6 +25,18 @@
         </table>
       </div>
       {% if payload.preview.preview_truncated %}<p class="doc-arch-muted">Amostra limitada; a confirmação processará as {{ payload.preview.total_rows }} linhas.</p>{% endif %}
+      {% if payload.import_kind == "fleet" %}
+        <section class="doc-arch-panel" aria-labelledby="fleet-absent-title">
+          <h2 id="fleet-absent-title">Ausentes do ficheiro · {{ payload.preview.absent_count or 0 }}</h2>
+          <p class="doc-arch-muted">Estas viaturas ficam apenas sinalizadas para reconciliação. Confirmar a importação não as desativa, não as marca como vendidas e não altera a Proposta de Venda.</p>
+          {% if payload.preview.absent_rows %}
+            <ul class="doc-arch-change-list">
+              {% for vehicle in payload.preview.absent_rows %}<li><strong>{{ vehicle.plate }}</strong><span>Unit {{ vehicle.unit }} · {{ vehicle.brand }} {{ vehicle.model }}</span></li>{% endfor %}
+            </ul>
+            {% if payload.preview.absent_truncated %}<p class="doc-arch-muted">Lista limitada às primeiras 50 viaturas; o total acima permanece apenas para revisão.</p>{% endif %}
+          {% else %}<p class="doc-arch-muted">Nenhuma viatura Rentway ativa ficou ausente.</p>{% endif %}
+        </section>
+      {% endif %}
       <div class="doc-arch-preview-actions">
         <form method="post" action="/v2-clean/documentation/imports/rentway/confirm"><input type="hidden" name="preview_token" value="{{ preview_token }}"><button type="submit">Confirmar e gravar</button></form>
         <form method="post" action="/v2-clean/documentation/imports/rentway/cancel"><input type="hidden" name="preview_token" value="{{ preview_token }}"><button type="submit" class="secondary">Cancelar</button></form>

@@ -11,6 +11,7 @@ TEMPLATE = (ROOT / "app/templates/_task_center_approved.html").read_text(
     encoding="utf-8"
 )
 ROUTER = (ROOT / "app/web/router.py").read_text(encoding="utf-8")
+CSS = (ROOT / "app/static/css/ui-contract-v1.css").read_text(encoding="utf-8")
 
 
 @pytest.fixture(autouse=True)
@@ -31,6 +32,30 @@ def test_work_views_and_queue_are_independent_and_fail_closed() -> None:
     assert 'mine_relation_conditions["team"] = literal(False)' in ROUTER
     assert "Never substitute" in ROUTER
     assert "event.target.value||'all'" not in TEMPLATE
+
+
+def test_all_work_view_is_canonical_without_aggregating_queues() -> None:
+    assert '("all","Todas")' in TEMPLATE
+    assert "task_all_scope_allowed" in TEMPLATE
+    assert "scope==='all'?'all':'assigned'" in TEMPLATE
+    assert 'TaskScopeView("all", "all", "all", "")' in (
+        ROOT / "app/services/task_center.py"
+    ).read_text(encoding="utf-8")
+    assert "task_visibility_filter" in ROUTER
+    assert 'queue in {"all", "authorized", "todas"}' in ROUTER
+
+
+def test_filter_grid_has_explicit_reset_column_and_responsive_stack() -> None:
+    desktop_rule_start = CSS.index(
+        ".task-center-approved .task-center-approved-filter-row{"
+        "grid-template-columns:minmax(170px"
+    )
+    desktop_rule = CSS[desktop_rule_start:].split("}", 1)[0]
+    assert desktop_rule.count("minmax(") == 8
+    assert "[data-task-safe-reset]{height:32px;min-width:104px" in CSS
+    assert "@media(max-width:1390px) and (min-width:901px)" in CSS
+    assert "grid-template-columns:repeat(4,minmax(130px,1fr))" in CSS
+    assert "@media(max-width:900px)" in CSS
 
 
 def test_closed_plus_risk_is_blocked_on_server_and_in_ui(

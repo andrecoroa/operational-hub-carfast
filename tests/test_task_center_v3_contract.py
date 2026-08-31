@@ -5,7 +5,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
 import pytest
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 
 import app.web.router as task_router
 from app.models import (
@@ -20,10 +20,12 @@ from app.models import (
     Team,
     TeamMember,
     User,
+    UserRole,
     WorkCategory,
     WorkDepartment,
     WorkQueue,
 )
+from app.services.users import create_user
 
 RETURN_CONTEXT = (
     "/v2-clean/tasks?queue=tasks_support&view=team&status=open"
@@ -178,6 +180,82 @@ def test_removed_or_forged_mine_relations_fail_closed(
     )
     assert response.status_code == 400
     assert "inválida" in response.text
+
+
+def test_all_scope_uses_canonical_state_and_preserves_filters(
+    authenticated_client, db_session, monkeypatch
+) -> None:
+    monkeypatch.setattr(task_router.settings, "task_cases_enabled", True)
+    task = _new_task(db_session, title="Visível em Todas")
+    response = authenticated_client.get(
+        "/v2-clean/tasks?queue=tasks_support&task_scope_view=all"
+        "&workspace=all&mine_kind=all&assignment=&status=all&due="
+        "&q=Vis%C3%ADvel&sort=created_desc&grouping=flat"
+    )
+
+    assert response.status_code == 200
+    assert task.title in response.text
+    assert 'data-active-view="all"' in response.text
+    assert '<option value="all" selected>Todas</option>' in response.text
+    assert 'name="workspace" value="all"' in response.text
+    assert 'name="mine_kind" value="all"' in response.text
+    assert 'name="assignment" value=""' in response.text
+    assert 'name="q" value="Visível"' in response.text
+    assert '<option value="created_desc" selected>' in response.text
+    assert 'name="grouping" value="flat"' in response.text
+    assert "Vista:</span><b>Todas</b>" in response.text
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "task_scope_view=all&workspace=mine&mine_kind=all",
+        "task_scope_view=all&workspace=all&mine_kind=assigned",
+        "task_scope_view=all&workspace=all&mine_kind=all&assignment=unassigned",
+        "task_scope_view=all&workspace=all&mine_kind=all&view=mine",
+    ],
+)
+def test_all_scope_rejects_noncanonical_or_conflicting_parameters(
+    authenticated_client, query
+) -> None:
+    response = authenticated_client.get(f"/v2-clean/tasks?{query}")
+
+    assert response.status_code == 400
+    assert "incompatível" in response.text
+
+
+def test_all_scope_keeps_restricted_operator_visibility_fail_closed(
+    authenticated_client, db_session
+) -> None:
+    actor = db_session.scalar(
+        select(User).where(User.email == "admin.tests@carfast.local")
+    )
+    operator = db_session.scalar(select(Role).where(Role.code == "operator"))
+    other_user = create_user(
+        db_session,
+        name="Outro operador",
+        email="outro.operador@carfast.local",
+        password="Secret123!",
+        role_codes=["operator"],
+        organizational_unit_codes=["carfast"],
+    )
+    related = _new_task(db_session, title="Operador relacionado")
+    outside = _new_task(db_session, title="Operador sem relação")
+    outside.assigned_to_id = None
+    outside.created_by_id = other_user.id
+    db_session.execute(delete(UserRole).where(UserRole.user_id == actor.id))
+    db_session.add(UserRole(user_id=actor.id, role_id=operator.id))
+    db_session.commit()
+
+    response = authenticated_client.get(
+        "/v2-clean/tasks?queue=tasks_support&task_scope_view=all"
+        "&workspace=all&mine_kind=all&status=all"
+    )
+
+    assert response.status_code == 200
+    assert '<option value="all" selected>Todas</option>' in response.text
+    assert related.title in response.text
+    assert outside.title not in response.text
 
 
 def test_claim_view_requires_eligible_team_unassigned_task_and_assume_scope(

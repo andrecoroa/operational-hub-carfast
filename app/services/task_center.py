@@ -49,6 +49,7 @@ def resolve_task_scope_view(
         "mine": TaskScopeView("mine", "mine", "assigned", ""),
         "claim": TaskScopeView("claim", "all", "assigned", "unassigned"),
         "team": TaskScopeView("team", "mine", "team", ""),
+        "all": TaskScopeView("all", "all", "all", ""),
     }
     scope = scopes.get(requested)
     if scope is None:

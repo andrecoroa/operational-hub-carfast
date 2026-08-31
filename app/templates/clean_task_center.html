@@ -219,7 +219,7 @@
       </nav>
       {% if filters.workspace == "mine" %}
         <nav class="clean-task-mine-tabs" aria-label="Relação com a tarefa">
-          {% for code, label in [("all","Todas as minhas"),("assigned","Atribuídas"),("identified","Identificado"),("following","A acompanhar"),("team","Da minha equipa"),("support","Suporte solicitado"),("created","Criadas por mim")] %}
+          {% for code, label in [("assigned","Atribuídas a mim"),("all","Todas as minhas"),("created","Criadas por mim"),("following","A acompanhar")] %}
             <a href="/v2-clean/tasks?workspace=mine&mine_kind={{ code }}&status={{ filters.status }}&kind={{ filters.kind }}&department={{ filters.department }}&due={{ filters.due }}&assignment={{ filters.assignment }}&plate={{ filters.plate|urlencode }}&q={{ filters.q|urlencode }}" class="{% if filters.mine_kind == code %}active{% endif %}"><span>{{ label }}</span><b>{{ mine_counts.get(code, 0) }}</b></a>
           {% endfor %}
         </nav>

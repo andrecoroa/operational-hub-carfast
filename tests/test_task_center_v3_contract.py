@@ -4,11 +4,14 @@ from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
-from sqlalchemy import func, select
 import pytest
-import app.web.router as task_router
+from sqlalchemy import func, select
 
+import app.web.router as task_router
 from app.models import (
+    Role,
+    RoleWorkScope,
+    ServiceDeskCategoryExecutor,
     Task,
     TaskComment,
     TaskHelpRequest,
@@ -17,10 +20,10 @@ from app.models import (
     Team,
     TeamMember,
     User,
+    WorkCategory,
     WorkDepartment,
     WorkQueue,
 )
-
 
 RETURN_CONTEXT = (
     "/v2-clean/tasks?queue=tasks_support&view=team&status=open"
@@ -79,6 +82,39 @@ def _support_team_with_eligible_member(db_session) -> Team:
     return team
 
 
+def _grant_task_assume_scope(db_session) -> None:
+    actor = db_session.scalar(select(User).where(User.email == "admin.tests@carfast.local"))
+    role = db_session.scalar(
+        select(Role).join(task_router.UserRole, task_router.UserRole.role_id == Role.id).where(
+            task_router.UserRole.user_id == actor.id,
+            Role.active.is_(True),
+        )
+    )
+    queue = db_session.scalar(select(WorkQueue).where(WorkQueue.code == "tasks_support"))
+    scope = db_session.scalar(
+        select(RoleWorkScope).where(
+            RoleWorkScope.role_id == role.id,
+            RoleWorkScope.queue_id == queue.id,
+            RoleWorkScope.department_id.is_(None),
+            RoleWorkScope.category_id.is_(None),
+            RoleWorkScope.subcategory_id.is_(None),
+        )
+    )
+    if scope:
+        scope.can_read = True
+        scope.can_assume = True
+    else:
+        db_session.add(
+            RoleWorkScope(
+                role_id=role.id,
+                queue_id=queue.id,
+                can_read=True,
+                can_assume=True,
+            )
+        )
+    db_session.commit()
+
+
 def test_support_migration_fails_before_ddl_on_legacy_inconsistencies() -> None:
     assert "invalid_targets" in MIGRATION
     assert "duplicate_active_tasks" in MIGRATION
@@ -104,6 +140,101 @@ def test_queue_and_view_contract_rejects_aggregation_and_silent_fallback(
     assert 'data-active-view="mine"' in default.text
     assert aggregated.status_code in {400, 422}
     assert invalid_view.status_code in {400, 422}
+
+
+def test_mine_defaults_to_direct_assignment_and_excludes_team_membership_only(
+    authenticated_client, db_session
+) -> None:
+    actor = db_session.scalar(select(User).where(User.email == "admin.tests@carfast.local"))
+    team = _support_team_with_eligible_member(db_session)
+    assigned = _new_task(db_session, title="Atribuída diretamente")
+    team_only = _new_task(db_session, title="Apenas da equipa")
+    team_only.assigned_to_id = None
+    team_only.created_by_id = None
+    team_only.team_id = team.id
+    db_session.commit()
+
+    default = authenticated_client.get("/v2-clean/tasks")
+    all_mine = authenticated_client.get(
+        "/v2-clean/tasks?task_scope_view=mine&mine_kind=all&status=all"
+    )
+
+    assert default.status_code == 200
+    assert 'name="mine_kind" value="assigned"' in default.text
+    assert 'Atribuídas a mim' in default.text
+    assert assigned.title in default.text
+    assert team_only.title not in default.text
+    assert all_mine.status_code == 200
+    assert team_only.title not in all_mine.text
+    assert actor.id == assigned.assigned_to_id
+
+
+@pytest.mark.parametrize("mine_kind", ["identified", "support", "forged"])
+def test_removed_or_forged_mine_relations_fail_closed(
+    authenticated_client, mine_kind
+) -> None:
+    response = authenticated_client.get(
+        f"/v2-clean/tasks?task_scope_view=mine&mine_kind={mine_kind}"
+    )
+    assert response.status_code == 400
+    assert "inválida" in response.text
+
+
+def test_claim_view_requires_eligible_team_unassigned_task_and_assume_scope(
+    authenticated_client, db_session
+) -> None:
+    team = _support_team_with_eligible_member(db_session)
+    _grant_task_assume_scope(db_session)
+    queue = db_session.scalar(select(WorkQueue).where(WorkQueue.code == "tasks_support"))
+    department = db_session.scalar(
+        select(WorkDepartment).where(
+            WorkDepartment.queue_id == queue.id,
+            WorkDepartment.code == "operations",
+        )
+    )
+    category = WorkCategory(
+        department_id=department.id,
+        code="claimable_contract",
+        name="Categoria elegível",
+        active=True,
+    )
+    db_session.add(category)
+    db_session.flush()
+    executor = db_session.scalar(
+        select(ServiceDeskCategoryExecutor).where(
+            ServiceDeskCategoryExecutor.category_id == category.id,
+            ServiceDeskCategoryExecutor.team_id == team.id,
+        )
+    )
+    if executor:
+        executor.active = True
+    else:
+        db_session.add(
+            ServiceDeskCategoryExecutor(
+                category_id=category.id, team_id=team.id, active=True
+            )
+        )
+    eligible = _new_task(db_session, title="Elegível por assumir")
+    eligible.assigned_to_id = None
+    eligible.team_id = None
+    eligible.work_category_id = category.id
+    already_assigned = _new_task(db_session, title="Já atribuída")
+    already_assigned.work_category_id = category.id
+    outside = _new_task(db_session, title="Fora da categoria elegível")
+    outside.assigned_to_id = None
+    outside.team_id = None
+    db_session.commit()
+
+    page = authenticated_client.get(
+        "/v2-clean/tasks?task_scope_view=claim&workspace=all"
+        "&mine_kind=assigned&assignment=unassigned&status=all"
+    )
+
+    assert page.status_code == 200
+    assert eligible.title in page.text
+    assert already_assigned.title not in page.text
+    assert outside.title not in page.text
+    assert 'data-active-view="unassigned"' in page.text
 
 
 def test_incompatible_team_to_mine_and_closed_risk_filters_fail_closed(
@@ -170,6 +301,7 @@ def test_team_scope_is_preserved_and_limited_to_the_users_team(
     authenticated_client, db_session, grouping
 ) -> None:
     team = _support_team_with_eligible_member(db_session)
+    _grant_task_assume_scope(db_session)
     team_task = _new_task(db_session, title=f"Visível na equipa {grouping}")
     team_task.team_id = team.id
     team_task.assigned_to_id = None
@@ -212,6 +344,31 @@ def test_conflicting_public_scope_parameters_are_rejected(
     assert "incompatível" in response.text
     assert forged_mine.status_code == 400
     assert forged_mine_unassigned.status_code == 400
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "workspace=all",
+        "workspace=forged",
+        "assignment=forged",
+        "workspace=all&task_scope_view=mine",
+        "workspace=all&task_scope_view=team",
+        "workspace=tasks_support",
+        "workspace=operational",
+        "workspace=administration&queue=tasks_support",
+        "task_scope_view=claim&workspace=mine",
+        "view=mine&mine_kind=team",
+        "preset=mine&mine_kind=team",
+    ],
+)
+def test_task_center_rejects_work_view_bypasses(
+    authenticated_client, monkeypatch, query
+):
+    monkeypatch.setattr(task_router.settings, "visual_foundation_enabled", True)
+    response = authenticated_client.get(f"/v2-clean/tasks?{query}")
+
+    assert response.status_code == 400
 
 
 def test_team_unassigned_filter_preserves_scope_and_filters_the_list(

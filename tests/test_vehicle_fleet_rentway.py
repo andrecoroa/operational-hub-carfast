@@ -8,6 +8,7 @@ from app.models import (
     Document,
     Vehicle,
     VehicleExternalSnapshot,
+    VehicleFinancialPlan,
     VehicleIdentifier,
     VehicleSaleProfile,
 )
@@ -19,6 +20,7 @@ from app.services.rentway_fleet_importer import (
     preview_rentway_fleet_xlsx,
 )
 from app.services.spreadsheets import build_column_lookup
+from app.services.users import create_user
 
 
 REAL_RENTWAY_HEADERS = [
@@ -132,6 +134,105 @@ def test_rentway_preview_lists_created_fields_and_import_keeps_raw_snapshot(
     assert vehicle.rentway_client == "Cliente Atual, Lda."
     assert raw.raw_json["Client Name"] == "Cliente Atual, Lda."
     assert snapshot.data_json["Number Of Seats"] == 5
+
+
+def test_rentway_preview_lists_absent_active_vehicles_without_mutating_them(
+    db_session,
+    tmp_path,
+):
+    absent = Vehicle(
+        plate="ABS-10-AA",
+        rentway_unit_nr="ABS10",
+        active=True,
+        lifecycle_status="active",
+        operational_status="free",
+    )
+    db_session.add(absent)
+    db_session.commit()
+    source = tmp_path / "rentway-absence.xlsx"
+    _rentway_workbook(source)
+
+    preview = preview_rentway_fleet_xlsx(db_session, source)
+
+    assert preview["absent_count"] == 1
+    assert preview["absent_action"] == "review_only"
+    assert preview["absent_rows"][0]["plate"] == "ABS-10-AA"
+    db_session.refresh(absent)
+    assert absent.active is True
+    assert absent.lifecycle_status == "active"
+    assert absent.operational_status == "free"
+
+
+def test_fleet_minimal_workbench_supports_sort_alerts_labels_and_inline_finance_preview(
+    authenticated_client,
+    db_session,
+):
+    vehicle = Vehicle(
+        plate="UI-10-AA",
+        rentway_unit_nr="UI10",
+        brand="Peugeot",
+        model="208",
+        active=True,
+        lifecycle_status="active",
+        operational_status="in_contract",
+        rentway_status="SHORT/MID TERM RA",
+        rentway_client="Cliente Sintético",
+        rentway_location="Lisboa",
+        rentway_return_date=date(2026, 9, 15),
+        rentway_ipo_date=date.today(),
+    )
+    db_session.add(vehicle)
+    db_session.flush()
+    db_session.add(
+        VehicleFinancialPlan(
+            vehicle_id=vehicle.id,
+            finance_entity="CGD",
+            contract_number="SYNTH-100",
+            active=True,
+        )
+    )
+    db_session.commit()
+
+    response = authenticated_client.get(
+        "/v2-clean/fleet",
+        params={"sort": "return_asc", "alerts": "with"},
+    )
+
+    assert response.status_code == 200
+    assert "Mais filtros" in response.text
+    assert "Só com alertas" in response.text
+    assert "Contrato curto/médio prazo" in response.text
+    assert "SHORT/MID TERM RA" in response.text
+    assert f'data-fleet-preview-trigger="{vehicle.id}"' in response.text
+    assert f'id="fleet-preview-{vehicle.id}"' in response.text
+    assert "Cliente Sintético" in response.text
+    assert "Lisboa" in response.text
+    assert "CGD" in response.text
+    assert "SYNTH-100" in response.text
+    assert "Abrir ficha completa" in response.text
+
+
+def test_fleet_route_remains_fail_closed_without_vehicle_permission(client, db_session):
+    create_user(
+        db_session,
+        name="Utilizador sem Frota",
+        email="no-fleet@carfast.local",
+        password="Secret123!",
+        role_codes=["user_admin"],
+        organizational_unit_codes=["carfast"],
+    )
+    db_session.commit()
+    login = client.post(
+        "/login",
+        data={"email": "no-fleet@carfast.local", "password": "Secret123!"},
+        follow_redirects=False,
+    )
+    assert login.status_code == 303
+    client.post("/change-notice", data={"next_url": "/v2-clean"}, follow_redirects=False)
+
+    response = client.get("/v2-clean/fleet", follow_redirects=False)
+
+    assert response.status_code == 403
 
 
 def test_fleet_filters_and_pagination_preserve_query_page_and_return_anchor(

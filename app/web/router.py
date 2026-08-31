@@ -4725,7 +4725,7 @@ def clean_tasks_center(
         if workspace not in allowed_workspace_values:
             return HTMLResponse("Vista de trabalho inválida.", status_code=400)
         if settings.visual_foundation_enabled and workspace != "mine" and not (
-            workspace == "all" and requested_scope == "claim"
+            workspace == "all" and requested_scope in {"claim", "all"}
         ):
             return HTMLResponse("Vista de trabalho incompatível.", status_code=400)
         if requested_scope != "team" and mine_kind == "team":
@@ -4736,6 +4736,10 @@ def clean_tasks_center(
         }:
             return HTMLResponse("Vista de trabalho incompatível.", status_code=400)
         if requested_scope == "claim" and workspace != "all":
+            return HTMLResponse("Vista de trabalho incompatível.", status_code=400)
+        if requested_scope == "all" and (
+            workspace != "all" or mine_kind != "all" or assignment
+        ):
             return HTMLResponse("Vista de trabalho incompatível.", status_code=400)
         if requested_scope == "mine" and assignment == "unassigned":
             return HTMLResponse("Vista de trabalho incompatível.", status_code=400)
@@ -5837,6 +5841,7 @@ def clean_tasks_center(
                 "current_user_id": user_id,
                 "current_user_team_ids": sorted(user_team_ids(db, user_id)) if user_id else [],
                 "task_team_scope_allowed": bool(user_id and user_team_ids(db, user_id)),
+                "task_all_scope_allowed": bool(user_id and visible_queue_codes),
                 "users": users,
                 "all_users": all_users,
                 "users_by_id": users_by_id,

@@ -30,7 +30,8 @@ def test_fleet_preserves_filters_routes_and_return_context():
     assert 'name="q"' in template
     assert 'name="scope"' in template
     assert "current_list_url" in template
-    assert "data-fleet-open" in template
+    assert "data-fleet-preview-trigger" in template
+    assert "data-fleet-preview-close" in template
     assert "sessionStorage.setItem(storageKey" in template
     assert 'href="/v2-clean/fleet/sales"' in template
 
@@ -40,7 +41,7 @@ def test_sales_is_composed_under_fleet_but_remains_independent():
     sales_router = _read("app/web/vehicle_sales.py")
 
     fleet_start = sidebar.index('data-nav-icon="fleet"')
-    fleet_end = sidebar.index("{% if can_nav_stock and not can_nav_workshop %}")
+    fleet_end = sidebar.index("{% if can_nav_sales and not can_nav_fleet %}")
     fleet_block = sidebar[fleet_start:fleet_end]
     assert "Vendas" in fleet_block
     assert "/v2-clean/fleet/sales" in fleet_block
@@ -85,7 +86,8 @@ def test_fleet_responsive_contract_uses_local_table_overflow():
     assert "grid-template-columns: repeat(4,minmax(0,1fr))" in css
     assert ".visual-fleet-table-scroll { border: 0" in css
     assert '.visual-fleet-table-scroll::before' in css
-    assert 'content: "Deslize para consultar todos os dados →"' in css
+    assert ".visual-fleet .fleet-compact-table { width: 100%; min-width: 0; }" in css
+    assert ".visual-fleet-table-scroll::before { display: none; }" in css
     assert "@media (max-width:1199px)" in css
     assert "@media (max-width:767px)" in css
 
@@ -94,7 +96,7 @@ def test_fleet_uses_shared_convergence_asset_version():
     base = _read("app/templates/base.html")
     runtime = _read("app/web/template_runtime.py")
     assert "/static/css/visual-v2.css?v={{ visual_asset_version }}" in base
-    assert 'templates.env.globals["visual_asset_version"] = "20260825-convergence1"' in runtime
+    assert 'templates.env.globals["visual_asset_version"] = "20260901-fleet1"' in runtime
 
 
 def test_fleet_list_detail_documents_and_diagnostics_render_composed_surfaces(
@@ -128,7 +130,7 @@ def test_fleet_list_detail_documents_and_diagnostics_render_composed_surfaces(
     for path, markers in pages.items():
         response = authenticated_client.get(path)
         assert response.status_code == 200
-        assert "visual-v2.css?v=20260825-convergence1" in response.text
+        assert "visual-v2.css?v=20260901-fleet1" in response.text
         assert 'class="sidebar"' in response.text
         assert all(marker in response.text for marker in markers)
 

@@ -58,6 +58,23 @@
         <label>Âmbito
           <select name="scope"><option value="active" {% if scope == 'active' %}selected{% endif %}>Ativas</option><option value="for_sale" {% if scope == 'for_sale' %}selected{% endif %}>Para venda</option><option value="all" {% if scope == 'all' %}selected{% endif %}>Todas</option></select>
         </label>
+        <label>Alertas
+          <select name="alerts"><option value="all" {% if filters.alerts == 'all' %}selected{% endif %}>Todos</option><option value="with" {% if filters.alerts == 'with' %}selected{% endif %}>Só com alertas</option></select>
+        </label>
+        <label>Ordenar
+          <select name="sort">
+            <option value="updated_desc" {% if sort == 'updated_desc' %}selected{% endif %}>Atualização mais recente</option>
+            <option value="return_asc" {% if sort == 'return_asc' %}selected{% endif %}>Devolução mais próxima</option>
+            <option value="ipo_asc" {% if sort == 'ipo_asc' %}selected{% endif %}>IPO mais próxima</option>
+            <option value="client_asc" {% if sort == 'client_asc' %}selected{% endif %}>Cliente A–Z</option>
+            <option value="status_asc" {% if sort == 'status_asc' %}selected{% endif %}>Estado A–Z</option>
+            <option value="vehicle_asc" {% if sort == 'vehicle_asc' %}selected{% endif %}>Marca/modelo A–Z</option>
+          </select>
+        </label>
+        <div class="sale-filter-actions"><a class="button-link secondary-link" href="/v2-clean/fleet">Limpar</a><button type="submit">Aplicar</button></div>
+        <details class="fleet-more-filters sale-filter-wide">
+          <summary>Mais filtros</summary>
+          <div class="fleet-more-filters-grid">
         {% set fleet_check_filters = [
           ('Marca', 'brand', filter_options.brands, filters.brands, 'Todas'),
           ('Combustível', 'fuel', filter_options.fuels, filters.fuels, 'Todos'),
@@ -79,7 +96,8 @@
         <fieldset><legend>Data da matrícula</legend><span><input type="date" name="registration_from" value="{{ filters.registration_from }}" aria-label="Matrícula desde"><em>até</em><input type="date" name="registration_to" value="{{ filters.registration_to }}" aria-label="Matrícula até"></span></fieldset>
         <fieldset><legend>Devolução prevista</legend><span><input type="date" name="return_from" value="{{ filters.return_from }}" aria-label="Devolução desde"><em>até</em><input type="date" name="return_to" value="{{ filters.return_to }}" aria-label="Devolução até"></span></fieldset>
         <fieldset><legend>IPO Rentway</legend><span><input type="date" name="ipo_from" value="{{ filters.ipo_from }}" aria-label="IPO desde"><em>até</em><input type="date" name="ipo_to" value="{{ filters.ipo_to }}" aria-label="IPO até"></span></fieldset>
-        <div class="sale-filter-actions"><a class="button-link secondary-link" href="/v2-clean/fleet">Limpar</a><button type="submit">Aplicar filtros</button></div>
+          </div>
+        </details>
       </form>
 
       <div class="clean-fleet-search-feedback{% if foundation_ui_enabled %} visual-fleet-search-feedback{% endif %}" aria-live="polite">
@@ -89,19 +107,45 @@
 
       <div class="fleet-table-scroll{% if foundation_ui_enabled %} visual-fleet-table-scroll{% endif %}">
         <table class="fleet-compact-table">
-          <thead><tr><th>Viatura</th><th>Marca / modelo</th><th>Categoria</th><th>Combustível</th><th>Estado Rentway</th><th>Cliente</th><th>Devolução</th><th>IPO</th><th>Alertas</th></tr></thead>
+          <thead><tr>
+            <th>Viatura</th>
+            <th><a href="?{% if query_without_sort_page %}{{ query_without_sort_page }}&{% endif %}sort=vehicle_asc">Marca / modelo</a></th>
+            <th>Categoria</th><th>Combustível</th>
+            <th><a href="?{% if query_without_sort_page %}{{ query_without_sort_page }}&{% endif %}sort=status_asc">Estado Rentway</a></th>
+            <th><a href="?{% if query_without_sort_page %}{{ query_without_sort_page }}&{% endif %}sort=client_asc">Cliente</a></th>
+            <th><a href="?{% if query_without_sort_page %}{{ query_without_sort_page }}&{% endif %}sort=return_asc">Devolução</a></th>
+            <th><a href="?{% if query_without_sort_page %}{{ query_without_sort_page }}&{% endif %}sort=ipo_asc">IPO</a></th><th>Alertas</th>
+          </tr></thead>
           <tbody>
             {% for row in rows %}
               <tr id="vehicle-{{ row.id }}">
-                <td><a class="fleet-vehicle-link" data-fleet-open href="/v2-clean/fleet/{{ row.id }}?return_to={{ (current_list_url ~ '#vehicle-' ~ row.id)|urlencode }}"><strong>{{ row.plate }}</strong><small>Unit {{ row.unit }}</small></a></td>
+                <td><a class="fleet-vehicle-link" data-fleet-preview-trigger="{{ row.id }}" aria-expanded="false" aria-controls="fleet-preview-{{ row.id }}" href="#fleet-preview-{{ row.id }}"><strong>{{ row.plate }}</strong><small>Unit {{ row.unit }}</small></a></td>
                 <td><strong>{{ row.brand }} {{ row.model }}</strong>{% if row.version and row.version != '-' %}<small>{{ row.version }}</small>{% endif %}</td>
                 <td><strong>{{ row.category }}</strong><small>Grupo {{ row.group }}</small></td>
                 <td>{{ row.fuel }}</td>
-                <td>{{ row.rentway_status }}</td>
+                <td><strong>{{ row.rentway_status_label }}</strong>{% if row.rentway_status_label != row.rentway_status %}<small>{{ row.rentway_status }}</small>{% endif %}</td>
                 <td>{{ row.client }}</td>
                 <td>{{ row.return_date }}</td>
                 <td>{{ row.ipo }}</td>
                 <td><span class="fleet-alert-pill {% if row.primary_alert %}{{ row.primary_alert.severity }}{% else %}ok{% endif %}">{% if row.primary_alert %}<b>{{ row.primary_alert.title }}</b><small>{{ row.primary_alert.detail }}</small>{% else %}Sem alertas{% endif %}</span></td>
+              </tr>
+              <tr id="fleet-preview-{{ row.id }}" class="fleet-inline-preview" data-fleet-preview="{{ row.id }}" hidden>
+                <td colspan="9">
+                  <section aria-label="Resumo da viatura {{ row.plate }}">
+                    <header><div><span>Viatura</span><strong>{{ row.plate }} · {{ row.brand }} {{ row.model }}</strong></div><button type="button" data-fleet-preview-close>Fechar</button></header>
+                    <div class="fleet-inline-preview-grid">
+                      <span><small>Estado operacional</small><strong>{{ row.operational_status }}</strong></span>
+                      <span><small>Estado Rentway</small><strong>{{ row.rentway_status_label }}</strong><em>{{ row.rentway_status }}</em></span>
+                      <span><small>Cliente</small><strong>{{ row.client }}</strong></span>
+                      <span><small>Localização</small><strong>{{ row.location }}</strong></span>
+                      <span><small>Devolução</small><strong>{{ row.return_date }}</strong></span>
+                      <span><small>IPO</small><strong>{{ row.ipo }}</strong></span>
+                      <span><small>Entidade financeira</small><strong>{{ row.finance_entity }}</strong></span>
+                      <span><small>Contrato financeiro</small><strong>{{ row.contract_number }}</strong></span>
+                    </div>
+                    <footer><span>{% if row.primary_alert %}{{ row.primary_alert.title }} · {{ row.primary_alert.detail }}{% else %}Sem alertas ativos{% endif %}</span><a class="button-link" href="/v2-clean/fleet/{{ row.id }}?return_to={{ (current_list_url ~ '#vehicle-' ~ row.id)|urlencode }}">Abrir ficha completa</a></footer>
+                  </section>
+                </td>
               </tr>
             {% else %}
               <tr><td colspan="9" class="sale-empty">Sem viaturas para os filtros selecionados.</td></tr>
@@ -134,9 +178,38 @@
     const storageKey = `clean-fleet-scroll:${location.pathname}${location.search}`;
     const stored = sessionStorage.getItem(storageKey);
     if (stored !== null && !location.hash) requestAnimationFrame(() => scrollTo(0, Number(stored) || 0));
-    document.querySelectorAll("[data-fleet-open]").forEach((link) => {
-      link.addEventListener("click", () => sessionStorage.setItem(storageKey, String(scrollY)));
-    });
+    const triggers = Array.from(document.querySelectorAll("[data-fleet-preview-trigger]"));
+    let activeTrigger = null;
+    const closePreview = (restoreFocus = false) => {
+      document.querySelectorAll("[data-fleet-preview]").forEach((preview) => { preview.hidden = true; });
+      triggers.forEach((trigger) => trigger.setAttribute("aria-expanded", "false"));
+      if (restoreFocus && activeTrigger) activeTrigger.focus();
+      activeTrigger = null;
+      if (location.hash.startsWith("#fleet-preview-")) history.replaceState(null, "", location.pathname + location.search);
+    };
+    const openPreview = (trigger, updateHash = true) => {
+      const id = trigger.dataset.fleetPreviewTrigger;
+      const preview = document.querySelector(`[data-fleet-preview="${id}"]`);
+      if (!preview) return;
+      const wasOpen = !preview.hidden;
+      closePreview(false);
+      if (wasOpen) { trigger.focus(); return; }
+      preview.hidden = false;
+      trigger.setAttribute("aria-expanded", "true");
+      activeTrigger = trigger;
+      sessionStorage.setItem(storageKey, String(scrollY));
+      if (updateHash) history.replaceState(null, "", `#fleet-preview-${id}`);
+      else history.replaceState(null, "", `${location.pathname}${location.search}#fleet-preview-${id}`);
+      preview.scrollIntoView({ block: "nearest" });
+    };
+    triggers.forEach((trigger) => trigger.addEventListener("click", (event) => { event.preventDefault(); openPreview(trigger); }));
+    document.querySelectorAll("[data-fleet-preview-close]").forEach((button) => button.addEventListener("click", () => closePreview(true)));
+    document.addEventListener("keydown", (event) => { if (event.key === "Escape" && activeTrigger) closePreview(true); });
+    const restoredId = location.hash.match(/^#fleet-preview-(\d+)$/)?.[1];
+    if (restoredId) {
+      const trigger = document.querySelector(`[data-fleet-preview-trigger="${restoredId}"]`);
+      if (trigger) requestAnimationFrame(() => openPreview(trigger, false));
+    }
   })();
 </script>
 {% endblock %}

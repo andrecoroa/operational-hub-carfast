@@ -291,7 +291,12 @@
     openPreview(button.dataset.emailPreviewTrigger, button);
   }));
   dialog?.addEventListener("click", (event) => { if (event.target === dialog) dialog.close(); });
+  dialog?.addEventListener("cancel", (event) => {
+    event.preventDefault();
+    closeActivePreview();
+  });
   dialog?.addEventListener("close", () => {
+    document.querySelector(".ui-email-list-preview")?.classList.remove("is-preview-open");
     document.querySelectorAll("[data-email-preview]").forEach((row) => row.classList.remove("is-selected"));
     restorePreviewFocus();
   });

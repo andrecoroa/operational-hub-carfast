@@ -59,6 +59,9 @@ def test_preview_actions_refresh_without_closing_or_losing_selected_thread():
     assert "await openPreview(shell.dataset.emailThreadId)" in script
     assert 'row.dataset.emailPreview === String(threadId)' in script
     assert 'dialog?.addEventListener("close"' in script
+    assert 'if (event.key !== "Escape") return' in script
+    assert "closeActivePreview()" in script
+    assert 'dialog[open]:not(#email-preview-dialog)' in script
 
 
 def test_inbox_facets_apply_remaining_filters_server_side(authenticated_client, db_session, tmp_path, monkeypatch):
@@ -446,6 +449,8 @@ def test_header_footer_order_read_action_and_original_text(
     positions = [footer.index(label) for label in labels]
     assert positions == sorted(positions)
     assert preview.text.count("Fechar preview") == 1
+    assert 'class="secondary email-modal-close"' in preview.text
+    assert "Atribua apenas se a conversa exigir acompanhamento como trabalho" in preview.text
     assert 'name="action" value="save"' in footer
     assert 'name="action" value="validate"' in footer
     assert "Concluir triagem" not in footer
@@ -644,8 +649,12 @@ def test_mobile_layout_is_single_column_without_body_overflow():
 def test_desktop_preview_uses_two_pane_queue_and_unified_work_area():
     css = (ROOT / "app/static/css/ui-contract-v1.css").read_text(encoding="utf-8")
     app_css = (ROOT / "app/static/css/app.css").read_text(encoding="utf-8")
+    script = (ROOT / "app/static/js/email.js").read_text(encoding="utf-8")
 
     assert ".ui-email-list-preview.is-preview-open { grid-template-columns:260px minmax(0,1fr); }" in css
+    assert ".ui-email-list-preview:not(.is-preview-open) { grid-template-columns:minmax(0,1fr); }" in css
+    assert ".ui-email-list-preview:not(.is-preview-open) > #email-preview-panel { display:none; }" in css
+    assert 'classList.remove("is-preview-open")' in script
     assert ".ui-context-preview .email-reader-grid {" in css
     assert "grid-template-columns:minmax(0,1fr);" in css
     assert "grid-template-rows:minmax(160px,1fr) clamp(170px,22vh,210px);" in css

@@ -16,7 +16,7 @@ from zoneinfo import ZoneInfo
 from fastapi import APIRouter, File, Form, Header, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import func, or_, select
+from sqlalchemy import case, func, or_, select
 
 from app.core.config import settings
 from app.core.database import SessionLocal
@@ -124,6 +124,13 @@ STATUS_LABELS = {
     "archived": "Arquivado",
 }
 
+EMAIL_WORK_VIEW_LABELS = {
+    "mailbox": "Por caixa",
+    "mine": "Minhas",
+    "all": "Todas",
+}
+EMAIL_CLOSED_STATUSES = {"resolved", "archived"}
+
 EMAIL_ADDRESS_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 EMAIL_LINK_KINDS = {
     "vehicle": "Matrícula",
@@ -167,18 +174,38 @@ class _SafeEmailHTMLParser(HTMLParser):
         "ul",
     }
     void_tags = {"br", "hr", "img"}
+    blocked_content_tags = {"embed", "iframe", "object", "script", "style"}
 
     def __init__(self) -> None:
         super().__init__(convert_charrefs=True)
         self.parts: list[str] = []
+        self.blocked_content_depth = 0
 
     @staticmethod
-    def _safe_url(value: str) -> str | None:
-        parsed = urlparse(value.strip())
-        return value.strip() if parsed.scheme.lower() in {"http", "https", "mailto"} else None
+    def _safe_url(value: str) -> tuple[str, bool] | None:
+        clean_value = value.strip()
+        if not clean_value or any(character in clean_value for character in "\r\n\x00"):
+            return None
+        parsed = urlparse(clean_value)
+        scheme = parsed.scheme.lower()
+        if scheme in {"http", "https"} and parsed.netloc:
+            return clean_value, True
+        if scheme == "mailto" and parsed.path and EMAIL_ADDRESS_PATTERN.fullmatch(parsed.path):
+            return clean_value, False
+        if not scheme and not parsed.netloc:
+            if clean_value.startswith("#"):
+                return clean_value, False
+            if clean_value.startswith("/v2-clean/"):
+                return clean_value, False
+        return None
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         tag = tag.lower()
+        if tag in self.blocked_content_tags:
+            self.blocked_content_depth += 1
+            return
+        if self.blocked_content_depth:
+            return
         if tag not in self.allowed_tags:
             return
         safe_attrs: list[str] = []
@@ -187,17 +214,20 @@ class _SafeEmailHTMLParser(HTMLParser):
             if tag == "a" and name == "href":
                 safe = self._safe_url(value)
                 if safe:
-                    safe_attrs.extend(
-                        [
-                            f'href="{escape(safe, quote=True)}"',
+                    safe_url, opens_new_tab = safe
+                    safe_attrs.append(f'href="{escape(safe_url, quote=True)}"')
+                    if opens_new_tab:
+                        safe_attrs.extend([
                             'target="_blank"',
                             'rel="noopener noreferrer"',
-                        ]
-                    )
+                        ])
             elif tag == "img" and name == "src":
                 safe = self._safe_url(value)
-                if safe:
-                    safe_attrs.append(f'data-email-src="{escape(safe, quote=True)}"')
+                if safe and safe[1]:
+                    safe_url, _ = safe
+                    safe_attrs.append(
+                        f'data-email-src="{escape(safe_url, quote=True)}"'
+                    )
             elif tag == "img" and name in {"alt", "title", "width", "height"}:
                 safe_attrs.append(f'{name}="{escape(value, quote=True)}"')
             elif name in {"colspan", "rowspan"}:
@@ -207,11 +237,17 @@ class _SafeEmailHTMLParser(HTMLParser):
 
     def handle_endtag(self, tag: str) -> None:
         tag = tag.lower()
+        if tag in self.blocked_content_tags and self.blocked_content_depth:
+            self.blocked_content_depth -= 1
+            return
+        if self.blocked_content_depth:
+            return
         if tag in self.allowed_tags and tag not in self.void_tags:
             self.parts.append(f"</{tag}>")
 
     def handle_data(self, data: str) -> None:
-        self.parts.append(escape(data))
+        if not self.blocked_content_depth:
+            self.parts.append(escape(data))
 
 
 def _safe_email_document(message: EmailMessage, *, plain_text: bool = False) -> str:
@@ -854,6 +890,7 @@ async def postmark_events(request: Request, authorization: str | None = Header(d
 @email_router.get("/v2-clean/email", response_class=HTMLResponse)
 def email_inbox(
     request: Request,
+    view: str = "",
     status: str = "triage",
     channel: str = "",
     q: str = "",
@@ -872,6 +909,25 @@ def email_inbox(
         ensure_email_channels(db)
         db.commit()
         channel_access = _channel_access(db, user_id, permissions)
+        stored_view = request.session.get("email_work_view")
+        stored_view_code = (
+            stored_view.get("view")
+            if isinstance(stored_view, dict)
+            and stored_view.get("user_id") == user_id
+            else None
+        )
+        selected_view = (
+            view
+            if view in EMAIL_WORK_VIEW_LABELS
+            else stored_view_code
+            if stored_view_code in EMAIL_WORK_VIEW_LABELS
+            else "mailbox"
+        )
+        if view in EMAIL_WORK_VIEW_LABELS:
+            request.session["email_work_view"] = {
+                "user_id": user_id,
+                "view": selected_view,
+            }
         selected_status = status if status in STATUS_LABELS or status == "all" else "triage"
         query = (
             select(EmailThread, EmailChannel)
@@ -880,6 +936,8 @@ def email_inbox(
         )
         if selected_status != "all":
             query = query.where(EmailThread.status == selected_status)
+        if selected_view == "mine":
+            query = query.where(EmailThread.assigned_to_id == user_id)
         if channel:
             query = query.where(EmailChannel.code == channel)
         if responsible == "mine":
@@ -935,7 +993,84 @@ def email_inbox(
             if reference_tail.isdigit():
                 search_terms.append(EmailThread.id == int(reference_tail))
             query = query.where(or_(*search_terms))
-        rows = db.execute(query.order_by(EmailThread.last_message_at.desc()).limit(100)).all()
+        filtered_threads = query.with_only_columns(
+            EmailThread.channel_id,
+            EmailThread.status,
+        ).subquery()
+        mailbox_group_counts = {
+            row.channel_id: row
+            for row in db.execute(
+                select(
+                    filtered_threads.c.channel_id,
+                    func.count().label("total"),
+                    func.sum(
+                        case(
+                            (
+                                filtered_threads.c.status.in_({"triage", "new_reply"}),
+                                1,
+                            ),
+                            else_=0,
+                        )
+                    ).label("new_count"),
+                    func.sum(
+                        case(
+                            (
+                                filtered_threads.c.status.not_in(EMAIL_CLOSED_STATUSES),
+                                1,
+                            ),
+                            else_=0,
+                        )
+                    ).label("open_count"),
+                ).group_by(filtered_threads.c.channel_id)
+            )
+        }
+        status_group_counts = {
+            row.status: row
+            for row in db.execute(
+                select(
+                    filtered_threads.c.status,
+                    func.count().label("total"),
+                    func.sum(
+                        case(
+                            (
+                                filtered_threads.c.status.in_({"triage", "new_reply"}),
+                                1,
+                            ),
+                            else_=0,
+                        )
+                    ).label("new_count"),
+                    func.sum(
+                        case(
+                            (
+                                filtered_threads.c.status.not_in(EMAIL_CLOSED_STATUSES),
+                                1,
+                            ),
+                            else_=0,
+                        )
+                    ).label("open_count"),
+                ).group_by(filtered_threads.c.status)
+            )
+        }
+        ordered_query = query.order_by(EmailThread.last_message_at.desc())
+        if selected_view == "mailbox":
+            rows = [
+                row
+                for channel_id in mailbox_group_counts
+                for row in db.execute(
+                    ordered_query.where(EmailThread.channel_id == channel_id).limit(100)
+                ).all()
+            ]
+        elif selected_view == "mine":
+            rows = [
+                row
+                for status_code in STATUS_LABELS
+                if status_code in status_group_counts
+                for row in db.execute(
+                    ordered_query.where(EmailThread.status == status_code).limit(100)
+                ).all()
+            ]
+        else:
+            rows = db.execute(ordered_query.limit(100)).all()
 
         def facet_count(*, facet_status: str | None = None, facet_responsible: str | None = None, facet_due: str | None = None) -> int:
             statement = select(func.count()).select_from(EmailThread).join(EmailChannel, EmailChannel.id == EmailThread.channel_id).where(_email_visibility_filter(db, user_id, channel_access))
@@ -943,6 +1078,7 @@ def email_inbox(
             effective_responsible = responsible if facet_responsible is None else facet_responsible
             effective_due = due if facet_due is None else facet_due
             if effective_status != "all": statement = statement.where(EmailThread.status == effective_status)
+            if selected_view == "mine": statement = statement.where(EmailThread.assigned_to_id == user_id)
             if channel: statement = statement.where(EmailChannel.code == channel)
             if effective_responsible == "mine": statement = statement.where(EmailThread.assigned_to_id == user_id)
             elif effective_responsible == "unassigned": statement = statement.where(EmailThread.assigned_to_id.is_(None), EmailThread.executor_team_id.is_(None))
@@ -1016,6 +1152,41 @@ def email_inbox(
                     due_state=due_state,
                 )
             )
+        grouped_rows: list[SimpleNamespace] = []
+        if selected_view == "mailbox":
+            for item in channels:
+                group_rows = [row for row in inbox_rows if row.channel.id == item.id]
+                if group_rows:
+                    group_counts = mailbox_group_counts[item.id]
+                    grouped_rows.append(
+                        SimpleNamespace(
+                            key=f"mailbox-{item.id}",
+                            label=item.name,
+                            rows=group_rows,
+                            new_count=int(group_counts.new_count or 0),
+                            open_count=int(group_counts.open_count or 0),
+                            total_count=int(group_counts.total),
+                            is_truncated=len(group_rows) < int(group_counts.total),
+                        )
+                    )
+        elif selected_view == "mine":
+            for status_code, status_label in STATUS_LABELS.items():
+                group_rows = [
+                    row for row in inbox_rows if row.thread.status == status_code
+                ]
+                if group_rows:
+                    group_counts = status_group_counts[status_code]
+                    grouped_rows.append(
+                        SimpleNamespace(
+                            key=f"status-{status_code}",
+                            label=status_label,
+                            rows=group_rows,
+                            new_count=int(group_counts.new_count or 0),
+                            open_count=int(group_counts.open_count or 0),
+                            total_count=int(group_counts.total),
+                            is_truncated=len(group_rows) < int(group_counts.total),
+                        )
+                    )
         compose_channels = [
             item
             for item in channels
@@ -1054,11 +1225,15 @@ def email_inbox(
                 "current_user": db.get(User, user_id),
                 "permission_codes": permissions,
                 "rows": inbox_rows,
+                "grouped_rows": grouped_rows,
+                "email_work_view_labels": EMAIL_WORK_VIEW_LABELS,
                 "channels": channels,
                 "counts": counts,
                 "operational_counters": operational_counters,
                 "total_count": all_status_count,
                 "filtered_total_count": filtered_total_count,
+                "all_is_truncated": selected_view == "all"
+                and len(inbox_rows) < filtered_total_count,
                 "status_labels": STATUS_LABELS,
                 "filters": {
                     "status": selected_status,
@@ -1066,6 +1241,7 @@ def email_inbox(
                     "q": clean_query,
                     "responsible": responsible,
                     "due": due,
+                    "view": selected_view,
                 },
                 "filter_users": [item for item in users if item.active],
                 "filter_teams": list(teams_by_id.values()),

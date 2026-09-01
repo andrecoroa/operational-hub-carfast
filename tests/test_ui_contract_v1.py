@@ -10,7 +10,7 @@ ICONS = (ROOT / "app/static/icons/lucide-v3.svg").read_text(encoding="utf-8")
 
 
 def test_contract_asset_is_global_for_foundation_surfaces() -> None:
-    assert 'ui-contract-v1.css?v=20260830-task-center-inline-v3' in BASE
+    assert 'ui-contract-v1.css?v=20260901-email-preview-width' in BASE
     assert 'class="ui-contract-v1"' in BASE
 
 

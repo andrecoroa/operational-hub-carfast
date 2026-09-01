@@ -10,6 +10,17 @@
     if (previewTrigger instanceof HTMLElement && previewTrigger.isConnected) previewTrigger.focus();
     previewTrigger = null;
   };
+  const closeActivePreview = () => {
+    if (dialog?.open) {
+      dialog.close();
+      return true;
+    }
+    if (previewPanel?.querySelector("[data-email-thread-id]")) {
+      resetPreviewPanel();
+      return true;
+    }
+    return false;
+  };
   const bindWorkHierarchy = (root) => {
     const source = root.querySelector("[data-email-work-hierarchy]");
     const container = root.querySelector("[data-work-hierarchy]");
@@ -154,10 +165,7 @@
     bindBodyViews(root);
     bindPanelSwitch(root);
     bindLinkKinds(root);
-    root.querySelectorAll("[data-email-modal-close]").forEach((button) => button.addEventListener("click", () => {
-      if (button.closest("#email-preview-panel")) resetPreviewPanel();
-      else dialog?.close();
-    }));
+    root.querySelectorAll("[data-email-modal-close]").forEach((button) => button.addEventListener("click", closeActivePreview));
     root.querySelectorAll("[data-email-show-images]").forEach((button) => button.addEventListener("click", () => {
       const frame = document.getElementById(button.dataset.emailShowImages);
       frame?.contentDocument?.querySelectorAll("img[data-email-src]").forEach((image) => { image.src = image.dataset.emailSrc; image.style.display = "inline-block"; });
@@ -281,6 +289,12 @@
     document.querySelectorAll("[data-email-preview]").forEach((row) => row.classList.remove("is-selected"));
     if (previewTrigger instanceof HTMLElement && previewTrigger.isConnected) previewTrigger.focus();
     previewTrigger = null;
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape") return;
+    const nestedDialog = document.querySelector("dialog[open]:not(#email-preview-dialog)");
+    if (nestedDialog) return;
+    if (closeActivePreview()) event.preventDefault();
   });
   bindThread();
 })();

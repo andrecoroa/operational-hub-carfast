@@ -9,9 +9,16 @@ from sqlalchemy.orm import sessionmaker
 import app.web.email as email_web
 from app.core.config import settings
 from app.models.admin import User
-from app.models.email import EmailAttachment, EmailAuditEvent, EmailMessage, EmailThread
+from app.models.email import (
+    EmailAttachment,
+    EmailAuditEvent,
+    EmailChannel,
+    EmailMessage,
+    EmailThread,
+)
 from app.models.work_hierarchy import WorkCategory, WorkDepartment, WorkQueue
 from app.services.email_postmark import ingest_inbound, send_message
+from app.services.users import create_user
 
 ROOT = Path(__file__).parents[1]
 
@@ -59,6 +66,10 @@ def test_preview_actions_refresh_without_closing_or_losing_selected_thread():
     assert "await openPreview(shell.dataset.emailThreadId)" in script
     assert 'row.dataset.emailPreview === String(threadId)' in script
     assert 'dialog?.addEventListener("close"' in script
+    assert "const restorePreviewFocus" in script
+    assert "trigger.focus({preventScroll: true})" in script
+    assert "if (trigger) previewTrigger = trigger" in script
+    assert "!previewTrigger.isConnected" in script
     assert 'if (event.key !== "Escape") return' in script
     assert "closeActivePreview()" in script
     assert 'dialog[open]:not(#email-preview-dialog)' in script
@@ -97,6 +108,160 @@ def test_inbox_facets_apply_remaining_filters_server_side(authenticated_client, 
     assert '<strong>1</strong><span>Resposta pendente</span>' in response.text
     assert 'class="email-secondary-filters"' in response.text
     assert 'aria-label="Estados das conversas"' not in response.text
+
+
+def test_email_work_views_group_without_duplicates_and_mine_stays_scoped(
+    authenticated_client, db_session, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(settings, "email_storage_root", str(tmp_path))
+    monkeypatch.setattr(settings, "visual_foundation_enabled", True)
+    _bind_email_session(monkeypatch, db_session)
+    admin = db_session.scalar(
+        select(User).where(User.email == "admin.tests@carfast.local")
+    )
+    other_user = create_user(
+        db_session,
+        name="Outro Executor",
+        email="outro.executor.email@carfast.local",
+        password="SyntheticOnly123!",
+        role_codes=["operator"],
+        organizational_unit_codes=["carfast"],
+    )
+    db_session.flush()
+    channels = list(db_session.scalars(select(EmailChannel).order_by(EmailChannel.id)))
+    mine_payload = _payload("view-mine")
+    mine_payload["Subject"] = "Conversa atribuída ao utilizador"
+    mine, _ = ingest_inbound(db_session, mine_payload)
+    mine.assigned_to_id = admin.id
+    mine.assignment_state = "assigned_user"
+    mine.status = "in_progress"
+    other_payload = _payload("view-other")
+    other_payload["Subject"] = "Conversa atribuída a outra pessoa"
+    other, _ = ingest_inbound(db_session, other_payload)
+    other.assigned_to_id = other_user.id
+    other.assignment_state = "assigned_user"
+    unassigned_payload = _payload("view-unassigned")
+    unassigned_payload["Subject"] = "Conversa noutra caixa"
+    unassigned, _ = ingest_inbound(db_session, unassigned_payload)
+    if len(channels) > 1:
+        unassigned.channel_id = channels[1].id
+    db_session.commit()
+
+    first_access = authenticated_client.get("/v2-clean/email?status=all")
+    mailbox = authenticated_client.get(
+        "/v2-clean/email?view=mailbox&status=all&q=Conversa"
+    )
+    mine_view = authenticated_client.get("/v2-clean/email?view=mine&status=all")
+    restored = authenticated_client.get("/v2-clean/email?status=all")
+    all_view = authenticated_client.get("/v2-clean/email?view=all&status=all")
+
+    assert 'data-email-work-view="mailbox"' in first_access.text
+    assert 'aria-current="page">Por caixa</a>' in mailbox.text
+    assert mailbox.text.count(f'data-email-preview="{mine.id}"') == 1
+    assert mailbox.text.count(f'data-email-preview="{other.id}"') == 1
+    assert mailbox.text.count(f'data-email-preview="{unassigned.id}"') == 1
+    assert "novas" in mailbox.text and "por tratar" in mailbox.text
+    assert 'data-email-work-view="mine"' in mine_view.text
+    assert mine.subject in mine_view.text
+    assert other.subject not in mine_view.text
+    assert unassigned.subject not in mine_view.text
+    assert "Em tratamento" in mine_view.text
+    assert 'data-email-work-view="mine"' in restored.text
+    assert 'data-email-work-view="all"' in all_view.text
+    assert all_view.text.count(f'data-email-preview="{mine.id}"') == 1
+    assert 'name="view" value="all"' in all_view.text
+
+
+def test_email_body_keeps_safe_links_and_removes_active_content(
+    authenticated_client, db_session, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(settings, "email_storage_root", str(tmp_path))
+    _bind_email_session(monkeypatch, db_session)
+    payload = _payload("safe-links")
+    payload["HtmlBody"] = (
+        '<a href="https://example.com/path" onclick="alert(1)">Externo</a>'
+        '<a href="mailto:cliente@example.com">Email</a>'
+        '<a href="/v2-clean/documents/7">Documento interno</a>'
+        '<a href="javascript:alert(2)">Javascript</a>'
+        '<a href="data:text/html,bad">Data</a>'
+        '<script>segredo-script</script><style>segredo-css</style>'
+        '<iframe src="https://example.com">segredo-frame</iframe>'
+    )
+    thread, _ = ingest_inbound(db_session, payload)
+    message = db_session.scalar(
+        select(EmailMessage).where(EmailMessage.thread_id == thread.id)
+    )
+    db_session.commit()
+
+    body = authenticated_client.get(f"/v2-clean/email/messages/{message.id}/body")
+
+    assert body.status_code == 200
+    assert (
+        'href="https://example.com/path" target="_blank" '
+        'rel="noopener noreferrer"' in body.text
+    )
+    assert 'href="mailto:cliente@example.com"' in body.text
+    assert 'href="/v2-clean/documents/7"' in body.text
+    assert "onclick" not in body.text
+    assert "javascript:" not in body.text
+    assert "data:text/html" not in body.text
+    assert "segredo-script" not in body.text
+    assert "segredo-css" not in body.text
+    assert "segredo-frame" not in body.text
+
+
+def test_group_views_keep_exact_counts_and_do_not_hide_a_group_after_one_hundred(
+    authenticated_client, db_session, monkeypatch
+):
+    monkeypatch.setattr(settings, "visual_foundation_enabled", True)
+    _bind_email_session(monkeypatch, db_session)
+    admin = db_session.scalar(
+        select(User).where(User.email == "admin.tests@carfast.local")
+    )
+    channels = list(db_session.scalars(select(EmailChannel).order_by(EmailChannel.id)))
+    assert len(channels) > 1
+    bulk_threads = [
+        EmailThread(
+            channel_id=channels[0].id,
+            subject=f"Escala agrupada {index:03d}",
+            status="triage",
+            assigned_to_id=admin.id,
+            assignment_state="assigned_user",
+        )
+        for index in range(101)
+    ]
+    other_group = EmailThread(
+        channel_id=channels[1].id,
+        subject="Escala agrupada noutra caixa",
+        status="new_reply",
+        assigned_to_id=admin.id,
+        assignment_state="assigned_user",
+    )
+    db_session.add_all([*bulk_threads, other_group])
+    db_session.commit()
+
+    mailbox = authenticated_client.get(
+        "/v2-clean/email?view=mailbox&status=all&q=Escala+agrupada"
+    )
+    mine = authenticated_client.get(
+        "/v2-clean/email?view=mine&status=all&q=Escala+agrupada"
+    )
+
+    assert mailbox.status_code == 200
+    assert mailbox.text.count("101 total") == 1
+    assert "100 mais recentes" in mailbox.text
+    assert other_group.subject in mailbox.text
+    assert mailbox.text.count('data-email-preview="') == 101
+    assert mine.status_code == 200
+    assert mine.text.count("101 total") == 1
+    assert "100 mais recentes" in mine.text
+    assert "Nova resposta" in mine.text
+    assert mine.text.count('data-email-preview="') == 101
+    all_view = authenticated_client.get(
+        "/v2-clean/email?view=all&status=all&q=Escala+agrupada"
+    )
+    assert all_view.text.count('data-email-preview="') == 100
+    assert "A mostrar as 100 conversas mais recentes." in all_view.text
 
 
 def test_outbound_off_rejects_send_before_any_durable_mutation(

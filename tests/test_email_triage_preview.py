@@ -61,6 +61,8 @@ def _bind_email_session(monkeypatch, db_session) -> None:
 
 def test_preview_actions_refresh_without_closing_or_losing_selected_thread():
     script = (ROOT / "app/static/js/email.js").read_text(encoding="utf-8")
+    inbox = (ROOT / "app/templates/clean_email_inbox.html").read_text(encoding="utf-8")
+    thread = (ROOT / "app/templates/clean_email_thread.html").read_text(encoding="utf-8")
 
     assert "if (!dialog.open) dialog.showModal()" in script
     assert "await openPreview(shell.dataset.emailThreadId)" in script
@@ -72,7 +74,12 @@ def test_preview_actions_refresh_without_closing_or_losing_selected_thread():
     assert "!previewTrigger.isConnected" in script
     assert 'if (event.key !== "Escape") return' in script
     assert "closeActivePreview()" in script
+    assert 'dialog?.addEventListener("cancel"' in script
+    assert "event.preventDefault();\n    closeActivePreview();" in script
+    assert 'dialog?.addEventListener("close", () => {\n    document.querySelector(".ui-email-list-preview")?.classList.remove("is-preview-open");' in script
     assert 'dialog[open]:not(#email-preview-dialog)' in script
+    assert "email.js?v=20260901-email-mobile-focus" in inbox
+    assert "email.js?v=20260901-email-mobile-focus" in thread
 
 
 def test_inbox_facets_apply_remaining_filters_server_side(authenticated_client, db_session, tmp_path, monkeypatch):

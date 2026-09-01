@@ -2,13 +2,18 @@
   const dialog = document.getElementById("email-preview-dialog");
   const previewPanel = document.getElementById("email-preview-panel");
   let previewTrigger = null;
+  const restorePreviewFocus = () => {
+    const trigger = previewTrigger;
+    previewTrigger = null;
+    if (!(trigger instanceof HTMLElement) || !trigger.isConnected) return;
+    setTimeout(() => trigger.focus({preventScroll: true}), 0);
+  };
   const resetPreviewPanel = () => {
     if (!previewPanel) return;
     previewPanel.innerHTML = '<div class="email-preview-loading"><strong>Pré-visualização</strong><span>Selecione uma conversa para triar, classificar e responder sem perder a fila.</span></div>';
     document.querySelector(".ui-email-list-preview")?.classList.remove("is-preview-open");
     document.querySelectorAll("[data-email-preview]").forEach((row) => row.classList.remove("is-selected"));
-    if (previewTrigger instanceof HTMLElement && previewTrigger.isConnected) previewTrigger.focus();
-    previewTrigger = null;
+    restorePreviewFocus();
   };
   const closeActivePreview = () => {
     if (dialog?.open) {
@@ -247,7 +252,8 @@
     if (!dialog || !threadId) return;
     const usePanel = Boolean(previewPanel && window.matchMedia("(min-width: 1025px)").matches);
     const previewRoot = usePanel ? previewPanel : dialog;
-    previewTrigger = trigger || document.activeElement;
+    if (trigger) previewTrigger = trigger;
+    else if (!(previewTrigger instanceof HTMLElement) || !previewTrigger.isConnected) previewTrigger = document.activeElement;
     const previousShell = previewRoot.querySelector("[data-email-thread-id]");
     const previousConversationScroll = previousShell?.querySelector(".email-conversation")?.scrollTop || 0;
     const previousTriageScroll = previousShell?.querySelector(".email-triage-pane")?.scrollTop || 0;
@@ -287,8 +293,7 @@
   dialog?.addEventListener("click", (event) => { if (event.target === dialog) dialog.close(); });
   dialog?.addEventListener("close", () => {
     document.querySelectorAll("[data-email-preview]").forEach((row) => row.classList.remove("is-selected"));
-    if (previewTrigger instanceof HTMLElement && previewTrigger.isConnected) previewTrigger.focus();
-    previewTrigger = null;
+    restorePreviewFocus();
   });
   document.addEventListener("keydown", (event) => {
     if (event.key !== "Escape") return;

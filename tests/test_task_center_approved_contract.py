@@ -693,6 +693,44 @@ def test_inline_transition_is_server_side_and_fail_closed() -> None:
     assert 'flag="invalid_transition"' in ROUTER
 
 
+def test_waiting_transition_collects_complete_context_without_general_edit() -> None:
+    transition = ROUTER[
+        ROUTER.index("def clean_task_transition(") : ROUTER.index(
+            '@web_router.get("/v2-clean/tasks/notifications/'
+        )
+    ]
+    for field in ("waiting_reason", "waiting_reason_detail", "waiting_until"):
+        assert f'{field}: str = Form("")' in transition
+        assert f'name="{field}"' in TEMPLATE
+    assert 'status == "waiting"' in transition
+    assert 'flag="waiting_until_required"' in transition
+    assert 'action="waiting_context_set"' in transition
+    assert "sla_pause_on_waiting" in transition
+    assert 'data-task-preview-action="state"' in TEMPLATE
+
+
+def test_detail_separates_task_wait_sla_and_existing_context_relations() -> None:
+    for label in ("Prazo da tarefa", "Prazo da espera", "Política SLA"):
+        assert label in DETAIL
+    for label in (
+        "Origem",
+        "Email / conversa",
+        "Fila",
+        "Departamento",
+        "Categoria",
+        "Subcategoria",
+        "Equipa",
+        "Pessoa",
+        "Viatura / matrícula",
+        "Reserva",
+        "Contrato",
+        "Fatura",
+        "Caso",
+        "Processo",
+    ):
+        assert f"<dt>{label}</dt>" in DETAIL
+
+
 def test_guardrails_keep_owner_executor_support_and_sla_concepts_distinct() -> None:
     assert "task_assignment_labels" in ROUTER
     assert "TaskHelpRequest" in ROUTER

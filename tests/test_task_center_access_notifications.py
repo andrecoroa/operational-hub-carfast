@@ -351,11 +351,20 @@ def test_inline_transition_preserves_sla_pause_resume_and_terminal_resolution(
 
     authenticated_client.post(
         endpoint,
-        data={"status": "waiting", "return_url": "/v2-clean/tasks"},
+        data={
+            "status": "waiting",
+            "waiting_reason": "validation",
+            "waiting_reason_detail": "Aguardar validação documental",
+            "waiting_until": (datetime.now(UTC) + timedelta(days=2)).isoformat(),
+            "return_url": "/v2-clean/tasks",
+        },
         follow_redirects=False,
     )
     db_session.refresh(task)
     assert task.sla_paused_at is not None
+    assert task.waiting_reason == "validation"
+    assert task.waiting_reason_detail == "Aguardar validação documental"
+    assert task.waiting_until is not None
 
     authenticated_client.post(
         endpoint,
@@ -364,6 +373,16 @@ def test_inline_transition_preserves_sla_pause_resume_and_terminal_resolution(
     )
     db_session.refresh(task)
     assert task.sla_paused_at is None
+    assert task.waiting_reason is None
+    assert task.waiting_reason_detail is None
+    assert task.waiting_until is None
+    assert db_session.scalar(
+        select(TaskHistory).where(
+            TaskHistory.task_id == task.id,
+            TaskHistory.field_name == "waiting_until",
+            TaskHistory.new_value.is_(None),
+        )
+    )
 
     authenticated_client.post(
         endpoint,
@@ -395,6 +414,124 @@ def test_inline_transition_preserves_sla_pause_resume_and_terminal_resolution(
     )
     db_session.refresh(task)
     assert task.closed_at is not None
+
+
+def test_waiting_transition_requires_normalized_reason_detail_and_future_deadline(
+    authenticated_client, db_session
+):
+    task = Task(
+        title="Espera validada server-side",
+        task_type="operational_task",
+        category="Documentação",
+        status="in_execution",
+    )
+    db_session.add(task)
+    db_session.commit()
+    endpoint = f"/v2-clean/tasks/{task.id}/transition"
+    valid_deadline = (datetime.now(UTC) + timedelta(days=1)).isoformat()
+
+    invalid_payloads = (
+        {"waiting_reason_detail": "Detalhe", "waiting_until": valid_deadline},
+        {"waiting_reason": "forged", "waiting_reason_detail": "Detalhe", "waiting_until": valid_deadline},
+        {"waiting_reason": "customer", "waiting_until": valid_deadline},
+        {"waiting_reason": "customer", "waiting_reason_detail": "Detalhe"},
+        {
+            "waiting_reason": "customer",
+            "waiting_reason_detail": "Detalhe",
+            "waiting_until": (datetime.now(UTC) - timedelta(minutes=1)).isoformat(),
+        },
+    )
+    for payload in invalid_payloads:
+        response = authenticated_client.post(
+            endpoint,
+            data={"status": "waiting", "return_url": "/v2-clean/tasks", **payload},
+            follow_redirects=False,
+        )
+        assert response.status_code == 303
+        db_session.refresh(task)
+        assert task.status == "in_execution"
+        assert task.waiting_until is None
+
+
+def test_waiting_transition_records_actor_time_context_and_sla_policy(
+    authenticated_client, db_session
+):
+    task = Task(
+        title="Histórico completo da espera",
+        task_type="operational_task",
+        category="Documentação",
+        status="in_execution",
+        sla_pause_on_waiting=False,
+    )
+    db_session.add(task)
+    db_session.commit()
+    deadline = datetime.now(UTC) + timedelta(days=3)
+
+    response = authenticated_client.post(
+        f"/v2-clean/tasks/{task.id}/transition",
+        data={
+            "status": "waiting",
+            "waiting_reason": "partner_broker",
+            "waiting_reason_detail": "Aguardar confirmação do parceiro",
+            "waiting_until": deadline.isoformat(),
+            "return_url": "/v2-clean/tasks",
+        },
+        follow_redirects=False,
+    )
+    assert "transitioned=1" in response.headers["location"]
+    db_session.refresh(task)
+    assert task.status == "waiting"
+    assert task.sla_paused_at is None
+    histories = list(
+        db_session.scalars(select(TaskHistory).where(TaskHistory.task_id == task.id))
+    )
+    by_field = {item.field_name: item for item in histories}
+    assert {"status", "waiting_reason", "waiting_reason_detail", "waiting_until"} <= set(by_field)
+    assert all(by_field[name].user_id for name in ("waiting_reason", "waiting_reason_detail", "waiting_until"))
+    assert all(by_field[name].changed_at for name in ("waiting_reason", "waiting_reason_detail", "waiting_until"))
+    event = db_session.scalar(
+        select(task_router.TaskSlaEvent).where(
+            task_router.TaskSlaEvent.task_id == task.id,
+            task_router.TaskSlaEvent.action == "waiting_context_set",
+        )
+    )
+    assert event is not None
+    assert event.details_json["sla_pause_on_waiting"] is False
+
+
+def test_legacy_waiting_task_without_deadline_remains_readable_and_edit_preserves_state(
+    authenticated_client, db_session
+):
+    task = Task(
+        title="Espera legada",
+        task_type="operational_task",
+        category="Documentação",
+        status="waiting",
+        waiting_reason="validation",
+        waiting_reason_detail=None,
+        waiting_until=None,
+    )
+    db_session.add(task)
+    db_session.commit()
+
+    page = authenticated_client.get(f"/v2-clean/tasks/{task.id}/detail")
+    assert page.status_code == 200
+    assert "Registo anterior sem prazo de retoma" in page.text
+    response = authenticated_client.post(
+        f"/v2-clean/tasks/{task.id}/update",
+        data={
+            "title": "Espera legada revista",
+            "priority": "normal",
+            "workspace": "operational",
+            "return_url": f"/v2-clean/tasks/{task.id}/detail",
+        },
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    db_session.refresh(task)
+    assert task.status == "waiting"
+    assert task.waiting_reason == "validation"
+    assert task.waiting_until is None
 
 
 def test_out_of_scope_user_cannot_open_or_forge_task_actions(client, db_session):

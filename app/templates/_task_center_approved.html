@@ -86,6 +86,7 @@
   form.querySelector('[data-task-queue]')?.addEventListener('change',submit);
   document.querySelectorAll('[data-grouping-mode]').forEach(button=>button.addEventListener('click',()=>{form.querySelector('[data-task-grouping]').value=button.dataset.groupingMode;submit()}));
   const fields=['reference','title','category','queue','owner','due','state','priority','summary','update'];
+  const rawSearch=new URLSearchParams(location.search),normalizedSearch=new URLSearchParams();rawSearch.forEach((value,key)=>{if(key==='open_task')return;if(['updated','case_updated'].includes(key))normalizedSearch.set(key,value);else normalizedSearch.append(key,value)});if(normalizedSearch.toString()!==rawSearch.toString())history.replaceState(null,'',`${location.pathname}${normalizedSearch.size?'?'+normalizedSearch:''}${location.hash}`);
   const scrollKey=`carfast.taskScroll:${location.pathname}${location.search}`;
   if(scrollWrap){const savedScroll=Number(sessionStorage.getItem(scrollKey)||0);requestAnimationFrame(()=>{scrollWrap.scrollTop=savedScroll});scrollWrap.addEventListener('scroll',()=>sessionStorage.setItem(scrollKey,String(scrollWrap.scrollTop)),{passive:true})}
   let inlinePreviewRow=null;
@@ -123,6 +124,8 @@
     const modelButtons=createDialog.querySelectorAll('[data-create-model]');createDialog.querySelector('[data-task-create-back]').addEventListener('click',()=>{createForm.hidden=true;models.hidden=false;modelButtons[0]?.focus()});createDialog.querySelector('[data-create-case]')?.addEventListener('click',()=>{createDialog.close();openCaseFlow('new')});document.querySelector('[data-task-create-open]')?.addEventListener('click',openCreate);if(new URLSearchParams(location.search).get('create')==='1')openCreate()
   }
   document.querySelectorAll('[data-task-counter]').forEach(button=>button.addEventListener('click',()=>{const mode=button.dataset.taskCounter, scope=form.querySelector('[name=task_scope_view]')?.value||'mine', params=new URLSearchParams({queue:form.querySelector('[name=queue]')?.value||'tasks_support',task_scope_view:scope,workspace:workspaceInput.value,mine_kind:mineKindInput.value,category:'all',status:'open',sort:'priority'});if(mode==='unassigned'){params.set('assignment','unassigned');if(scope!=='team'){params.set('task_scope_view','claim');params.set('workspace','all');params.set('mine_kind','assigned')}}if(mode==='today')params.set('due','today');if(mode==='risk')params.set('due','due_soon');if(mode==='late')params.set('due','overdue');location.assign('/v2-clean/tasks?'+params)}));
-  const selected=new URLSearchParams(location.hash.slice(1).replace('task-','task='));const requested=new URLSearchParams(location.search).get('open_task');const id=requested||selected.get('task')||sessionStorage.getItem('carfast.taskSelection');if(id){const row=rows.find(r=>r.dataset.taskId===id),groupButton=groupButtons.find(button=>button.dataset.groupTask===id);if(row){const grouped=document.querySelector('[data-task-groups]');if(!grouped||groupButton)select(row,groupButton||null)}}
+  const selected=new URLSearchParams(location.hash.slice(1).replace('task-','task=')),grouped=document.querySelector('[data-task-groups]');
+  const restoreIds=[selected.get('task'),sessionStorage.getItem('carfast.taskSelection')].filter((id,index,items)=>id&&items.indexOf(id)===index);
+  for(const id of restoreIds){const row=rows.find(item=>item.dataset.taskId===id),groupButton=groupButtons.find(button=>button.dataset.groupTask===id);if(!row||(grouped&&!groupButton))continue;select(row,groupButton||null);break}
 })();
 </script>

@@ -1,6 +1,7 @@
 import re
 from datetime import date, timedelta
 from pathlib import Path
+from urllib.parse import parse_qs, urlsplit
 
 import pytest
 from sqlalchemy import func, select
@@ -420,7 +421,10 @@ def test_add_to_case_surface_and_post_share_positive_capability(
         f"/v2-clean/task-cases/{case.id}/tasks",
         data={
             "task_title": "Segunda autorizada",
-            "return_url": "/v2-clean/tasks?grouping=case&q=autorizada#task-11",
+            "return_url": (
+                "/v2-clean/tasks?grouping=case&q=autorizada&updated=1"
+                "&case_updated=1&case_updated=2&open_task=11#task-11"
+            ),
         },
         follow_redirects=False,
     )
@@ -431,6 +435,9 @@ def test_add_to_case_surface_and_post_share_positive_capability(
     assert "grouping=case" in added.headers["location"]
     assert "q=autorizada" in added.headers["location"]
     assert f"case_updated={case.id}" in added.headers["location"].split("#", 1)[0]
+    assert added.headers["location"].count("case_updated=") == 1
+    assert "updated" not in parse_qs(urlsplit(added.headers["location"]).query)
+    assert "open_task=" not in added.headers["location"]
     assert added.headers["location"].endswith("#task-11")
     assert db_session.scalar(
         select(func.count(Task.id)).where(Task.case_id == case.id)

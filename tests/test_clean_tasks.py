@@ -734,7 +734,7 @@ def test_clean_task_center_creates_document_task_with_audit(authenticated_client
     task = db_session.scalar(select(Task).where(Task.title == "Confirmar classificação da fatura"))
     assert task is not None
     assert "task_created=1" in response.headers["location"]
-    assert f"open_task={task.id}" in response.headers["location"]
+    assert "open_task=" not in response.headers["location"]
     assert response.headers["location"].endswith(f"#task-{task.id}")
     assert task.source == "v2_clean"
     assert task.task_type == "workshop_task"
@@ -1180,7 +1180,8 @@ def test_clean_task_update_supports_save_and_save_close(authenticated_client, db
     )
 
     assert stay.status_code == 303
-    assert f"open_task={task.id}" in stay.headers["location"]
+    assert "open_task=" not in stay.headers["location"]
+    assert stay.headers["location"].endswith(f"#task-{task.id}")
     assert close.status_code == 303
     assert "open_task=" not in close.headers["location"]
     db_session.refresh(task)

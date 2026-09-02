@@ -170,7 +170,12 @@ def test_listable_direct_task_uses_same_resolver_for_clean_and_legacy_detail(
     listed = client.get("/v2-clean/tasks?workspace=all&status=open&category=all")
     opened = client.get(
         f"/v2-clean/tasks/{task.id}/open",
-        params={"return_url": "/v2-clean/tasks?workspace=all&status=open&category=all#task-1"},
+        params={
+            "return_url": (
+                "/v2-clean/tasks?workspace=all&status=open&category=all"
+                "&updated=1&updated=2&case_updated=8&open_task=77#task-1"
+            )
+        },
         follow_redirects=False,
     )
     assert task.title in listed.text
@@ -182,6 +187,9 @@ def test_listable_direct_task_uses_same_resolver_for_clean_and_legacy_detail(
     assert task.title in detail.text
     assert "Voltar à mesma fila" in detail.text
     assert "/v2-clean/tasks?workspace=all&amp;status=open&amp;category=all#task-1" in detail.text
+    assert "open_task=" not in detail.text
+    assert "case_updated=" not in detail.text
+    assert "updated=" not in detail.text
 
 
 def test_three_creation_models_persist_distinct_canonical_task_types(

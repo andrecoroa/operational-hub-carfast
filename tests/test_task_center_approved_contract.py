@@ -106,14 +106,15 @@ def test_inline_preview_toggles_single_selection_and_restores_keyboard_focus() -
     assert "row.addEventListener('click',()=>toggleSelection(row))" in TEMPLATE
     assert "if(row)toggleSelection(row,button)" in TEMPLATE
     assert "groupButtons.find(button=>button.dataset.groupTask===id)" in TEMPLATE
-    assert "if(!grouped||groupButton)select(row,groupButton||null)" in TEMPLATE
+    assert "if(!row||(grouped&&!groupButton))continue" in TEMPLATE
+    assert "select(row,groupButton||null);break" in TEMPLATE
     assert ".task-center-approved-workspace{display:block" in CSS
 
 
 def test_grouped_reload_restores_preview_only_under_a_visible_group_trigger() -> None:
     assert "const group=groupButton.closest('details.task-group');if(group)group.open=true" in TEMPLATE
-    assert "const grouped=document.querySelector('[data-task-groups]')" in TEMPLATE
-    assert "if(!grouped||groupButton)select(row,groupButton||null)" in TEMPLATE
+    assert "grouped=document.querySelector('[data-task-groups]')" in TEMPLATE
+    assert "if(!row||(grouped&&!groupButton))continue" in TEMPLATE
     assert "groupButton.insertAdjacentElement('afterend',preview)" in TEMPLATE
 
 
@@ -296,6 +297,19 @@ def test_approved_selection_preserves_return_context() -> None:
     assert 'data-task-scroll' in TEMPLATE
     assert 'scrollTop' in TEMPLATE
     assert 'carfast.taskScroll:' in TEMPLATE
+    assert "const restoreIds=" in TEMPLATE
+    assert "grouped&&!groupButton" in TEMPLATE
+    assert "get('open_task')" not in TEMPLATE
+    assert "if(key==='open_task')return" in TEMPLATE
+    assert "['updated','case_updated'].includes(key)" in TEMPLATE
+
+
+def test_detail_main_and_activity_share_one_geometry_token() -> None:
+    assert "--task-detail-panel-padding:20px" in CSS
+    assert (
+        ".task-center-detail-approved .form-panel,.task-center-detail-approved .section"
+        "{max-width:none;padding:var(--task-detail-panel-padding)" in CSS
+    )
 
 
 def test_server_side_scope_is_shared_by_list_and_counters() -> None:

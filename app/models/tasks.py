@@ -116,6 +116,9 @@ class Task(TimestampMixin, Base):
     waiting_for_team_id: Mapped[int | None] = mapped_column(ForeignKey("teams.id"))
     waiting_reason: Mapped[str | None] = mapped_column(String(80), index=True)
     waiting_reason_detail: Mapped[str | None] = mapped_column(Text)
+    waiting_until: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), index=True
+    )
     created_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
     due_on: Mapped[date | None] = mapped_column(Date)
     first_response_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

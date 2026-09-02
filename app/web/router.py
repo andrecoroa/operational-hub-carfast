@@ -19,6 +19,7 @@ from time import monotonic
 from types import SimpleNamespace
 from typing import Any
 from urllib.parse import parse_qsl, quote, quote_plus, urlencode, urlsplit, urlunsplit
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, File, Form, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
@@ -113,6 +114,7 @@ from app.models.vehicles import (
 from app.models.work_hierarchy import (
     ServiceDeskTicketType,
     WorkCategory,
+    WorkDepartment,
     WorkQueue,
     WorkSubcategory,
 )
@@ -5806,6 +5808,7 @@ def clean_tasks_center(
                 "task_category_options": task_category_options,
                 "task_workspace_labels": task_workspace_labels,
                 "task_status_labels": task_status_labels,
+                "waiting_reasons": TASK_WAITING_REASONS,
                 "task_priority_labels": task_priority_labels,
                 "current_user_id": user_id,
                 "current_user_team_ids": sorted(user_team_ids(db, user_id)) if user_id else [],
@@ -7366,8 +7369,16 @@ def clean_tasks_update(
             "reservation_number": (task.reservation_number, reservation_number.strip()[:120] or None),
             "contract_number": (task.contract_number, contract_number.strip()[:120] or None),
             "invoice_number": (task.invoice_number, invoice_number.strip()[:120] or None),
-            "waiting_reason": (task.waiting_reason, waiting_reason.strip()[:80] or None),
-            "waiting_reason_detail": (task.waiting_reason_detail, waiting_reason_detail.strip() or None),
+            "waiting_reason": (
+                task.waiting_reason,
+                waiting_reason.strip()[:80]
+                or (task.waiting_reason if task.status == "waiting" else None),
+            ),
+            "waiting_reason_detail": (
+                task.waiting_reason_detail,
+                waiting_reason_detail.strip()
+                or (task.waiting_reason_detail if task.status == "waiting" else None),
+            ),
         }
         if hierarchy_selection:
             changes.update(
@@ -7782,6 +7793,9 @@ def clean_task_transition(
     request: Request,
     task_id: int,
     status: str = Form(""),
+    waiting_reason: str = Form(""),
+    waiting_reason_detail: str = Form(""),
+    waiting_until: str = Form(""),
     return_url: str = Form(""),
 ):
     """Apply one explicit transition from the server-rendered transition graph."""
@@ -7825,16 +7839,75 @@ def clean_task_transition(
                 return clean_task_action_redirect(
                     return_url, task_id=task_id, flag="transition_blocked"
                 )
-        prior_status = task.status
         transition_now = datetime.now(UTC)
+        clean_waiting_reason = waiting_reason.strip()
+        clean_waiting_detail = waiting_reason_detail.strip()
+        parsed_waiting_until = None
+        if status == "waiting":
+            if clean_waiting_reason not in TASK_WAITING_REASON_LABELS:
+                return clean_task_action_redirect(
+                    return_url, task_id=task_id, flag="waiting_reason_required"
+                )
+            if not clean_waiting_detail:
+                return clean_task_action_redirect(
+                    return_url, task_id=task_id, flag="waiting_reason_detail_required"
+                )
+            try:
+                parsed_waiting_until = datetime.fromisoformat(waiting_until.strip())
+            except ValueError:
+                parsed_waiting_until = None
+            if parsed_waiting_until is not None and parsed_waiting_until.tzinfo is None:
+                parsed_waiting_until = parsed_waiting_until.replace(
+                    tzinfo=ZoneInfo("Europe/Lisbon")
+                ).astimezone(UTC)
+            if (
+                parsed_waiting_until is None
+                or parsed_waiting_until.astimezone(UTC) <= transition_now
+            ):
+                return clean_task_action_redirect(
+                    return_url, task_id=task_id, flag="waiting_until_required"
+                )
+
+        prior_status = task.status
         task.status = status
         if status == "waiting" and prior_status != "waiting":
+            task.waiting_reason = clean_waiting_reason
+            task.waiting_reason_detail = clean_waiting_detail
+            task.waiting_until = parsed_waiting_until
             pause_task_sla(
                 db,
                 task,
                 actor_user_id=user_id,
-                reason="Ticket em espera",
+                reason=clean_waiting_reason,
                 now=transition_now,
+            )
+            for field_name, new_value in (
+                ("waiting_reason", clean_waiting_reason),
+                ("waiting_reason_detail", clean_waiting_detail),
+                ("waiting_until", parsed_waiting_until.isoformat()),
+            ):
+                db.add(
+                    TaskHistory(
+                        task_id=task.id,
+                        user_id=user_id,
+                        field_name=field_name,
+                        old_value=None,
+                        new_value=new_value,
+                    )
+                )
+            db.add(
+                TaskSlaEvent(
+                    task_id=task.id,
+                    actor_user_id=user_id,
+                    action="waiting_context_set",
+                    reason=clean_waiting_detail,
+                    occurred_at=transition_now,
+                    details_json={
+                        "waiting_reason": clean_waiting_reason,
+                        "waiting_until": parsed_waiting_until.isoformat(),
+                        "sla_pause_on_waiting": task.sla_pause_on_waiting,
+                    },
+                )
             )
         elif status != "waiting" and prior_status == "waiting":
             resume_task_sla(
@@ -7844,6 +7917,27 @@ def clean_task_transition(
                 reason="Ticket retomado",
                 now=transition_now,
             )
+            for field_name, old_value in (
+                ("waiting_reason", task.waiting_reason),
+                ("waiting_reason_detail", task.waiting_reason_detail),
+                (
+                    "waiting_until",
+                    task.waiting_until.isoformat() if task.waiting_until else None,
+                ),
+            ):
+                if old_value is not None:
+                    db.add(
+                        TaskHistory(
+                            task_id=task.id,
+                            user_id=user_id,
+                            field_name=field_name,
+                            old_value=str(old_value),
+                            new_value=None,
+                        )
+                    )
+            task.waiting_reason = None
+            task.waiting_reason_detail = None
+            task.waiting_until = None
         if status in TASK_ARCHIVE_STATUSES:
             task.closed_at = task.closed_at or transition_now
             mark_task_resolved(db, task, actor_user_id=user_id, now=transition_now)
@@ -7887,7 +7981,12 @@ def clean_task_transition(
             action="task.status.transitioned",
             entity_type="task",
             entity_id=task.id,
-            detail=f"Estado alterado de {prior_status} para {status}",
+            detail=(
+                f"Estado alterado de {prior_status} para {status}; "
+                f"espera={clean_waiting_reason}; retoma={parsed_waiting_until.isoformat()}"
+                if status == "waiting" and parsed_waiting_until
+                else f"Estado alterado de {prior_status} para {status}"
+            ),
             user_id=user_id,
         )
         db.commit()
@@ -35987,6 +36086,26 @@ def task_detail(
             linked_vehicle = db.get(Vehicle, int(task.entity_id))
         elif task.plate:
             linked_vehicle = db.scalar(select(Vehicle).where(Vehicle.plate == task.plate))
+        task_case = db.get(TaskCase, task.case_id) if task.case_id else None
+        email_origin = db.scalar(
+            select(TaskEmailOrigin).where(TaskEmailOrigin.task_id == task.id)
+        )
+        queue = db.get(WorkQueue, task.work_queue_id) if task.work_queue_id else None
+        department = (
+            db.get(WorkDepartment, task.work_department_id)
+            if task.work_department_id
+            else None
+        )
+        work_category = (
+            db.get(WorkCategory, task.work_category_id)
+            if task.work_category_id
+            else None
+        )
+        work_subcategory = (
+            db.get(WorkSubcategory, task.work_subcategory_id)
+            if task.work_subcategory_id
+            else None
+        )
         parent_task = db.get(Task, task.parent_task_id) if task.parent_task_id else None
         subtasks = db.scalars(
             select(Task)
@@ -36162,6 +36281,12 @@ def task_detail(
                 "comments": comments,
                 "history": history,
                 "linked_vehicle": linked_vehicle,
+                "task_case": task_case,
+                "email_origin": email_origin,
+                "task_queue": queue,
+                "task_department": department,
+                "task_work_category": work_category,
+                "task_work_subcategory": work_subcategory,
                 "parent_task": parent_task,
                 "subtasks": subtasks,
                 "documents": documents,

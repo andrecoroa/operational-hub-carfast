@@ -612,7 +612,7 @@ def test_support_resolution_requires_explicit_bounded_return_and_fails_closed(
         assert db_session.get(Task, task.id).status == "support_requested"
         assert db_session.get(TaskHelpRequest, item.id).status == "pending"
 
-    page = authenticated_client.get(RETURN_CONTEXT.split("#", 1)[0])
+    page = authenticated_client.get(f"/v2-clean/tasks/{task.id}/detail")
     assert page.status_code == 200
     assert "Após fechar o pedido" in page.text
     assert 'value="in_execution"' in page.text
@@ -731,7 +731,12 @@ def test_archived_task_cannot_start_support(
         "/v2-clean/tasks?queue=tasks_support&status=closed&view=mine"
     )
     assert page.status_code == 200
-    assert f'"{task.id}": []' in page.text
+    assert f'"{task.id}": false' in page.text
+    targets = authenticated_client.get(
+        f"/v2-clean/tasks/{task.id}/support-targets"
+    )
+    assert targets.status_code == 403
+    assert targets.json() == {"targets": []}
     detail = authenticated_client.get(f"/v2-clean/tasks/{task.id}/detail")
     assert detail.status_code == 200
     assert 'id="task-support"' not in detail.text

@@ -106,7 +106,7 @@ def test_explicit_sort_and_compact_inline_workbench_are_exposed() -> None:
     assert 'name="sort" data-task-sort' in TEMPLATE
     assert "Ordenação:" in TEMPLATE
     assert "data-workbench-tab" not in TEMPLATE
-    for field in ("queue", "category", "owner", "due", "detail-reference", "detail-origin"):
+    for field in ("category", "owner", "due", "sla-detail", "state", "priority"):
         assert f"data-preview-{field}" in TEMPLATE
     assert "Próxima ação:" in TEMPLATE
 

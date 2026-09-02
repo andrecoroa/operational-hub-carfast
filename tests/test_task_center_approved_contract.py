@@ -5,7 +5,7 @@ from datetime import date, timedelta
 
 from app.models.tasks import Task
 from app.models.admin import User
-from sqlalchemy import select
+from sqlalchemy import event, select
 import app.web.router as task_router
 
 
@@ -84,8 +84,12 @@ def test_approved_preview_is_inline_and_has_at_most_four_rbac_actions() -> None:
     assert len(re.findall(r"<button[^>]+data-task-preview-action=", TEMPLATE)) <= 4
     assert "task_update_allowed_by_id" in TEMPLATE
     assert "task_close_allowed_by_id" in TEMPLATE
-    assert "data-preview-origin" in TEMPLATE
+    assert "data-preview-origin" not in TEMPLATE
     assert "data-preview-relation" in TEMPLATE
+    assert "task-preview-description" in TEMPLATE
+    assert "data-preview-waiting" in TEMPLATE
+    assert "data-preview-support" in TEMPLATE
+    assert "data-task-more-toggle" in TEMPLATE
     assert "function mountPreview(row,groupButton=null)" in TEMPLATE
     assert "row.insertAdjacentElement('afterend',inlinePreviewRow)" in TEMPLATE
     assert "groupButton.insertAdjacentElement('afterend',preview)" in TEMPLATE
@@ -116,7 +120,9 @@ def test_grouped_reload_restores_preview_only_under_a_visible_group_trigger() ->
 def test_support_targets_are_scoped_server_side_and_not_globally_rendered() -> None:
     support_dialog = TEMPLATE[TEMPLATE.index("data-task-support-dialog") :]
     support_dialog = support_dialog[: support_dialog.index("{% include")]
-    assert "task_support_targets_by_id|tojson" in TEMPLATE
+    assert "task_support_available_by_id|tojson" in TEMPLATE
+    assert "/support-targets`" in TEMPLATE
+    assert 'def clean_task_support_targets(' in ROUTER
     assert "for user in all_users" not in support_dialog
     assert "for team in teams" not in support_dialog
     assert "target.replaceChildren" in TEMPLATE
@@ -158,24 +164,72 @@ def test_support_targets_fail_closed_without_update_permission(
     ).group(0)
     assert 'data-can-update="0"' in row
     payload = json.loads(
-        re.search(r"const supportTargets=(\{.*?\});", page.text, re.S).group(1)
+        re.search(r"const supportAvailable=(\{.*?\});", page.text, re.S).group(1)
     )
-    assert payload[str(task.id)] == []
+    assert payload[str(task.id)] is False
+    monkeypatch.setattr(
+        task_router,
+        "_task_hierarchy_scope_allows",
+        lambda _db, _user_id, _task, *, action: action != "update",
+    )
+    denied_targets = authenticated_client.get(
+        f"/v2-clean/tasks/{task.id}/support-targets"
+    )
+    assert denied_targets.status_code == 403
+    assert denied_targets.json() == {"targets": []}
 
 
-def test_approved_workbench_stays_in_the_center_and_uses_scoped_update_options() -> None:
+def test_approved_workbench_loads_on_demand_through_authorized_open_resolver() -> None:
     assert "window.openTaskWorkbench" in TEMPLATE
-    assert 'class="clean-task-preview"' in TEMPLATE
-    assert 'action="/v2-clean/tasks/{{ task.id }}/update"' in TEMPLATE
-    assert "task_update_work_queues" in TEMPLATE
-    assert "task_update_work_departments" in TEMPLATE
-    assert "task_update_work_categories" in TEMPLATE
-    assert "task_update_work_subcategories" in TEMPLATE
+    assert "openTaskWorkbenchOnDemand" in TEMPLATE
+    assert "`/v2-clean/tasks/${taskId}/open?return_url=${encodeURIComponent(returnUrl)}`" in TEMPLATE
+    assert "{% if false %}{% for task in tasks %}" in TEMPLATE
     assert "Tarefa antiga" not in TEMPLATE
     assert "CF-TASK-" not in TEMPLATE
     assert 'name="status" value="{{ task.status }}"' not in TEMPLATE
     assert "/transition`;" in TEMPLATE
-    assert TEMPLATE.count("data-assignment-exclusive") >= 2
+    assert 'action="/v2-clean/tasks/{{ task.id }}/update"' in DETAIL
+    assert "data-assignment-exclusive" in DETAIL
+
+
+def test_initial_list_does_not_render_one_workbench_per_task(
+    authenticated_client, db_session, monkeypatch
+) -> None:
+    monkeypatch.setattr(task_router.settings, "visual_foundation_enabled", True)
+    actor = db_session.scalar(select(User).where(User.email == "admin.tests@carfast.local"))
+    for index in range(10):
+        db_session.add(
+            Task(
+                title=f"Tarefa leve {index}",
+                task_type="operational_task",
+                category="Documentação",
+                status="new",
+                priority="normal",
+                assigned_to_id=actor.id,
+            )
+        )
+    db_session.commit()
+    queries = 0
+
+    def count_query(*_args) -> None:
+        nonlocal queries
+        queries += 1
+
+    event.listen(db_session.bind, "before_cursor_execute", count_query)
+    try:
+        page = authenticated_client.get(
+            "/v2-clean/tasks?workspace=mine&mine_kind=all&status=open&category=all"
+        )
+    finally:
+        event.remove(db_session.bind, "before_cursor_execute", count_query)
+
+    assert page.status_code == 200
+    assert page.text.count('class="clean-task-preview"') == 0
+    assert page.text.count("<form") < 20
+    assert page.text.count("<dialog") <= 7
+    # Ten extra rows must not reintroduce the former per-row workbench and
+    # support-target query fan-out (197 queries on the frozen base).
+    assert queries <= 140, queries
 
 
 def test_management_uses_the_same_comment_state_and_support_language() -> None:
@@ -191,6 +245,17 @@ def test_management_clarifies_current_state_and_uses_minimal_disclosure() -> Non
     assert "Estado atual" in DETAIL
     assert "Sem transições legais disponíveis" in DETAIL
     assert "<details><summary>Mais opções</summary>" in DETAIL
+
+
+def test_queue_and_state_controls_explain_their_distinct_contracts() -> None:
+    assert "Única fila autorizada" in TEMPLATE
+    assert 'data-task-queue aria-label="Fila ativa"' in TEMPLATE
+    assert "Filtrar por estado" in TEMPLATE
+    assert "Recorta a lista; não define transições." in TEMPLATE
+    assert "Estado atual" in TEMPLATE
+    assert "Transições disponíveis" in TEMPLATE
+    assert "Destinos legais devolvidos pelo servidor" in TEMPLATE
+    assert "Transições disponíveis" in DETAIL
 
 
 def test_management_support_surface_fails_closed_without_update_scope(
@@ -488,7 +553,7 @@ def test_note_action_visibility_uses_distinct_server_respond_scope(
     assert 'data-can-respond="0"' in row
 
 
-def test_origin_and_existing_relations_are_exposed_only_in_preview(
+def test_existing_relations_are_exposed_without_repeating_generic_origin(
     authenticated_client, db_session, monkeypatch
 ) -> None:
     monkeypatch.setattr(task_router.settings, "visual_foundation_enabled", True)
@@ -503,7 +568,7 @@ def test_origin_and_existing_relations_are_exposed_only_in_preview(
     page = authenticated_client.get("/v2-clean/tasks?workspace=mine&mine_kind=all&status=open&category=all")
     row = re.search(r'<tr[^>]+data-title="Subtarefa relacionada"[^>]+>', page.text).group(0)
 
-    assert 'data-origin="Subtarefa"' in row
+    assert "data-origin=" not in row
     assert f'data-relation="Tarefa mãe CF-{parent.id:05d}"' in row
     assert "Origem" not in re.search(r'<thead>.*?</thead>', page.text, re.S).group(0)
 
@@ -529,28 +594,29 @@ def test_preview_actions_use_clean_canonical_routes_and_accessible_editors() -> 
 
 def test_state_editor_separates_current_state_and_only_builds_legal_destinations() -> None:
     assert 'data-task-current-state' in TEMPLATE
-    assert 'Transição disponível' in TEMPLATE
+    assert 'Transições disponíveis' in TEMPLATE
     assert 'taskStatusLabels={{ task_status_labels|tojson }}' in TEMPLATE
     assert "select.replaceChildren(...allowed.map" in TEMPLATE
     assert 'Novo estado<select' not in TEMPLATE
 
 
-def test_workbench_keeps_primary_planning_visible_and_hides_rare_fields_progressively() -> None:
-    assert '<summary>Mais opções de contexto</summary>' in TEMPLATE
-    assert '<summary>Mais opções de planeamento e atribuição</summary>' in TEMPLATE
-    planning = TEMPLATE[TEMPLATE.index('<h3>Planeamento e atribuição</h3>'):]
-    more = planning.index('<summary>Mais opções de planeamento e atribuição</summary>')
-    assert planning.index('name="priority"') < more
-    assert planning.index('name="due_on"') < more
-    assert planning.index('name="waiting_reason"') > more
-    assert planning.index('data-work-hierarchy') > more
+def test_workbench_keeps_primary_work_visible_and_hides_rare_fields_progressively() -> None:
+    more = DETAIL.index("<details><summary>Mais opções</summary>")
+    assert DETAIL.index('name="priority"') < more
+    assert DETAIL.index('name="due_on"') < more
+    assert DETAIL.index('data-work-hierarchy') > more
+    assert "task-detail-status-line" in DETAIL
+    assert "task-detail-quick-comment" in DETAIL
+    assert "task-detail-document" in DETAIL
+    assert "user_by_id.get(item.user_id).name" in DETAIL
 
 
 def test_preview_presents_persisted_queue_and_canonical_classification() -> None:
     assert 'data-preview-category' in TEMPLATE
-    assert 'data-preview-queue' in TEMPLATE
-    assert '<dt>Classificação</dt>' in TEMPLATE
-    assert '<dt>Fila</dt>' in TEMPLATE
+    assert 'data-preview-owner' in TEMPLATE
+    assert 'data-preview-due' in TEMPLATE
+    assert 'data-preview-sla-detail' in TEMPLATE
+    assert 'data-task-preview-edit="classification"' in TEMPLATE
     assert 'data-preview-focus' not in TEMPLATE
 
 
@@ -602,8 +668,8 @@ def test_task_forms_use_scoped_team_resolver_and_legacy_defaults_are_explicit() 
 def test_terminal_action_visibility_matches_server_complete_scope() -> None:
     list_scope = ROUTER[ROUTER.index("task_close_allowed_by_id ="):ROUTER.index("task_respond_allowed_by_id =")]
     detail_scope = ROUTER[ROUTER.index("can_close_task ="):ROUTER.index("detail_transition_options =")]
+    assert 'workspace_allowed(workspace_for_task_type(task.task_type), "close")' in list_scope
     assert 'action="complete"' in list_scope
-    assert 'action="close"' not in list_scope.split("_task_hierarchy_scope_allows", 1)[1]
     assert 'action="complete"' in detail_scope
 
 

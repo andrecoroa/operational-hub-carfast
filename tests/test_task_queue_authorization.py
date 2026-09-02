@@ -1,7 +1,19 @@
+import re
+
 from sqlalchemy import select
 
 import app.web.router as task_router
-from app.models import Permission, Role, RolePermission, Task, User
+from app.models import (
+    Permission,
+    Role,
+    RolePermission,
+    RoleWorkScope,
+    Task,
+    User,
+    WorkCategory,
+    WorkDepartment,
+    WorkQueue,
+)
 from app.services.task_queues import resolve_task_queue_capabilities
 from app.services.users import create_user
 
@@ -159,6 +171,176 @@ def test_administration_read_grant_never_authorizes_mutation(
     assert client.patch(
         f"/api/tasks/{task.id}", headers=headers, json={"title": "Forbidden update"}
     ).status_code == 403
+
+
+def test_create_hierarchy_exposes_only_writable_authorized_queues(
+    client, db_session, monkeypatch
+) -> None:
+    monkeypatch.setattr(task_router.settings, "visual_foundation_enabled", True)
+    _, role = _user_with_queue_grants(
+        db_session,
+        "navigation.tasks.access",
+        "tasks.read",
+        "tasks.operational.read",
+        "tasks.operational.write",
+        "tasks.administration.read",
+        "classification.active.use",
+    )
+    administration = db_session.scalar(
+        select(WorkQueue).where(WorkQueue.code == "administration")
+    )
+    operational = db_session.scalar(
+        select(WorkQueue).where(WorkQueue.code == "tasks_support")
+    )
+    operational_department = db_session.scalar(
+        select(WorkDepartment)
+        .where(WorkDepartment.queue_id == operational.id)
+        .order_by(WorkDepartment.id)
+    )
+    if not db_session.scalar(
+        select(WorkCategory).where(
+            WorkCategory.department_id == operational_department.id
+        )
+    ):
+        db_session.add(
+            WorkCategory(
+                department_id=operational_department.id,
+                code="queue-matrix-operational",
+                name="Operacional autorizada",
+                active=True,
+            )
+        )
+    db_session.add(
+        RoleWorkScope(
+            role_id=role.id,
+            queue_id=operational.id,
+            can_read=True,
+            can_create=True,
+        )
+    )
+    db_session.commit()
+    _web_login(client)
+
+    page = client.get("/v2-clean/tasks?queue=administration")
+    queue_select = re.search(
+        r'<select name="work_queue_id".*?</select>', page.text, re.S
+    ).group(0)
+
+    assert page.status_code == 200
+    assert f'<option value="{operational.id}"' in queue_select
+    assert f'<option value="{administration.id}"' not in queue_select
+
+
+def test_authorized_creation_in_administration_uses_the_selected_hierarchy(
+    client, db_session, monkeypatch
+) -> None:
+    monkeypatch.setattr(task_router.settings, "visual_foundation_enabled", True)
+    _, role = _user_with_queue_grants(
+        db_session,
+        "navigation.tasks.access",
+        "tasks.read",
+        "tasks.operational.read",
+        "tasks.operational.write",
+        "tasks.administration.read",
+        "tasks.administration.write",
+        "classification.active.use",
+    )
+    queue = db_session.scalar(
+        select(WorkQueue).where(WorkQueue.code == "administration")
+    )
+    department = db_session.scalar(
+        select(WorkDepartment)
+        .where(WorkDepartment.queue_id == queue.id, WorkDepartment.active.is_(True))
+        .order_by(WorkDepartment.id)
+    )
+    category = db_session.scalar(
+        select(WorkCategory)
+        .where(
+            WorkCategory.department_id == department.id,
+            WorkCategory.active.is_(True),
+        )
+        .order_by(WorkCategory.id)
+    )
+    if category is None:
+        category = WorkCategory(
+            department_id=department.id,
+            code="queue-matrix-administration",
+            name="Administração autorizada",
+            active=True,
+        )
+        db_session.add(category)
+        db_session.flush()
+    db_session.add(
+        RoleWorkScope(
+            role_id=role.id,
+            queue_id=queue.id,
+            can_read=True,
+            can_create=True,
+        )
+    )
+    db_session.commit()
+    _web_login(client)
+    page = client.get("/v2-clean/tasks?queue=administration")
+    queue_select = re.search(
+        r'<select name="work_queue_id".*?</select>', page.text, re.S
+    ).group(0)
+    assert f'<option value="{queue.id}"' in queue_select
+    assert f'data-parent="{queue.id}"' in page.text
+    assert f'data-parent="{department.id}"' in page.text
+
+    created = client.post(
+        "/v2-clean/tasks",
+        data={
+            "title": "Revisão administrativa autorizada",
+            "record_type": "task",
+            "classification_version": "3",
+            "work_queue_id": str(queue.id),
+            "work_department_id": str(department.id),
+            "work_category_id": str(category.id),
+            "priority": "normal",
+        },
+        follow_redirects=False,
+    )
+
+    assert created.status_code == 303
+    task = db_session.scalar(
+        select(Task).where(Task.title == "Revisão administrativa autorizada")
+    )
+    assert task is not None
+    assert task.task_type == "administration_task"
+    assert task.work_queue_id == queue.id
+    assert task.work_department_id == department.id
+    assert task.work_category_id == category.id
+
+
+def test_admin_manage_cannot_forge_administration_creation(client, db_session) -> None:
+    _user_with_queue_grants(
+        db_session,
+        "navigation.tasks.access",
+        "admin.manage",
+        "classification.active.use",
+    )
+    _web_login(client)
+
+    forged = client.post(
+        "/v2-clean/tasks",
+        data={
+            "title": "Administração sem grant direto",
+            "record_type": "task",
+            "classification_version": "2",
+            "workspace": "administration",
+            "category": "Financeiro",
+            "subcategory": "Validação",
+            "priority": "normal",
+        },
+        follow_redirects=False,
+    )
+
+    assert forged.status_code == 303
+    assert "error=forbidden" in forged.headers["location"]
+    assert db_session.scalar(
+        select(Task).where(Task.title == "Administração sem grant direto")
+    ) is None
 
 
 def test_unknown_task_types_fail_closed_on_list_create_and_update(

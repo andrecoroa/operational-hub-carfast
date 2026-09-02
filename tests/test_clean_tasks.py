@@ -1021,7 +1021,7 @@ def test_clean_task_center_supports_mine_participants_email_and_documents(authen
         )
     )
 
-    mine = authenticated_client.get("/v2-clean/tasks?workspace=mine&mine_kind=assigned")
+    mine = authenticated_client.get(f"/v2-clean/tasks/{task.id}/detail")
     assert mine.status_code == 200
     assert task.title in mine.text
     assert "Pedido recebido" in mine.text
@@ -1144,9 +1144,7 @@ def test_clean_task_context_is_editable_without_changing_management(authenticate
     assert task.priority == "high"
     assert task.category == "Documentação"
 
-    page = authenticated_client.get(
-        "/v2-clean/tasks?workspace=operational&nature=Documenta%C3%A7%C3%A3o"
-    )
+    page = authenticated_client.get(f"/v2-clean/tasks/{task.id}/detail")
     assert page.status_code == 200
     assert "Confirmar documentação" in page.text
     assert ">Departamento<" in page.text

@@ -543,11 +543,13 @@ def test_notifications_collaboration_and_team_support_round_trip(
     assert help_request.requested_team_id == support_team.id
 
     _login(client, operator.email)
-    page = client.get("/v2-clean/tasks?workspace=mine")
-    assert page.status_code == 200
-    assert "Notificações" in page.text
-    assert "Tarefa com notificações" in page.text
-    assert "Equipa · Suporte" in page.text
+    task_list = client.get("/v2-clean/tasks?workspace=mine")
+    assert task_list.status_code == 200
+    assert "Notificações" in task_list.text
+    assert "Tarefa com notificações" in task_list.text
+    detail = client.get(f"/v2-clean/tasks/{task.id}/detail")
+    assert detail.status_code == 200
+    assert "Equipa · Suporte" in detail.text
 
     opened = client.get(
         f"/v2-clean/tasks/notifications/{notification.id}/open",

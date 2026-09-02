@@ -6046,13 +6046,53 @@ def _resolve_case_add_task_access(
     return (case, exemplar) if exemplar else None
 
 
-def _case_action_redirect(return_url: str, **params: str) -> RedirectResponse:
-    target = _clean_v2_return_url(return_url, "/v2-clean/tasks?grouping=case")
+_TASK_RETURN_TRANSIENT_KEYS = frozenset(
+    {
+        "opened",
+        "claimed",
+        "commented",
+        "transitioned",
+        "forbidden",
+        "invalid_transition",
+        "transition_blocked",
+        "task_created",
+        "case_created",
+        "case_updated",
+        "updated",
+        "open_task",
+    }
+)
+
+
+def _normalized_task_return_target(
+    return_url: str,
+    fallback: str,
+    *,
+    additions: tuple[tuple[str, str], ...] = (),
+    fragment: str | None = None,
+) -> str:
+    target = _clean_v2_return_url(return_url, fallback)
     parsed = urlsplit(target)
-    query = list(parse_qsl(parsed.query, keep_blank_values=True))
-    query.extend(params.items())
+    replaced = _TASK_RETURN_TRANSIENT_KEYS | {key for key, _ in additions}
+    query = [
+        (key, value)
+        for key, value in parse_qsl(parsed.query, keep_blank_values=True)
+        if key not in replaced
+    ]
+    query.extend(additions)
+    return urlunsplit(
+        ("", "", parsed.path, urlencode(query), parsed.fragment if fragment is None else fragment)
+    )
+
+
+def _case_action_redirect(return_url: str, **params: str) -> RedirectResponse:
+    destination = _normalized_task_return_target(
+        return_url,
+        "/v2-clean/tasks?grouping=case",
+        additions=tuple(params.items()),
+    )
     return RedirectResponse(
-        urlunsplit(("", "", parsed.path, urlencode(query), parsed.fragment)),
+        destination,
         status_code=303,
     )
 
@@ -7684,22 +7724,12 @@ def clean_tasks_reopen(request: Request, task_id: int, return_url: str = Form(""
 
 
 def clean_task_action_redirect(return_url: str, *, task_id: int, flag: str) -> RedirectResponse:
-    target = _clean_v2_return_url(return_url, "/v2-clean/tasks")
-    parsed = urlsplit(target)
-    transient = {
-        "opened",
-        "claimed",
-        "commented",
-        "transitioned",
-        "forbidden",
-        "invalid_transition",
-        "transition_blocked",
-        "task_created",
-        "open_task",
-    }
-    query = [(key, value) for key, value in parse_qsl(parsed.query) if key not in transient]
-    query.extend(((flag, "1"), ("open_task", str(task_id))))
-    destination = urlunsplit(("", "", parsed.path, urlencode(query), f"task-{task_id}"))
+    destination = _normalized_task_return_target(
+        return_url,
+        "/v2-clean/tasks",
+        additions=((flag, "1"),),
+        fragment=f"task-{task_id}",
+    )
     return RedirectResponse(
         destination,
         status_code=303,
@@ -7729,7 +7759,11 @@ def clean_task_open(
             return clean_task_action_redirect(
                 return_url, task_id=task_id, flag="forbidden"
             )
-    target = _clean_v2_return_url(return_url, "/v2-clean/tasks")
+    target = _normalized_task_return_target(
+        return_url,
+        "/v2-clean/tasks",
+        fragment=f"task-{task_id}",
+    )
     parsed = urlsplit(target)
     return_token = issue_return_context(
         settings.app_secret_key,

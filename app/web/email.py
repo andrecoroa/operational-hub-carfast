@@ -49,6 +49,8 @@ from app.services.classification_proposals import (
 from app.services.email_postmark import (
     ensure_email_channels,
     ingest_inbound,
+    ingest_outbound_event,
+    outbound_identity,
     reply_all_recipients,
     send_message,
     webhook_authorized,
@@ -529,59 +531,29 @@ def _reply_channel_context(
 
 
 def _sender_channel(db, message: EmailMessage) -> EmailChannel | None:
-    sender = (message.sender or "").strip().lower()
-    if not sender:
+    thread = db.get(EmailThread, message.thread_id)
+    if not thread:
         return None
-    channel = db.scalar(
-        select(EmailChannel).where(
-            EmailChannel.active.is_(True),
-            or_(
-                func.lower(EmailChannel.address) == sender,
-                func.lower(EmailChannel.default_reply_address) == sender,
-            ),
-        )
-    )
-    if channel:
-        return channel
-    alias = db.scalar(
-        select(EmailChannelAlias).where(
-            EmailChannelAlias.active.is_(True),
-            func.lower(EmailChannelAlias.address) == sender,
-        )
-    )
-    return db.get(EmailChannel, alias.channel_id) if alias else None
+    channel = db.get(EmailChannel, thread.channel_id)
+    return channel if channel and channel.active else None
 
 
 def _channel_sender_address(
     db, thread: EmailThread, channel: EmailChannel
 ) -> str | None:
-    original = (thread.original_recipient_address or "").strip().lower()
-    if channel.reply_policy == "original" and original:
-        configured_original = db.scalar(
-            select(EmailChannelAlias.id).where(
-                EmailChannelAlias.channel_id == channel.id,
-                EmailChannelAlias.active.is_(True),
-                func.lower(EmailChannelAlias.address) == original,
-            )
-        ) or (
-            channel.address
-            and channel.address.casefold() == original.casefold()
-        )
-        if configured_original:
-            return original
-    return (channel.default_reply_address or channel.address or "").strip().lower() or None
+    return "central@carfast.pt" if channel.from_name else None
+
+
+def _channel_reply_to_address(channel: EmailChannel) -> str | None:
+    try:
+        _, reply_to = outbound_identity(channel.from_name, channel.reply_to_address)
+    except ValueError:
+        return None
+    return reply_to
 
 
 def _channel_sender_options(db, channel: EmailChannel) -> list[str]:
-    values = [channel.default_reply_address, channel.address]
-    values.extend(
-        db.scalars(
-            select(EmailChannelAlias.address).where(
-                EmailChannelAlias.channel_id == channel.id,
-                EmailChannelAlias.active.is_(True),
-            )
-        )
-    )
+    values = ["central@carfast.pt"] if channel.from_name else []
     return list(dict.fromkeys(item.casefold() for item in values if item))
 
 
@@ -880,11 +852,17 @@ async def postmark_inbound(request: Request, authorization: str | None = Header(
 
 @email_router.post("/api/webhooks/postmark/events")
 async def postmark_events(request: Request, authorization: str | None = Header(default=None)):
-    if not settings.email_inbound_enabled:
-        return JSONResponse({"detail": "Email events disabled"}, status_code=503)
     if not webhook_authorized(authorization):
         return JSONResponse({"detail": "Unauthorized"}, status_code=401)
-    return {"ok": True}
+    payload = await request.json()
+    with SessionLocal() as db:
+        result, processed = ingest_outbound_event(db, payload)
+        if result == "unmatched":
+            return JSONResponse(
+                {"ok": False, "detail": "Event not correlated; retry safely"},
+                status_code=503,
+            )
+        return {"ok": True, "processed": processed, "result": result}
 
 
 @email_router.get("/v2-clean/email", response_class=HTMLResponse)
@@ -1334,8 +1312,11 @@ def email_new_message(
             db, user_id, permissions, channel.id, "use_cc_bcc"
         ):
             return RedirectResponse("/v2-clean/email?error=forbidden", status_code=303)
-        sender_address = channel.default_reply_address or channel.address
-        if not sender_address:
+        try:
+            sender_address, reply_to_address = outbound_identity(
+                channel.from_name, channel.reply_to_address
+            )
+        except ValueError:
             return RedirectResponse(
                 "/v2-clean/email?error=sender_not_configured", status_code=303
             )
@@ -1453,7 +1434,7 @@ def email_new_message(
         audit_action = state
         if submit == "send":
             try:
-                result = send_message(message, sender_address, reply_to=sender_address)
+                result = send_message(message, sender_address, reply_to=reply_to_address)
             except RuntimeError as exc:
                 message.postmark_error = str(exc)
                 db.commit()
@@ -2560,22 +2541,24 @@ def email_reply(
                 f"/v2-clean/email/{thread_id}?error=invalid_recipient", status_code=303
             )
         policy_sender = _channel_sender_address(db, thread, sender_channel)
+        try:
+            transport_sender, reply_to_address = outbound_identity(
+                sender_channel.from_name, sender_channel.reply_to_address
+            )
+        except ValueError:
+            transport_sender, reply_to_address = None, None
         requested_sender = sender_address.strip().lower() or policy_sender
         configured_senders = {
             item
-            for item in (sender_channel.address, sender_channel.default_reply_address)
+            for item in (policy_sender,)
             if item
         }
-        configured_senders.update(
-            db.scalars(
-                select(EmailChannelAlias.address).where(
-                    EmailChannelAlias.channel_id == sender_channel.id,
-                    EmailChannelAlias.active.is_(True),
-                )
-            )
-        )
         configured_senders = {item.casefold() for item in configured_senders}
-        if not requested_sender or requested_sender not in configured_senders:
+        if (
+            not requested_sender
+            or requested_sender not in configured_senders
+            or not reply_to_address
+        ):
             return RedirectResponse(
                 f"/v2-clean/email/{thread_id}?error=sender_not_configured", status_code=303
             )
@@ -2674,8 +2657,8 @@ def email_reply(
             try:
                 result = send_message(
                     message,
-                    requested_sender,
-                    reply_to=requested_sender,
+                    transport_sender,
+                    reply_to=reply_to_address,
                     parent_message_id=parent_message_id,
                     references=references,
                     attachments=outbound_attachments,
@@ -2821,15 +2804,11 @@ def email_approve(request: Request, thread_id: int, message_id: int):
     auth = _auth(request, "email.approve", "email.manage", "admin.manage")
     if not auth:
         return RedirectResponse(f"/v2-clean/email/{thread_id}?error=forbidden", status_code=303)
-    if not settings.email_outbound_enabled:
-        return RedirectResponse(
-            f"/v2-clean/email/{thread_id}?error=send_disabled", status_code=303
-        )
     user_id, _ = auth
     with SessionLocal() as db:
         message = db.get(EmailMessage, message_id)
         thread = db.get(EmailThread, thread_id)
-        sender_channel = _sender_channel(db, message) if message else None
+        sender_channel = db.get(EmailChannel, thread.channel_id) if thread else None
         if (
             not thread
             or not message
@@ -2866,6 +2845,10 @@ def email_approve(request: Request, thread_id: int, message_id: int):
                 f"/v2-clean/email/{thread_id}?error=approval_invalidated",
                 status_code=303,
             )
+        if not settings.email_outbound_enabled:
+            return RedirectResponse(
+                f"/v2-clean/email/{thread_id}?error=send_disabled", status_code=303
+            )
         prior_messages = db.scalars(
             select(EmailMessage)
             .where(
@@ -2888,10 +2871,21 @@ def email_approve(request: Request, thread_id: int, message_id: int):
             )
         )
         try:
+            transport_sender, reply_to_address = outbound_identity(
+                sender_channel.from_name, sender_channel.reply_to_address
+            )
+        except ValueError:
+            transport_sender, reply_to_address = None, None
+        if not transport_sender or not reply_to_address:
+            return RedirectResponse(
+                f"/v2-clean/email/{thread_id}?error=sender_not_configured",
+                status_code=303,
+            )
+        try:
             result = send_message(
                 message,
-                message.sender,
-                reply_to=message.sender,
+                transport_sender,
+                reply_to=reply_to_address,
                 parent_message_id=parent_message_id,
                 references=references,
                 attachments=outbound_attachments,

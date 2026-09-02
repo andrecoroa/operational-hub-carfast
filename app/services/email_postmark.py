@@ -40,6 +40,9 @@ from app.services.service_desk import (
     transition_email_waiting,
 )
 
+POSTMARK_TECHNICAL_FROM_ADDRESS = "central@carfast.pt"
+_EMAIL_ADDRESS_RE = re.compile(r"^[^\s<>@]+@[^\s<>@]+\.[^\s<>@]+$")
+
 
 def ensure_email_channels(db: Session) -> None:
     seed_email_channels(db)
@@ -65,12 +68,145 @@ def _address(value: str | None) -> str:
     return (match.group(1) if match else value).strip().lower()
 
 
+def outbound_identity(display_name: str | None, reply_to: str | None) -> tuple[str, str]:
+    """Build a safe display identity around the single authorized sender."""
+    name = str(display_name or "").strip()
+    if not name or len(name) > 160 or any(ord(char) < 32 or ord(char) == 127 for char in name):
+        raise ValueError("O nome visível do remetente não é válido.")
+    safe_name = name.replace("\\", "\\\\").replace('"', '\\"')
+    candidate = _address(reply_to)
+    if not _EMAIL_ADDRESS_RE.fullmatch(candidate):
+        candidate = POSTMARK_TECHNICAL_FROM_ADDRESS
+    return f'"{safe_name}" <{POSTMARK_TECHNICAL_FROM_ADDRESS}>', candidate
+
+
 def _event_key(payload: dict) -> str:
     message_id = payload.get("MessageID") or payload.get("MessageId")
     if message_id:
         return f"message:{message_id}"
     canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str)
     return "sha256:" + hashlib.sha256(canonical.encode()).hexdigest()
+
+
+def _outbound_event_key(payload: dict) -> str:
+    event_type = str(payload.get("RecordType") or "unknown").strip().casefold()
+    message_id = str(payload.get("MessageID") or payload.get("MessageId") or "").strip()
+    discriminator = str(
+        payload.get("ID")
+        or payload.get("DeliveredAt")
+        or payload.get("BouncedAt")
+        or payload.get("ReportedAt")
+        or payload.get("ReceivedAt")
+        or ""
+    ).strip()
+    canonical = f"{event_type}\0{message_id}\0{discriminator}"
+    if not message_id or not discriminator:
+        safe = {
+            key: payload.get(key)
+            for key in (
+                "RecordType", "MessageID", "MessageId", "ID", "Type", "TypeCode",
+                "Inactive", "CanActivate", "DeliveredAt", "BouncedAt", "ReportedAt",
+                "ReceivedAt",
+            )
+        }
+        canonical = json.dumps(safe, sort_keys=True, separators=(",", ":"), default=str)
+    return "outbound:" + hashlib.sha256(canonical.encode()).hexdigest()
+
+
+def _sanitized_outbound_payload(payload: dict) -> dict:
+    """Keep operational evidence only; never persist recipients or message content."""
+    return {
+        key: payload.get(key)
+        for key in (
+            "RecordType", "MessageID", "MessageId", "ID", "Type", "TypeCode",
+            "Inactive", "CanActivate", "DeliveredAt", "BouncedAt", "ReportedAt",
+            "ReceivedAt",
+        )
+        if payload.get(key) is not None
+    }
+
+
+def ingest_outbound_event(db: Session, payload: dict) -> tuple[str, bool]:
+    event_type = str(payload.get("RecordType") or "").strip()
+    normalized_type = event_type.casefold().replace(" ", "")
+    supported = {"delivery", "bounce", "spamcomplaint"}
+    key = _outbound_event_key(payload)
+    event = db.scalar(select(EmailWebhookEvent).where(EmailWebhookEvent.event_key == key))
+    if event and event.processed:
+        return "duplicate", False
+    if not event:
+        event = EmailWebhookEvent(
+            event_key=key,
+            event_type=normalized_type or "unknown",
+            payload_json=_sanitized_outbound_payload(payload),
+        )
+        db.add(event)
+        db.flush()
+    if normalized_type not in supported:
+        event.error = "unsupported_event"
+        db.commit()
+        return "unsupported", False
+
+    external_id = str(payload.get("MessageID") or payload.get("MessageId") or "").strip()
+    message = db.scalar(
+        select(EmailMessage).where(EmailMessage.external_message_id == external_id)
+    ) if external_id else None
+    if not message or message.direction != "outbound":
+        event.error = "unmatched_message"
+        db.commit()
+        return "unmatched", False
+
+    thread = db.get(EmailThread, message.thread_id)
+    if not thread:
+        event.error = "unmatched_thread"
+        db.commit()
+        return "unmatched", False
+
+    if normalized_type == "delivery":
+        target_state = "delivered"
+    elif normalized_type == "spamcomplaint":
+        target_state = "spam_complaint"
+    else:
+        inactive = payload.get("Inactive") is True or str(
+            payload.get("Inactive") or ""
+        ).casefold() in {"true", "1"}
+        hard = inactive or str(payload.get("Type") or "").casefold() in {
+            "hardbounce", "spamcomplaint", "manualdeactivation",
+        } or payload.get("TypeCode") == 1
+        target_state = "bounced" if hard else "soft_bounced"
+
+    precedence = {
+        "draft": 0, "pending_approval": 0, "approved": 1, "sent": 2,
+        "soft_bounced": 3, "delivered": 4, "bounced": 5, "spam_complaint": 6,
+    }
+    if precedence.get(target_state, 0) >= precedence.get(message.state, 0):
+        message.state = target_state
+    event.processed = True
+    event.error = None
+    db.add(
+        EmailMessageDelivery(
+            message_id=message.id,
+            channel_id=thread.channel_id,
+            webhook_event_id=event.id,
+            logical_key=key,
+            canonical_marker=normalized_type[:20],
+            postmark_message_id=external_id,
+            received_at=datetime.now(UTC),
+        )
+    )
+    db.add(
+        EmailAuditEvent(
+            thread_id=thread.id,
+            message_id=message.id,
+            action=f"postmark_{normalized_type}",
+            details_json={
+                "webhook_event_id": event.id,
+                "resulting_state": message.state,
+            },
+        )
+    )
+    db.commit()
+    return message.state, True
 
 
 def _headers(payload: dict) -> dict[str, str]:
@@ -795,6 +931,17 @@ def send_message(
         raise RuntimeError("O envio externo está desligado neste ambiente.")
     if not settings.postmark_server_token:
         raise RuntimeError("POSTMARK_SERVER_TOKEN não está configurado.")
+    raw_from = str(from_address or "")
+    raw_reply_to = str(reply_to or "")
+    has_control = any(
+        ord(char) < 32 or ord(char) == 127 for char in raw_from + raw_reply_to
+    )
+    if (
+        has_control
+        or _address(from_address) != POSTMARK_TECHNICAL_FROM_ADDRESS
+        or not _EMAIL_ADDRESS_RE.fullmatch(raw_reply_to)
+    ):
+        raise RuntimeError("From e Reply-To explícitos não estão configurados.")
     recipients = [
         item.get("Email") if isinstance(item, dict) else str(item)
         for item in (message.recipients_json or [])
@@ -823,8 +970,7 @@ def send_message(
         body["Cc"] = ",".join(filter(None, cc_recipients))
     if any(bcc_recipients):
         body["Bcc"] = ",".join(filter(None, bcc_recipients))
-    if reply_to:
-        body["ReplyTo"] = reply_to
+    body["ReplyTo"] = reply_to
     if attachments:
         try:
             body["Attachments"] = [

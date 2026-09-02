@@ -17,7 +17,7 @@
     </header>
     <nav class="task-center-detail-actions" aria-label="Ações da tarefa"><a class="button-link" href="#task-edit">Editar</a>{% if can_respond_task %}<a class="button-link secondary-link" href="#task-comment">Comentar</a>{% endif %}{% if task_transition_options %}<a class="button-link secondary-link" href="#task-state">Alterar estado</a>{% endif %}{% if task_support_targets %}<a class="button-link secondary-link" href="#task-support">Solicitar suporte</a>{% endif %}</nav>
 
-    {% if error %}<div class="alert" role="alert">{{ error }}</div>{% endif %}
+    {% if request.query_params.get('waiting_reason_required') %}<div class="alert" role="alert">Selecione um motivo de espera válido.</div>{% elif request.query_params.get('waiting_reason_detail_required') %}<div class="alert" role="alert">Descreva por que motivo a tarefa fica em espera.</div>{% elif request.query_params.get('waiting_until_required') %}<div class="alert" role="alert">Indique uma data e hora futura para retomar a tarefa.</div>{% elif error %}<div class="alert" role="alert">{{ error }}</div>{% endif %}
     {% if commented %}<div class="success" role="status">Comentário registado sem alterar o estado.</div>{% endif %}
 
     <section class="workshop-page-grid task-detail-page-grid">
@@ -35,6 +35,22 @@
           </div>
           <details><summary>Mais opções</summary>
           {{ task_classification_fields(work_queues, work_departments, work_categories, work_subcategories, work_hierarchy_contract, task=task) }}
+          <section aria-labelledby="task-context-title"><h4 id="task-context-title">Contexto aplicável</h4><dl>
+            {% if task.source %}<div><dt>Origem</dt><dd>{{ task_source_labels.get(task.source, task.source) }}</dd></div>{% endif %}
+            {% if email_origin %}<div><dt>Email / conversa</dt><dd>{{ email_origin.subject or email_origin.message_id }}</dd></div>{% endif %}
+            {% if task_queue %}<div><dt>Fila</dt><dd>{{ task_queue.name }}</dd></div>{% endif %}
+            {% if task_department %}<div><dt>Departamento</dt><dd>{{ task_department.name }}</dd></div>{% endif %}
+            {% if task_work_category %}<div><dt>Categoria</dt><dd>{{ task_work_category.name }}</dd></div>{% endif %}
+            {% if task_work_subcategory %}<div><dt>Subcategoria</dt><dd>{{ task_work_subcategory.name }}</dd></div>{% endif %}
+            {% if assigned_team %}<div><dt>Equipa</dt><dd>{{ assigned_team.name }}</dd></div>{% endif %}
+            {% if assigned_user %}<div><dt>Pessoa</dt><dd>{{ assigned_user.name }}</dd></div>{% endif %}
+            {% if task.plate %}<div><dt>Viatura / matrícula</dt><dd>{{ task.plate }}</dd></div>{% endif %}
+            {% if task.reservation_number %}<div><dt>Reserva</dt><dd>{{ task.reservation_number }}</dd></div>{% endif %}
+            {% if task.contract_number %}<div><dt>Contrato</dt><dd>{{ task.contract_number }}</dd></div>{% endif %}
+            {% if task.invoice_number %}<div><dt>Fatura</dt><dd>{{ task.invoice_number }}</dd></div>{% endif %}
+            {% if task_case %}<div><dt>Caso</dt><dd>{{ task_case.title }}</dd></div>{% endif %}
+            {% if task.process_instance_id %}<div><dt>Processo</dt><dd>#{{ task.process_instance_id }}</dd></div>{% endif %}
+          </dl></section>
           <fieldset class="compact-form-grid task-assignment-exclusive">
             <legend>Atribuição — escolha equipa ou executor</legend>
             <label>Atribuir à equipa<select name="assigned_team_id" data-assignment-exclusive><option value="">Sem equipa owner</option>{% for team in teams %}<option value="{{ team.id }}" {% if task.team_id == team.id %}selected{% endif %}>{{ team.name }}</option>{% endfor %}</select></label>
@@ -43,7 +59,7 @@
           </details>
           {% if can_update_task %}<button type="submit">Guardar alterações</button>{% endif %}
         </form>
-        {% if task.waiting_reason or task.waiting_reason_detail %}<article class="section task-detail-conditional"><div class="panel-heading compact-heading"><p class="eyebrow">Espera</p><h3>{{ waiting_reason_labels.get(task.waiting_reason, task.waiting_reason or 'Em espera') }}</h3></div><p>{{ task.waiting_reason_detail or 'Sem detalhe adicional.' }}</p></article>{% endif %}
+        {% if task.waiting_reason or task.waiting_reason_detail or task.waiting_until %}<article class="section task-detail-conditional"><div class="panel-heading compact-heading"><p class="eyebrow">Espera</p><h3>{{ waiting_reason_labels.get(task.waiting_reason, task.waiting_reason or 'Em espera') }}</h3></div><p>{{ task.waiting_reason_detail or 'Registo anterior sem detalhe adicional.' }}</p><dl><div><dt>Retomar em</dt><dd>{{ (task.waiting_until|lisbon_datetime).strftime('%d/%m/%Y %H:%M') if task.waiting_until else 'Registo anterior sem prazo de retoma' }}</dd></div><div><dt>Política SLA</dt><dd>{{ 'Pausa durante a espera' if task.sla_pause_on_waiting else 'Continua a contar durante a espera' }}</dd></div></dl></article>{% endif %}
         <article class="section" id="task-comment">
           <div class="panel-heading compact-heading"><p class="eyebrow">Atividade</p><h3>Comentários</h3></div>
           {% if can_respond_task %}<form method="post" action="/v2-clean/tasks/{{ task.id }}/comments" class="form-stack task-detail-quick-comment"><input type="hidden" name="return_url" value="{{ request.url.path }}?{{ request.url.query }}"><label>Comentário rápido<textarea name="comment" rows="3" required maxlength="4000"></textarea></label><button type="submit">Registar comentário</button></form>{% endif %}
@@ -58,9 +74,11 @@
             <div><dt>Classificação</dt><dd>{{ task_category_labels.get(task.category, task.category or 'Por classificar') }}</dd></div>
             <div><dt>Equipa owner</dt><dd>{{ assigned_team.name if assigned_team else 'Por atribuir' }}</dd></div>
             <div><dt>Executor</dt><dd>{{ assigned_user.name if assigned_user else 'Por atribuir' }}</dd></div>
-            <div><dt>Prazo</dt><dd>{{ task.due_on.strftime('%d/%m/%Y') if task.due_on else 'Sem prazo' }}</dd></div>
+            <div><dt>Prazo da tarefa</dt><dd>{{ task.due_on.strftime('%d/%m/%Y') if task.due_on else 'Sem prazo' }}</dd></div>
+            <div><dt>Prazo da espera</dt><dd>{{ (task.waiting_until|lisbon_datetime).strftime('%d/%m/%Y %H:%M') if task.waiting_until else 'Não aplicável' }}</dd></div>
+            <div><dt>SLA</dt><dd>{{ 'Pausado em espera' if task.sla_pause_on_waiting and task.status == 'waiting' else 'Continua conforme política configurada' }}</dd></div>
           </dl>
-          {% if task_transition_options %}<form method="post" action="/v2-clean/tasks/{{ task.id }}/transition" class="form-stack"><input type="hidden" name="return_url" value="{{ request.url.path }}?{{ request.url.query }}"><label>Transições disponíveis<select name="status">{% for code in task_transition_options %}<option value="{{ code }}">{{ task_status_labels.get(code, code) }}</option>{% endfor %}</select></label><p class="muted">Destinos legais devolvidos pelo servidor para o estado atual e para as suas permissões.</p><button type="submit">Confirmar estado</button></form>{% endif %}
+          {% if task_transition_options %}<form method="post" action="/v2-clean/tasks/{{ task.id }}/transition" class="form-stack" data-detail-state-form><input type="hidden" name="return_url" value="{{ request.url.path }}?{{ request.url.query }}"><label>Transições disponíveis<select name="status">{% for code in task_transition_options %}<option value="{{ code }}">{{ task_status_labels.get(code, code) }}</option>{% endfor %}</select></label><div class="form-stack" data-detail-waiting-fields hidden><label>Motivo de espera<select name="waiting_reason"><option value="">Selecionar</option>{% for code,label in waiting_reasons %}<option value="{{ code }}">{{ label }}</option>{% endfor %}</select></label><label>Justificação / descrição<textarea name="waiting_reason_detail" rows="3"></textarea></label><label>Retomar em<input type="datetime-local" name="waiting_until"></label></div><p class="muted">Destinos legais devolvidos pelo servidor para o estado atual e para as suas permissões.</p><button type="submit">Confirmar estado</button></form>{% endif %}
           {% if not task_transition_options %}<p class="muted">Sem transições legais disponíveis neste estado ou para as suas permissões.</p>{% endif %}
         </article>
         {% if task_support_targets %}<article class="section" id="task-support"><div class="panel-heading compact-heading"><p class="eyebrow">Colaboração</p><h3>Solicitar suporte</h3></div><form method="post" action="/v2-clean/tasks/{{ task.id }}/help" class="form-stack"><input type="hidden" name="return_url" value="{{ request.url.path }}?{{ request.url.query }}"><label>Pessoa ou equipa<select name="requested_target" required><option value="">Selecionar</option>{% for target in task_support_targets %}<option value="{{ target.value }}">{{ target.kind }} · {{ target.label }}</option>{% endfor %}</select></label><label>Motivo<textarea name="message" rows="3" required maxlength="2000"></textarea></label><label>Prazo opcional<input type="datetime-local" name="due_at"></label><button type="submit">Solicitar suporte</button></form></article>{% endif %}
@@ -73,5 +91,6 @@
 <script>
 document.querySelectorAll('[data-work-hierarchy]').forEach(root=>{const queue=root.querySelector('[data-work-level="queue"]'),department=root.querySelector('[data-work-level="department"]'),category=root.querySelector('[data-work-level="category"]'),subcategory=root.querySelector('[data-work-level="subcategory"]'),other=root.querySelector('[data-work-other]'),otherInput=other?.querySelector('input');const filter=(select,parent)=>{[...select.options].forEach((option,index)=>{if(index)option.hidden=option.dataset.parent!==parent});if(select.selectedOptions[0]?.hidden)select.value=''};const syncOther=()=>{const required=[department,category,subcategory].some(select=>select.selectedOptions[0]?.dataset.requiresDescription==='true');if(other)other.hidden=!required;if(otherInput)otherInput.required=required};const sync=()=>{filter(department,queue.value);filter(category,department.value);filter(subcategory,category.value);syncOther()};queue.addEventListener('change',()=>{department.value='';category.value='';subcategory.value='';sync()});department.addEventListener('change',()=>{category.value='';subcategory.value='';sync()});category.addEventListener('change',()=>{subcategory.value='';sync()});subcategory.addEventListener('change',syncOther);sync()});
 document.querySelectorAll('[data-assignment-exclusive]').forEach(select=>select.addEventListener('change',()=>{if(!select.value)return;document.querySelectorAll('[data-assignment-exclusive]').forEach(other=>{if(other!==select)other.value=''})}));
+document.querySelectorAll('[data-detail-state-form]').forEach(form=>{const select=form.querySelector('[name=status]'),fields=form.querySelector('[data-detail-waiting-fields]'),inputs=[...fields.querySelectorAll('select,textarea,input')];const sync=()=>{const active=select.value==='waiting';fields.hidden=!active;inputs.forEach(input=>input.required=active)};select.addEventListener('change',sync);sync()});
 </script>
 {% endblock %}

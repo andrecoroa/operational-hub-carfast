@@ -24,8 +24,8 @@
     "form_action_occurrence_count": 774,
     "form_actions_sha256": "1672d518909a00bbcc7c58d5a33cf5fea93c2e19979de3f668e6b2317bfcf791",
     "redirect_destination_count": 405,
-    "redirect_destinations_sha256": "821e1e29520edbe316617fd6a127530d145cf7bfb8e58231c865531b9c309081",
-    "redirect_occurrence_count": 913
+    "redirect_destinations_sha256": "1cc0f52b7637671304436d260f582b769d459a679e6228a8c1e05ada23f723d2",
+    "redirect_occurrence_count": 914
   },
   "routes": {
     "by_method": {

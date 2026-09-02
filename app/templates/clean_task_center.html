@@ -303,7 +303,8 @@
 </div>
 {% endif %}
 
-{% for task in tasks %}
+{# Workbenches are loaded on demand through the authorized /open resolver. #}
+{% if false %}{% for task in tasks %}
   {% set task_workspace = "audit" if task.task_type in ["audit_task", "workshop_audit"] else "workshop" if task.task_type == "workshop_task" else "management" if task.task_type == "management_task" else "administration" if task.task_type == "administration_task" else "operational" %}
   {% set can_write = task_update_allowed_by_id.get(task.id, false) %}
   {% set can_close = task_close_allowed_by_id.get(task.id, false) %}
@@ -501,7 +502,7 @@
       </div>
     </article>
   </section>
-{% endfor %}
+{% endfor %}{% endif %}
 
 <script>
 (() => {
@@ -630,11 +631,16 @@
     history.replaceState(null, "", `#${id}`);
     (taskPreviewFocusable(preview)[0] || preview).focus();
   };
-  window.openTaskWorkbench = (taskId, trigger = null) => openTaskPreview(`task-preview-${taskId}`, trigger);
+  const openTaskWorkbenchOnDemand = (taskId) => {
+    const returnUrl = `${location.pathname}${location.search}${location.hash}`;
+    location.assign(`/v2-clean/tasks/${taskId}/open?return_url=${encodeURIComponent(returnUrl)}`);
+  };
+  window.openTaskWorkbench = (taskId) => openTaskWorkbenchOnDemand(taskId);
   document.querySelectorAll("[data-task-open]").forEach((row) => {
-    row.addEventListener("click", (event) => { if (!event.target.closest("a,button,input,select,textarea")) openTaskPreview(row.dataset.taskOpen, row); });
-    row.addEventListener("keydown", (event) => { if (event.key === "Enter") openTaskPreview(row.dataset.taskOpen, row); });
-    row.querySelector("button")?.addEventListener("click", (event) => openTaskPreview(row.dataset.taskOpen, event.currentTarget));
+    const taskId = row.dataset.taskOpen.replace("task-preview-", "");
+    row.addEventListener("click", (event) => { if (!event.target.closest("a,button,input,select,textarea")) openTaskWorkbenchOnDemand(taskId); });
+    row.addEventListener("keydown", (event) => { if (event.key === "Enter") openTaskWorkbenchOnDemand(taskId); });
+    row.querySelector("button")?.addEventListener("click", () => openTaskWorkbenchOnDemand(taskId));
   });
   document.querySelectorAll("[data-task-close]").forEach((button) => button.addEventListener("click", () => closeTaskPreview(button.closest(".clean-task-preview"))));
   document.addEventListener("keydown", (event) => {
@@ -647,8 +653,7 @@
     else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
   });
   const requested = new URLSearchParams(location.search).get("open_task");
-  if (requested) openTaskPreview(`task-preview-${requested}`);
-  else if (location.hash.startsWith("#task-preview-")) openTaskPreview(location.hash.slice(1));
+  if (requested) openTaskWorkbenchOnDemand(requested);
 })();
 </script>
 {% endblock %}

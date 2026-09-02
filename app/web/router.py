@@ -154,7 +154,11 @@ from app.services.task_cases import (
     create_related_case,
 )
 from app.services.authorization import get_user_authorized_unit_codes, get_user_permission_codes
-from app.services.task_queues import authorized_task_queue, resolve_task_queue_capabilities
+from app.services.task_queues import (
+    authorized_task_queue,
+    canonical_task_queue,
+    resolve_task_queue_capabilities,
+)
 from app.services.classification_proposals import (
     attach_selection_to_entity,
     detach_entity_proposals,
@@ -3031,13 +3035,20 @@ def task_scoped_hierarchy_context(
     user_id: int,
     action: str,
     task: Task | None = None,
+    allowed_queue_codes: set[str] | None = None,
 ) -> dict[str, object]:
     """Return active hierarchy rows accepted by the existing scope resolver."""
     hierarchy = work_hierarchy_context(db)
     departments_by_id = {item.id: item for item in hierarchy["work_departments"]}
+    queues_by_id = {item.id: item for item in hierarchy["work_queues"]}
     scoped_categories = [
         item
         for item in hierarchy["work_categories"]
+        if (
+            allowed_queue_codes is None
+            or queues_by_id[departments_by_id[item.department_id].queue_id].code
+            in allowed_queue_codes
+        )
         if user_work_scope_allows(
             db,
             user_id=user_id,
@@ -4768,12 +4779,26 @@ def clean_tasks_center(
         classification_permissions = (
             get_user_permission_codes(db, current_user) if current_user else set()
         )
+        queue_capabilities = resolve_task_queue_capabilities(db, current_user)
+        queue_capabilities_by_code = {item.code: item for item in queue_capabilities}
+        def workspace_allowed(code: str, action: str | None = None) -> bool:
+            if not current_user or not current_user.active:
+                return False
+            required = (
+                task_workspace_write_permissions(code, action or "write")
+                if action
+                else task_workspace_read_permissions(code)
+            )
+            return bool(classification_permissions.intersection(required))
+
         cases_enabled = settings.task_cases_enabled and "cases.read" in classification_permissions
         active_grouping = grouping if grouping in {"flat", "category", "case"} else "flat"
         if not cases_enabled:
             active_grouping = "flat"
         opportunistic_generate_recurring_tasks(db)
-        readable_workspaces = user_task_workspace_codes(db, current_user)
+        readable_workspaces = [
+            code for code in TASK_WORKSPACE_CONFIG if workspace_allowed(code)
+        ]
         # The clean Task Center is the operational workspace. Administrative
         # work is managed from its own module and must never be mixed into the
         # default operational queue, even when the user can read both areas.
@@ -4783,18 +4808,16 @@ def clean_tasks_center(
         creatable_workspaces = [
             code
             for code in TASK_WORKSPACE_CONFIG
-            if user_can_access_task_workspace(db, current_user, code, action="create")
+            if workspace_allowed(code, "create")
+            and (
+                capability := queue_capabilities_by_code.get(
+                    canonical_task_queue(code)
+                )
+            )
+            and capability.can_write
         ]
-        updatable_workspaces = [
-            code
-            for code in TASK_WORKSPACE_CONFIG
-            if user_can_access_task_workspace(db, current_user, code, action="update")
-        ]
-        closable_workspaces = [
-            code
-            for code in TASK_WORKSPACE_CONFIG
-            if user_can_access_task_workspace(db, current_user, code, action="close")
-        ]
+        updatable_workspaces = [code for code in TASK_WORKSPACE_CONFIG if workspace_allowed(code, "update")]
+        closable_workspaces = [code for code in TASK_WORKSPACE_CONFIG if workspace_allowed(code, "close")]
         writable_workspaces = sorted(
             set(creatable_workspaces) | set(updatable_workspaces) | set(closable_workspaces)
         )
@@ -4804,8 +4827,6 @@ def clean_tasks_center(
             if item["code"] in readable_workspaces
         ]
         legacy_divisions = {item["code"]: item for item in task_divisions}
-        queue_capabilities = resolve_task_queue_capabilities(db, current_user)
-        queue_capabilities_by_code = {item.code: item for item in queue_capabilities}
         visible_queue_codes = set(queue_capabilities_by_code)
         administration_workspaces = (
             set(queue_capabilities_by_code["administration"].workspaces)
@@ -5144,33 +5165,19 @@ def clean_tasks_center(
             .offset((active_page - 1) * page_size)
             .limit(page_size)
         ).all()
+        task_ids = [task.id for task in tasks]
         task_update_allowed_by_id = {
-            task.id: user_can_access_task_workspace(
-                db,
-                current_user,
-                workspace_for_task_type(task.task_type),
-                action="update",
-            )
+            task.id: workspace_allowed(workspace_for_task_type(task.task_type), "update")
             and _task_hierarchy_scope_allows(db, user_id, task, action="update")
             for task in tasks
         }
         task_close_allowed_by_id = {
-            task.id: user_can_access_task_workspace(
-                db,
-                current_user,
-                workspace_for_task_type(task.task_type),
-                action="close",
-            )
+            task.id: workspace_allowed(workspace_for_task_type(task.task_type), "close")
             and _task_hierarchy_scope_allows(db, user_id, task, action="complete")
             for task in tasks
         }
         task_respond_allowed_by_id = {
-            task.id: user_can_access_task_workspace(
-                db,
-                current_user,
-                workspace_for_task_type(task.task_type),
-                action="update",
-            )
+            task.id: workspace_allowed(workspace_for_task_type(task.task_type), "update")
             and _task_hierarchy_scope_allows(db, user_id, task, action="respond")
             for task in tasks
         }
@@ -5194,7 +5201,6 @@ def clean_tasks_center(
             }[task_focus_bucket(task)]
             for task in tasks
         }
-        task_ids = [task.id for task in tasks]
         all_users = db.scalars(select(User).order_by(User.name)).all()
         users = [user for user in all_users if user.active]
         users_by_id = {user.id: user for user in all_users}
@@ -5517,7 +5523,12 @@ def clean_tasks_center(
         }
         prefill_nature = prefill_nature_aliases.get(raw_prefill_category.lower(), raw_prefill_category)
         hierarchy = task_scoped_hierarchy_context(
-            db, user_id=user_id, action="create"
+            db,
+            user_id=user_id,
+            action="create",
+            allowed_queue_codes={
+                item.code for item in queue_capabilities if item.can_write
+            },
         )
         work_category_labels = hierarchy["work_category_labels"]
         update_hierarchy = task_scoped_hierarchy_context(
@@ -5748,74 +5759,19 @@ def clean_tasks_center(
             ]
             for task in tasks
         }
-        # Mirror the POST authorization for each visible task.  This also
-        # retains the canonical queue-less legacy fallback instead of
-        # guessing support targets from category labels in the browser.
-        support_team_members: dict[int, set[int]] = defaultdict(set)
-        for team_id, member_id in db.execute(
-            select(TeamMember.team_id, TeamMember.user_id)
-        ):
-            support_team_members[team_id].add(member_id)
-        task_support_targets_by_id: dict[int, list[dict[str, str]]] = {}
-        for task in tasks:
-            # Keep the GET surface aligned with the POST /help gate.  A task
-            # that is readable but not updateable must not leak eligible
-            # people or teams to the browser.
-            if (
-                not task_update_allowed_by_id.get(task.id, False)
-                or task.status in TASK_ARCHIVE_STATUSES
-                or task.closed_at is not None
-            ):
-                task_support_targets_by_id[task.id] = []
-                continue
-            workspace = workspace_for_task_type(task.task_type)
-            user_targets = task_assignable_users_for_context(
-                db,
-                users=all_users,
-                actor_user_id=user_id,
-                workspace=workspace,
-                queue_id=task.work_queue_id,
-                department_id=task.work_department_id,
-                category_id=task.work_category_id,
-                subcategory_id=task.work_subcategory_id,
-                team_id=task.team_id,
+        # Target names are sensitive capability data and expensive to resolve.
+        # The list exposes only whether the action can be attempted; the exact
+        # fail-closed targets are resolved through the authorized endpoint when
+        # the user opens the support dialog.
+        task_support_available_by_id = {
+            task.id: bool(
+                task_update_allowed_by_id.get(task.id, False)
+                and task.status not in TASK_ARCHIVE_STATUSES
+                and task.closed_at is None
             )
-            team_targets = []
-            for target in all_teams:
-                member_ids = support_team_members.get(target.id, set())
-                if target.active and member_ids and all(
-                    is_task_assignment_allowed(
-                        db,
-                        actor_user_id=user_id,
-                        target_user_id=member_id,
-                        workspace=workspace,
-                        queue_id=task.work_queue_id,
-                        department_id=task.work_department_id,
-                        category_id=task.work_category_id,
-                        subcategory_id=task.work_subcategory_id,
-                        team_id=target.id,
-                    )
-                    for member_id in member_ids
-                ):
-                    team_targets.append(target)
-            task_support_targets_by_id[task.id] = [
-                *[
-                    {
-                        "value": f"user:{target.id}",
-                        "label": target.name,
-                        "kind": "Pessoas",
-                    }
-                    for target in user_targets
-                ],
-                *[
-                    {
-                        "value": f"team:{target.id}",
-                        "label": target.name,
-                        "kind": "Equipas",
-                    }
-                    for target in team_targets
-                ],
-            ]
+            for task in tasks
+        }
+        task_ids = [task.id for task in tasks]
         allowed_template_ids = {
             item.template_version_id
             for item in TaskCreationCapabilityResolver(db).options(current_user)
@@ -5892,7 +5848,7 @@ def clean_tasks_center(
                 "task_claim_allowed_by_id": task_claim_allowed_by_id,
                 "task_assignable_users_by_id": task_assignable_users_by_id,
                 "task_support_teams_by_id": task_support_teams_by_id,
-                "task_support_targets_by_id": task_support_targets_by_id,
+                "task_support_available_by_id": task_support_available_by_id,
                 "task_case_ids_by_id": {task.id: task.case_id for task in tasks},
                 "task_template_options": task_template_options,
                 "mine_counts": mine_counts,
@@ -6644,6 +6600,79 @@ def clean_tasks_assignable_users(
         )
 
 
+@web_router.get("/v2-clean/tasks/{task_id}/support-targets", response_class=JSONResponse)
+def clean_task_support_targets(request: Request, task_id: int):
+    """Resolve support targets only when requested, using the canonical gates."""
+    user_id = get_web_user_id(request)
+    if not user_id:
+        return JSONResponse({"targets": []}, status_code=403)
+    with SessionLocal() as db:
+        task = db.get(Task, task_id)
+        current_user = db.get(User, user_id)
+        if (
+            not task
+            or task.status in TASK_ARCHIVE_STATUSES
+            or task.closed_at is not None
+            or not user_can_access_task_workspace(
+                db,
+                current_user,
+                workspace_for_task_type(task.task_type),
+                action="update",
+            )
+            or not user_can_view_task(db, user_id=user_id, task=task)
+            or not _task_hierarchy_scope_allows(db, user_id, task, action="update")
+        ):
+            return JSONResponse({"targets": []}, status_code=403)
+        workspace = workspace_for_task_type(task.task_type)
+        users = list(db.scalars(select(User).where(User.active.is_(True)).order_by(User.name)))
+        user_targets = task_assignable_users_for_context(
+            db,
+            users=users,
+            actor_user_id=user_id,
+            workspace=workspace,
+            queue_id=task.work_queue_id,
+            department_id=task.work_department_id,
+            category_id=task.work_category_id,
+            subcategory_id=task.work_subcategory_id,
+            team_id=task.team_id,
+        )
+        members: dict[int, set[int]] = defaultdict(set)
+        for team_id, member_id in db.execute(select(TeamMember.team_id, TeamMember.user_id)):
+            members[team_id].add(member_id)
+        team_targets = []
+        for target in db.scalars(select(Team).where(Team.active.is_(True)).order_by(Team.name)):
+            member_ids = members.get(target.id, set())
+            if member_ids and all(
+                is_task_assignment_allowed(
+                    db,
+                    actor_user_id=user_id,
+                    target_user_id=member_id,
+                    workspace=workspace,
+                    queue_id=task.work_queue_id,
+                    department_id=task.work_department_id,
+                    category_id=task.work_category_id,
+                    subcategory_id=task.work_subcategory_id,
+                    team_id=target.id,
+                )
+                for member_id in member_ids
+            ):
+                team_targets.append(target)
+        return JSONResponse(
+            {
+                "targets": [
+                    *(
+                        {"value": f"user:{item.id}", "label": item.name, "kind": "Pessoas"}
+                        for item in user_targets
+                    ),
+                    *(
+                        {"value": f"team:{item.id}", "label": item.name, "kind": "Equipas"}
+                        for item in team_targets
+                    ),
+                ]
+            }
+        )
+
+
 @web_router.post("/v2-clean/tasks", response_class=HTMLResponse)
 def clean_tasks_create(
     request: Request,
@@ -6769,6 +6798,11 @@ def clean_tasks_create(
             )
         else:
             clean_workspace = normalize_task_workspace(workspace)
+        create_queue_capability, _ = authorized_task_queue(
+            db, current_user, canonical_task_queue(clean_workspace)
+        )
+        if not create_queue_capability or not create_queue_capability.can_write:
+            return RedirectResponse("/v2-clean/tasks?error=forbidden", status_code=303)
         workspace_config = TASK_WORKSPACE_CONFIG[clean_workspace]
         is_problem = record_type == "problem" and clean_workspace == "workshop"
         if record_type in {"request", "information"} and clean_workspace != "operational":
@@ -34319,6 +34353,7 @@ def task_center(request: Request):
                 "workspace_metrics": workspace_metrics,
                 "authorized_workspaces": authorized_workspaces,
                 "current_user": current_user,
+                "current_user_team_ids": sorted(user_team_ids(db, current_user.id)),
             },
         )
 
@@ -35927,9 +35962,23 @@ def task_detail(
         ).all()
         documents = db.scalars(
             select(Document)
-            .where(Document.task_id == task.id)
+            .where(
+                or_(
+                    Document.task_id == task.id,
+                    Document.id.in_(
+                        select(TaskDocument.document_id).where(
+                            TaskDocument.task_id == task.id
+                        )
+                    ),
+                )
+            )
             .order_by(Document.id.desc())
             .limit(20)
+        ).all()
+        help_requests = db.scalars(
+            select(TaskHelpRequest)
+            .where(TaskHelpRequest.task_id == task.id)
+            .order_by(TaskHelpRequest.created_at.desc())
         ).all()
         guided_flow = task_guided_flow_context(db, task)
         users = db.scalars(select(User).where(User.active.is_(True)).order_by(User.name, User.email)).all()
@@ -35937,7 +35986,12 @@ def task_detail(
         assignable_users = assignable_users_for_workspace(users, task_workspace)
         historical_team_ids = tuple(
             item
-            for item in (task.team_id, task.delegated_to_team_id, task.waiting_for_team_id)
+            for item in (
+                task.team_id,
+                task.delegated_to_team_id,
+                task.waiting_for_team_id,
+                *(help.requested_team_id for help in help_requests),
+            )
             if item
         )
         teams = task_context_teams(
@@ -36035,6 +36089,15 @@ def task_detail(
             for code in task_allowed_status_transitions(task)
             if can_update_task and (code not in TASK_ARCHIVE_STATUSES or can_close_task)
         )
+        support_return_options_by_help_id = {
+            item.id: [
+                (code, TASK_CLEAN_STATUS_LABELS.get(code, code))
+                for code in task_support_return_statuses(item.previous_task_status)
+                if code not in TASK_ARCHIVE_STATUSES or can_close_task
+            ]
+            for item in help_requests
+            if item.status in ACTIVE_SUPPORT_STATUSES
+        }
         hierarchy = task_scoped_hierarchy_context(
             db,
             user_id=current_user.id,
@@ -36068,6 +36131,8 @@ def task_detail(
                 "parent_task": parent_task,
                 "subtasks": subtasks,
                 "documents": documents,
+                "help_requests": help_requests,
+                "support_return_options_by_help_id": support_return_options_by_help_id,
                 "guided_flow": guided_flow,
                 "guided_flow_step_statuses": GUIDED_FLOW_STEP_STATUSES,
                 "guided_flow_step_status_labels": GUIDED_FLOW_STEP_STATUS_LABELS,

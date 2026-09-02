@@ -11,6 +11,7 @@
         <p class="eyebrow">Centro de Tarefas · área de trabalho</p>
         <h2>{{ task.title }}</h2>
         <p class="breadcrumb">CF-{{ "%05d"|format(task.id) }} · {{ task_workspace_label }}</p>
+        <div class="task-detail-status-line"><span>{{ task_status_labels.get(task.status, task.status) }}</span><span>{{ priority_labels.get(task.priority, task.priority) }}</span>{% if task.due_on %}<span>Prazo {{ task.due_on.strftime('%d/%m/%Y') }}</span>{% endif %}</div>
       </div>
       <a class="button-link secondary-link" href="{{ task_return_url }}">Voltar à mesma fila</a>
     </header>
@@ -25,9 +26,9 @@
           <input type="hidden" name="return_url" value="{{ request.url.path }}?{{ request.url.query }}">
           <input type="hidden" name="workspace" value="{{ task_workspace }}">
           <input type="hidden" name="classification_version" value="3">
-          <div class="panel-heading compact-heading"><p class="eyebrow">Conteúdo real</p><h3>Dados da tarefa</h3></div>
+          <div class="panel-heading compact-heading"><p class="eyebrow">Trabalho principal</p><h3>Conteúdo da tarefa</h3></div>
           <label>Assunto<input name="title" maxlength="200" required value="{{ task.title }}"></label>
-          <label>Descrição<textarea name="description" rows="6">{{ task.description or '' }}</textarea></label>
+          <label>Descrição<textarea name="description" rows="5">{{ task.description or '' }}</textarea></label>
           <div class="compact-form-grid">
             <label>Prioridade<select name="priority">{% for code,label in priorities %}<option value="{{ code }}" {% if task.priority == code %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
             <label>Prazo<input type="date" name="due_on" value="{{ task.due_on or '' }}"></label>
@@ -42,24 +43,29 @@
           </details>
           {% if can_update_task %}<button type="submit">Guardar alterações</button>{% endif %}
         </form>
+        {% if task.waiting_reason or task.waiting_reason_detail %}<article class="section task-detail-conditional"><div class="panel-heading compact-heading"><p class="eyebrow">Espera</p><h3>{{ waiting_reason_labels.get(task.waiting_reason, task.waiting_reason or 'Em espera') }}</h3></div><p>{{ task.waiting_reason_detail or 'Sem detalhe adicional.' }}</p></article>{% endif %}
+        <article class="section" id="task-comment">
+          <div class="panel-heading compact-heading"><p class="eyebrow">Atividade</p><h3>Comentários</h3></div>
+          {% if can_respond_task %}<form method="post" action="/v2-clean/tasks/{{ task.id }}/comments" class="form-stack task-detail-quick-comment"><input type="hidden" name="return_url" value="{{ request.url.path }}?{{ request.url.query }}"><label>Comentário rápido<textarea name="comment" rows="3" required maxlength="4000"></textarea></label><button type="submit">Registar comentário</button></form>{% endif %}
+          <div class="task-detail-activity">{% for item in comments[:8] %}<p><strong>{{ user_by_id.get(item.user_id).name if user_by_id.get(item.user_id) else 'Utilizador' }}</strong><time>{{ (item.created_at|lisbon_datetime).strftime('%d/%m/%Y %H:%M') }}</time><span>{{ item.comment }}</span></p>{% else %}<p>Sem comentários.</p>{% endfor %}</div>
+        </article>
+        {% if history %}<details class="section task-detail-history"><summary>Histórico ({{ history|length }})</summary>{% for item in history[:12] %}<p><strong>{{ user_by_id.get(item.user_id).name if user_by_id.get(item.user_id) else 'Sistema' }}</strong> · {{ item.field_name }} · {{ item.new_value or '-' }} <time>{{ (item.changed_at|lisbon_datetime).strftime('%d/%m/%Y %H:%M') }}</time></p>{% endfor %}</details>{% endif %}
       </div>
       <aside class="workshop-side-column">
         <article class="section" id="task-state">
           <div class="panel-heading compact-heading"><p class="eyebrow">Estado atual</p><h3>{{ task_status_labels.get(task.status, task.status) }}</h3></div>
           <dl>
-            <div><dt>Categoria canónica</dt><dd>{{ task_category_labels.get(task.category, task.category or 'Por classificar') }}</dd></div>
+            <div><dt>Classificação</dt><dd>{{ task_category_labels.get(task.category, task.category or 'Por classificar') }}</dd></div>
             <div><dt>Equipa owner</dt><dd>{{ assigned_team.name if assigned_team else 'Por atribuir' }}</dd></div>
             <div><dt>Executor</dt><dd>{{ assigned_user.name if assigned_user else 'Por atribuir' }}</dd></div>
+            <div><dt>Prazo</dt><dd>{{ task.due_on.strftime('%d/%m/%Y') if task.due_on else 'Sem prazo' }}</dd></div>
           </dl>
-          {% if task_transition_options %}<form method="post" action="/v2-clean/tasks/{{ task.id }}/transition" class="form-stack"><input type="hidden" name="return_url" value="{{ request.url.path }}?{{ request.url.query }}"><label>Alterar estado<select name="status">{% for code in task_transition_options %}<option value="{{ code }}">{{ task_status_labels.get(code, code) }}</option>{% endfor %}</select></label><button type="submit">Confirmar estado</button></form>{% endif %}
+          {% if task_transition_options %}<form method="post" action="/v2-clean/tasks/{{ task.id }}/transition" class="form-stack"><input type="hidden" name="return_url" value="{{ request.url.path }}?{{ request.url.query }}"><label>Transições disponíveis<select name="status">{% for code in task_transition_options %}<option value="{{ code }}">{{ task_status_labels.get(code, code) }}</option>{% endfor %}</select></label><p class="muted">Destinos legais devolvidos pelo servidor para o estado atual e para as suas permissões.</p><button type="submit">Confirmar estado</button></form>{% endif %}
           {% if not task_transition_options %}<p class="muted">Sem transições legais disponíveis neste estado ou para as suas permissões.</p>{% endif %}
         </article>
-        <article class="section" id="task-comment">
-          <div class="panel-heading compact-heading"><p class="eyebrow">Acompanhamento</p><h3>Comentar</h3></div>
-          {% if can_respond_task %}<form method="post" action="/v2-clean/tasks/{{ task.id }}/comments" class="form-stack"><input type="hidden" name="return_url" value="{{ request.url.path }}?{{ request.url.query }}"><label>Comentário<textarea name="comment" rows="4" required maxlength="4000"></textarea></label><button type="submit">Registar comentário</button></form>{% endif %}
-          {% for item in comments[:5] %}<p><strong>{{ user_by_id.get(item.user_id).name if user_by_id.get(item.user_id) else 'Utilizador' }}</strong><br>{{ item.comment }}</p>{% endfor %}
-        </article>
         {% if task_support_targets %}<article class="section" id="task-support"><div class="panel-heading compact-heading"><p class="eyebrow">Colaboração</p><h3>Solicitar suporte</h3></div><form method="post" action="/v2-clean/tasks/{{ task.id }}/help" class="form-stack"><input type="hidden" name="return_url" value="{{ request.url.path }}?{{ request.url.query }}"><label>Pessoa ou equipa<select name="requested_target" required><option value="">Selecionar</option>{% for target in task_support_targets %}<option value="{{ target.value }}">{{ target.kind }} · {{ target.label }}</option>{% endfor %}</select></label><label>Motivo<textarea name="message" rows="3" required maxlength="2000"></textarea></label><label>Prazo opcional<input type="datetime-local" name="due_at"></label><button type="submit">Solicitar suporte</button></form></article>{% endif %}
+        {% for help in help_requests %}<article class="section task-detail-support-item"><div class="panel-heading compact-heading"><p class="eyebrow">Suporte</p><h3>{% if help.requested_team_id %}Equipa · {{ team_by_id.get(help.requested_team_id).name if team_by_id.get(help.requested_team_id) else 'Equipa' }}{% else %}{{ user_by_id.get(help.requested_user_id).name if user_by_id.get(help.requested_user_id) else 'Utilizador' }}{% endif %}</h3></div><p>{{ help.message or 'Sem motivo registado.' }}</p><p class="muted">{{ {'pending':'Suporte pendente','responded':'Respondido','cancelled':'Cancelado','accepted':'Respondido','rejected':'Cancelado'}.get(help.status, help.status) }}</p>{% set can_answer_help = help.requested_user_id == current_user.id or (help.requested_team_id and help.requested_team_id in current_user_team_ids) %}{% set can_cancel_help = help.requested_by_id == current_user.id or can_update_task %}{% if help.status == 'pending' and (can_answer_help or can_cancel_help) %}{% set return_options = support_return_options_by_help_id.get(help.id, []) %}<form method="post" action="/v2-clean/tasks/{{ task.id }}/help/{{ help.id }}" class="form-stack"><input type="hidden" name="return_url" value="{{ request.url.path }}?{{ request.url.query }}">{% if return_options %}<label>Após fechar o pedido<select name="next_status" required>{% for code,label in return_options %}<option value="{{ code }}">{{ 'Retomar ' ~ label if loop.first else 'Transitar para ' ~ label }}</option>{% endfor %}</select></label>{% if can_answer_help %}<label>Resposta<textarea name="comment" rows="2" required></textarea></label><button name="response" value="responded">Responder e concluir</button>{% endif %}{% if can_cancel_help %}<button name="response" value="cancelled" class="secondary" formnovalidate>Cancelar pedido</button>{% endif %}{% else %}<p role="alert">Este pedido não tem um estado de retorno válido.</p>{% endif %}</form>{% endif %}</article>{% endfor %}
+        <article class="section"><div class="panel-heading compact-heading"><p class="eyebrow">Anexos</p><h3>Documentos</h3></div>{% for document in documents %}<a class="task-detail-document" href="/v2-clean/documents/{{ document.id }}?return_to={{ task_return_url|urlencode }}">{{ document.title or document.original_name }}</a>{% else %}<p class="muted">Sem documentos associados.</p>{% endfor %}{% if can_update_task %}<form method="post" action="/v2-clean/tasks/{{ task.id }}/attachments" enctype="multipart/form-data" class="form-stack"><input type="hidden" name="return_url" value="{{ task_return_url }}"><label>Anexar ficheiros<input type="file" name="attachments" multiple required></label><button type="submit" class="secondary">Anexar</button></form>{% endif %}</article>
       </aside>
     </section>
   </main>

@@ -212,6 +212,7 @@ def main() -> None:
     env["DATABASE_URL"] = database_url
 
     run([sys.executable, "-m", "alembic", "upgrade", "head"], retries=5, delay_seconds=2, env=env)
+    run([sys.executable, "-m", "scripts.reconcile_email_channels"], env=env)
     if os.environ.get("CARFAST_ADMIN_EMAIL") and os.environ.get("CARFAST_ADMIN_PASSWORD"):
         run([sys.executable, "scripts/create_admin.py"], env=env)
     one_off_reassign = os.environ.get("CARFAST_ONE_OFF_202605_ANDRE_TASKS_TO_CREATORS", "").strip().lower()

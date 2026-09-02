@@ -672,10 +672,12 @@ def seed_service_desk(db: Session) -> None:
             )
 
 
-def seed_email_channels(db: Session) -> None:
+def seed_email_channels(db: Session, *, only_codes: set[str] | None = None) -> None:
     channels_by_code = {item.code: item for item in db.scalars(select(EmailChannel)).all()}
     for definition in EMAIL_CHANNEL_DEFINITIONS:
         code = definition["code"]
+        if only_codes is not None and code not in only_codes:
+            continue
         existing = channels_by_code.get(code)
         if existing:
             # Only complete the new explicit identity fields. Never overwrite
@@ -690,11 +692,31 @@ def seed_email_channels(db: Session) -> None:
                 )[:160]
             continue
         setting_name = definition.get("address_setting")
-        address = (
+        requested_address = (
             str(getattr(settings, setting_name, "") or "").strip().lower() or None
             if setting_name
             else definition.get("address")
         )
+        address_owner = (
+            db.scalar(
+                select(EmailChannel.id).where(
+                    (EmailChannel.address == requested_address)
+                    | (EmailChannel.default_reply_address == requested_address)
+                )
+            )
+            if requested_address
+            else None
+        )
+        alias_owner = (
+            db.scalar(
+                select(EmailChannelAlias).where(
+                    EmailChannelAlias.address == requested_address
+                )
+            )
+            if requested_address
+            else None
+        )
+        address = requested_address if address_owner is None and alias_owner is None else None
         inbound_hash = definition.get("inbound_hash")
         inbound_forward_address = (
             postmark_inbound_address(inbound_hash) if inbound_hash else None

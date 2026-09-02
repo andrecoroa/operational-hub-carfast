@@ -39,6 +39,7 @@ Com dez tarefas adicionais, a base congelada executava 197 queries; o candidato 
 - `compileall`: PASS.
 - Alembic: cabeça única `fff6ab1c2d3e`.
 - Baseline arquitetural regenerada para a alteração intencional de formulários/rotas.
+- Revisão independente do forward fix de autorização: zero P0/P1; o P1 de `admin.manage` forjado foi fechado e renovado com 9 testes PASS.
 
 ## Suite integral e causalidade
 

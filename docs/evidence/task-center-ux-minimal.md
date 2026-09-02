@@ -1,8 +1,10 @@
 # Centro de Tarefas — evidência local
 
-Data: 2026-09-02  
-Branch: `codex/task-center-ux-minimal`  
-Base canónica local: `a491f52ce73779030873ecfab5958f98c2d290c5`
+Data: 2026-09-02
+
+Branch: `codex/task-center-ux-minimal-v2`
+
+Base canónica remota: `7a3317bb20f7832dac9b27dac4cb8f5ed13b0cc6`
 
 ## Âmbito
 
@@ -40,6 +42,10 @@ Com dez tarefas adicionais, a base congelada executava 197 queries; o candidato 
 - Alembic: cabeça única `fff6ab1c2d3e`.
 - Baseline arquitetural regenerada para a alteração intencional de formulários/rotas.
 - Revisão independente do forward fix de autorização: zero P0/P1; o P1 de `admin.manage` forjado foi fechado e renovado com 9 testes PASS.
+- Atualização de base: os commits `a491f52c..7a3317bb` alteravam Email; a única sobreposição foi `ui-contract-v1.css`, reaplicada automaticamente preservando os dois âmbitos.
+- Diferencial formal na mesma base limpa: base `192 PASS`; candidato `197 PASS` (cinco provas adicionais, zero regressões).
+- Teste afetado pela sobreposição, `test_email_triage_preview.py`, incluído no gate candidato: PASS.
+- Revisão independente final contra `7a3317bb`: zero P0/P1; CSS Task Center estritamente isolado dos seletores Email e gates server-side preservados.
 
 ## Suite integral e causalidade
 

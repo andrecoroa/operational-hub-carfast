@@ -79,6 +79,10 @@ from app.services.email_access_admin import (
     grant_snapshot,
     plan_email_role_batch,
 )
+from app.services.email_postmark import (
+    POSTMARK_TECHNICAL_FROM_ADDRESS,
+    outbound_identity,
+)
 from app.services.service_desk import (
     ASSIGNMENT_MODES,
     assignment_target_user_allowed,
@@ -3283,6 +3287,7 @@ def clean_admin_create_email_channel(
     name: str = Form(...),
     active: str = Form("on"),
     default_reply_address: str = Form(""),
+    from_name: str = Form(""),
     reply_policy: str = Form("mailbox"),
     requires_triage: str = Form(""),
     administrative_review_on_unclassified: str = Form(""),
@@ -3293,6 +3298,14 @@ def clean_admin_create_email_channel(
     clean_code = code.strip().lower()
     clean_name = name.strip()
     clean_reply = default_reply_address.strip().lower() or None
+    supplied_from_name = from_name.strip()
+    if len(supplied_from_name) > 160:
+        return _redirect("/v2-clean/admin/work-classification", "error", "invalid_channel")
+    clean_from_name = supplied_from_name or f"CarFast — {clean_name}"[:160]
+    try:
+        outbound_identity(clean_from_name, clean_reply)
+    except ValueError:
+        return _redirect("/v2-clean/admin/work-classification", "error", "invalid_channel")
     if (
         not clean_name
         or not CODE_PATTERN.fullmatch(clean_code)
@@ -3318,6 +3331,9 @@ def clean_admin_create_email_channel(
             name=clean_name,
             address=None,
             default_reply_address=clean_reply,
+            from_address=POSTMARK_TECHNICAL_FROM_ADDRESS,
+            from_name=clean_from_name,
+            reply_to_address=clean_reply,
             reply_policy=reply_policy,
             inbound_hash=None,
             inbound_forward_address=None,
@@ -3345,6 +3361,7 @@ def clean_admin_create_email_channel(
                 "name": channel.name,
                 "active": channel.active,
                 "reply_policy": channel.reply_policy,
+                "from_name": channel.from_name,
             },
         )
         db.commit()
@@ -3376,6 +3393,7 @@ def clean_admin_update_email_channel(
     pause_on_waiting: str = Form(""),
     inbound_forward_address: str = Form(""),
     default_reply_address: str = Form(""),
+    from_name: str = Form(""),
     reply_policy: str = Form("mailbox"),
     requires_triage: str = Form(""),
     administrative_review_on_unclassified: str = Form(""),
@@ -3474,6 +3492,20 @@ def clean_admin_update_email_channel(
         if assignment_mode in {"auto_team", "team_claim"} and not default_team_id:
             return _redirect("/v2-clean/admin/work-classification", "error", "missing_executor")
         clean_reply = default_reply_address.strip().lower() or None
+        supplied_from_name = from_name.strip()
+        if len(supplied_from_name) > 160:
+            return _redirect(
+                "/v2-clean/admin/work-classification", "error", "invalid_email"
+            )
+        clean_from_name = supplied_from_name or channel.from_name or (
+            f"CarFast — {channel.name}"[:160]
+        )
+        try:
+            outbound_identity(clean_from_name, clean_reply)
+        except ValueError:
+            return _redirect(
+                "/v2-clean/admin/work-classification", "error", "invalid_email"
+            )
         if clean_reply and not EMAIL_PATTERN.fullmatch(clean_reply):
             return _redirect(
                 "/v2-clean/admin/work-classification", "error", "invalid_email"
@@ -3493,10 +3525,14 @@ def clean_admin_update_email_channel(
             "active": channel.active,
             "default_reply_address": channel.default_reply_address,
             "reply_policy": channel.reply_policy,
+            "from_name": channel.from_name,
         }
         channel.name = name.strip() or channel.name
         channel.active = active == "on"
         channel.default_reply_address = clean_reply
+        channel.from_address = POSTMARK_TECHNICAL_FROM_ADDRESS
+        channel.from_name = clean_from_name
+        channel.reply_to_address = clean_reply
         channel.reply_policy = reply_policy
         channel.requires_triage = requires_triage == "on"
         channel.administrative_review_on_unclassified = (
@@ -3537,6 +3573,7 @@ def clean_admin_update_email_channel(
                 "active": channel.active,
                 "default_reply_address": channel.default_reply_address,
                 "reply_policy": channel.reply_policy,
+                "from_name": channel.from_name,
             },
         )
         db.commit()

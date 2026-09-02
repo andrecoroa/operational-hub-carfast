@@ -49,6 +49,11 @@ class EmailChannel(TimestampMixin, Base):
     default_reply_address: Mapped[str | None] = mapped_column(
         String(255), unique=True, index=True
     )
+    # Explicit outbound identity. Legacy address fields remain available for
+    # inbound routing and backwards-compatible administration only.
+    from_address: Mapped[str | None] = mapped_column(String(255), index=True)
+    from_name: Mapped[str | None] = mapped_column(String(160))
+    reply_to_address: Mapped[str | None] = mapped_column(String(255), index=True)
     reply_policy: Mapped[str] = mapped_column(String(20), default="mailbox", index=True)
     inbound_hash: Mapped[str | None] = mapped_column(String(255), unique=True, index=True)
     inbound_forward_address: Mapped[str | None] = mapped_column(

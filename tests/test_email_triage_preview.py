@@ -482,7 +482,12 @@ def test_postmark_payload_includes_stored_reply_attachment(tmp_path, monkeypatch
         sha256="0" * 64,
     )
 
-    send_message(message, message.sender, attachments=[attachment])
+    send_message(
+        message,
+        '"CarFast — HUB" <central@carfast.pt>',
+        reply_to="hub@carfast.pt",
+        attachments=[attachment],
+    )
 
     assert captured["timeout"] == 20
     assert captured["body"]["Attachments"] == [

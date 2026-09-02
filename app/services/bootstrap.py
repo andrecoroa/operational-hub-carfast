@@ -597,6 +597,17 @@ EMAIL_CHANNEL_DEFINITIONS = (
         "name": "Caixa geral",
         "address_setting": "email_initial_address",
         "inbound_hash": "hub",
+        "from_address": "central@carfast.pt",
+        "from_name": "CarFast — HUB",
+        "reply_to_address": "hub@carfast.pt",
+    },
+    {
+        "code": "central",
+        "name": "Central",
+        "address": "central@carfast.pt",
+        "from_address": "central@carfast.pt",
+        "from_name": "CarFast — Central",
+        "reply_to_address": "central@carfast.pt",
     },
     {"code": "multas", "name": "Multas", "address": "multas@carfast.pt", "inbound_hash": "multas"},
     {
@@ -667,6 +678,16 @@ def seed_email_channels(db: Session) -> None:
         code = definition["code"]
         existing = channels_by_code.get(code)
         if existing:
+            # Only complete the new explicit identity fields. Never overwrite
+            # an administrator's configured outbound identity.
+            if not existing.from_address:
+                existing.from_address = "central@carfast.pt"
+            if definition.get("reply_to_address") and not existing.reply_to_address:
+                existing.reply_to_address = definition["reply_to_address"]
+            if not existing.from_name:
+                existing.from_name = (
+                    definition.get("from_name") or f"CarFast — {existing.name}"
+                )[:160]
             continue
         setting_name = definition.get("address_setting")
         address = (
@@ -683,6 +704,11 @@ def seed_email_channels(db: Session) -> None:
             name=definition["name"],
             address=address,
             default_reply_address=address,
+            from_address="central@carfast.pt",
+            from_name=(
+                definition.get("from_name") or f"CarFast — {definition['name']}"
+            )[:160],
+            reply_to_address=definition.get("reply_to_address"),
             reply_policy="mailbox",
             inbound_hash=inbound_hash,
             inbound_forward_address=inbound_forward_address,

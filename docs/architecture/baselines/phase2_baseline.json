@@ -11,7 +11,7 @@
     "effective_permission_semantics": "legacy_set_membership",
     "legacy_composer_default": true,
     "operational_data_read": false,
-    "sqlalchemy_table_count_after_additive_catalogue": 174
+    "sqlalchemy_table_count_after_additive_catalogue": 183
   },
   "permissions": {
     "legacy_alias_roots": 14,

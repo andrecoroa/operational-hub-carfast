@@ -1,4 +1,5 @@
 from datetime import date, datetime
+from uuid import uuid4
 
 from sqlalchemy import (
     JSON,
@@ -102,13 +103,9 @@ class Task(TimestampMixin, Base):
     assignment_state: Mapped[str] = mapped_column(
         String(40), default="waiting_assignment", index=True
     )
-    assigned_by_id: Mapped[int | None] = mapped_column(
-        ForeignKey("users.id", ondelete="SET NULL")
-    )
+    assigned_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
     assigned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    claimed_by_id: Mapped[int | None] = mapped_column(
-        ForeignKey("users.id", ondelete="SET NULL")
-    )
+    claimed_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
     claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     delegated_to_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
     delegated_to_team_id: Mapped[int | None] = mapped_column(ForeignKey("teams.id"))
@@ -125,9 +122,7 @@ class Task(TimestampMixin, Base):
     first_response_due_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), index=True
     )
-    resolution_due_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), index=True
-    )
+    resolution_due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
     sla_first_response_minutes: Mapped[int | None] = mapped_column(Integer)
     sla_resolution_minutes: Mapped[int | None] = mapped_column(Integer)
     sla_warning_minutes: Mapped[int] = mapped_column(Integer, default=60)
@@ -156,17 +151,22 @@ class Task(TimestampMixin, Base):
 
 
 class TaskCase(TimestampMixin, Base):
-    """One-level work container. The case itself is never a counted task."""
+    """Canonical one-level operational case. The case is never a counted task."""
 
     __tablename__ = "task_cases"
     __table_args__ = (
         CheckConstraint(
-            "workspace IN ('tasks_support', 'administration')",
+            "workspace IN ('tasks_support', 'administration', 'processes')",
             name="ck_task_cases_workspace",
         ),
+        CheckConstraint("status IN ('open','suspended','closed')", name="ck_task_cases_status"),
+        UniqueConstraint("public_id", name="uq_task_cases_public_id"),
+        UniqueConstraint("human_code", name="uq_task_cases_human_code"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    public_id: Mapped[str] = mapped_column(String(36), default=lambda: str(uuid4()))
+    human_code: Mapped[str | None] = mapped_column(String(80))
     title: Mapped[str] = mapped_column(String(200), index=True)
     description: Mapped[str | None] = mapped_column(Text)
     workspace: Mapped[str] = mapped_column(String(40), index=True)
@@ -176,6 +176,13 @@ class TaskCase(TimestampMixin, Base):
     created_by_id: Mapped[int | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), index=True
     )
+    organizational_unit_id: Mapped[int | None] = mapped_column(
+        ForeignKey("organizational_units.id", ondelete="RESTRICT"), index=True
+    )
+    status: Mapped[str] = mapped_column(String(24), default="open", index=True)
+    revision: Mapped[int] = mapped_column(Integer, default=1)
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
 
 
 class TaskComment(Base):
@@ -213,9 +220,7 @@ class TaskAssignmentEvent(Base):
     __tablename__ = "task_assignment_events"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    task_id: Mapped[int] = mapped_column(
-        ForeignKey("tasks.id", ondelete="CASCADE"), index=True
-    )
+    task_id: Mapped[int] = mapped_column(ForeignKey("tasks.id", ondelete="CASCADE"), index=True)
     actor_user_id: Mapped[int | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), index=True
     )
@@ -232,9 +237,7 @@ class TaskSlaEvent(Base):
     __tablename__ = "task_sla_events"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    task_id: Mapped[int] = mapped_column(
-        ForeignKey("tasks.id", ondelete="CASCADE"), index=True
-    )
+    task_id: Mapped[int] = mapped_column(ForeignKey("tasks.id", ondelete="CASCADE"), index=True)
     actor_user_id: Mapped[int | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), index=True
     )
@@ -248,7 +251,9 @@ class TaskSlaEvent(Base):
 
 class TaskParticipant(Base):
     __tablename__ = "task_participants"
-    __table_args__ = (UniqueConstraint("task_id", "user_id", "role", name="uq_task_participant_role"),)
+    __table_args__ = (
+        UniqueConstraint("task_id", "user_id", "role", name="uq_task_participant_role"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     task_id: Mapped[int] = mapped_column(ForeignKey("tasks.id", ondelete="CASCADE"), index=True)
@@ -263,7 +268,9 @@ class TaskEmailOrigin(Base):
     __tablename__ = "task_email_origins"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    task_id: Mapped[int] = mapped_column(ForeignKey("tasks.id", ondelete="CASCADE"), unique=True, index=True)
+    task_id: Mapped[int] = mapped_column(
+        ForeignKey("tasks.id", ondelete="CASCADE"), unique=True, index=True
+    )
     message_id: Mapped[str] = mapped_column(String(255), unique=True, index=True)
     sender: Mapped[str | None] = mapped_column(String(255), index=True)
     recipients_json: Mapped[list | None] = mapped_column(JSON)
@@ -312,12 +319,8 @@ class TaskNotification(Base):
     __tablename__ = "task_notifications"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    task_id: Mapped[int] = mapped_column(
-        ForeignKey("tasks.id", ondelete="CASCADE"), index=True
-    )
-    user_id: Mapped[int] = mapped_column(
-        ForeignKey("users.id", ondelete="CASCADE"), index=True
-    )
+    task_id: Mapped[int] = mapped_column(ForeignKey("tasks.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     actor_user_id: Mapped[int | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), index=True
     )
@@ -346,7 +349,9 @@ class TaskGuidedFlowStepRun(TimestampMixin, Base):
     __tablename__ = "task_guided_flow_step_runs"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    flow_run_id: Mapped[int] = mapped_column(ForeignKey("task_guided_flow_runs.id", ondelete="CASCADE"), index=True)
+    flow_run_id: Mapped[int] = mapped_column(
+        ForeignKey("task_guided_flow_runs.id", ondelete="CASCADE"), index=True
+    )
     task_id: Mapped[int] = mapped_column(ForeignKey("tasks.id", ondelete="CASCADE"), index=True)
     step_code: Mapped[str] = mapped_column(String(120), index=True)
     title: Mapped[str] = mapped_column(String(200))
@@ -411,9 +416,7 @@ class TaskRecurrenceOccurrence(Base):
     scheduled_for: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
     task_id: Mapped[int | None] = mapped_column(ForeignKey("tasks.id"), unique=True, index=True)
     status: Mapped[str] = mapped_column(String(40), default="created", index=True)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class QuickRecord(TimestampMixin, Base):

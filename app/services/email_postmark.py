@@ -40,7 +40,6 @@ from app.services.service_desk import (
     transition_email_waiting,
 )
 
-POSTMARK_TECHNICAL_FROM_ADDRESS = "central@carfast.pt"
 _EMAIL_ADDRESS_RE = re.compile(r"^[^\s<>@]+@[^\s<>@]+\.[^\s<>@]+$")
 
 
@@ -68,16 +67,23 @@ def _address(value: str | None) -> str:
     return (match.group(1) if match else value).strip().lower()
 
 
-def outbound_identity(display_name: str | None, reply_to: str | None) -> tuple[str, str]:
-    """Build a safe display identity around the single authorized sender."""
+def outbound_identity(
+    display_name: str | None,
+    from_address: str | None,
+    reply_to: str | None,
+) -> tuple[str, str]:
+    """Build the outbound identity configured for a functional mailbox."""
     name = str(display_name or "").strip()
     if not name or len(name) > 160 or any(ord(char) < 32 or ord(char) == 127 for char in name):
         raise ValueError("O nome visível do remetente não é válido.")
     safe_name = name.replace("\\", "\\\\").replace('"', '\\"')
+    sender = _address(from_address)
     candidate = _address(reply_to)
+    if not _EMAIL_ADDRESS_RE.fullmatch(sender):
+        raise ValueError("O endereço do remetente não é válido.")
     if not _EMAIL_ADDRESS_RE.fullmatch(candidate):
-        candidate = POSTMARK_TECHNICAL_FROM_ADDRESS
-    return f'"{safe_name}" <{POSTMARK_TECHNICAL_FROM_ADDRESS}>', candidate
+        raise ValueError("O Reply-To não é válido.")
+    return f'"{safe_name}" <{sender}>', candidate
 
 
 def _event_key(payload: dict) -> str:
@@ -938,7 +944,7 @@ def send_message(
     )
     if (
         has_control
-        or _address(from_address) != POSTMARK_TECHNICAL_FROM_ADDRESS
+        or not _EMAIL_ADDRESS_RE.fullmatch(_address(from_address))
         or not _EMAIL_ADDRESS_RE.fullmatch(raw_reply_to)
     ):
         raise RuntimeError("From e Reply-To explícitos não estão configurados.")

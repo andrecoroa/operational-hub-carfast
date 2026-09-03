@@ -1,6 +1,18 @@
 from app.models.admin import Permission, Role, RolePermission, User, UserRole
 from app.models.audit import AuditLog
 from app.models.base import Base
+from app.models.case_workflow import (
+    CaseDocumentLink,
+    CaseEmailLink,
+    CaseVehicleLink,
+    CaseWorkshopLink,
+    OperationalCase,
+    ProcessPhaseExecution,
+    ProcessPhaseInstance,
+    ProcessProposalAcceptance,
+    WorkflowAuditEvent,
+    WorkflowOutboxEvent,
+)
 from app.models.classification_proposals import (
     ClassificationProposal,
     ClassificationProposalAudit,
@@ -64,13 +76,13 @@ from app.models.photo_capture import (
     PhotoCaptureSession,
     PhotoMedia,
 )
+from app.models.pilot import PilotFeedback
 from app.models.platform import (
     InstallationModule,
     ModuleCapability,
     ModuleDefinition,
     ModuleDependency,
 )
-from app.models.pilot import PilotFeedback
 from app.models.portal import (
     PortalInvitation,
     PortalOrganization,
@@ -106,12 +118,21 @@ from app.models.suppliers import (
     SupplierType,
     SupplierTypeAssignment,
 )
+from app.models.task_templates import (
+    ProcessInstance,
+    ProcessInstanceEvent,
+    ProcessModel,
+    ProcessModelVersion,
+    TaskTemplate,
+    TaskTemplateUsage,
+    TaskTemplateVersion,
+)
 from app.models.tasks import (
     QuickRecord,
     Task,
     TaskAssignmentEvent,
-    TaskComment,
     TaskCase,
+    TaskComment,
     TaskDocument,
     TaskEmailOrigin,
     TaskGuidedFlowRun,
@@ -123,15 +144,6 @@ from app.models.tasks import (
     TaskRecurrenceOccurrence,
     TaskRecurrenceTemplate,
     TaskSlaEvent,
-)
-from app.models.task_templates import (
-    ProcessInstance,
-    ProcessInstanceEvent,
-    ProcessModel,
-    ProcessModelVersion,
-    TaskTemplate,
-    TaskTemplateUsage,
-    TaskTemplateVersion,
 )
 from app.models.vehicle_history_audit import (
     VehicleHistoryAudit,
@@ -199,6 +211,10 @@ from app.models.workshop_phased import (
 __all__ = [
     "AuditLog",
     "Base",
+    "CaseDocumentLink",
+    "CaseEmailLink",
+    "CaseVehicleLink",
+    "CaseWorkshopLink",
     "ClassificationProposal",
     "ClassificationProposalAudit",
     "ClassificationProposalUsage",
@@ -253,6 +269,7 @@ __all__ = [
     "ManagementProcessType",
     "ManagementRule",
     "OrganizationalUnit",
+    "OperationalCase",
     "Permission",
     "PhotoActionDefinition",
     "PhotoCaptureItem",
@@ -318,6 +335,9 @@ __all__ = [
     "ProcessModelVersion",
     "ProcessInstance",
     "ProcessInstanceEvent",
+    "ProcessPhaseExecution",
+    "ProcessPhaseInstance",
+    "ProcessProposalAcceptance",
     "Team",
     "TeamMember",
     "User",
@@ -349,6 +369,8 @@ __all__ = [
     "WorkshopProcessNote",
     "WorkshopProcessService",
     "WorkshopTechnicalReading",
+    "WorkflowAuditEvent",
+    "WorkflowOutboxEvent",
     "WorkshopDiagnosticCatalogItem",
     "WorkshopDiagnosticSuggestion",
     "WorkshopMaterialNeed",

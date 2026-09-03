@@ -44,7 +44,7 @@ def test_email_delivery_migration_is_the_single_additive_head() -> None:
     config.set_main_option("script_location", str(ROOT / "migrations"))
     scripts = ScriptDirectory.from_config(config)
 
-    assert scripts.get_heads() == ["fff8cd3e4f5a"]
+    assert scripts.get_heads() == ["fff9de4f5a6b"]
     assert scripts.get_revision("ffd02a3b4c5e").down_revision == "ffe04c5d6e7f"
     assert scripts.get_revision("ffe04c5d6e7f").down_revision == "ffd03b4c5d6e"
 

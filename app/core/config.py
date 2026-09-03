@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     postmark_message_stream: str = "outbound"
     postmark_inbound_basic_user: str | None = None
     postmark_inbound_basic_password: str | None = None
+    cases_v1_enabled: bool = False
     modular_composer_enabled: bool = False
     visual_foundation_enabled: bool = False
     task_cases_enabled: bool = False

@@ -1,9 +1,9 @@
 from pathlib import Path
 import json
 import re
-from datetime import date, timedelta
+from datetime import date, time, timedelta
 
-from app.models.tasks import Task
+from app.models.tasks import Task, TaskComment
 from app.models.admin import User
 from sqlalchemy import event, select
 import app.web.router as task_router
@@ -24,12 +24,55 @@ ROUTER = (ROOT / "app/web/router.py").read_text(encoding="utf-8")
 DETAIL = (ROOT / "app/templates/clean_task_detail.html").read_text(encoding="utf-8")
 
 
-def test_approved_task_center_has_four_contractual_keyboard_counters() -> None:
+def test_approved_task_center_has_five_contractual_keyboard_counters() -> None:
     assert 'class="task-center-approved-metrics"' in TEMPLATE
-    assert TEMPLATE.count('data-task-counter=') == 4
-    for label in ("Por tratar", "Por assumir", "Atrasadas", "Em risco"):
+    assert TEMPLATE.count('data-task-counter=') == 5
+    for label in ("Por tratar", "Novas", "Por assumir", "Atrasadas", "Em risco"):
         assert label in TEMPLATE
     assert '<button' in TEMPLATE
+
+
+def test_deadline_and_comment_signals_are_explicit_and_non_invented() -> None:
+    assert "Atrasadas:</strong> prazo ultrapassado" in TEMPLATE
+    assert "Em risco:</strong> prazo ainda não ultrapassado" in TEMPLATE
+    assert "Hora (opcional, Lisboa)" in TEMPLATE
+    assert "Comentários:" in TEMPLATE
+    assert "não lidos" not in TEMPLATE.lower()
+    assert "data-task-counter=\"new\"" in TEMPLATE
+    assert "if(mode==='new')params.set('status','new')" in TEMPLATE
+
+
+def test_total_comment_count_and_optional_time_render_on_visible_rows(
+    authenticated_client, db_session, monkeypatch
+) -> None:
+    monkeypatch.setattr(task_router.settings, "visual_foundation_enabled", True)
+    user = db_session.scalar(select(User).where(User.email == "admin.tests@carfast.local"))
+    task = Task(
+        title="Sinais na linha",
+        task_type="operational_task",
+        status="new",
+        priority="normal",
+        created_by_id=user.id,
+        assigned_to_id=user.id,
+        due_on=date.today(),
+        due_time=time(16, 45),
+    )
+    db_session.add(task)
+    db_session.flush()
+    db_session.add_all(
+        [
+            TaskComment(task_id=task.id, user_id=user.id, comment="Um"),
+            TaskComment(task_id=task.id, user_id=user.id, comment="Dois"),
+        ]
+    )
+    db_session.commit()
+
+    response = authenticated_client.get("/v2-clean/tasks?task_scope_view=mine")
+
+    assert response.status_code == 200
+    assert "Sinais na linha" in response.text
+    assert "rios: 2" in response.text
+    assert "16:45" in response.text
 
 
 def test_recurrence_remains_a_permission_scoped_secondary_action() -> None:

@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import date, datetime, time
 
 from sqlalchemy import (
     JSON,
@@ -10,6 +10,7 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    Time,
     UniqueConstraint,
     func,
 )
@@ -121,6 +122,7 @@ class Task(TimestampMixin, Base):
     )
     created_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
     due_on: Mapped[date | None] = mapped_column(Date)
+    due_time: Mapped[time | None] = mapped_column(Time)
     first_response_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     first_response_due_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), index=True

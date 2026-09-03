@@ -1,6 +1,7 @@
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
+import pytest
 from sqlalchemy import select
 
 import app.web.router as task_router
@@ -18,6 +19,10 @@ from app.models import (
     WorkQueue,
 )
 from app.services.users import create_user
+from app.services.task_workflow import (
+    TaskWaitingContextError,
+    validate_task_waiting_context,
+)
 
 
 def _login(client, email: str, password: str = "Secret123!") -> None:
@@ -453,6 +458,57 @@ def test_waiting_transition_requires_normalized_reason_detail_and_future_deadlin
         assert task.waiting_until is None
 
 
+def test_waiting_context_rejects_ambiguous_and_nonexistent_lisbon_times():
+    now = datetime(2026, 1, 1, tzinfo=UTC)
+    for local_value in ("2027-03-28T01:30", "2026-10-25T01:30"):
+        with pytest.raises(TaskWaitingContextError) as exc:
+            validate_task_waiting_context(
+                "waiting", "customer", "Contexto completo", local_value, now=now
+            )
+        assert str(exc.value) == "waiting_until_invalid_local_time"
+
+
+def test_rest_api_waiting_is_bounded_and_cleared_on_resume(
+    authenticated_client, db_session
+):
+    missing_deadline = authenticated_client.post(
+        "/api/tasks",
+        json={
+            "title": "API sem prazo de espera",
+            "task_type": "operational_task",
+            "status": "waiting",
+            "waiting_reason": "customer",
+            "waiting_reason_detail": "Aguardar cliente",
+        },
+    )
+    assert missing_deadline.status_code == 400
+
+    deadline = datetime.now(UTC) + timedelta(days=2)
+    created = authenticated_client.post(
+        "/api/tasks",
+        json={
+            "title": "API com espera limitada",
+            "task_type": "operational_task",
+            "status": "waiting",
+            "waiting_reason": "customer",
+            "waiting_reason_detail": "Aguardar cliente",
+            "waiting_until": deadline.isoformat(),
+        },
+    )
+    assert created.status_code == 201, created.text
+    task_id = created.json()["id"]
+    resumed = authenticated_client.patch(
+        f"/api/tasks/{task_id}", json={"status": "in_execution"}
+    )
+    assert resumed.status_code == 200, resumed.text
+    db_session.expire_all()
+    task = db_session.get(Task, task_id)
+    assert task.status == "in_execution"
+    assert task.waiting_reason is None
+    assert task.waiting_reason_detail is None
+    assert task.waiting_until is None
+
+
 def test_waiting_transition_records_actor_time_context_and_sla_policy(
     authenticated_client, db_session
 ):
@@ -523,6 +579,8 @@ def test_legacy_waiting_task_without_deadline_remains_readable_and_edit_preserve
             "title": "Espera legada revista",
             "priority": "normal",
             "workspace": "operational",
+            "waiting_reason": "forged",
+            "waiting_reason_detail": "Payload forjado",
             "return_url": f"/v2-clean/tasks/{task.id}/detail",
         },
         follow_redirects=False,
@@ -531,6 +589,7 @@ def test_legacy_waiting_task_without_deadline_remains_readable_and_edit_preserve
     db_session.refresh(task)
     assert task.status == "waiting"
     assert task.waiting_reason == "validation"
+    assert task.waiting_reason_detail is None
     assert task.waiting_until is None
 
 

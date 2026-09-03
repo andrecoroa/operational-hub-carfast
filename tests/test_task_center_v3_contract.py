@@ -206,6 +206,32 @@ def test_all_scope_uses_canonical_state_and_preserves_filters(
     assert "Vista:</span><b>Todas</b>" in response.text
 
 
+def test_all_scope_renders_active_support_request_without_unbound_task(
+    authenticated_client, db_session
+) -> None:
+    task = _new_task(db_session, title="Suporte visível em Todas")
+    support_team = _support_team_with_eligible_member(db_session)
+    requested = authenticated_client.post(
+        f"/v2-clean/tasks/{task.id}/help",
+        data={
+            "requested_target": f"team:{support_team.id}",
+            "message": "Apoio necessário na vista global",
+            "return_url": "/v2-clean/tasks",
+        },
+        follow_redirects=False,
+    )
+
+    assert requested.status_code == 303
+    response = authenticated_client.get(
+        "/v2-clean/tasks?queue=tasks_support&task_scope_view=all"
+        "&workspace=all&mine_kind=all&status=open"
+    )
+
+    assert response.status_code == 200
+    assert task.title in response.text
+    assert 'data-active-view="all"' in response.text
+
+
 @pytest.mark.parametrize(
     "query",
     [

@@ -79,10 +79,7 @@ from app.services.email_access_admin import (
     grant_snapshot,
     plan_email_role_batch,
 )
-from app.services.email_postmark import (
-    POSTMARK_TECHNICAL_FROM_ADDRESS,
-    outbound_identity,
-)
+from app.services.email_postmark import outbound_identity
 from app.services.service_desk import (
     ASSIGNMENT_MODES,
     assignment_target_user_allowed,
@@ -3286,6 +3283,7 @@ def clean_admin_create_email_channel(
     code: str = Form(...),
     name: str = Form(...),
     active: str = Form("on"),
+    from_address: str = Form(""),
     default_reply_address: str = Form(""),
     from_name: str = Form(""),
     reply_policy: str = Form("mailbox"),
@@ -3297,21 +3295,24 @@ def clean_admin_create_email_channel(
         return _denied(request)
     clean_code = code.strip().lower()
     clean_name = name.strip()
+    clean_from = from_address.strip().lower() or None
     clean_reply = default_reply_address.strip().lower() or None
     supplied_from_name = from_name.strip()
     if len(supplied_from_name) > 160:
         return _redirect("/v2-clean/admin/work-classification", "error", "invalid_channel")
     clean_from_name = supplied_from_name or f"CarFast — {clean_name}"[:160]
     try:
-        outbound_identity(clean_from_name, clean_reply)
+        outbound_identity(clean_from_name, clean_from, clean_reply)
     except ValueError:
         return _redirect("/v2-clean/admin/work-classification", "error", "invalid_channel")
     if (
         not clean_name
         or not CODE_PATTERN.fullmatch(clean_code)
         or reply_policy not in {"original", "mailbox"}
-        or clean_reply
-        and not EMAIL_PATTERN.fullmatch(clean_reply)
+        or not clean_from
+        or not EMAIL_PATTERN.fullmatch(clean_from)
+        or not clean_reply
+        or not EMAIL_PATTERN.fullmatch(clean_reply)
     ):
         return _redirect("/v2-clean/admin/work-classification", "error", "invalid_channel")
     with SessionLocal() as db:
@@ -3331,7 +3332,7 @@ def clean_admin_create_email_channel(
             name=clean_name,
             address=None,
             default_reply_address=clean_reply,
-            from_address=POSTMARK_TECHNICAL_FROM_ADDRESS,
+            from_address=clean_from,
             from_name=clean_from_name,
             reply_to_address=clean_reply,
             reply_policy=reply_policy,
@@ -3361,6 +3362,7 @@ def clean_admin_create_email_channel(
                 "name": channel.name,
                 "active": channel.active,
                 "reply_policy": channel.reply_policy,
+                "from_address": channel.from_address,
                 "from_name": channel.from_name,
             },
         )
@@ -3392,6 +3394,7 @@ def clean_admin_update_email_channel(
     warning_minutes: int = Form(60),
     pause_on_waiting: str = Form(""),
     inbound_forward_address: str = Form(""),
+    from_address: str = Form(""),
     default_reply_address: str = Form(""),
     from_name: str = Form(""),
     reply_policy: str = Form("mailbox"),
@@ -3491,6 +3494,7 @@ def clean_admin_update_email_channel(
             return _redirect("/v2-clean/admin/work-classification", "error", "missing_executor")
         if assignment_mode in {"auto_team", "team_claim"} and not default_team_id:
             return _redirect("/v2-clean/admin/work-classification", "error", "missing_executor")
+        clean_from = from_address.strip().lower() or None
         clean_reply = default_reply_address.strip().lower() or None
         supplied_from_name = from_name.strip()
         if len(supplied_from_name) > 160:
@@ -3501,12 +3505,17 @@ def clean_admin_update_email_channel(
             f"CarFast — {channel.name}"[:160]
         )
         try:
-            outbound_identity(clean_from_name, clean_reply)
+            outbound_identity(clean_from_name, clean_from, clean_reply)
         except ValueError:
             return _redirect(
                 "/v2-clean/admin/work-classification", "error", "invalid_email"
             )
-        if clean_reply and not EMAIL_PATTERN.fullmatch(clean_reply):
+        if (
+            not clean_from
+            or not EMAIL_PATTERN.fullmatch(clean_from)
+            or not clean_reply
+            or not EMAIL_PATTERN.fullmatch(clean_reply)
+        ):
             return _redirect(
                 "/v2-clean/admin/work-classification", "error", "invalid_email"
             )
@@ -3525,12 +3534,13 @@ def clean_admin_update_email_channel(
             "active": channel.active,
             "default_reply_address": channel.default_reply_address,
             "reply_policy": channel.reply_policy,
+            "from_address": channel.from_address,
             "from_name": channel.from_name,
         }
         channel.name = name.strip() or channel.name
         channel.active = active == "on"
         channel.default_reply_address = clean_reply
-        channel.from_address = POSTMARK_TECHNICAL_FROM_ADDRESS
+        channel.from_address = clean_from
         channel.from_name = clean_from_name
         channel.reply_to_address = clean_reply
         channel.reply_policy = reply_policy

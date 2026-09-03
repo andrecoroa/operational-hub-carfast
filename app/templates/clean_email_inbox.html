@@ -45,7 +45,7 @@
   <form method="post" action="/v2-clean/email/new" class="email-new-message-form">
     <header><div><p class="eyebrow">Nova mensagem</p><h2>Novo email</h2></div><button type="button" class="secondary" data-email-compose-close>Fechar</button></header>
     <label>De / Responder como
-      <select name="channel_id" required data-email-compose-channel>{% for item in compose_channels %}<option value="{{ item.id }}">{{ item.name }} · {{ item.default_reply_address or item.address }}</option>{% endfor %}</select>
+      <select name="channel_id" required data-email-compose-channel>{% for item in compose_channels %}<option value="{{ item.id }}">{{ item.name }} · {{ item.from_address or 'envio por configurar' }}</option>{% endfor %}</select>
     </label>
     {% if compose_supplier %}<div class="email-notice">Fornecedor: <strong>{{ compose_supplier.name }}</strong> · modelos específicos apresentados primeiro, com fallback por tipo/módulo.</div>{% endif %}
     <input type="hidden" name="supplier_id" value="{{ compose_supplier.id if compose_supplier else '' }}">

@@ -484,7 +484,7 @@ def test_postmark_payload_includes_stored_reply_attachment(tmp_path, monkeypatch
 
     send_message(
         message,
-        '"CarFast — HUB" <central@carfast.pt>',
+        '"CarFast — HUB" <hub@carfast.pt>',
         reply_to="hub@carfast.pt",
         attachments=[attachment],
     )

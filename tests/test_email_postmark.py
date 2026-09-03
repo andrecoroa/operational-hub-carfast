@@ -504,7 +504,7 @@ def test_inbound_reply_is_added_to_existing_thread(db_session, tmp_path, monkeyp
     assert db_session.scalar(select(func.count()).select_from(EmailThread)) == 1
 
 
-def test_send_message_uses_central_transport_and_thread_headers(monkeypatch):
+def test_send_message_uses_configured_transport_and_thread_headers(monkeypatch):
     captured = {}
 
     class Response:
@@ -539,14 +539,14 @@ def test_send_message_uses_central_transport_and_thread_headers(monkeypatch):
 
     result = send_message(
         message,
-        '"CarFast — HUB" <central@carfast.pt>',
+        '"CarFast — HUB" <hub@carfast.pt>',
         reply_to="hub@carfast.pt",
         parent_message_id="pm-inbound",
         references=["pm-first"],
     )
 
     assert result["MessageID"] == "pm-sent"
-    assert captured["body"]["From"] == '"CarFast — HUB" <central@carfast.pt>'
+    assert captured["body"]["From"] == '"CarFast — HUB" <hub@carfast.pt>'
     assert captured["body"]["ReplyTo"] == "hub@carfast.pt"
     assert captured["body"]["To"] == "cliente@example.com"
     assert captured["body"]["Headers"] == [
@@ -763,7 +763,9 @@ def test_mailboxes_bootstrap_with_explicit_central_and_hub_identities(db_session
             if mailbox_hash
             else channels[code].inbound_forward_address is None
         )
-        assert channels[code].from_address == "central@carfast.pt"
+        assert channels[code].from_address == (
+            public_address if code in {"test", "central"} else None
+        )
         expected_name = {
             "test": "CarFast — HUB",
             "central": "CarFast — Central",
@@ -786,7 +788,7 @@ def test_mailboxes_bootstrap_with_explicit_central_and_hub_identities(db_session
         assert channels[code].default_reply_address is None
         assert channels[code].inbound_hash is None
         assert channels[code].inbound_forward_address is None
-        assert channels[code].from_address == "central@carfast.pt"
+        assert channels[code].from_address is None
         assert channels[code].from_name
         assert channels[code].reply_to_address is None
     assert channels["outros"].requires_triage is True
@@ -994,7 +996,7 @@ def test_email_channel_sla_assignment_and_claim_are_independent(db_session):
     assert multas_thread.assignment_state == "assigned_user"
 
 
-def test_postmark_outbound_uses_one_central_from_and_per_channel_identity(
+def test_postmark_outbound_uses_each_configured_mailbox_identity(
     db_session, monkeypatch
 ):
     captured = []
@@ -1036,11 +1038,13 @@ def test_postmark_outbound_uses_one_central_from_and_per_channel_identity(
             text_body="Mensagem",
         )
         transport_from, reply_to = outbound_identity(
-            channel.from_name, channel.reply_to_address
+            channel.from_name, channel.from_address, channel.reply_to_address
         )
         send_message(message, transport_from, reply_to=reply_to)
 
-    assert all(item["From"].endswith("<central@carfast.pt>") for item in captured)
+    assert {item["From"].rsplit("<", 1)[-1].rstrip(">") for item in captured} == {
+        channel.from_address for channel in channels
+    }
     assert len({item["From"] for item in captured}) == len(channels)
     assert {item["ReplyTo"] for item in captured} == {
         "hub@carfast.pt",
@@ -1203,7 +1207,7 @@ def test_send_message_fails_closed_without_explicit_from_or_reply_to(db_session,
     for from_address, reply_to in (
         ("", "hub@carfast.pt"),
         ("central@carfast.pt", None),
-        ("hub@carfast.pt", "hub@carfast.pt"),
+        ("invalid address", "hub@carfast.pt"),
         ('"Central\r\nBcc: attacker@example.com" <central@carfast.pt>', "central@carfast.pt"),
         ("central@carfast.pt", "reply@example.com\r\nBcc: attacker@example.com"),
     ):
@@ -1215,24 +1219,26 @@ def test_send_message_fails_closed_without_explicit_from_or_reply_to(db_session,
             raise AssertionError("Outbound must fail closed for incomplete identity")
 
 
-def test_outbound_identity_supports_display_names_and_safe_reply_fallback():
+def test_outbound_identity_uses_configured_mailbox_addresses():
     oficina_from, oficina_reply = outbound_identity(
-        "CarFast — Oficina", "oficina@carfast.pt"
+        "CarFast — Oficina", "oficina@carfast.pt", "oficina@carfast.pt"
     )
-    sinistros_from, fallback_reply = outbound_identity(
-        "CarFast — Sinistros", "invalid address"
+    sinistros_from, sinistros_reply = outbound_identity(
+        "CarFast — Sinistros", "sinistros@carfast.pt", "sinistros@carfast.pt"
     )
 
-    assert oficina_from == '"CarFast — Oficina" <central@carfast.pt>'
-    assert sinistros_from == '"CarFast — Sinistros" <central@carfast.pt>'
+    assert oficina_from == '"CarFast — Oficina" <oficina@carfast.pt>'
+    assert sinistros_from == '"CarFast — Sinistros" <sinistros@carfast.pt>'
     assert oficina_reply == "oficina@carfast.pt"
-    assert fallback_reply == "central@carfast.pt"
+    assert sinistros_reply == "sinistros@carfast.pt"
 
 
 def test_outbound_identity_rejects_header_injection():
     for display_name in ("CarFast\r\nBcc: attacker@example.com", "", "x" * 161):
         try:
-            outbound_identity(display_name, "central@carfast.pt")
+            outbound_identity(
+                display_name, "central@carfast.pt", "central@carfast.pt"
+            )
         except ValueError:
             pass
         else:

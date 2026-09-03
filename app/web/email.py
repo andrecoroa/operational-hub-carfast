@@ -541,19 +541,22 @@ def _sender_channel(db, message: EmailMessage) -> EmailChannel | None:
 def _channel_sender_address(
     db, thread: EmailThread, channel: EmailChannel
 ) -> str | None:
-    return "central@carfast.pt" if channel.from_name else None
+    value = (channel.from_address or "").strip().lower()
+    return value if EMAIL_ADDRESS_PATTERN.fullmatch(value) else None
 
 
 def _channel_reply_to_address(channel: EmailChannel) -> str | None:
     try:
-        _, reply_to = outbound_identity(channel.from_name, channel.reply_to_address)
+        _, reply_to = outbound_identity(
+            channel.from_name, channel.from_address, channel.reply_to_address
+        )
     except ValueError:
         return None
     return reply_to
 
 
 def _channel_sender_options(db, channel: EmailChannel) -> list[str]:
-    values = ["central@carfast.pt"] if channel.from_name else []
+    values = [_channel_sender_address(db, None, channel)]
     return list(dict.fromkeys(item.casefold() for item in values if item))
 
 
@@ -1314,7 +1317,7 @@ def email_new_message(
             return RedirectResponse("/v2-clean/email?error=forbidden", status_code=303)
         try:
             sender_address, reply_to_address = outbound_identity(
-                channel.from_name, channel.reply_to_address
+                channel.from_name, channel.from_address, channel.reply_to_address
             )
         except ValueError:
             return RedirectResponse(
@@ -2543,7 +2546,9 @@ def email_reply(
         policy_sender = _channel_sender_address(db, thread, sender_channel)
         try:
             transport_sender, reply_to_address = outbound_identity(
-                sender_channel.from_name, sender_channel.reply_to_address
+                sender_channel.from_name,
+                sender_channel.from_address,
+                sender_channel.reply_to_address,
             )
         except ValueError:
             transport_sender, reply_to_address = None, None
@@ -2872,7 +2877,9 @@ def email_approve(request: Request, thread_id: int, message_id: int):
         )
         try:
             transport_sender, reply_to_address = outbound_identity(
-                sender_channel.from_name, sender_channel.reply_to_address
+                sender_channel.from_name,
+                sender_channel.from_address,
+                sender_channel.reply_to_address,
             )
         except ValueError:
             transport_sender, reply_to_address = None, None

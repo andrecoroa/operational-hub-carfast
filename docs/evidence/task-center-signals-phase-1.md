@@ -33,7 +33,10 @@
   - atalho Nova: `status=new`, uma linha Nova; comentário total visível; data com hora e data-only renderizadas sem alteração.
 - Suite integral da base: 39 FAIL / 961 PASS.
 - Primeira execução do candidato, antes de atualizar cinco expectativas legítimas do novo head: 45 FAIL / 961 PASS.
-- Causalidade: os 39 FAIL são idênticos à base e fora desta tranche; os cinco FAIL adicionais eram testes que fixavam o head anterior; foram atualizados e os contratos de migration passaram.
+- Segunda execução do candidato: 40 FAIL / 966 PASS. O único FAIL adicional era o baseline arquitetural congelado, atualizado explicitamente após inspeção do delta (apenas destinos de redirects novos desta tranche).
+- Resultado diferencial esperado após essa atualização: 39 FAIL / 967 PASS, isto é, os mesmos 39 FAIL da base e seis testes adicionais PASS.
+- Causalidade: os 39 FAIL são idênticos à base e fora desta tranche; os cinco FAIL adicionais da primeira execução eram testes que fixavam o head anterior; foram atualizados e os contratos de migration passaram.
+- Revisão independente read-only: zero P0/P1; o revisor inspecionou o diff integral, incluindo migration, timezone, comentários e preview agrupado.
 
 ## PostgreSQL e instalação limpa
 

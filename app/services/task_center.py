@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from dataclasses import dataclass
-from datetime import date, timedelta
+from datetime import date, datetime, time, timedelta
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import and_, false, or_, select
 
@@ -183,15 +184,32 @@ def user_can_view_task(db, *, user_id: int, task: Task) -> bool:
     return db.scalar(statement) is not None
 
 
-def task_due_condition(code: str, *, task_model=Task, today: date | None = None):
-    current_day = today or date.today()
+def task_due_condition(
+    code: str,
+    *,
+    task_model=Task,
+    today: date | None = None,
+    local_time: time | None = None,
+):
+    lisbon_now = datetime.now(ZoneInfo("Europe/Lisbon"))
+    current_day = today or lisbon_now.date()
+    current_time = local_time or lisbon_now.time().replace(tzinfo=None)
+    overdue_today = and_(
+        task_model.due_on == current_day,
+        task_model.due_time.is_not(None),
+        task_model.due_time < current_time,
+    )
     if code == "due_soon":
         return and_(
             task_model.due_on >= current_day,
             task_model.due_on <= current_day + timedelta(days=TASK_DUE_SOON_DAYS),
+            ~overdue_today,
         )
     if code == "overdue":
-        return and_(task_model.due_on.is_not(None), task_model.due_on < current_day)
+        return and_(
+            task_model.due_on.is_not(None),
+            or_(task_model.due_on < current_day, overdue_today),
+        )
     return None
 
 

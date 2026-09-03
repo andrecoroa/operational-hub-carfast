@@ -5442,6 +5442,7 @@ def clean_tasks_center(
             ),
         }
         task_counter_metrics = {
+            "new": db.scalar(select(func.count()).select_from(Task).where(*scoped_open_task_filter, Task.status == "new")) or 0,
             "unassigned": db.scalar(select(func.count()).select_from(Task).where(*unassigned_counter_filter, Task.assigned_to_id.is_(None))) or 0,
             "risk": db.scalar(select(func.count()).select_from(Task).where(*scoped_open_task_filter, due_soon_condition)) or 0,
             "late": db.scalar(select(func.count()).select_from(Task).where(*scoped_open_task_filter, overdue_condition)) or 0,
@@ -5602,8 +5603,7 @@ def clean_tasks_center(
                     (
                         and_(
                             active_case_child,
-                            Task.due_on.is_not(None),
-                            Task.due_on < date.today(),
+                            overdue_condition,
                         ),
                         1,
                     ),
@@ -5615,10 +5615,7 @@ def clean_tasks_center(
                     (
                         and_(
                             active_case_child,
-                            Task.due_on.is_not(None),
-                            Task.due_on >= date.today(),
-                            Task.due_on
-                            <= date.today() + timedelta(days=TASK_DUE_SOON_DAYS),
+                            due_soon_condition,
                         ),
                         1,
                     ),
@@ -5954,9 +5951,13 @@ def _manual_case_task(
     actor_user_id: int,
     original: Task | None = None,
     due_on: str = "",
+    due_time: str = "",
     priority: str = "normal",
 ) -> Task:
     parsed_due = parse_iso_or_dmy_date(due_on)
+    parsed_due_time = parse_optional_time(due_time)
+    if parsed_due_time and not parsed_due:
+        raise ValueError("due_date_required")
     return Task(
         title=title.strip()[:200],
         description=None,
@@ -5977,6 +5978,7 @@ def _manual_case_task(
         classification_status=original.classification_status if original else "unclassified",
         created_by_id=actor_user_id,
         due_on=parsed_due,
+        due_time=parsed_due_time if parsed_due else None,
         assignment_mode="manual",
         assignment_state="assigned_team" if original and original.team_id else "waiting_assignment",
     )
@@ -6117,8 +6119,14 @@ def clean_task_case_create(
     task_title: str = Form(""),
     priority: str = Form("normal"),
     due_on: str = Form(""),
+    due_time: str = Form(""),
     return_url: str = Form(""),
 ):
+    try:
+        if parse_optional_time(due_time) and not parse_iso_or_dmy_date(due_on):
+            raise ValueError("due_date_required")
+    except ValueError:
+        return RedirectResponse("/v2-clean/tasks?error=invalid_due_time", status_code=303)
     with SessionLocal() as db:
         access = _case_feature_access(db, request, "cases.create")
         if not access or not task_title.strip():
@@ -6127,7 +6135,7 @@ def clean_task_case_create(
         if not user_can_access_task_workspace(db, user, "operational", action="create"):
             return RedirectResponse("/v2-clean/tasks?error=forbidden", status_code=303)
         task = _manual_case_task(
-            title=task_title, actor_user_id=user.id, due_on=due_on, priority=priority
+            title=task_title, actor_user_id=user.id, due_on=due_on, due_time=due_time, priority=priority
         )
         try:
             case = create_case_with_first_task(
@@ -6135,7 +6143,7 @@ def clean_task_case_create(
             )
             case_id = case.id
             db.commit()
-        except (TaskCaseError, IntegrityError):
+        except (TaskCaseError, IntegrityError, ValueError):
             db.rollback()
             return RedirectResponse("/v2-clean/tasks?error=case_invalid", status_code=303)
     return _case_action_redirect(return_url, case_created=str(case_id))
@@ -6148,8 +6156,14 @@ def clean_task_case_add_task(
     task_title: str = Form(""),
     priority: str = Form("normal"),
     due_on: str = Form(""),
+    due_time: str = Form(""),
     return_url: str = Form(""),
 ):
+    try:
+        if parse_optional_time(due_time) and not parse_iso_or_dmy_date(due_on):
+            raise ValueError("due_date_required")
+    except ValueError:
+        return RedirectResponse("/v2-clean/tasks?error=invalid_due_time", status_code=303)
     with SessionLocal() as db:
         user_id = get_web_user_id(request)
         user = db.get(User, user_id) if user_id else None
@@ -6162,12 +6176,13 @@ def clean_task_case_add_task(
             actor_user_id=user.id,
             original=exemplar,
             due_on=due_on,
+            due_time=due_time,
             priority=priority,
         )
         try:
             add_task_to_case(db, case=case, task=task, actor_user_id=user.id)
             db.commit()
-        except (TaskCaseError, IntegrityError):
+        except (TaskCaseError, IntegrityError, ValueError):
             db.rollback()
             return RedirectResponse("/v2-clean/tasks?error=case_invalid", status_code=303)
     return _case_action_redirect(return_url, case_updated=str(case_id))
@@ -6181,8 +6196,14 @@ def clean_task_related_case_create(
     task_title: str = Form(""),
     priority: str = Form("normal"),
     due_on: str = Form(""),
+    due_time: str = Form(""),
     return_url: str = Form(""),
 ):
+    try:
+        if parse_optional_time(due_time) and not parse_iso_or_dmy_date(due_on):
+            raise ValueError("due_date_required")
+    except ValueError:
+        return RedirectResponse("/v2-clean/tasks?error=invalid_due_time", status_code=303)
     with SessionLocal() as db:
         access = _case_feature_access(db, request, "cases.create")
         if not access or not task_title.strip():
@@ -6203,6 +6224,7 @@ def clean_task_related_case_create(
             actor_user_id=user.id,
             original=original,
             due_on=due_on,
+            due_time=due_time,
             priority=priority,
         )
         try:
@@ -6215,7 +6237,7 @@ def clean_task_related_case_create(
             )
             case_id = case.id
             db.commit()
-        except (TaskCaseError, IntegrityError):
+        except (TaskCaseError, IntegrityError, ValueError):
             db.rollback()
             return RedirectResponse("/v2-clean/tasks?error=case_invalid", status_code=303)
     return _case_action_redirect(return_url, case_created=str(case_id))
@@ -6740,6 +6762,7 @@ def clean_tasks_create(
     contract_number: str = Form(""),
     invoice_number: str = Form(""),
     due_on: str = Form(""),
+    due_time: str = Form(""),
     category: str = Form(""),
     subcategory: str = Form(""),
     classification_version: str = Form(""),
@@ -6778,6 +6801,12 @@ def clean_tasks_create(
     ):
         return RedirectResponse("/v2-clean/tasks?create=1&error=missing_classification#new-task", status_code=303)
     parsed_due = parse_iso_or_dmy_date(due_on)
+    try:
+        parsed_due_time = parse_optional_time(due_time)
+    except ValueError:
+        return RedirectResponse("/v2-clean/tasks?create=1&error=invalid_due_time#new-task", status_code=303)
+    if parsed_due_time and not parsed_due:
+        return RedirectResponse("/v2-clean/tasks?create=1&error=due_date_required#new-task", status_code=303)
     normalized_plate = normalize_identifier(plate) if plate else None
     now = datetime.now(UTC)
     with SessionLocal() as db:
@@ -6941,6 +6970,7 @@ def clean_tasks_create(
             contract_number=contract_number.strip()[:120] or None,
             invoice_number=invoice_number.strip()[:120] or None,
             due_on=parsed_due,
+            due_time=parsed_due_time,
             entity_type=entity_type.strip()[:120] or None,
             entity_id=entity_id.strip()[:120] or None,
             team_id=(
@@ -7123,6 +7153,8 @@ def clean_tasks_update(
     description: str = Form(""),
     priority: str = Form("normal"),
     due_on: str = Form(""),
+    due_time: str | None = Form(None),
+    due_time_present: str = Form(""),
     category: str = Form(""),
     subcategory: str = Form(""),
     workspace: str = Form(""),
@@ -7153,6 +7185,12 @@ def clean_tasks_update(
         return RedirectResponse("/v2-clean/tasks?error=missing_title", status_code=303)
     clean_priority = priority if priority in {"low", "normal", "high", "urgent"} else "normal"
     parsed_due = parse_iso_or_dmy_date(due_on)
+    try:
+        parsed_due_time = parse_optional_time(due_time)
+    except ValueError:
+        return clean_task_action_redirect(return_url, task_id=task_id, flag="invalid_due_time")
+    if parsed_due_time and not parsed_due:
+        return clean_task_action_redirect(return_url, task_id=task_id, flag="due_date_required")
     normalized_plate = normalize_identifier(plate) if plate.strip() else None
     now = datetime.now(UTC)
     with SessionLocal() as db:
@@ -7372,6 +7410,16 @@ def clean_tasks_update(
             "status": (task.status, clean_status),
             "priority": (task.priority, clean_priority),
             "due_on": (task.due_on, parsed_due),
+            "due_time": (
+                task.due_time,
+                parsed_due_time
+                if due_time_present == "1" and parsed_due
+                else None
+                if due_time_present == "1"
+                else task.due_time
+                if parsed_due
+                else None,
+            ),
             "task_type": (task.task_type, target_task_type),
             "plate": (task.plate, normalized_plate),
             "reservation_number": (task.reservation_number, reservation_number.strip()[:120] or None),

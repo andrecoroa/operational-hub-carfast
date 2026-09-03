@@ -29,6 +29,7 @@
       <label>Ou atribuir ao executor<select name="assigned_to_id" data-assignment-exclusive><option value="">Sem executor individual</option>{% for user in all_users %}<option value="{{ user.id }}" data-user-option>{{ user.name }}</option>{% endfor %}</select></label>
       <label>Prioridade<select name="priority"><option value="normal">Normal</option><option value="high">Alta</option><option value="urgent">Urgente</option><option value="low">Baixa</option></select></label>
       <label>Prazo<input type="date" name="due_on"></label>
+      <label>Hora (opcional, Lisboa)<input type="time" name="due_time"></label>
     </div></details>
     <footer><button type="button" class="secondary" data-task-create-back>Voltar aos modelos</button><button type="submit">Criar e abrir tarefa</button></footer>
   </form>

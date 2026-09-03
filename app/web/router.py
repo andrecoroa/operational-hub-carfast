@@ -5170,6 +5170,7 @@ def clean_tasks_center(
             .limit(page_size)
         ).all()
         task_ids = [task.id for task in tasks]
+        tasks_by_id = {task.id: task for task in tasks}
         task_update_allowed_by_id = {
             task.id: workspace_allowed(workspace_for_task_type(task.task_type), "update")
             and _task_hierarchy_scope_allows(db, user_id, task, action="update")
@@ -5310,7 +5311,9 @@ def clean_tasks_center(
             help_request.id: [
                 (code, TASK_CLEAN_STATUS_LABELS.get(code, code))
                 for code in task_support_return_statuses_for_task(
-                    task, help_request.previous_task_status, now=datetime.now(UTC)
+                    tasks_by_id[help_request.task_id],
+                    help_request.previous_task_status,
+                    now=datetime.now(UTC),
                 )
                 if (
                     code not in TASK_ARCHIVE_STATUSES
@@ -5320,6 +5323,7 @@ def clean_tasks_center(
             for task_help_requests in help_requests_by_task.values()
             for help_request in task_help_requests
             if help_request.status in ACTIVE_SUPPORT_STATUSES
+            and help_request.task_id in tasks_by_id
         }
         task_notifications: list[TaskNotification] = []
         task_notification_unread_count = 0

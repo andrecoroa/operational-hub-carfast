@@ -113,6 +113,7 @@ from app.models.vehicles import (
 from app.models.work_hierarchy import (
     ServiceDeskTicketType,
     WorkCategory,
+    WorkDepartment,
     WorkQueue,
     WorkSubcategory,
 )
@@ -143,8 +144,11 @@ from app.services.task_support import (
     resolve_task_support,
 )
 from app.services.task_workflow import (
+    TaskWaitingContextError,
     task_allowed_status_transitions,
     task_support_return_statuses,
+    task_support_return_statuses_for_task,
+    validate_task_waiting_context,
 )
 from app.services.task_cases import (
     TaskCaseError,
@@ -5305,8 +5309,8 @@ def clean_tasks_center(
         support_return_options_by_help_id = {
             help_request.id: [
                 (code, TASK_CLEAN_STATUS_LABELS.get(code, code))
-                for code in task_support_return_statuses(
-                    help_request.previous_task_status
+                for code in task_support_return_statuses_for_task(
+                    task, help_request.previous_task_status, now=datetime.now(UTC)
                 )
                 if (
                     code not in TASK_ARCHIVE_STATUSES
@@ -5806,6 +5810,7 @@ def clean_tasks_center(
                 "task_category_options": task_category_options,
                 "task_workspace_labels": task_workspace_labels,
                 "task_status_labels": task_status_labels,
+                "waiting_reasons": TASK_WAITING_REASONS,
                 "task_priority_labels": task_priority_labels,
                 "current_user_id": user_id,
                 "current_user_team_ids": sorted(user_team_ids(db, user_id)) if user_id else [],
@@ -6055,6 +6060,10 @@ _TASK_RETURN_TRANSIENT_KEYS = frozenset(
         "forbidden",
         "invalid_transition",
         "transition_blocked",
+        "waiting_reason_required",
+        "waiting_reason_detail_required",
+        "waiting_until_required",
+        "waiting_until_invalid_local_time",
         "task_created",
         "case_created",
         "case_updated",
@@ -7126,8 +7135,6 @@ def clean_tasks_update(
     assigned_to_id: str = Form(""),
     assigned_team_id: str = Form(""),
     team_requires_claim: str = Form(""),
-    waiting_reason: str = Form(""),
-    waiting_reason_detail: str = Form(""),
     return_url: str = Form(""),
     post_action: str = Form("close"),
 ):
@@ -7366,8 +7373,6 @@ def clean_tasks_update(
             "reservation_number": (task.reservation_number, reservation_number.strip()[:120] or None),
             "contract_number": (task.contract_number, contract_number.strip()[:120] or None),
             "invoice_number": (task.invoice_number, invoice_number.strip()[:120] or None),
-            "waiting_reason": (task.waiting_reason, waiting_reason.strip()[:80] or None),
-            "waiting_reason_detail": (task.waiting_reason_detail, waiting_reason_detail.strip() or None),
         }
         if hierarchy_selection:
             changes.update(
@@ -7461,22 +7466,6 @@ def clean_tasks_update(
                 return clean_task_action_redirect(
                     return_url, task_id=task_id, flag="assignment_not_allowed"
                 )
-        if clean_status == "waiting" and prior_status != "waiting":
-            pause_task_sla(
-                db,
-                task,
-                actor_user_id=user_id,
-                reason=waiting_reason.strip() or "Ticket em espera",
-                now=now,
-            )
-        elif clean_status != "waiting" and prior_status == "waiting":
-            resume_task_sla(
-                db,
-                task,
-                actor_user_id=user_id,
-                reason="Ticket retomado",
-                now=now,
-            )
         if clean_status in TASK_ARCHIVE_STATUSES:
             task.closed_at = task.closed_at or now
             mark_task_resolved(db, task, actor_user_id=user_id, now=now)
@@ -7782,6 +7771,9 @@ def clean_task_transition(
     request: Request,
     task_id: int,
     status: str = Form(""),
+    waiting_reason: str = Form(""),
+    waiting_reason_detail: str = Form(""),
+    waiting_until: str = Form(""),
     return_url: str = Form(""),
 ):
     """Apply one explicit transition from the server-rendered transition graph."""
@@ -7825,16 +7817,59 @@ def clean_task_transition(
                 return clean_task_action_redirect(
                     return_url, task_id=task_id, flag="transition_blocked"
                 )
-        prior_status = task.status
         transition_now = datetime.now(UTC)
+        try:
+            clean_waiting_reason, clean_waiting_detail, parsed_waiting_until = (
+                validate_task_waiting_context(
+                    status, waiting_reason, waiting_reason_detail, waiting_until,
+                    now=transition_now,
+                )
+            )
+        except TaskWaitingContextError as exc:
+            return clean_task_action_redirect(
+                return_url, task_id=task_id, flag=str(exc)
+            )
+
+        prior_status = task.status
         task.status = status
         if status == "waiting" and prior_status != "waiting":
+            task.waiting_reason = clean_waiting_reason
+            task.waiting_reason_detail = clean_waiting_detail
+            task.waiting_until = parsed_waiting_until
             pause_task_sla(
                 db,
                 task,
                 actor_user_id=user_id,
-                reason="Ticket em espera",
+                reason=clean_waiting_reason,
                 now=transition_now,
+            )
+            for field_name, new_value in (
+                ("waiting_reason", clean_waiting_reason),
+                ("waiting_reason_detail", clean_waiting_detail),
+                ("waiting_until", parsed_waiting_until.isoformat()),
+            ):
+                db.add(
+                    TaskHistory(
+                        task_id=task.id,
+                        user_id=user_id,
+                        field_name=field_name,
+                        old_value=None,
+                        new_value=new_value,
+                    )
+                )
+            db.add(
+                TaskSlaEvent(
+                    task_id=task.id,
+                    actor_user_id=user_id,
+                    action="waiting_context_set",
+                    reason=clean_waiting_detail,
+                    occurred_at=transition_now,
+                    details_json={
+                        "waiting_reason": clean_waiting_reason,
+                        "waiting_until": parsed_waiting_until.isoformat(),
+                        "sla_pause_on_waiting": task.sla_pause_on_waiting,
+                    },
+                )
             )
         elif status != "waiting" and prior_status == "waiting":
             resume_task_sla(
@@ -7844,6 +7879,27 @@ def clean_task_transition(
                 reason="Ticket retomado",
                 now=transition_now,
             )
+            for field_name, old_value in (
+                ("waiting_reason", task.waiting_reason),
+                ("waiting_reason_detail", task.waiting_reason_detail),
+                (
+                    "waiting_until",
+                    task.waiting_until.isoformat() if task.waiting_until else None,
+                ),
+            ):
+                if old_value is not None:
+                    db.add(
+                        TaskHistory(
+                            task_id=task.id,
+                            user_id=user_id,
+                            field_name=field_name,
+                            old_value=str(old_value),
+                            new_value=None,
+                        )
+                    )
+            task.waiting_reason = None
+            task.waiting_reason_detail = None
+            task.waiting_until = None
         if status in TASK_ARCHIVE_STATUSES:
             task.closed_at = task.closed_at or transition_now
             mark_task_resolved(db, task, actor_user_id=user_id, now=transition_now)
@@ -7887,7 +7943,12 @@ def clean_task_transition(
             action="task.status.transitioned",
             entity_type="task",
             entity_id=task.id,
-            detail=f"Estado alterado de {prior_status} para {status}",
+            detail=(
+                f"Estado alterado de {prior_status} para {status}; "
+                f"espera={clean_waiting_reason}; retoma={parsed_waiting_until.isoformat()}"
+                if status == "waiting" and parsed_waiting_until
+                else f"Estado alterado de {prior_status} para {status}"
+            ),
             user_id=user_id,
         )
         db.commit()
@@ -8344,8 +8405,8 @@ def clean_tasks_help_response(
         effective_next_status = next_status.strip()
         permitted_next_statuses = tuple(
             code
-            for code in task_support_return_statuses(
-                help_request.previous_task_status
+            for code in task_support_return_statuses_for_task(
+                task, help_request.previous_task_status, now=datetime.now(UTC)
             )
             if (
                 code not in TASK_ARCHIVE_STATUSES
@@ -35987,6 +36048,26 @@ def task_detail(
             linked_vehicle = db.get(Vehicle, int(task.entity_id))
         elif task.plate:
             linked_vehicle = db.scalar(select(Vehicle).where(Vehicle.plate == task.plate))
+        task_case = db.get(TaskCase, task.case_id) if task.case_id else None
+        email_origin = db.scalar(
+            select(TaskEmailOrigin).where(TaskEmailOrigin.task_id == task.id)
+        )
+        queue = db.get(WorkQueue, task.work_queue_id) if task.work_queue_id else None
+        department = (
+            db.get(WorkDepartment, task.work_department_id)
+            if task.work_department_id
+            else None
+        )
+        work_category = (
+            db.get(WorkCategory, task.work_category_id)
+            if task.work_category_id
+            else None
+        )
+        work_subcategory = (
+            db.get(WorkSubcategory, task.work_subcategory_id)
+            if task.work_subcategory_id
+            else None
+        )
         parent_task = db.get(Task, task.parent_task_id) if task.parent_task_id else None
         subtasks = db.scalars(
             select(Task)
@@ -36126,7 +36207,9 @@ def task_detail(
         support_return_options_by_help_id = {
             item.id: [
                 (code, TASK_CLEAN_STATUS_LABELS.get(code, code))
-                for code in task_support_return_statuses(item.previous_task_status)
+                for code in task_support_return_statuses_for_task(
+                    task, item.previous_task_status, now=datetime.now(UTC)
+                )
                 if code not in TASK_ARCHIVE_STATUSES or can_close_task
             ]
             for item in help_requests
@@ -36162,6 +36245,12 @@ def task_detail(
                 "comments": comments,
                 "history": history,
                 "linked_vehicle": linked_vehicle,
+                "task_case": task_case,
+                "email_origin": email_origin,
+                "task_queue": queue,
+                "task_department": department,
+                "task_work_category": work_category,
+                "task_work_subcategory": work_subcategory,
                 "parent_task": parent_task,
                 "subtasks": subtasks,
                 "documents": documents,
@@ -36235,6 +36324,7 @@ def task_update(
     waiting_for: str = Form(""),
     waiting_reason: str = Form(""),
     waiting_reason_detail: str = Form(""),
+    waiting_until: str = Form(""),
     due_on: str = Form(""),
     department: str | None = Form(None),
     station: str = Form(""),
@@ -36346,22 +36436,23 @@ def task_update(
         ):
             return task_update_error_url(task_id, "assignment_not_allowed")
         parsed_due_on = parse_optional_date(due_on)
-        clean_waiting_reason = waiting_reason.strip()
-        clean_waiting_reason_detail = waiting_reason_detail.strip()
+        transition_now = datetime.now(UTC)
+        try:
+            clean_waiting_reason, clean_waiting_reason_detail, parsed_waiting_until = (
+                validate_task_waiting_context(
+                    status, waiting_reason, waiting_reason_detail,
+                    waiting_until or task.waiting_until, now=transition_now,
+                )
+            )
+        except TaskWaitingContextError as exc:
+            return task_update_error_url(task_id, str(exc))
         if status in TASK_RESPONSIBLE_ONLY_STATUSES and not can_supervise:
             return task_update_error_url(task_id, "responsible_required")
         if (status == "delegated" or delegate_changed) and not can_supervise:
             return task_update_error_url(task_id, "delegation_not_allowed")
         if status == "delegated" and not delegated_user_id and not delegated_team_id:
             return task_update_error_url(task_id, "delegation_required")
-        if status == "waiting":
-            if clean_waiting_reason not in TASK_WAITING_REASON_LABELS:
-                return task_update_error_url(task_id, "waiting_reason_required")
-            if clean_waiting_reason == "other" and not clean_waiting_reason_detail:
-                return task_update_error_url(task_id, "waiting_reason_detail_required")
-        else:
-            clean_waiting_reason = ""
-            clean_waiting_reason_detail = ""
+        if status != "waiting":
             waiting_for_user_id = None
             waiting_for_team_id = None
 
@@ -36423,6 +36514,12 @@ def task_update(
         add_visible_task_change(changes, "Detalhe do motivo", task.waiting_reason_detail, clean_waiting_reason_detail)
         add_visible_task_change(
             changes,
+            "Retomar em",
+            task.waiting_until.isoformat() if task.waiting_until else "",
+            parsed_waiting_until.isoformat() if parsed_waiting_until else "",
+        )
+        add_visible_task_change(
+            changes,
             "Data limite",
             task.due_on.isoformat() if task.due_on else "",
             parsed_due_on.isoformat() if parsed_due_on else "",
@@ -36454,10 +36551,10 @@ def task_update(
         task.waiting_for_team_id = waiting_for_team_id
         task.waiting_reason = clean_waiting_reason or None
         task.waiting_reason_detail = clean_waiting_reason_detail or None
+        task.waiting_until = parsed_waiting_until
         task.due_on = parsed_due_on
         task.department = clean_department or None
         task.station = station.strip() or None
-        transition_now = datetime.now(UTC)
         if status == "waiting" and prior_status != "waiting":
             pause_task_sla(
                 db,
@@ -37292,6 +37389,7 @@ TASK_HISTORY_FIELD_LABELS = {
     "waiting_for_team_id": "A aguardar por equipa",
     "waiting_reason": "Motivo de espera",
     "waiting_reason_detail": "Detalhe do motivo",
+    "waiting_until": "Retomar em",
     "due_on": "Data limite",
     "department": "Área",
     "station": "Estação",

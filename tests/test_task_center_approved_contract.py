@@ -675,8 +675,25 @@ def test_task_forms_use_scoped_team_resolver_and_legacy_defaults_are_explicit() 
         assert f'"{code}"' in ROUTER
     form_route = ROUTER[ROUTER.index("def task_new_form("):ROUTER.index("def task_vehicle_search(")]
     assert "select(Team).where(Team.active.is_(True)).order_by(Team.name)" not in form_route
-    update_route = ROUTER[ROUTER.index("def task_update("):ROUTER.index("def task_guided_flow_step_update(")]
+    update_route = ROUTER[
+        ROUTER.index("def task_update(") : ROUTER.index("def task_guided_flow_step_update(")
+    ]
+    assert "validate_task_waiting_context(" in update_route
+    assert 'waiting_until: str = Form("")' in update_route
+    assert '"Retomar em",' in update_route
+    assert "task.waiting_until.isoformat() if task.waiting_until else \"\"" in update_route
+    assert "parsed_waiting_until.isoformat() if parsed_waiting_until else \"\"" in update_route
     assert update_route.count("task_team_allowed_for_workspace(") >= 3
+
+
+def test_general_clean_edit_cannot_mutate_waiting_context() -> None:
+    update_route = ROUTER[
+        ROUTER.index("def clean_tasks_update(") : ROUTER.index("def clean_tasks_update_context(")
+    ]
+    assert 'waiting_reason: str = Form("")' not in update_route
+    assert 'waiting_reason_detail: str = Form("")' not in update_route
+    assert '"waiting_reason": (' not in update_route
+    assert '"waiting_reason_detail": (' not in update_route
 
 
 def test_terminal_action_visibility_matches_server_complete_scope() -> None:
@@ -691,6 +708,44 @@ def test_inline_transition_is_server_side_and_fail_closed() -> None:
     assert '@web_router.post("/v2-clean/tasks/{task_id}/transition"' in ROUTER
     assert "task_allowed_status_transitions" in ROUTER
     assert 'flag="invalid_transition"' in ROUTER
+
+
+def test_waiting_transition_collects_complete_context_without_general_edit() -> None:
+    transition = ROUTER[
+        ROUTER.index("def clean_task_transition(") : ROUTER.index(
+            '@web_router.get("/v2-clean/tasks/notifications/'
+        )
+    ]
+    for field in ("waiting_reason", "waiting_reason_detail", "waiting_until"):
+        assert f'{field}: str = Form("")' in transition
+        assert f'name="{field}"' in TEMPLATE
+    assert "validate_task_waiting_context(" in transition
+    assert "except TaskWaitingContextError as exc:" in transition
+    assert 'action="waiting_context_set"' in transition
+    assert "sla_pause_on_waiting" in transition
+    assert 'data-task-preview-action="state"' in TEMPLATE
+
+
+def test_detail_separates_task_wait_sla_and_existing_context_relations() -> None:
+    for label in ("Prazo da tarefa", "Prazo da espera", "Política SLA"):
+        assert label in DETAIL
+    for label in (
+        "Origem",
+        "Email / conversa",
+        "Fila",
+        "Departamento",
+        "Categoria",
+        "Subcategoria",
+        "Equipa",
+        "Pessoa",
+        "Viatura / matrícula",
+        "Reserva",
+        "Contrato",
+        "Fatura",
+        "Caso",
+        "Processo",
+    ):
+        assert f"<dt>{label}</dt>" in DETAIL
 
 
 def test_guardrails_keep_owner_executor_support_and_sla_concepts_distinct() -> None:

@@ -11,7 +11,11 @@ from app.services.service_desk import (
     resume_task_sla,
 )
 from app.services.task_center import create_task_notifications
-from app.services.task_workflow import validate_task_support_return_status
+from app.services.task_workflow import (
+    TaskWaitingContextError,
+    validate_task_support_return_status,
+    validate_task_waiting_context,
+)
 
 ACTIVE_SUPPORT_STATUSES = ("pending", "accepted")
 SUPPORT_INELIGIBLE_TASK_STATUSES = (
@@ -117,7 +121,33 @@ def resolve_task_support(
         except ValueError as exc:
             raise TaskSupportError(str(exc)) from exc
         old_status = task.status
+        try:
+            waiting_reason, waiting_detail, waiting_until = validate_task_waiting_context(
+                next_status, task.waiting_reason, task.waiting_reason_detail,
+                task.waiting_until, now=now,
+            )
+        except TaskWaitingContextError as exc:
+            raise TaskSupportError(str(exc)) from exc
         task.status = next_status
+        if next_status != "waiting":
+            for field_name, old_value in (
+                ("waiting_reason", task.waiting_reason),
+                ("waiting_reason_detail", task.waiting_reason_detail),
+                ("waiting_until", task.waiting_until),
+            ):
+                if old_value is not None:
+                    db.add(
+                        TaskHistory(
+                            task_id=task.id,
+                            user_id=actor_user_id,
+                            field_name=field_name,
+                            old_value=str(old_value),
+                            new_value=None,
+                        )
+                    )
+        task.waiting_reason = waiting_reason
+        task.waiting_reason_detail = waiting_detail
+        task.waiting_until = waiting_until
         prior_operational_status = item.previous_task_status
         if next_status == "waiting" and prior_operational_status != "waiting":
             pause_task_sla(

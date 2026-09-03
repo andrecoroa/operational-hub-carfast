@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta, timezone
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -49,6 +49,10 @@ from app.services.task_queues import (
     authorized_task_queue,
     resolve_task_queue_capabilities,
     task_queue_for_task_type,
+)
+from app.services.task_workflow import (
+    TaskWaitingContextError,
+    validate_task_waiting_context,
 )
 from app.services.work_classification import (
     user_work_scope_allows,
@@ -292,12 +296,18 @@ def create_task(
         payload.waiting_for_user_id,
         require_active=True,
     )
-    validate_task_state(
+    normalized_waiting = validate_task_state(
         payload.status,
         payload.waiting_reason,
         payload.waiting_reason_detail,
+        payload.waiting_until,
         payload.delegated_to_user_id,
         payload.delegated_to_team_id,
+    )
+    values.update(
+        waiting_reason=normalized_waiting[0],
+        waiting_reason_detail=normalized_waiting[1],
+        waiting_until=normalized_waiting[2],
     )
 
     if hierarchy:
@@ -505,6 +515,7 @@ def update_task(
     next_status = changes.get("status", prior_status)
     next_waiting_reason = changes.get("waiting_reason", task.waiting_reason)
     next_waiting_reason_detail = changes.get("waiting_reason_detail", task.waiting_reason_detail)
+    next_waiting_until = changes.get("waiting_until", task.waiting_until)
     next_delegated_user_id = changes.get("delegated_to_user_id", task.delegated_to_user_id)
     next_delegated_team_id = changes.get("delegated_to_team_id", task.delegated_to_team_id)
     if (
@@ -525,13 +536,21 @@ def update_task(
             status_code=403,
             detail="Only the responsible user or an authorized profile can delegate execution.",
         )
-    validate_task_state(
+    normalized_waiting = validate_task_state(
         next_status,
         next_waiting_reason,
         next_waiting_reason_detail,
+        next_waiting_until,
         next_delegated_user_id,
         next_delegated_team_id,
     )
+    changes.update(
+        waiting_reason=normalized_waiting[0],
+        waiting_reason_detail=normalized_waiting[1],
+        waiting_until=normalized_waiting[2],
+    )
+    if next_status != "waiting":
+        changes.update(waiting_for_user_id=None, waiting_for_team_id=None)
 
     if "status" in changes and next_status in TASK_ARCHIVE_STATUSES:
         _require_task_scope(db, current_user, task, action="complete")
@@ -1114,19 +1133,25 @@ def validate_task_state(
     status_value: str | None,
     waiting_reason: str | None,
     waiting_reason_detail: str | None,
+    waiting_until: datetime | str | None,
     delegated_to_user_id: int | None,
     delegated_to_team_id: int | None,
-) -> None:
+) -> tuple[str | None, str | None, datetime | None]:
     if status_value == "delegated" and not delegated_to_user_id and not delegated_to_team_id:
         raise HTTPException(
             status_code=400,
             detail="Delegated execution requires a delegated user or team.",
         )
-    if status_value == "waiting":
-        if waiting_reason not in TASK_WAITING_REASONS:
-            raise HTTPException(status_code=400, detail="Waiting status requires a reason.")
-        if waiting_reason == "other" and not (waiting_reason_detail or "").strip():
-            raise HTTPException(status_code=400, detail="Other waiting reason requires detail.")
+    try:
+        return validate_task_waiting_context(
+            status_value,
+            waiting_reason,
+            waiting_reason_detail,
+            waiting_until,
+            now=datetime.now(UTC),
+        )
+    except TaskWaitingContextError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 def can_supervise_task(db: DbSession, user: User, task: Task) -> bool:

@@ -616,14 +616,14 @@ def test_support_resolution_requires_explicit_bounded_return_and_fails_closed(
     assert page.status_code == 200
     assert "Após fechar o pedido" in page.text
     assert 'value="in_execution"' in page.text
-    assert 'value="waiting"' in page.text
+    assert 'value="waiting"' not in page.text
 
     completed = authenticated_client.post(
         f"/v2-clean/tasks/{task.id}/help/{item.id}",
         data={
             "response": "responded",
             "comment": "Apoio concluído",
-            "next_status": "waiting",
+            "next_status": "in_execution",
             "return_url": RETURN_CONTEXT,
         },
         follow_redirects=False,
@@ -631,7 +631,7 @@ def test_support_resolution_requires_explicit_bounded_return_and_fails_closed(
     assert completed.status_code == 303
     assert completed.headers["location"].endswith(f"#task-{task.id}")
     db_session.expire_all()
-    assert db_session.get(Task, task.id).status == "waiting"
+    assert db_session.get(Task, task.id).status == "in_execution"
     assert db_session.get(TaskHelpRequest, item.id).status == "completed"
 
 
@@ -768,6 +768,9 @@ def test_support_return_to_waiting_preserves_sla_pause(
     paused_at = datetime(2026, 8, 20, 12, 0, tzinfo=UTC)
     task.status = "waiting"
     task.sla_paused_at = paused_at
+    task.waiting_reason = "validation"
+    task.waiting_reason_detail = "Aguardar validação durante o suporte"
+    task.waiting_until = datetime.now(UTC) + timedelta(days=2)
     db_session.commit()
     support_team = _support_team_with_eligible_member(db_session)
     authenticated_client.post(

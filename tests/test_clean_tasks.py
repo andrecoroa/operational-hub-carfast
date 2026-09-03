@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, time
 from pathlib import Path
 
 import pytest
@@ -905,6 +905,60 @@ def test_clean_task_center_limits_problems_to_workshop_and_updates_inline(authen
             TaskHistory.new_value == "in_execution",
         )
     )
+
+
+def test_clean_task_deadline_time_create_preserve_clear_and_validate(
+    authenticated_client, db_session
+):
+    created = authenticated_client.post(
+        "/v2-clean/tasks",
+        data={
+            "title": "Prazo com hora",
+            "workspace": "operational",
+            "record_type": "task",
+            "due_on": "2026-09-10",
+            "due_time": "14:30",
+        },
+        follow_redirects=False,
+    )
+    assert created.status_code == 303
+    task = db_session.scalar(select(Task).where(Task.title == "Prazo com hora"))
+    assert task.due_on == date(2026, 9, 10)
+    assert task.due_time == time(14, 30)
+
+    preserved = authenticated_client.post(
+        f"/v2-clean/tasks/{task.id}/update",
+        data={"title": task.title, "due_on": "2026-09-10"},
+        follow_redirects=False,
+    )
+    assert preserved.status_code == 303
+    db_session.refresh(task)
+    assert task.due_time == time(14, 30)
+
+    cleared = authenticated_client.post(
+        f"/v2-clean/tasks/{task.id}/update",
+        data={"title": task.title, "due_on": "2026-09-10", "due_time": "", "due_time_present": "1"},
+        follow_redirects=False,
+    )
+    assert cleared.status_code == 303
+    db_session.refresh(task)
+    assert task.due_time is None
+
+    invalid = authenticated_client.post(
+        "/v2-clean/tasks",
+        data={"title": "Hora inválida", "workspace": "operational", "due_on": "2026-09-10", "due_time": "25:90"},
+        follow_redirects=False,
+    )
+    assert "invalid_due_time" in invalid.headers["location"]
+    assert db_session.scalar(select(Task).where(Task.title == "Hora inválida")) is None
+
+    without_date = authenticated_client.post(
+        "/v2-clean/tasks",
+        data={"title": "Hora sem data", "workspace": "operational", "due_time": "09:00"},
+        follow_redirects=False,
+    )
+    assert "due_date_required" in without_date.headers["location"]
+    assert db_session.scalar(select(Task).where(Task.title == "Hora sem data")) is None
 
 
 def test_clean_task_center_prefills_document_context(authenticated_client, db_session):

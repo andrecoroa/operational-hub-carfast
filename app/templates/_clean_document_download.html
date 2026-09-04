@@ -1,0 +1,3 @@
+{% if document.storage_path and (document.status or '')|lower not in ['removed', 'deleted'] %}
+  <a class="button-link secondary-link" href="/v2-clean/documents/{{ document.id }}/file?inline=0" aria-label="Descarregar {{ document.original_name or document.title or 'anexo' }}">Descarregar anexo</a>
+{% endif %}

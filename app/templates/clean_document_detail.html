@@ -16,6 +16,7 @@
       </div>
       <div class="clean-header-actions clean-header-actions-strong">
         <a class="button-link secondary-link" href="{{ return_to }}">Voltar</a>
+        {% include "_clean_document_download.html" %}
         {% if vehicle %}
           <a class="button-link secondary-link" href="/v2-clean/fleet/{{ vehicle.id }}">Ficha da viatura</a>
         {% endif %}
@@ -54,6 +55,9 @@
       </div>
     </header>
 
+    {% if request.query_params.get('file_missing') %}
+      <div class="alert warning" role="alert">O ficheiro anexado não foi encontrado no arquivo. O registo do documento continua preservado; contacte o administrador.</div>
+    {% endif %}
     {% if document.status == "removed" %}
       <div class="alert warning">
         Este documento foi removido da experiência v2-clean. O ficheiro e o histórico continuam preservados para auditoria.

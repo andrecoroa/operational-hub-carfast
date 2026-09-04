@@ -363,6 +363,20 @@ def _load_sale_rows(db, vehicle_statement=None) -> list[dict[str, Any]]:
         .order_by(VehicleFinancialPlan.updated_at.desc(), VehicleFinancialPlan.id.desc())
     ).all():
         financial_plans.setdefault(plan.vehicle_id, plan)
+    installments_by_plan: dict[int, list[VehicleFinancialPlanInstallment]] = {}
+    if financial_plans:
+        for installment in db.scalars(
+            select(VehicleFinancialPlanInstallment)
+            .where(
+                VehicleFinancialPlanInstallment.financial_plan_id.in_(
+                    [plan.id for plan in financial_plans.values()]
+                )
+            )
+            .order_by(VehicleFinancialPlanInstallment.period_number)
+        ).all():
+            installments_by_plan.setdefault(installment.financial_plan_id, []).append(
+                installment
+            )
     manual_by_vehicle: dict[int, dict[str, Any]] = {vehicle_id: {} for vehicle_id in vehicle_ids}
     for field in db.scalars(
         select(VehicleManualField).where(
@@ -378,6 +392,9 @@ def _load_sale_rows(db, vehicle_statement=None) -> list[dict[str, Any]]:
             manual_by_vehicle.get(vehicle.id, {}),
             profiles.get(vehicle.id),
             financial_plans.get(vehicle.id),
+            installments_by_plan.get(financial_plans[vehicle.id].id, [])
+            if vehicle.id in financial_plans
+            else [],
         )
         for vehicle in vehicles
     ]

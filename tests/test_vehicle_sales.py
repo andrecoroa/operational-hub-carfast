@@ -29,6 +29,7 @@ from app.services.vehicle_financials import canonical_vehicle_financial_values
 from app.web.vehicle_sales import (
     _filter_rows,
     _financial_audit_rows,
+    _load_sale_rows,
     _media_root,
     _sale_row,
     compact_finance_entity,
@@ -201,6 +202,16 @@ def test_sale_proposal_keeps_vehicle_values_independent(authenticated_client, db
         )
     )
     plan.outstanding_amount = Decimal("16000.00")
+    db_session.add(
+        VehicleFinancialPlanInstallment(
+            financial_plan_id=plan.id,
+            period_number=1,
+            period_end=date.today(),
+            outstanding_amount=Decimal("15000.00"),
+            outstanding_with_vat=Decimal("18450.00"),
+            amortization_amount=Decimal("250.00"),
+        )
+    )
     db_session.commit()
     reopened = authenticated_client.post(
         f"/v2-clean/fleet/sales/proposals/{proposal.id}/reopen",
@@ -226,7 +237,7 @@ def test_sale_proposal_keeps_vehicle_values_independent(authenticated_client, db
         )
     )
     assert first_version_line.snapshot_json["debt"] == "20910.00"
-    assert second_version_line.snapshot_json["debt"] == "19680.00"
+    assert second_version_line.snapshot_json["debt"] == "18450.00"
     assert second_version_line.proposed_price == Decimal("19800.00")
     assert second_version_line.customer_counteroffer == Decimal("19400.00")
 
@@ -266,14 +277,14 @@ def test_sale_proposal_keeps_vehicle_values_independent(authenticated_client, db
     assert sheet.cell(row=4, column=headers.index("Cor") + 1).value == "Azul"
     assert sheet.cell(row=4, column=headers.index("Combustível") + 1).value == "Diesel"
     assert sheet.cell(row=4, column=headers.index("Caixa") + 1).value == "Automática"
-    assert sheet.cell(row=4, column=headers.index("Valor em dívida") + 1).value == 19680
+    assert sheet.cell(row=4, column=headers.index("Valor em dívida") + 1).value == 18450
     assert sheet.cell(row=4, column=headers.index("Entidade financeira") + 1).value == "Santander"
     contract_cell = sheet.cell(row=4, column=headers.index("N.º contrato") + 1)
     assert contract_cell.value == "PROP-DEBT-1"
     assert contract_cell.number_format == "@"
-    assert sheet.cell(row=4, column=headers.index("Margem CarFast") + 1).value == 120
+    assert sheet.cell(row=4, column=headers.index("Margem CarFast") + 1).value == 1350
     assert sheet.cell(row=4, column=headers.index("Contraproposta cliente") + 1).value == 19400
-    assert sheet.cell(row=4, column=headers.index("Margem contraproposta") + 1).value == -280
+    assert sheet.cell(row=4, column=headers.index("Margem contraproposta") + 1).value == 950
     assert sheet.cell(row=4, column=headers.index("Custo") + 1).value is not None
     customer_export = authenticated_client.get(
         f"/v2-clean/fleet/sales/proposals/{proposals[1].id}/customer.xlsx"
@@ -895,6 +906,13 @@ def test_sheet_audit_and_sale_share_value_and_last_amortization_date(db_session)
     ).all()
 
     sale_row = _sale_row(vehicle, snapshot, {}, None, plan, installments)
+    loaded_row = _load_sale_rows(
+        db_session, select(Vehicle).where(Vehicle.id == vehicle.id)
+    )[0]
+    assert loaded_row["debt"] == sale_row["debt"]
+    assert loaded_row["cost"] == sale_row["cost"]
+    assert loaded_row["financial_margin"] == sale_row["financial_margin"]
+    assert loaded_row["debt_reference_date"] == sale_row["debt_reference_date"]
     audit_row = next(
         row for row in _financial_audit_rows(db_session) if row["vehicle_id"] == vehicle.id
     )

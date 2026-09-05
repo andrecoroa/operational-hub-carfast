@@ -77,7 +77,7 @@ def test_preview_actions_refresh_without_closing_or_losing_selected_thread():
     assert "closeActivePreview()" in script
     assert 'dialog?.addEventListener("cancel"' in script
     assert "event.preventDefault();\n    closeActivePreview();" in script
-    assert "if (inlinePreviewRow?.dataset.emailInlineThread === String(threadId))" in script
+    assert "if (!forceRefresh && inlinePreviewRow?.dataset.emailInlineThread === String(threadId))" in script
     assert 'row.setAttribute("aria-expanded", String(selected))' in script
     assert 'dialog[open]:not(#email-preview-dialog)' in script
     assert "email.js?v=20260901-email-mobile-focus" in inbox

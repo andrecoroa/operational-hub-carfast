@@ -19,6 +19,27 @@ class TaskWaitingContextError(ValueError):
     pass
 
 
+def parse_lisbon_local_datetime(value: datetime) -> datetime:
+    """Convert a datetime to UTC, rejecting ambiguous or missing Lisbon wall times."""
+    if value.tzinfo is not None:
+        return value.astimezone(UTC)
+    local_tz = ZoneInfo("Europe/Lisbon")
+    candidates = {
+        candidate.astimezone(UTC)
+        for fold in (0, 1)
+        if (
+            (candidate := value.replace(tzinfo=local_tz, fold=fold))
+            .astimezone(UTC)
+            .astimezone(local_tz)
+            .replace(tzinfo=None)
+            == value
+        )
+    }
+    if len(candidates) != 1:
+        raise ValueError("invalid_lisbon_local_time")
+    return candidates.pop()
+
+
 def parse_task_waiting_until(value: datetime | str | None, *, now: datetime) -> datetime:
     """Return an unambiguous future instant, interpreting naive values in Lisbon."""
     if isinstance(value, str):
@@ -30,24 +51,12 @@ def parse_task_waiting_until(value: datetime | str | None, *, now: datetime) -> 
         parsed = value
     if parsed is None:
         raise TaskWaitingContextError("waiting_until_required")
-    if parsed.tzinfo is None:
-        local_tz = ZoneInfo("Europe/Lisbon")
-        candidates = {
-            candidate.astimezone(UTC)
-            for fold in (0, 1)
-            if (
-                (candidate := parsed.replace(tzinfo=local_tz, fold=fold))
-                .astimezone(UTC)
-                .astimezone(local_tz)
-                .replace(tzinfo=None)
-                == parsed
-            )
-        }
-        if len(candidates) != 1:
+    try:
+        parsed = parse_lisbon_local_datetime(parsed)
+    except ValueError:
+        if parsed.tzinfo is None:
             raise TaskWaitingContextError("waiting_until_invalid_local_time")
-        parsed = candidates.pop()
-    else:
-        parsed = parsed.astimezone(UTC)
+        raise
     if parsed <= now.astimezone(UTC):
         raise TaskWaitingContextError("waiting_until_required")
     return parsed

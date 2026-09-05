@@ -19,7 +19,6 @@ from time import monotonic
 from types import SimpleNamespace
 from typing import Any
 from urllib.parse import parse_qsl, quote, quote_plus, urlencode, urlsplit, urlunsplit
-from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, File, Form, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
@@ -147,6 +146,7 @@ from app.services.task_support import (
 )
 from app.services.task_workflow import (
     TaskWaitingContextError,
+    parse_lisbon_local_datetime,
     task_allowed_status_transitions,
     task_support_return_statuses,
     task_support_return_statuses_for_task,
@@ -8449,10 +8449,8 @@ def clean_task_decision_request(
         return clean_task_action_redirect(return_url, task_id=task_id, flag="error")
     try:
         parsed_due = datetime.fromisoformat(due_at.strip()) if due_at.strip() else None
-        if parsed_due and parsed_due.tzinfo is None:
-            parsed_due = parsed_due.replace(
-                tzinfo=ZoneInfo("Europe/Lisbon")
-            ).astimezone(UTC)
+        if parsed_due:
+            parsed_due = parse_lisbon_local_datetime(parsed_due)
     except ValueError:
         return clean_task_action_redirect(return_url, task_id=task_id, flag="error")
     with SessionLocal() as db:
@@ -8489,6 +8487,11 @@ def clean_task_decision_request(
                 db, actor, workspace_for_task_type(task.task_type), action="update"
             )
             or not _task_hierarchy_scope_allows(db, user_id, task, action="update")
+            or not user_can_access_task_workspace(
+                db, decider, workspace_for_task_type(task.task_type)
+            )
+            or not user_can_view_task(db, user_id=decider.id, task=task)
+            or not _task_hierarchy_scope_allows(db, decider.id, task, action="read")
         ):
             return RedirectResponse("/v2-clean/tasks?error=forbidden", status_code=303)
         previous_status = task.status
@@ -8556,6 +8559,7 @@ def clean_task_decision_resolve(
         if normalized_action == "request_information" and not clean_comment:
             return clean_task_action_redirect(return_url, task_id=task_id, flag="error")
         now = datetime.now(UTC)
+        previous_decision_status = item.status
         if normalized_action == "request_information":
             item.status = "information_requested"
             item.resolution_comment = clean_comment
@@ -8569,7 +8573,7 @@ def clean_task_decision_resolve(
             db.add(TaskHistory(task_id=task.id, user_id=user_id, field_name="status", old_value="waiting_decision", new_value="in_execution"))
             db.add(TaskNotification(task_id=task.id, user_id=item.requested_by_id, actor_user_id=user_id, event_type=f"decision_{item.status}", title=f"Decisão {('aprovada' if item.status == 'approved' else 'recusada')}: {task.title}", detail=clean_comment or None))
         db.add(TaskHistory(task_id=task.id, user_id=user_id, field_name="decision_result", old_value=None, new_value=item.status))
-        record_audit(db, action=f"task.decision.{item.status}", entity_type="task_decision", entity_id=item.id, detail=clean_comment or item.decision_needed, before_json={"status": "pending"}, after_json={"status": item.status, "task_status": task.status}, user_id=user_id)
+        record_audit(db, action=f"task.decision.{item.status}", entity_type="task_decision", entity_id=item.id, detail=clean_comment or item.decision_needed, before_json={"status": previous_decision_status}, after_json={"status": item.status, "task_status": task.status}, user_id=user_id)
         db.commit()
     return clean_task_action_redirect(return_url, task_id=task_id, flag="decision_updated")
 

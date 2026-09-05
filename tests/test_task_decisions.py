@@ -219,6 +219,76 @@ def test_decision_due_datetime_is_interpreted_in_lisbon(
     )
 
 
+def test_decision_due_datetime_rejects_lisbon_dst_gap_and_fold(
+    authenticated_client, db_session, monkeypatch
+) -> None:
+    monkeypatch.setattr(task_router.settings, "task_decisions_enabled", True)
+    actor = _actor(db_session)
+    _grant_permissions(
+        db_session, actor, "tasks.request_decision", "tasks.resolve_decision"
+    )
+
+    for local_value in ("2026-03-29T01:30", "2026-10-25T01:30"):
+        task = _task(db_session, actor)
+        response = authenticated_client.post(
+            f"/v2-clean/tasks/{task.id}/decisions",
+            data={
+                "decider_id": actor.id,
+                "decision_needed": "Prazo DST",
+                "recommendation": "Rever",
+                "impact_value": "Baixo",
+                "due_at": local_value,
+            },
+            follow_redirects=False,
+        )
+        assert response.status_code == 303
+        assert db_session.scalar(
+            select(TaskDecision.id).where(TaskDecision.task_id == task.id)
+        ) is None
+
+
+def test_decision_request_rejects_resolver_outside_task_hierarchy(
+    authenticated_client, db_session, monkeypatch
+) -> None:
+    monkeypatch.setattr(task_router.settings, "task_decisions_enabled", True)
+    actor = _actor(db_session)
+    _grant_permissions(db_session, actor, "tasks.request_decision")
+    target = create_user(
+        db_session,
+        name="Decisor fora da hierarquia",
+        email="decision.outside.scope@carfast.local",
+        password="Secret123!",
+        role_codes=["admin"],
+        organizational_unit_codes=["carfast"],
+    )
+    task = _task(db_session, actor)
+    monkeypatch.setattr(task_router, "user_can_access_task_workspace", lambda *args, **kwargs: True)
+    monkeypatch.setattr(task_router, "user_can_view_task", lambda *args, **kwargs: True)
+    monkeypatch.setattr(
+        task_router,
+        "_task_hierarchy_scope_allows",
+        lambda db, user_id, task, *, action: user_id == actor.id,
+    )
+
+    denied = authenticated_client.post(
+        f"/v2-clean/tasks/{task.id}/decisions",
+        data={
+            "decider_id": target.id,
+            "decision_needed": "Não deve bloquear",
+            "recommendation": "Reatribuir",
+            "impact_value": "Alto",
+        },
+        follow_redirects=False,
+    )
+
+    assert denied.status_code == 303
+    db_session.refresh(task)
+    assert task.status == "new"
+    assert db_session.scalar(
+        select(TaskDecision.id).where(TaskDecision.task_id == task.id)
+    ) is None
+
+
 def test_decisions_for_me_filter_and_information_request(
     authenticated_client, db_session, monkeypatch
 ) -> None:
@@ -350,6 +420,39 @@ def test_decision_resolution_fails_closed_outside_hierarchy(
     db_session.refresh(item)
     assert task.status == "waiting_decision"
     assert item.status == "pending"
+
+
+def test_decision_resolution_audit_preserves_information_requested_state(
+    authenticated_client, db_session, monkeypatch
+) -> None:
+    monkeypatch.setattr(task_router.settings, "task_decisions_enabled", True)
+    actor = _actor(db_session)
+    _grant_permissions(db_session, actor, "tasks.resolve_decision")
+    task = _task(db_session, actor)
+    task.status = "waiting_decision"
+    item = TaskDecision(
+        task_id=task.id,
+        requested_by_id=actor.id,
+        decider_id=actor.id,
+        decision_needed="Autorizar após informação",
+        recommendation="Sim",
+        impact_value="Baixo",
+        previous_task_status="new",
+        status="information_requested",
+    )
+    db_session.add(item)
+    db_session.commit()
+    audits = []
+    monkeypatch.setattr(task_router, "record_audit", lambda *args, **kwargs: audits.append(kwargs))
+
+    resolved = authenticated_client.post(
+        f"/v2-clean/tasks/{task.id}/decisions/{item.id}",
+        data={"action": "approve", "comment": "Informação recebida"},
+        follow_redirects=False,
+    )
+
+    assert resolved.status_code == 303
+    assert audits[-1]["before_json"] == {"status": "information_requested"}
 
 
 def test_decision_feature_is_off_by_default(authenticated_client, db_session) -> None:

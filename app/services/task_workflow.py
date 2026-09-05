@@ -80,6 +80,8 @@ TASK_STATUS_TRANSITIONS: dict[str, tuple[str, ...]] = {
     # Support is resolved through the transactional support lifecycle.  The
     # generic transition endpoint remains closed while a request is active.
     "support_requested": (),
+    # Decisions are resolved only by the dedicated permission-scoped lifecycle.
+    "waiting_decision": (),
     "delegated": ("in_execution", "waiting", "resolved", "cancelled"),
     "execution_done": ("ready_validation", "in_execution"),
     "ready_validation": ("resolved", "in_execution"),

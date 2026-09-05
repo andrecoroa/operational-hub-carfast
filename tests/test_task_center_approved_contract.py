@@ -1,9 +1,10 @@
 from pathlib import Path
 import json
 import re
+from html import unescape
 from datetime import date, time, timedelta
 
-from app.models.tasks import Task, TaskComment
+from app.models.tasks import Task, TaskComment, TaskEmailOrigin
 from app.models.admin import User
 from sqlalchemy import event, select
 import app.web.router as task_router
@@ -80,7 +81,8 @@ def test_recurrence_remains_a_permission_scoped_secondary_action() -> None:
     assert 'href="/v2-clean/tasks/recurring">Recorrentes</a>' in TEMPLATE
     assert '@web_router.get("/v2-clean/tasks/recurring"' in ROUTER
     assert 'aria-label="Área do Centro de Tarefas"' in TEMPLATE
-    assert 'href="/v2-clean/tasks" aria-current="page">Tarefas</a>' in TEMPLATE
+    assert 'href="/v2-clean/tasks"' in TEMPLATE
+    assert '>Tarefas</a>' in TEMPLATE
 
 
 def test_approved_safe_default_and_reset_are_explicit() -> None:
@@ -111,20 +113,22 @@ def test_creation_offers_case_in_the_same_progressive_selector() -> None:
     assert "Criar e abrir tarefa" in TEMPLATE
 
 
-def test_approved_queue_has_exactly_seven_fields_and_42px_rows() -> None:
+def test_approved_queue_has_exactly_seven_fields_and_refined_rows() -> None:
     expected = ("Prior.", "Referência", "Assunto", "Categoria", "Responsável", "Prazo", "Estado")
     for label in expected:
         assert f"<th>{label}</th>" in TEMPLATE
     assert 'data-task-field-count="7"' in TEMPLATE
-    assert "height:42px" in CSS
+    assert "tbody tr[data-task-row] td{height:48px" in CSS
+    assert "task-priority-text" in TEMPLATE
+    assert "{{ '▲' if task.priority" not in TEMPLATE
 
 
-def test_approved_preview_is_inline_and_has_at_most_four_rbac_actions() -> None:
+def test_approved_preview_is_inline_and_exposes_five_direct_rbac_actions() -> None:
     assert 'class="task-center-approved-preview ' in TEMPLATE
     assert 'aria-live="polite"' in TEMPLATE
     assert 'data-task-preview-close' in TEMPLATE
     assert 'data-task-preview-action' in TEMPLATE
-    assert len(re.findall(r"<button[^>]+data-task-preview-action=", TEMPLATE)) <= 4
+    assert len(re.findall(r"<button[^>]+data-task-preview-action=", TEMPLATE)) == 5
     assert "task_update_allowed_by_id" in TEMPLATE
     assert "task_close_allowed_by_id" in TEMPLATE
     assert "data-preview-origin" not in TEMPLATE
@@ -132,10 +136,64 @@ def test_approved_preview_is_inline_and_has_at_most_four_rbac_actions() -> None:
     assert "task-preview-description" in TEMPLATE
     assert "data-preview-waiting" in TEMPLATE
     assert "data-preview-support" in TEMPLATE
-    assert "data-task-more-toggle" in TEMPLATE
+    assert "data-task-more-toggle" not in TEMPLATE
+    assert "Mais ações disponíveis" not in TEMPLATE
+    assert ">Criar caso</button>" in TEMPLATE
     assert "function mountPreview(row,groupButton=null)" in TEMPLATE
     assert "row.insertAdjacentElement('afterend',inlinePreviewRow)" in TEMPLATE
     assert "groupButton.insertAdjacentElement('afterend',preview)" in TEMPLATE
+
+
+def test_preview_renders_only_persisted_non_empty_context_without_plate_heuristics(
+    authenticated_client, db_session, monkeypatch
+) -> None:
+    monkeypatch.setattr(task_router.settings, "visual_foundation_enabled", True)
+    actor = db_session.scalar(select(User).where(User.email == "admin.tests@carfast.local"))
+    task = Task(
+        title="Contexto persistido",
+        description="Descrição",
+        task_type="operational_task",
+        status="new",
+        priority="normal",
+        created_by_id=actor.id,
+        assigned_to_id=actor.id,
+        plate="AA-00-BB",
+        reservation_number="RES-7",
+        contract_number="CTR-9",
+        customer_name="Cliente Exemplo",
+        entity_type="vehicle",
+        entity_id="42",
+    )
+    db_session.add(task)
+    db_session.flush()
+    db_session.add(
+        TaskEmailOrigin(
+            task_id=task.id,
+            message_id="msg-context-1",
+            subject="Assunto da origem",
+            source_url="/v2-clean/email?message=msg-context-1",
+        )
+    )
+    db_session.commit()
+
+    response = authenticated_client.get("/v2-clean/tasks?task_scope_view=mine")
+
+    assert response.status_code == 200
+    row = re.search(r'<tr[^>]+data-title="Contexto persistido"[^>]+>', response.text).group(0)
+    encoded = re.search(r'data-context="([^"]*)"', row).group(1)
+    context = json.loads(unescape(encoded))
+    assert context == [
+        {"label": "Viatura", "value": "AA-00-BB", "href": "/v2-clean/fleet/42"},
+        {"label": "Contrato", "value": "CTR-9", "href": ""},
+        {"label": "Reserva", "value": "RES-7", "href": ""},
+        {"label": "Cliente", "value": "Cliente Exemplo", "href": ""},
+        {
+            "label": "Email de origem",
+            "value": "Assunto da origem",
+            "href": "/v2-clean/email?message=msg-context-1",
+        },
+    ]
+    assert "find_vehicle_by_plate" not in ROUTER[ROUTER.index("task_context_items_by_id") : ROUTER.index("task_claim_allowed_by_id")]
 
 
 def test_inline_preview_toggles_single_selection_and_restores_keyboard_focus() -> None:

@@ -276,6 +276,32 @@ class TaskEmailOrigin(Base):
     rule_code: Mapped[str | None] = mapped_column(String(120), index=True)
 
 
+class TaskDecision(TimestampMixin, Base):
+    __tablename__ = "task_decisions"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('pending', 'approved', 'rejected', 'information_requested')",
+            name="ck_task_decisions_status",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    task_id: Mapped[int] = mapped_column(
+        ForeignKey("tasks.id", ondelete="CASCADE"), index=True
+    )
+    requested_by_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    decider_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    decision_needed: Mapped[str] = mapped_column(Text)
+    recommendation: Mapped[str] = mapped_column(Text)
+    impact_value: Mapped[str] = mapped_column(Text)
+    due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
+    previous_task_status: Mapped[str] = mapped_column(String(80))
+    status: Mapped[str] = mapped_column(String(40), default="pending", index=True)
+    resolution_comment: Mapped[str | None] = mapped_column(Text)
+    resolved_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
 class TaskHelpRequest(Base):
     __tablename__ = "task_help_requests"
     __table_args__ = (

@@ -327,9 +327,12 @@ def test_clean_email_inbox_and_thread_render(
     )
     thread, _ = ingest_inbound(db_session, _payload("pm-ui-1"))
 
-    inbox = authenticated_client.get("/v2-clean/email")
+    mailbox = authenticated_client.get("/v2-clean/email")
+    inbox = authenticated_client.get("/v2-clean/email?view=all")
     detail = authenticated_client.get(f"/v2-clean/email/{thread.id}")
 
+    assert mailbox.status_code == 200
+    assert "Abrir caixa" in mailbox.text
     assert inbox.status_code == 200
     assert "Pedido de informação" in inbox.text
     assert thread_reference(thread) in inbox.text
@@ -358,11 +361,13 @@ def test_email_inbox_defaults_to_triage_and_searches_message_content(
     archived_thread.status = "archived"
     db_session.commit()
 
-    default_inbox = authenticated_client.get("/v2-clean/email")
-    all_inbox = authenticated_client.get("/v2-clean/email?status=all")
-    body_search = authenticated_client.get("/v2-clean/email?status=all&q=pesquisa+alargada")
+    default_inbox = authenticated_client.get("/v2-clean/email?view=all")
+    all_inbox = authenticated_client.get("/v2-clean/email?view=all&status=all")
+    body_search = authenticated_client.get(
+        "/v2-clean/email?view=all&status=all&q=pesquisa+alargada"
+    )
     reference_search = authenticated_client.get(
-        f"/v2-clean/email?status=all&q={thread_reference(archived_thread)}"
+        f"/v2-clean/email?view=all&status=all&q={thread_reference(archived_thread)}"
     )
 
     assert default_inbox.status_code == 200

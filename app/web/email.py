@@ -741,9 +741,25 @@ def _thread_view_data(db, thread: EmailThread) -> dict:
     )
     message_positions = {message.id: pos for pos, message in enumerate(messages, 1)}
     grouped: dict[int, list[dict]] = {message.id: [] for message in messages}
+    embedded: dict[int, list[dict]] = {message.id: [] for message in messages}
+    messages_by_id = {message.id: message for message in messages}
+    hash_counts: dict[str, int] = {}
     for attachment in attachments:
-        position = len(grouped[attachment.message_id]) + 1
-        grouped[attachment.message_id].append(
+        if attachment.sha256:
+            hash_counts[attachment.sha256] = hash_counts.get(attachment.sha256, 0) + 1
+    for attachment in attachments:
+        message = messages_by_id[attachment.message_id]
+        destination = (
+            embedded[attachment.message_id]
+            if _is_embedded_email_image(
+                message,
+                attachment,
+                repeated_hash=hash_counts.get(attachment.sha256, 0) > 1,
+            )
+            else grouped[attachment.message_id]
+        )
+        position = len(grouped[attachment.message_id]) + len(embedded[attachment.message_id]) + 1
+        destination.append(
             {
                 "item": attachment,
                 "reference": attachment_reference(
@@ -782,6 +798,7 @@ def _thread_view_data(db, thread: EmailThread) -> dict:
             for position, message in enumerate(messages, 1)
         },
         "attachments_by_message": grouped,
+        "embedded_images_by_message": embedded,
         "deliveries_by_message": deliveries_by_message,
         "origins_by_message": deliveries_by_message,
         "received_originally_by_message": received_originally_by_message,
@@ -799,6 +816,56 @@ def _thread_view_data(db, thread: EmailThread) -> dict:
         ),
         "thread_reference": thread_reference(thread),
     }
+
+
+def _message_header_values(message: EmailMessage, name: str) -> list[str]:
+    headers = message.headers_json or []
+    if isinstance(headers, dict):
+        return [
+            str(value)
+            for key, value in headers.items()
+            if str(key).casefold() == name.casefold()
+        ]
+    values: list[str] = []
+    for header in headers if isinstance(headers, list) else []:
+        if not isinstance(header, dict):
+            continue
+        key = header.get("Name", header.get("name", ""))
+        if str(key).casefold() != name.casefold():
+            continue
+        value = header.get("Value", header.get("value"))
+        if value is not None:
+            values.append(str(value))
+    return values
+
+
+def _is_embedded_email_image(
+    message: EmailMessage,
+    attachment: EmailAttachment,
+    *,
+    repeated_hash: bool,
+) -> bool:
+    """Classify signature/inline images from persisted MIME evidence only."""
+    if not (attachment.content_type or "").casefold().startswith("image/"):
+        return False
+    content_id = (attachment.content_id or "").strip().strip("<>").casefold()
+    html_body = (message.html_body or "").casefold()
+    if content_id and f"cid:{content_id}" in html_body:
+        return True
+    disposition_values = _message_header_values(message, "Content-Disposition")
+    if any(
+        "inline" in value.casefold()
+        and (
+            not attachment.file_name
+            or attachment.file_name.casefold() in value.casefold()
+            or (content_id and content_id in value.casefold())
+        )
+        for value in disposition_values
+    ):
+        return True
+    # A repeated image can be a legitimate reattached photo or scan.  Repetition
+    # alone is not persisted MIME evidence that the part was inline.
+    return False
 
 
 def _reply_all_context(db, view_data: dict, channel: EmailChannel) -> dict:
@@ -1143,6 +1210,7 @@ def email_inbox(
                         SimpleNamespace(
                             key=f"mailbox-{item.id}",
                             label=item.name,
+                            channel=item,
                             rows=group_rows,
                             new_count=int(group_counts.new_count or 0),
                             open_count=int(group_counts.open_count or 0),

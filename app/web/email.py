@@ -863,7 +863,9 @@ def _is_embedded_email_image(
         for value in disposition_values
     ):
         return True
-    return repeated_hash
+    # A repeated image can be a legitimate reattached photo or scan.  Repetition
+    # alone is not persisted MIME evidence that the part was inline.
+    return False
 
 
 def _reply_all_context(db, view_data: dict, channel: EmailChannel) -> dict:

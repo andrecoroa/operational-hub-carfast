@@ -223,7 +223,7 @@
         return;
       }
       if (response.ok) {
-        await openPreview(button.dataset.emailThreadId);
+        await openPreview(button.dataset.emailThreadId, null, true);
       } else {
         button.disabled = false;
       }
@@ -245,17 +245,17 @@
       });
       const shell = form.closest("[data-email-thread-id]");
       if (response.ok && shell?.dataset.emailThreadId) {
-        await openPreview(shell.dataset.emailThreadId);
+        await openPreview(shell.dataset.emailThreadId, null, true);
       } else if (submitter) {
         submitter.disabled = false;
       }
     }));
   };
-  const openPreview = async (threadId, trigger = null) => {
+  const openPreview = async (threadId, trigger = null, forceRefresh = false) => {
     if (!threadId) return;
     const sourceRow = trigger?.closest?.("[data-email-preview]") || document.querySelector(`[data-email-preview="${threadId}"]`);
     if (!sourceRow) return;
-    if (inlinePreviewRow?.dataset.emailInlineThread === String(threadId)) {
+    if (!forceRefresh && inlinePreviewRow?.dataset.emailInlineThread === String(threadId)) {
       resetInlinePreview();
       return;
     }

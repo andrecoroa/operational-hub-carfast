@@ -66,7 +66,7 @@ def test_preview_actions_refresh_without_closing_or_losing_selected_thread():
 
     assert 'inlinePreviewRow = document.createElement("tr")' in script
     assert "sourceRow.after(inlinePreviewRow)" in script
-    assert "await openPreview(shell.dataset.emailThreadId)" in script
+    assert "await openPreview(shell.dataset.emailThreadId, null, true)" in script
     assert 'row.dataset.emailPreview === String(threadId)' in script
     assert 'dialog?.addEventListener("close"' in script
     assert "const restorePreviewFocus" in script
@@ -254,7 +254,7 @@ def test_embedded_image_classification_uses_persisted_mime_evidence_only():
 
     assert email_web._is_embedded_email_image(message, cid_image, repeated_hash=False)
     assert not email_web._is_embedded_email_image(message, real_image, repeated_hash=False)
-    assert email_web._is_embedded_email_image(message, real_image, repeated_hash=True)
+    assert not email_web._is_embedded_email_image(message, real_image, repeated_hash=True)
     assert not email_web._is_embedded_email_image(message, document, repeated_hash=True)
 
 

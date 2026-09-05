@@ -106,8 +106,12 @@ def test_explicit_sort_and_compact_inline_workbench_are_exposed() -> None:
     assert 'name="sort" data-task-sort' in TEMPLATE
     assert "Ordenação:" in TEMPLATE
     assert "data-workbench-tab" not in TEMPLATE
-    for field in ("category", "owner", "due", "sla-detail", "state", "priority"):
+    for field in ("category", "owner", "due", "sla-detail"):
         assert f"data-preview-{field}" in TEMPLATE
+    assert 'data-state="{{ task_status_labels.get(task.status, task.status) }}"' in TEMPLATE
+    assert 'data-priority="{{ task_priority_labels.get(task.priority, \'Normal\') }}"' in TEMPLATE
+    assert "data-preview-state" not in TEMPLATE
+    assert "data-preview-priority" not in TEMPLATE
     assert "Próxima ação:" in TEMPLATE
 
 

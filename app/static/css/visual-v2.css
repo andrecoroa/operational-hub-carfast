@@ -547,6 +547,7 @@ dialog { border: 1px solid var(--cf-gray-200); border-radius: 12px; box-shadow: 
 .visual-email-table td small { margin-top: 3px; color: var(--cf-gray-600); font-size: 11px; line-height: 15px; }
 .visual-email-table tr:hover td,.visual-email-table tr:focus td { background: var(--cf-blue-050); }
 .visual-email-table [data-email-preview-trigger] { display: inline-flex; min-width: 60px; min-height: 32px; align-items: center; justify-content: center; white-space: nowrap; }
+.visual-email-center .email-list-inline .visual-email-table { min-width:900px; }
 .visual-email-preview { width: min(1120px,calc(100vw - 32px)); max-width: 1120px; max-height: calc(100vh - 32px); padding: 0; }
 .visual-email-compose { width: min(720px,calc(100vw - 32px)); max-width: 720px; max-height: calc(100vh - 32px); }
 :is(.visual-email-preview,.visual-email-compose)::backdrop { background: rgb(6 27 56 / 58%); }

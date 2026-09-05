@@ -64,7 +64,8 @@ def test_preview_actions_refresh_without_closing_or_losing_selected_thread():
     inbox = (ROOT / "app/templates/clean_email_inbox.html").read_text(encoding="utf-8")
     thread = (ROOT / "app/templates/clean_email_thread.html").read_text(encoding="utf-8")
 
-    assert "if (!dialog.open) dialog.showModal()" in script
+    assert 'inlinePreviewRow = document.createElement("tr")' in script
+    assert "sourceRow.after(inlinePreviewRow)" in script
     assert "await openPreview(shell.dataset.emailThreadId)" in script
     assert 'row.dataset.emailPreview === String(threadId)' in script
     assert 'dialog?.addEventListener("close"' in script
@@ -76,7 +77,8 @@ def test_preview_actions_refresh_without_closing_or_losing_selected_thread():
     assert "closeActivePreview()" in script
     assert 'dialog?.addEventListener("cancel"' in script
     assert "event.preventDefault();\n    closeActivePreview();" in script
-    assert 'dialog?.addEventListener("close", () => {\n    document.querySelector(".ui-email-list-preview")?.classList.remove("is-preview-open");' in script
+    assert "if (inlinePreviewRow?.dataset.emailInlineThread === String(threadId))" in script
+    assert 'row.setAttribute("aria-expanded", String(selected))' in script
     assert 'dialog[open]:not(#email-preview-dialog)' in script
     assert "email.js?v=20260901-email-mobile-focus" in inbox
     assert "email.js?v=20260901-email-mobile-focus" in thread
@@ -164,9 +166,10 @@ def test_email_work_views_group_without_duplicates_and_mine_stays_scoped(
 
     assert 'data-email-work-view="mailbox"' in first_access.text
     assert 'aria-current="page">Por caixa</a>' in mailbox.text
-    assert mailbox.text.count(f'data-email-preview="{mine.id}"') == 1
-    assert mailbox.text.count(f'data-email-preview="{other.id}"') == 1
-    assert mailbox.text.count(f'data-email-preview="{unassigned.id}"') == 1
+    assert f'data-email-preview="{mine.id}"' not in mailbox.text
+    assert f'data-email-preview="{other.id}"' not in mailbox.text
+    assert f'data-email-preview="{unassigned.id}"' not in mailbox.text
+    assert mailbox.text.count("Abrir caixa") >= 1
     assert "novas" in mailbox.text and "por tratar" in mailbox.text
     assert 'data-email-work-view="mine"' in mine_view.text
     assert mine.subject in mine_view.text
@@ -217,6 +220,67 @@ def test_email_body_keeps_safe_links_and_removes_active_content(
     assert "segredo-frame" not in body.text
 
 
+def test_embedded_image_classification_uses_persisted_mime_evidence_only():
+    message = EmailMessage(
+        thread_id=1,
+        direction="inbound",
+        sender="sender@example.invalid",
+        subject="MIME",
+        html_body='<p>Olá</p><img src="cid:signature-logo">',
+        headers_json=[],
+    )
+    cid_image = EmailAttachment(
+        message_id=1,
+        file_name="logo.png",
+        content_type="image/png",
+        content_id="<signature-logo>",
+        storage_path="synthetic/logo.png",
+        sha256="a" * 64,
+    )
+    real_image = EmailAttachment(
+        message_id=1,
+        file_name="damage.jpg",
+        content_type="image/jpeg",
+        storage_path="synthetic/damage.jpg",
+        sha256="b" * 64,
+    )
+    document = EmailAttachment(
+        message_id=1,
+        file_name="invoice.pdf",
+        content_type="application/pdf",
+        storage_path="synthetic/invoice.pdf",
+        sha256="c" * 64,
+    )
+
+    assert email_web._is_embedded_email_image(message, cid_image, repeated_hash=False)
+    assert not email_web._is_embedded_email_image(message, real_image, repeated_hash=False)
+    assert email_web._is_embedded_email_image(message, real_image, repeated_hash=True)
+    assert not email_web._is_embedded_email_image(message, document, repeated_hash=True)
+
+
+def test_embedded_image_classification_honours_persisted_inline_disposition():
+    message = EmailMessage(
+        thread_id=1,
+        direction="inbound",
+        sender="sender@example.invalid",
+        subject="MIME",
+        headers_json=[
+            {"Name": "Content-Disposition", "Value": 'inline; filename="footer.png"'}
+        ],
+    )
+    attachment = EmailAttachment(
+        message_id=1,
+        file_name="footer.png",
+        content_type="image/png",
+        storage_path="synthetic/footer.png",
+        sha256="d" * 64,
+    )
+
+    assert email_web._is_embedded_email_image(
+        message, attachment, repeated_hash=False
+    )
+
+
 def test_group_views_keep_exact_counts_and_do_not_hide_a_group_after_one_hundred(
     authenticated_client, db_session, monkeypatch
 ):
@@ -255,10 +319,10 @@ def test_group_views_keep_exact_counts_and_do_not_hide_a_group_after_one_hundred
     )
 
     assert mailbox.status_code == 200
-    assert mailbox.text.count("101 total") == 1
-    assert "100 mais recentes" in mailbox.text
-    assert other_group.subject in mailbox.text
-    assert mailbox.text.count('data-email-preview="') == 101
+    assert mailbox.text.count("101 conversa(s) nos filtros atuais") == 1
+    assert "100 mais recentes" not in mailbox.text
+    assert other_group.subject not in mailbox.text
+    assert mailbox.text.count('data-email-preview="') == 0
     assert mine.status_code == 200
     assert mine.text.count("101 total") == 1
     assert "100 mais recentes" in mine.text
@@ -823,20 +887,16 @@ def test_mobile_layout_is_single_column_without_body_overflow():
     assert ".email-modal-footer { position:relative;" in css
 
 
-def test_desktop_preview_uses_two_pane_queue_and_unified_work_area():
+def test_desktop_preview_is_inline_below_the_selected_row():
     css = (ROOT / "app/static/css/ui-contract-v1.css").read_text(encoding="utf-8")
     app_css = (ROOT / "app/static/css/app.css").read_text(encoding="utf-8")
     script = (ROOT / "app/static/js/email.js").read_text(encoding="utf-8")
 
-    assert ".ui-email-list-preview.is-preview-open { grid-template-columns:260px minmax(0,1fr); }" in css
-    assert ".ui-email-list-preview:not(.is-preview-open) { grid-template-columns:minmax(0,1fr); }" in css
-    assert ".ui-email-list-preview:not(.is-preview-open) > #email-preview-panel { display:none; }" in css
-    assert 'classList.remove("is-preview-open")' in script
-    assert ".ui-context-preview .email-reader-grid {" in css
-    assert "grid-template-columns:minmax(0,1fr);" in css
-    assert "grid-template-rows:minmax(160px,1fr) clamp(170px,22vh,210px);" in css
-    assert "grid-template-columns:repeat(4,minmax(0,1fr));" in css
-    assert "grid-template-columns:minmax(0,1.65fr) minmax(280px,.85fr)" not in css
+    assert ".email-inline-preview-row > td" in css
+    assert ".email-inline-preview-body" in css
+    assert 'inlinePreviewRow = document.createElement("tr")' in script
+    assert "sourceRow.after(inlinePreviewRow)" in script
+    assert "cell.colSpan = sourceRow.children.length || 7" in script
     assert ".email-attachment-form footer { display:grid; grid-template-columns:repeat(2,minmax(0,1fr));" in app_css
     assert ".email-attachment-form footer > button { grid-column:1/-1; }" in app_css
 

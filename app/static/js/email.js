@@ -1,6 +1,6 @@
 (() => {
   const dialog = document.getElementById("email-preview-dialog");
-  const previewPanel = document.getElementById("email-preview-panel");
+  let inlinePreviewRow = null;
   let previewTrigger = null;
   const restorePreviewFocus = () => {
     const trigger = previewTrigger;
@@ -8,11 +8,14 @@
     if (!(trigger instanceof HTMLElement) || !trigger.isConnected) return;
     setTimeout(() => trigger.focus({preventScroll: true}), 0);
   };
-  const resetPreviewPanel = () => {
-    if (!previewPanel) return;
-    previewPanel.innerHTML = '<div class="email-preview-loading"><strong>Pré-visualização</strong><span>Selecione uma conversa para triar, classificar e responder sem perder a fila.</span></div>';
-    document.querySelector(".ui-email-list-preview")?.classList.remove("is-preview-open");
-    document.querySelectorAll("[data-email-preview]").forEach((row) => row.classList.remove("is-selected"));
+  const resetInlinePreview = () => {
+    inlinePreviewRow?.remove();
+    inlinePreviewRow = null;
+    document.querySelectorAll("[data-email-preview]").forEach((row) => {
+      row.classList.remove("is-selected");
+      row.setAttribute("aria-expanded", "false");
+    });
+    document.querySelectorAll("[data-email-preview-trigger]").forEach((button) => button.setAttribute("aria-expanded", "false"));
     restorePreviewFocus();
   };
   const closeActivePreview = () => {
@@ -20,8 +23,8 @@
       dialog.close();
       return true;
     }
-    if (previewPanel?.querySelector("[data-email-thread-id]")) {
-      resetPreviewPanel();
+    if (inlinePreviewRow) {
+      resetInlinePreview();
       return true;
     }
     return false;
@@ -227,7 +230,7 @@
     }));
     root.querySelectorAll("form").forEach((form) => form.addEventListener("submit", async (event) => {
       if (event.submitter?.matches("[data-email-approve]")) return;
-      const formPreviewRoot = form.closest("#email-preview-dialog, #email-preview-panel");
+      const formPreviewRoot = form.closest("#email-preview-dialog, .email-inline-preview-body");
       if (!formPreviewRoot || (formPreviewRoot === dialog && !dialog.open)) return;
       event.preventDefault();
       const submitter = event.submitter;
@@ -249,32 +252,41 @@
     }));
   };
   const openPreview = async (threadId, trigger = null) => {
-    if (!dialog || !threadId) return;
-    const usePanel = Boolean(previewPanel && window.matchMedia("(min-width: 1025px)").matches);
-    const previewRoot = usePanel ? previewPanel : dialog;
+    if (!threadId) return;
+    const sourceRow = trigger?.closest?.("[data-email-preview]") || document.querySelector(`[data-email-preview="${threadId}"]`);
+    if (!sourceRow) return;
+    if (inlinePreviewRow?.dataset.emailInlineThread === String(threadId)) {
+      resetInlinePreview();
+      return;
+    }
+    inlinePreviewRow?.remove();
+    inlinePreviewRow = document.createElement("tr");
+    inlinePreviewRow.className = "email-inline-preview-row";
+    inlinePreviewRow.dataset.emailInlineThread = String(threadId);
+    const cell = document.createElement("td");
+    cell.colSpan = sourceRow.children.length || 7;
+    const previewRoot = document.createElement("div");
+    previewRoot.className = "email-inline-preview-body";
+    previewRoot.setAttribute("aria-live", "polite");
+    cell.append(previewRoot);
+    inlinePreviewRow.append(cell);
+    sourceRow.after(inlinePreviewRow);
     if (trigger) previewTrigger = trigger;
     else if (!(previewTrigger instanceof HTMLElement) || !previewTrigger.isConnected) previewTrigger = document.activeElement;
-    const previousShell = previewRoot.querySelector("[data-email-thread-id]");
-    const previousConversationScroll = previousShell?.querySelector(".email-conversation")?.scrollTop || 0;
-    const previousTriageScroll = previousShell?.querySelector(".email-triage-pane")?.scrollTop || 0;
     previewRoot.innerHTML = '<div class="email-preview-loading">A abrir conversa…</div>';
-    if (!usePanel) {
-      if (!dialog.open) dialog.showModal();
-    }
     const response = await fetch(`/v2-clean/email/${threadId}/preview`, {headers: {"X-Requested-With": "fetch"}});
     previewRoot.innerHTML = await response.text();
-    document.querySelector(".ui-email-list-preview")?.classList.add("is-preview-open");
     bindThread(previewRoot);
     const fullPageLink = previewRoot.querySelector(".email-open-full");
     if (fullPageLink) fullPageLink.href = `${fullPageLink.pathname}?return_context=${encodeURIComponent(location.pathname + location.search)}`;
-    previewRoot.querySelector("[data-email-modal-close], button, a, input, select, textarea")?.focus();
-    requestAnimationFrame(() => {
-      const conversation = previewRoot.querySelector(".email-conversation");
-      const triage = previewRoot.querySelector(".email-triage-pane");
-      if (conversation) conversation.scrollTop = previousConversationScroll;
-      if (triage) triage.scrollTop = previousTriageScroll;
+    previewRoot.querySelector("[data-email-modal-close], button, a, input, select, textarea")?.focus({preventScroll: true});
+    document.querySelectorAll("[data-email-preview]").forEach((row) => {
+      const selected = row.dataset.emailPreview === String(threadId);
+      row.classList.toggle("is-selected", selected);
+      row.setAttribute("aria-expanded", String(selected));
     });
-    document.querySelectorAll("[data-email-preview]").forEach((row) => row.classList.toggle("is-selected", row.dataset.emailPreview === String(threadId)));
+    document.querySelectorAll("[data-email-preview-trigger]").forEach((button) => button.setAttribute("aria-expanded", String(button.dataset.emailPreviewTrigger === String(threadId))));
+    inlinePreviewRow.scrollIntoView({block: "nearest"});
   };
   document.querySelectorAll("[data-email-preview]").forEach((element) => element.addEventListener("click", (event) => {
     if (event.target.closest("a, button")) return;
@@ -296,7 +308,6 @@
     closeActivePreview();
   });
   dialog?.addEventListener("close", () => {
-    document.querySelector(".ui-email-list-preview")?.classList.remove("is-preview-open");
     document.querySelectorAll("[data-email-preview]").forEach((row) => row.classList.remove("is-selected"));
     restorePreviewFocus();
   });

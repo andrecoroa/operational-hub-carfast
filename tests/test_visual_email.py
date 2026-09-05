@@ -5,6 +5,7 @@ ROOT = Path(__file__).resolve().parents[1]
 TEMPLATE = ROOT / "app" / "templates" / "clean_email_inbox.html"
 THREAD = ROOT / "app" / "templates" / "_email_thread_content.html"
 CSS = ROOT / "app" / "static" / "css" / "visual-v2.css"
+CONTRACT_CSS = ROOT / "app" / "static" / "css" / "ui-contract-v1.css"
 JS = ROOT / "app" / "static" / "js" / "email.js"
 ROUTER = ROOT / "app" / "web" / "email.py"
 
@@ -16,15 +17,14 @@ def test_email_center_rebuilds_real_composition() -> None:
         "visual-email-center",
         "visual-email-heading",
         "visual-email-overview",
-        "visual-email-mailboxes",
         "visual-email-metrics",
-        "visual-email-statuses",
         "visual-email-workbench",
         "visual-email-workbench-header",
         "visual-email-filters",
         "visual-email-table-wrap",
         "visual-email-table",
-        "visual-email-preview",
+        "email-mailbox-summary",
+        "email-list-inline",
         "visual-email-compose",
         "Parametrizar caixas",
         "Aplicar filtros",
@@ -46,7 +46,7 @@ def test_email_center_keeps_triage_preview_and_actions() -> None:
         "email-triage-pane",
         "Guardar triagem",
         "Responder",
-        "Concluir triagem",
+        "Validar classificação",
         "Criar tarefa",
         "email-attachment-dialog",
     ):
@@ -80,14 +80,30 @@ def test_email_preview_keyboard_and_focus_return_contract() -> None:
 
     for contract in (
         "let previewTrigger = null",
-        "previewTrigger = trigger || document.activeElement",
+        "if (trigger) previewTrigger = trigger",
         'event.key !== "Enter" && event.key !== " "',
         "openPreview(element.dataset.emailPreview, element)",
         "openPreview(button.dataset.emailPreviewTrigger, button)",
-        "previewTrigger.focus()",
+        "trigger.focus({preventScroll: true})",
         "return_context=${encodeURIComponent(location.pathname + location.search)}",
     ):
         assert contract in source
+
+
+def test_email_inline_mailboxes_and_mobile_overflow_contract() -> None:
+    template = TEMPLATE.read_text(encoding="utf-8")
+    css = CONTRACT_CSS.read_text(encoding="utf-8")
+    script = JS.read_text(encoding="utf-8")
+
+    assert "email-mailbox-summary" in template
+    assert "Abrir caixa" in template
+    assert "Recebido originalmente em:" not in template.split("{% block body %}", 1)[0]
+    assert "email-inline-preview-row" in script
+    assert "sourceRow.after(inlinePreviewRow)" in script
+    assert "inlinePreviewRow.scrollIntoView" in script
+    assert "@media (max-width:900px)" in css
+    assert ".email-inline-preview-body { max-height:none; overflow:visible; }" in css
+    assert ".email-mailbox-summary { grid-template-columns:1fr; }" in css
 
 
 def test_email_full_page_return_context_is_local_and_feature_gated() -> None:

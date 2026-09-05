@@ -11,17 +11,15 @@ PARTNERS = (ROOT / "app/templates/clean_suppliers.html").read_text(encoding="utf
 
 
 def test_email_uses_same_page_list_preview_contract() -> None:
-    assert "ui-email-list-preview" in EMAIL
-    assert "ui-context-preview" in EMAIL
+    assert "email-list-inline" in EMAIL
+    assert "email-inline-preview-row" in EMAIL_JS
     assert "id=\"email-preview-dialog\"" in EMAIL
-    assert "dialog.showModal();" in EMAIL_JS
-    assert "const previewRoot = usePanel ? previewPanel : dialog" in EMAIL_JS
-    assert 'form.closest("#email-preview-dialog, #email-preview-panel")' in EMAIL_JS
+    assert "sourceRow.after(inlinePreviewRow)" in EMAIL_JS
+    assert 'form.closest("#email-preview-dialog, .email-inline-preview-body")' in EMAIL_JS
     assert "formPreviewRoot === dialog && !dialog.open" in EMAIL_JS
     assert "closeActivePreview" in EMAIL_JS
-    assert "resetPreviewPanel()" in EMAIL_JS
-    assert "<dialog" in EMAIL and "<dialog" not in EMAIL.split("ui-email-list-preview", 1)[1].split("</div>{% if foundation_ui_enabled %}</section>", 1)[0]
-    assert ".ui-email-list-preview { display: grid;" in CSS
+    assert "resetInlinePreview()" in EMAIL_JS
+    assert ".email-inline-preview-body" in CSS
 
 
 def test_documents_keep_canonical_workbench_and_topbar() -> None:

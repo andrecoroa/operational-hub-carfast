@@ -32,6 +32,8 @@ Os dados não foram removidos por migration: matrícula, reserva, contrato e cli
 - Compile `app` + `migrations`: PASS.
 - Alembic: uma cabeça, `fffaef5a6b7c`.
 - Browser sintético: desktop 1440×731 e mobile 390×844; `scrollWidth == clientWidth` no mobile; preview inline; Escape fecha e foco regressa à linha.
+- Restauro do preview: a automação `task_preview_toggle_browser_evidence.mjs` cobre Lista, Por categoria e Por caso; em cada modo valida reload/hash, um único preview e montagem imediatamente sob a linha/acionador visível (nunca sob a linha de tabela oculta do agrupamento).
+- Renovação pré-PR: 82 testes focados PASS; compile/import PASS; Ruff canónico PASS; baseline arquitetural regenerado apenas para a tabela aditiva e novos formulários/redirects e novamente verificado pelo check oficial.
 
 ## Migration e rollback
 

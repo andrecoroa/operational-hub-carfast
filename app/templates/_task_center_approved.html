@@ -52,13 +52,13 @@
       </section>
       <div data-task-preview-home hidden><aside class="task-center-approved-preview is-empty" aria-live="polite" data-task-preview>
         <div class="task-center-approved-placeholder"><strong>Selecione uma tarefa</strong><span>O resumo e as ações essenciais aparecem aqui, sem sair da fila.</span></div>
-        <header><div><span data-preview-reference></span><strong data-preview-title></strong></div><div class="task-preview-header-tags"><span data-preview-state></span><span data-preview-priority></span><button type="button" aria-label="Fechar preview" data-task-preview-close>×</button></div></header>
+        <header class="task-preview-closebar"><button type="button" aria-label="Fechar preview" data-task-preview-close>×</button></header>
         <div class="task-center-approved-preview-body" tabindex="-1" data-task-work-context>
           <div class="task-preview-alerts"><span data-preview-relation hidden></span><span data-preview-sla hidden></span><span data-preview-waiting hidden></span><span data-preview-support hidden></span></div>
           <p class="task-preview-description" data-preview-summary></p>
           <div class="task-preview-context" data-preview-context hidden aria-label="Contexto relacionado"></div>
           <div class="task-preview-facts"><section><small>Responsabilidade</small><strong data-preview-owner></strong><button type="button" data-task-preview-edit="assignment">Atribuir / Alterar</button></section><section><small>Classificação</small><strong data-preview-category></strong><button type="button" data-task-preview-edit="classification">Reclassificar</button></section><section><small>Prazo e SLA</small><strong><span data-preview-due></span> · <span data-preview-sla-detail></span></strong><button type="button" data-task-preview-edit="due">Alterar prazo</button></section></div>
-          <strong class="task-next-action">Próxima ação: <span data-preview-next-action></span></strong><small class="task-preview-updated"><b>Última atualização</b><span data-preview-update></span></small>
+          <strong class="task-next-action">Próxima ação: <span data-preview-next-action></span></strong>
         </div>
         <footer><button type="button" class="primary" data-task-preview-action="open">Abrir e trabalhar</button><button type="button" data-task-preview-action="state">Alterar estado</button><button type="button" data-task-preview-action="note">Comentar</button><button type="button" data-task-preview-action="support">Solicitar suporte</button>{% if task_decisions_enabled %}<button type="button" data-task-preview-action="decision" hidden>Pedir decisão</button>{% endif %}{% if task_cases_enabled and can_create_cases %}<span data-task-case-secondary hidden><button type="button" data-case-flow="related">Criar caso</button></span>{% endif %}</footer>
       </aside></div>
@@ -76,6 +76,25 @@
   const form=document.querySelector('[data-task-filters]'), preview=document.querySelector('[data-task-preview]'), previewHome=document.querySelector('[data-task-preview-home]'), scrollWrap=document.querySelector('[data-task-scroll]'), rows=[...document.querySelectorAll('[data-task-row]')], groupButtons=[...document.querySelectorAll('[data-group-task]')];
   if(!form||!preview)return;
   const supportAvailable={{ task_support_available_by_id|tojson }};
+  rows.forEach(row=>{
+    if(!row.dataset.update||row.dataset.update==='-')return;
+    const statusCell=row.lastElementChild;
+    const statusValue=statusCell?.firstElementChild||statusCell;
+    if(statusValue&&!statusValue.querySelector('.task-row-updated')){
+      const updated=document.createElement('small');
+      updated.className='task-row-updated';
+      updated.textContent=`Atualizada ${row.dataset.update}`;
+      statusValue.append(updated);
+    }
+    const groupButton=groupButtons.find(button=>button.dataset.groupTask===row.dataset.taskId);
+    if(groupButton&&!groupButton.querySelector('.task-row-updated')){
+      const groupStatus=[...groupButton.children].find(item=>item.textContent.trim()===row.dataset.state);
+      const updated=document.createElement('small');
+      updated.className='task-row-updated';
+      updated.textContent=`Atualizada ${row.dataset.update}`;
+      (groupStatus||groupButton).append(updated);
+    }
+  });
   const decisionContexts={{ task_decision_context_by_id|tojson }},canRequestDecision={{ can_request_decision|tojson }};
   const taskCaseIds={{ task_case_ids_by_id|tojson }};
   const statusSelect=form.querySelector('select[name=status]'),dueSelect=form.querySelector('select[name=due]');

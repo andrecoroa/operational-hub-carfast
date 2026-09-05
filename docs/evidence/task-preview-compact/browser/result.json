@@ -1,0 +1,104 @@
+{
+  "flat-1440x731": {
+    "active": "3",
+    "bodyWidth": 1440,
+    "width": 1440,
+    "hash": "#task-3",
+    "search": "?workspace=mine&mine_kind=all&assignment=&category=all&task_scope_view=mine&queue=tasks_support&status=open&due=&q=&sort=priority&grouping=flat",
+    "adjacent": true,
+    "previewCount": 1,
+    "compact": {
+      "closebarControls": 1,
+      "descriptionHeight": 52.796875,
+      "footerWidth": 1182,
+      "actionWidth": 163.890625,
+      "previewHeight": 222.796875,
+      "rowUpdateVisible": true
+    }
+  },
+  "case-1440x731": {
+    "active": "1",
+    "bodyWidth": 1440,
+    "width": 1440,
+    "hash": "#task-1",
+    "search": "?workspace=mine&mine_kind=all&assignment=&category=all&task_scope_view=mine&queue=tasks_support&status=open&due=&q=&sort=priority&grouping=case",
+    "adjacent": true,
+    "previewCount": 1,
+    "compact": {
+      "closebarControls": 1,
+      "descriptionHeight": 52.796875,
+      "footerWidth": 1180,
+      "actionWidth": 97.96875,
+      "previewHeight": 257.796875,
+      "rowUpdateVisible": true
+    }
+  },
+  "category-1440x731": {
+    "active": "3",
+    "bodyWidth": 1440,
+    "width": 1440,
+    "hash": "#task-3",
+    "search": "?workspace=mine&mine_kind=all&assignment=&category=all&task_scope_view=mine&queue=tasks_support&status=open&due=&q=&sort=priority&grouping=category",
+    "adjacent": true,
+    "previewCount": 1,
+    "compact": {
+      "closebarControls": 1,
+      "descriptionHeight": 52.796875,
+      "footerWidth": 1180,
+      "actionWidth": 163.890625,
+      "previewHeight": 221.796875,
+      "rowUpdateVisible": true
+    }
+  },
+  "flat-390x844": {
+    "active": "3",
+    "bodyWidth": 390,
+    "width": 390,
+    "hash": "#task-3",
+    "search": "?workspace=mine&mine_kind=all&assignment=&category=all&task_scope_view=mine&queue=tasks_support&status=open&due=&q=&sort=priority&grouping=flat",
+    "adjacent": true,
+    "previewCount": 1,
+    "compact": {
+      "closebarControls": 1,
+      "descriptionHeight": 52.796875,
+      "footerWidth": 356,
+      "actionWidth": 163.890625,
+      "previewHeight": 302.796875,
+      "rowUpdateVisible": true
+    }
+  },
+  "case-390x844": {
+    "active": "1",
+    "bodyWidth": 390,
+    "width": 390,
+    "hash": "#task-1",
+    "search": "?workspace=mine&mine_kind=all&assignment=&category=all&task_scope_view=mine&queue=tasks_support&status=open&due=&q=&sort=priority&grouping=case",
+    "adjacent": true,
+    "previewCount": 1,
+    "compact": {
+      "closebarControls": 1,
+      "descriptionHeight": 52.796875,
+      "footerWidth": 354,
+      "actionWidth": 97.96875,
+      "previewHeight": 333.796875,
+      "rowUpdateVisible": true
+    }
+  },
+  "category-390x844": {
+    "active": "3",
+    "bodyWidth": 390,
+    "width": 390,
+    "hash": "#task-3",
+    "search": "?workspace=mine&mine_kind=all&assignment=&category=all&task_scope_view=mine&queue=tasks_support&status=open&due=&q=&sort=priority&grouping=category",
+    "adjacent": true,
+    "previewCount": 1,
+    "compact": {
+      "closebarControls": 1,
+      "descriptionHeight": 52.796875,
+      "footerWidth": 354,
+      "actionWidth": 163.890625,
+      "previewHeight": 297.796875,
+      "rowUpdateVisible": true
+    }
+  }
+}

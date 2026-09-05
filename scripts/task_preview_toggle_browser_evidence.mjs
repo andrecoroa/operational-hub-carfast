@@ -24,6 +24,14 @@ await Promise.all([
   page.waitForLoadState("domcontentloaded"),
   page.locator('form[action="/login"] button[type="submit"]').click(),
 ]);
+if (page.url().includes("change-notice")) {
+  const checkbox = page.locator('input[type="checkbox"]');
+  if (await checkbox.count()) await checkbox.check();
+  await Promise.all([
+    page.waitForLoadState("domcontentloaded"),
+    page.locator('form[action="/change-notice"] button[type="submit"]').click(),
+  ]);
+}
 
 const query = "workspace=mine&mine_kind=all&assignment=&category=all&task_scope_view=mine&queue=tasks_support&status=open&due=&q=&sort=priority";
 const results = {};
@@ -71,13 +79,40 @@ async function assertSinglePreviewContract(grouping) {
       width: innerWidth,
       hash: location.hash,
       search: location.search,
-      adjacent: Boolean(active && preview && active.nextElementSibling === preview),
+      adjacent: Boolean(active && preview && (
+        active.nextElementSibling === preview
+        || active.nextElementSibling?.contains(preview)
+      )),
       previewCount: document.querySelectorAll("[data-task-preview]:not(.is-empty)").length,
     };
   }, `${selector}[aria-selected="true"]`);
   if (!openState.active || !openState.hash || !openState.adjacent || openState.previewCount !== 1 || openState.bodyWidth > openState.width) {
     throw new Error(`${grouping}: open preview mismatch ${JSON.stringify(openState)}`);
   }
+
+  const compactState = await page.evaluate(() => {
+    const preview = document.querySelector("[data-task-preview]:not(.is-empty)");
+    const description = preview?.querySelector("[data-preview-summary]");
+    const footer = preview?.querySelector(":scope > footer");
+    const buttons = [...(footer?.querySelectorAll("button") || [])].filter((button) => !button.hidden);
+    const closebar = preview?.querySelector(":scope > .task-preview-closebar");
+    const rowUpdate = document.querySelector('[data-task-row][aria-selected="true"] .task-row-updated');
+    return {
+      closebarControls: closebar?.children.length || 0,
+      descriptionHeight: description?.getBoundingClientRect().height || 0,
+      footerWidth: footer?.getBoundingClientRect().width || 0,
+      actionWidth: buttons.reduce((total, button) => total + button.getBoundingClientRect().width, 0),
+      previewHeight: preview?.getBoundingClientRect().height || 0,
+      rowUpdateVisible: Boolean(rowUpdate && getComputedStyle(rowUpdate).display !== "none"),
+    };
+  });
+  if (compactState.closebarControls !== 1 || compactState.descriptionHeight < 45 || compactState.descriptionHeight > 100 || !compactState.rowUpdateVisible) {
+    throw new Error(`${grouping}: compact preview structure mismatch ${JSON.stringify(compactState)}`);
+  }
+  if (page.viewportSize().width >= 850 && compactState.actionWidth >= compactState.footerWidth * 0.8) {
+    throw new Error(`${grouping}: actions still stretch across the preview ${JSON.stringify(compactState)}`);
+  }
+  openState.compact = compactState;
 
   await page.screenshot({ path: path.join(output, `${grouping}-${page.viewportSize().width}x${page.viewportSize().height}.png`), fullPage: true });
 

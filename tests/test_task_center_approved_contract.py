@@ -144,6 +144,22 @@ def test_approved_preview_is_inline_and_exposes_five_direct_rbac_actions() -> No
     assert "groupButton.insertAdjacentElement('afterend',preview)" in TEMPLATE
 
 
+def test_inline_preview_is_compact_and_does_not_repeat_selected_row_identity() -> None:
+    preview = TEMPLATE.split('data-task-preview-home hidden', 1)[1].split(
+        '<dialog data-task-state-dialog', 1
+    )[0]
+    assert 'class="task-preview-closebar"' in preview
+    assert 'data-preview-reference' not in preview
+    assert 'data-preview-title' not in preview
+    assert 'data-preview-state' not in preview
+    assert 'data-preview-priority' not in preview
+    assert 'class="task-preview-updated"' not in preview
+    assert "updated.textContent=`Atualizada ${row.dataset.update}`" in TEMPLATE
+    assert ".task-center-approved .task-center-approved-preview{min-height:150px}" in CSS
+    assert "footer button{flex:0 0 auto;width:auto" in CSS
+    assert ".task-preview-context[hidden]{display:none}" in CSS
+
+
 def test_preview_renders_only_persisted_non_empty_context_without_plate_heuristics(
     authenticated_client, db_session, monkeypatch
 ) -> None:

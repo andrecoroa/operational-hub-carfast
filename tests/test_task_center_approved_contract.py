@@ -411,6 +411,8 @@ def test_management_support_surface_fails_closed_without_update_scope(
 
 
 def test_approved_selection_preserves_return_context() -> None:
+    assert 'href="/v2-clean/tasks?decision=mine"' in TEMPLATE
+    assert "include_query_params(decision='mine'" not in TEMPLATE
     assert 'data-task-row' in TEMPLATE
     assert 'data-return-context' in TEMPLATE
     assert 'history.replaceState' in TEMPLATE

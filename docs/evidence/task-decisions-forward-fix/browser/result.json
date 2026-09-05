@@ -1,0 +1,20 @@
+{
+  "desktop": {
+    "canonical": true,
+    "selectedId": "1",
+    "geometry": {
+      "width": 1440,
+      "bodyWidth": 1440
+    },
+    "errors": []
+  },
+  "mobile": {
+    "canonical": true,
+    "selectedId": "1",
+    "geometry": {
+      "width": 390,
+      "bodyWidth": 390
+    },
+    "errors": []
+  }
+}

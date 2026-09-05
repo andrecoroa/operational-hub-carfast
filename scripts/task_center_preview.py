@@ -16,6 +16,7 @@ os.environ.setdefault("APP_ENV", "local")
 os.environ.setdefault("APP_SECRET_KEY", "synthetic-task-center-preview-only")
 os.environ.setdefault("VISUAL_FOUNDATION_ENABLED", "true")
 os.environ.setdefault("TASK_CASES_ENABLED", "true")
+os.environ["TASK_DECISIONS_ENABLED"] = "true"
 os.environ.setdefault("EMAIL_INBOUND_ENABLED", "false")
 os.environ.setdefault("EMAIL_OUTBOUND_ENABLED", "false")
 
@@ -31,9 +32,11 @@ from app.models import (  # noqa: E402
     RoleWorkScope,
     Task,
     TaskCase,
+    TaskDecision,
     Team,
     TeamMember,
     User,
+    UserRole,
     WorkCategory,
     WorkDepartment,
     WorkQueue,
@@ -69,6 +72,23 @@ def prepare_fixture() -> None:
                 organizational_unit_codes=["carfast"],
             )
             db.flush()
+        user_role_id = db.scalar(
+            select(UserRole.role_id).where(UserRole.user_id == user.id)
+        )
+        for code in ("tasks.request_decision", "tasks.resolve_decision"):
+            permission = db.scalar(select(Permission).where(Permission.code == code))
+            if permission and not db.scalar(
+                select(RolePermission).where(
+                    RolePermission.role_id == user_role_id,
+                    RolePermission.permission_id == permission.id,
+                )
+            ):
+                db.add(
+                    RolePermission(
+                        role_id=user_role_id,
+                        permission_id=permission.id,
+                    )
+                )
         queue_user = db.scalar(
             select(User).where(User.email == "queue.preview@carfast.local")
         )
@@ -194,6 +214,28 @@ def prepare_fixture() -> None:
                 )
             ):
                 task.team_id = support_team.id
+        decision_task = db.scalar(
+            select(Task).where(
+                Task.source == "synthetic_task_center_preview",
+                Task.title == "Validar documentação da reserva sintética",
+            )
+        )
+        if decision_task and not db.scalar(
+            select(TaskDecision.id).where(TaskDecision.task_id == decision_task.id)
+        ):
+            decision_task.status = "waiting_decision"
+            db.add(
+                TaskDecision(
+                    task_id=decision_task.id,
+                    requested_by_id=queue_user.id,
+                    decider_id=user.id,
+                    decision_needed="Aprovar reserva sintética",
+                    recommendation="Aprovar",
+                    impact_value="Sem impacto real",
+                    previous_task_status="new",
+                    status="pending",
+                )
+            )
         db.commit()
 
 

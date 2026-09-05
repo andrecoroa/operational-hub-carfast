@@ -6,6 +6,9 @@ from sqlalchemy import select
 
 import app.web.router as task_router
 from app.models import (
+    Permission,
+    Role,
+    RolePermission,
     Task,
     TaskComment,
     TaskHelpRequest,
@@ -16,9 +19,17 @@ from app.models import (
     TeamMember,
     User,
     WorkDepartment,
+    WorkCategory,
     WorkQueue,
 )
 from app.services.users import create_user
+from app.services.task_center import (
+    front_office_open_category_filter,
+    task_role_codes,
+    task_visibility_filter,
+    user_is_front_office_task_operator,
+)
+from app.services.work_classification import user_work_scope_filter
 from app.services.task_workflow import (
     TaskWaitingContextError,
     validate_task_waiting_context,
@@ -150,6 +161,152 @@ def test_operator_visibility_and_counters_do_not_leak_unrelated_tasks(
     assert hidden.title not in page.text
     assert '<span>Abertas</span><strong>1</strong>' in page.text
     assert '<span>Por atribuir</span><strong>0</strong>' in page.text
+
+
+def test_front_office_sees_tarefas_category_but_other_categories_only_when_assigned(
+    client, db_session
+):
+    front_role = Role(
+        code="operador_front",
+        name="Operador Front Office",
+        active=True,
+        is_system=False,
+    )
+    db_session.add(front_role)
+    db_session.flush()
+    front = create_user(
+        db_session,
+        name="Front office por categoria",
+        email="front.category@carfast.local",
+        password="Secret123!",
+        role_codes=["operador_front"],
+    )
+    permissions = list(
+        db_session.scalars(
+            select(Permission).where(
+                Permission.code.in_(
+                    (
+                        "navigation.tasks.access",
+                        "tasks.read",
+                        "tasks.operational.read",
+                    )
+                )
+            )
+        )
+    )
+    db_session.add_all(
+        RolePermission(role_id=front_role.id, permission_id=permission.id)
+        for permission in permissions
+    )
+    team = Team(name="Front office", code="front-office-category")
+    db_session.add(team)
+    db_session.flush()
+    db_session.add(TeamMember(team_id=team.id, user_id=front.id))
+    queue, department = _tasks_hierarchy(db_session)
+    open_category = WorkCategory(
+        department_id=department.id,
+        code="tasks-front-contract",
+        name="Tarefas",
+        active=True,
+    )
+    other_category = WorkCategory(
+        department_id=department.id,
+        code="reservations-front-contract",
+        name="Reservas",
+        active=True,
+    )
+    db_session.add_all([open_category, other_category])
+    db_session.flush()
+    open_task = Task(
+        title="Tarefa aberta ao Front office",
+        task_type="operational_task",
+        status="new",
+        work_queue_id=queue.id,
+        work_department_id=department.id,
+        work_category_id=open_category.id,
+    )
+    unrelated = Task(
+        title="Reserva apenas elegível",
+        task_type="operational_task",
+        status="new",
+        work_queue_id=queue.id,
+        work_department_id=department.id,
+        work_category_id=other_category.id,
+    )
+    assigned = Task(
+        title="Reserva atribuída diretamente",
+        task_type="operational_task",
+        status="new",
+        assigned_to_id=front.id,
+        work_queue_id=queue.id,
+        work_department_id=department.id,
+        work_category_id=other_category.id,
+    )
+    team_assigned = Task(
+        title="Reserva atribuída à equipa",
+        task_type="operational_task",
+        status="new",
+        team_id=team.id,
+        work_queue_id=queue.id,
+        work_department_id=department.id,
+        work_category_id=other_category.id,
+    )
+    created_but_unassigned = Task(
+        title="Reserva criada mas não atribuída",
+        task_type="operational_task",
+        status="new",
+        created_by_id=front.id,
+        work_queue_id=queue.id,
+        work_department_id=department.id,
+        work_category_id=other_category.id,
+    )
+    db_session.add_all(
+        [open_task, unrelated, assigned, team_assigned, created_but_unassigned]
+    )
+    db_session.commit()
+
+    assert task_role_codes(db_session, front.id) == {"operador_front"}
+    assert user_is_front_office_task_operator(db_session, front.id)
+    assert user_work_scope_filter(
+        db_session, user_id=front.id, task_model=Task, action="read"
+    ) is None
+    open_category_task_ids = set(
+        db_session.scalars(
+            select(Task.id).where(front_office_open_category_filter(task_model=Task))
+        )
+    )
+    assert open_task.id in open_category_task_ids, (
+        queue.code,
+        queue.active,
+        department.code,
+        department.active,
+        open_category.name,
+        open_category.active,
+    )
+    visible_ids = set(
+        db_session.scalars(
+            select(Task.id).where(
+                task_visibility_filter(
+                    db_session, user_id=front.id, task_model=Task
+                )
+            )
+        )
+    )
+    assert open_task.id in visible_ids
+    assert assigned.id in visible_ids
+    assert team_assigned.id in visible_ids
+    assert unrelated.id not in visible_ids
+    assert created_but_unassigned.id not in visible_ids
+
+    _login(client, front.email)
+    page = client.get("/v2-clean/tasks?workspace=all&status=open")
+
+    assert page.status_code == 200
+    assert open_task.title in page.text
+    assert assigned.title in page.text
+    assert team_assigned.title in page.text
+    assert unrelated.title not in page.text
+    assert created_but_unassigned.title not in page.text
 
 
 def test_listable_direct_task_uses_same_resolver_for_clean_and_legacy_detail(

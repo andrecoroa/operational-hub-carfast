@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import and_, false, or_, select
+from sqlalchemy import and_, false, func, or_, select
 
 from app.models.admin import Role, User, UserRole
 from app.models.organization import Team, TeamMember
@@ -15,7 +15,12 @@ from app.models.tasks import (
     TaskNotification,
     TaskParticipant,
 )
-from app.models.work_hierarchy import ServiceDeskCategoryExecutor
+from app.models.work_hierarchy import (
+    ServiceDeskCategoryExecutor,
+    WorkCategory,
+    WorkDepartment,
+    WorkQueue,
+)
 from app.services.authorization import get_user_permission_codes
 from app.services.work_classification import (
     user_work_scope_allows,
@@ -73,6 +78,35 @@ def task_role_codes(db, user_id: int) -> set[str]:
 def user_is_restricted_task_operator(db, user_id: int) -> bool:
     roles = task_role_codes(db, user_id)
     return "operator" in roles and not roles.intersection(TASK_ELEVATED_ROLE_CODES)
+
+
+def user_is_front_office_task_operator(db, user_id: int) -> bool:
+    roles = task_role_codes(db, user_id)
+    return "operador_front" in roles and not roles.intersection(TASK_ELEVATED_ROLE_CODES)
+
+
+def front_office_open_category_filter(*, task_model=Task):
+    """Identify the configured Tarefas category under Operações.
+
+    Front office may browse and claim this one shared category. Eligibility in
+    every other category remains available for assignment, but does not grant
+    row visibility by itself.
+    """
+
+    category_ids = (
+        select(WorkCategory.id)
+        .join(WorkDepartment, WorkDepartment.id == WorkCategory.department_id)
+        .join(WorkQueue, WorkQueue.id == WorkDepartment.queue_id)
+        .where(
+            WorkQueue.code == "tasks_support",
+            WorkDepartment.code == "operations",
+            func.lower(WorkCategory.name) == "tarefas",
+            WorkQueue.active.is_(True),
+            WorkDepartment.active.is_(True),
+            WorkCategory.active.is_(True),
+        )
+    )
+    return task_model.work_category_id.in_(category_ids)
 
 
 def user_team_ids(db, user_id: int) -> set[int]:
@@ -151,6 +185,18 @@ def task_claimable_relation_filter(db, *, user_id: int, task_model=Task):
     return and_(task_model.assigned_to_id.is_(None), team_or_category, assume_scope)
 
 
+def task_executor_assignment_filter(db, *, user_id: int, task_model=Task):
+    """Match only explicit executor or executor-team assignment."""
+
+    team_ids = user_team_ids(db, user_id)
+    if not team_ids:
+        return task_model.assigned_to_id == user_id
+    return or_(
+        task_model.assigned_to_id == user_id,
+        task_model.team_id.in_(tuple(team_ids)),
+    )
+
+
 def task_visibility_filter(db, *, user_id: int, task_model=Task):
     """Return the canonical row-level visibility filter for tasks.
 
@@ -162,13 +208,21 @@ def task_visibility_filter(db, *, user_id: int, task_model=Task):
     hierarchy = user_work_scope_filter(
         db, user_id=user_id, task_model=task_model, action="read"
     )
-    if not user_is_restricted_task_operator(db, user_id):
+    front_office = user_is_front_office_task_operator(db, user_id)
+    if not user_is_restricted_task_operator(db, user_id) and not front_office:
         return hierarchy
     direct = task_direct_relation_filter(user_id=user_id, task_model=task_model)
     team = task_team_relation_filter(db, user_id=user_id, task_model=task_model)
     claimable = task_claimable_relation_filter(
         db, user_id=user_id, task_model=task_model
     )
+    if front_office:
+        open_category = front_office_open_category_filter(task_model=task_model)
+        open_scope = open_category if hierarchy is None else and_(open_category, hierarchy)
+        assigned = task_executor_assignment_filter(
+            db, user_id=user_id, task_model=task_model
+        )
+        return or_(open_scope, assigned, and_(open_category, claimable))
     if team is None:
         return or_(direct, claimable)
     if hierarchy is None:

@@ -57,9 +57,7 @@ jobs:
           cache-dependency-path: requirements-dev.txt
 
       - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install -r requirements-dev.txt
+        run: bash scripts/setup_codex_cloud.sh
 
       - name: Compile and import application
         run: |
@@ -87,24 +85,4 @@ jobs:
           python -m scripts.run_phase10_rehearsal
 
       - name: Run tests
-        run: >-
-          python -m pytest -q
-          tests/test_foundation_api.py
-          tests/test_navigation_rbac.py
-          tests/test_task_center_approved_contract.py
-          tests/test_task_center_access_notifications.py
-          tests/test_task_center_v3_contract.py
-          tests/test_task_center_v3_ui_contract.py
-          tests/test_task_cases.py
-          tests/test_email_postmark.py
-          tests/test_service_desk_operations.py
-          tests/test_modular_foundation.py
-          tests/test_visual_foundation.py
-          tests/test_partners_boundary.py
-          tests/test_documents_boundary.py
-          tests/test_service_desk_boundary.py
-          tests/test_stock_boundary.py
-          tests/test_automotive_boundary.py
-          tests/test_legacy_consolidation.py
-          tests/test_phase10_rehearsal.py
-          tests/test_isolated_environment.py
+        run: bash scripts/verify_codex_cloud.sh

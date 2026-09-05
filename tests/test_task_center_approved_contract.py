@@ -193,6 +193,20 @@ def test_preview_renders_only_persisted_non_empty_context_without_plate_heuristi
             "href": "/v2-clean/email?message=msg-context-1",
         },
     ]
+
+    origin = db_session.scalar(
+        select(TaskEmailOrigin).where(TaskEmailOrigin.task_id == task.id)
+    )
+    origin.source_url = "//external.example/path"
+    db_session.commit()
+    rejected = authenticated_client.get("/v2-clean/tasks?task_scope_view=mine")
+    rejected_row = re.search(
+        r'<tr[^>]+data-title="Contexto persistido"[^>]+>', rejected.text
+    ).group(0)
+    rejected_context = json.loads(
+        unescape(re.search(r'data-context="([^"]*)"', rejected_row).group(1))
+    )
+    assert rejected_context[-1]["href"] == ""
     assert "find_vehicle_by_plate" not in ROUTER[ROUTER.index("task_context_items_by_id") : ROUTER.index("task_claim_allowed_by_id")]
 
 
@@ -217,6 +231,12 @@ def test_grouped_reload_restores_preview_only_under_a_visible_group_trigger() ->
     assert "grouped=document.querySelector('[data-task-groups]')" in TEMPLATE
     assert "if(!row||(grouped&&!groupButton))continue" in TEMPLATE
     assert "groupButton.insertAdjacentElement('afterend',preview)" in TEMPLATE
+
+
+def test_decision_inbox_link_is_canonical_and_does_not_carry_list_filters() -> None:
+    assert 'href="/v2-clean/tasks?decision=mine"' in TEMPLATE
+    assert "include_query_params(decision='mine'" not in TEMPLATE
+    assert 'href="/v2-clean/tasks"' in TEMPLATE
 
 
 def test_support_targets_are_scoped_server_side_and_not_globally_rendered() -> None:

@@ -34,6 +34,7 @@ Os dados não foram removidos por migration: matrícula, reserva, contrato e cli
 - Browser sintético: desktop 1440×731 e mobile 390×844; `scrollWidth == clientWidth` no mobile; preview inline; Escape fecha e foco regressa à linha.
 - Restauro do preview: a automação `task_preview_toggle_browser_evidence.mjs` cobre Lista, Por categoria e Por caso; em cada modo valida reload/hash, um único preview e montagem imediatamente sob a linha/acionador visível (nunca sob a linha de tabela oculta do agrupamento).
 - Renovação pré-PR: 82 testes focados PASS; compile/import PASS; Ruff canónico PASS; baseline arquitetural regenerado apenas para a tabela aditiva e novos formulários/redirects e novamente verificado pelo check oficial.
+- Forward-fix da revisão independente: “Decisões para mim” usa uma entrada canónica e o servidor normaliza contexto herdado/forjado de Por assumir, Da equipa, estado, prazo e agrupamento; sair para “Tarefas” regressa à vista segura canónica. Negativos adicionais cobrem hierarquia na resolução e URL de origem protocol-relative; `datetime-local` de decisão é interpretado em Lisboa. Regressão focada: 86 PASS.
 
 ## Migration e rollback
 

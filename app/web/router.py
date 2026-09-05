@@ -19,6 +19,7 @@ from time import monotonic
 from types import SimpleNamespace
 from typing import Any
 from urllib.parse import parse_qsl, quote, quote_plus, urlencode, urlsplit, urlunsplit
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, File, Form, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
@@ -4718,6 +4719,24 @@ def clean_tasks_center(
     denied = clean_experience_denied(request)
     if denied:
         return denied
+    decision_view = decision.strip().lower()
+    if decision_view not in {"", "mine"}:
+        return HTMLResponse("Filtro de decisões inválido.", status_code=400)
+    if decision_view == "mine":
+        # This is a dedicated inbox, not an extra filter layered on the
+        # caller's previous queue/view.  Normalize forged and stale context so
+        # claim/team/status/due/grouping filters cannot hide assigned decisions.
+        workspace = "mine"
+        mine_kind = "all"
+        assignment = ""
+        task_scope_view = ""
+        view = ""
+        preset = ""
+        status = "open"
+        due = ""
+        risk = ""
+        grouping = "flat"
+        page = 1
     if queue in {"all", "authorized", "todas"}:
         return HTMLResponse("Fila agregada não permitida.", status_code=400)
     if view and view not in {"mine", "unassigned", "team"}:
@@ -4787,9 +4806,6 @@ def clean_tasks_center(
         classification_permissions = (
             get_user_permission_codes(db, current_user) if current_user else set()
         )
-        decision_view = decision.strip().lower()
-        if decision_view not in {"", "mine"}:
-            return HTMLResponse("Filtro de decisões inválido.", status_code=400)
         decisions_enabled = settings.task_decisions_enabled
         if decision_view and (
             not decisions_enabled
@@ -5814,7 +5830,9 @@ def clean_tasks_center(
             email_origin = email_by_task.get(task.id)
             if email_origin:
                 email_href = (email_origin.source_url or "").strip()
-                if not email_href.startswith(("/", "https://", "http://")):
+                if email_href.startswith("//") or not email_href.startswith(
+                    ("/", "https://", "http://")
+                ):
                     email_href = ""
                 context_items.append({
                     "label": "Email de origem",
@@ -8432,7 +8450,9 @@ def clean_task_decision_request(
     try:
         parsed_due = datetime.fromisoformat(due_at.strip()) if due_at.strip() else None
         if parsed_due and parsed_due.tzinfo is None:
-            parsed_due = parsed_due.replace(tzinfo=UTC)
+            parsed_due = parsed_due.replace(
+                tzinfo=ZoneInfo("Europe/Lisbon")
+            ).astimezone(UTC)
     except ValueError:
         return clean_task_action_redirect(return_url, task_id=task_id, flag="error")
     with SessionLocal() as db:
@@ -8526,6 +8546,10 @@ def clean_task_decision_resolve(
             or item.status not in {"pending", "information_requested"}
             or not task
             or task.status != "waiting_decision"
+            or not user_can_access_task_workspace(
+                db, actor, workspace_for_task_type(task.task_type)
+            )
+            or not _task_hierarchy_scope_allows(db, user_id, task, action="read")
         ):
             return RedirectResponse("/v2-clean/tasks?error=forbidden", status_code=303)
         clean_comment = comment.strip()

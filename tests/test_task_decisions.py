@@ -1,3 +1,4 @@
+from datetime import UTC, datetime
 from pathlib import Path
 
 from sqlalchemy import select
@@ -187,6 +188,37 @@ def test_decision_target_must_be_active_explicit_resolver(
     assert db_session.scalar(select(TaskDecision.id)) is None
 
 
+def test_decision_due_datetime_is_interpreted_in_lisbon(
+    authenticated_client, db_session, monkeypatch
+) -> None:
+    monkeypatch.setattr(task_router.settings, "task_decisions_enabled", True)
+    actor = _actor(db_session)
+    _grant_permissions(
+        db_session, actor, "tasks.request_decision", "tasks.resolve_decision"
+    )
+    task = _task(db_session, actor)
+
+    response = authenticated_client.post(
+        f"/v2-clean/tasks/{task.id}/decisions",
+        data={
+            "decider_id": actor.id,
+            "decision_needed": "Confirmar prazo",
+            "recommendation": "Aprovar",
+            "impact_value": "Baixo",
+            "due_at": "2026-09-05T12:00",
+        },
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    item = db_session.scalar(
+        select(TaskDecision).where(TaskDecision.task_id == task.id)
+    )
+    assert item.due_at.replace(tzinfo=UTC) == datetime(
+        2026, 9, 5, 11, 0, tzinfo=UTC
+    )
+
+
 def test_decisions_for_me_filter_and_information_request(
     authenticated_client, db_session, monkeypatch
 ) -> None:
@@ -237,6 +269,87 @@ def test_decisions_for_me_filter_and_information_request(
     db_session.refresh(task)
     assert item.status == "information_requested"
     assert task.status == "waiting_decision"
+
+
+def test_decisions_for_me_normalizes_incompatible_work_view_filters(
+    authenticated_client, db_session, monkeypatch
+) -> None:
+    monkeypatch.setattr(task_router.settings, "task_decisions_enabled", True)
+    monkeypatch.setattr(task_router.settings, "visual_foundation_enabled", True)
+    actor = _actor(db_session)
+    _grant_permissions(db_session, actor, "tasks.resolve_decision")
+    task = _task(db_session, actor)
+    task.assigned_to_id = None
+    task.assignment_state = "waiting_assignment"
+    task.status = "waiting_decision"
+    db_session.add(
+        TaskDecision(
+            task_id=task.id,
+            requested_by_id=actor.id,
+            decider_id=actor.id,
+            decision_needed="Escolher fornecedor",
+            recommendation="Fornecedor A",
+            impact_value="Evita atraso",
+            previous_task_status="new",
+            status="pending",
+        )
+    )
+    db_session.commit()
+
+    claim_page = authenticated_client.get(
+        "/v2-clean/tasks?workspace=all&assignment=unassigned&"
+        "task_scope_view=claim&status=waiting&due=overdue&grouping=category"
+    )
+    assert claim_page.status_code == 200
+    assert 'href="/v2-clean/tasks?decision=mine"' in claim_page.text
+
+    decision_page = authenticated_client.get(
+        "/v2-clean/tasks?decision=mine&workspace=all&assignment=unassigned&"
+        "task_scope_view=claim&status=waiting&due=overdue&grouping=category"
+    )
+    assert decision_page.status_code == 200
+    assert "Decisão controlada" in decision_page.text
+    assert 'data-grouping="flat"' in decision_page.text
+    assert 'href="/v2-clean/tasks"' in decision_page.text
+
+
+def test_decision_resolution_fails_closed_outside_hierarchy(
+    authenticated_client, db_session, monkeypatch
+) -> None:
+    monkeypatch.setattr(task_router.settings, "task_decisions_enabled", True)
+    actor = _actor(db_session)
+    _grant_permissions(db_session, actor, "tasks.resolve_decision")
+    task = _task(db_session, actor)
+    task.status = "waiting_decision"
+    item = TaskDecision(
+        task_id=task.id,
+        requested_by_id=actor.id,
+        decider_id=actor.id,
+        decision_needed="Autorizar",
+        recommendation="Sim",
+        impact_value="Baixo",
+        previous_task_status="new",
+        status="pending",
+    )
+    db_session.add(item)
+    db_session.commit()
+    monkeypatch.setattr(
+        task_router,
+        "_task_hierarchy_scope_allows",
+        lambda *args, **kwargs: False,
+    )
+
+    denied = authenticated_client.post(
+        f"/v2-clean/tasks/{task.id}/decisions/{item.id}",
+        data={"action": "approve"},
+        follow_redirects=False,
+    )
+
+    assert denied.status_code == 303
+    db_session.refresh(task)
+    db_session.refresh(item)
+    assert task.status == "waiting_decision"
+    assert item.status == "pending"
 
 
 def test_decision_feature_is_off_by_default(authenticated_client, db_session) -> None:

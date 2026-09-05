@@ -344,7 +344,7 @@
 
 .ui-contract-v1 .clean-admin-directory,
 .ui-contract-v1 .clean-admin-residual-nav { margin: 0; }
-.ui-contract-v1 .clean-admin-content { height:100vh; max-height:100vh; overflow:hidden; }
+.ui-contract-v1 .clean-admin-content { height:100vh; max-height:100vh; overflow:hidden; grid-template-rows:52px auto minmax(0,1fr); }
 .ui-contract-v1 .admin-model-workbench { padding: 0; overflow: hidden; }
 .ui-contract-v1 .admin-model-workbench > .table-heading { min-height: 52px; padding: 8px 12px; }
 .ui-contract-v1 .admin-model-columns { display: grid; grid-template-columns: minmax(190px,.7fr) minmax(190px,.7fr) minmax(320px,1.4fr); min-height: 440px; gap: 0; }
@@ -406,13 +406,13 @@
 .ui-contract-v1 .email-secondary-filters > summary { display:flex; min-height:32px; padding:6px 10px; align-items:center; border:1px solid var(--ui-color-border); border-radius:6px; cursor:pointer; list-style:none; white-space:nowrap; }
 .ui-contract-v1 .email-secondary-filters > div { position:absolute; z-index:30; top:36px; right:0; display:grid; width:280px; gap:8px; padding:10px; border:1px solid var(--ui-color-border); border-radius:8px; background:var(--ui-color-surface); box-shadow:0 10px 28px rgba(15,23,42,.16); }
 .ui-contract-v1 .clean-admin-header { padding:8px 12px; }
-.ui-contract-v1 .clean-admin-master-detail { display:grid; grid-template-columns:210px minmax(0,1fr); gap:12px; min-width:0; max-height:calc(100vh - 175px); overflow:hidden; align-items:start; }
+.ui-contract-v1 .clean-admin-master-detail { display:grid; grid-template-columns:210px minmax(0,1fr); gap:12px; min-width:0; min-height:0; height:100%; max-height:none; overflow:hidden; align-items:start; }
 .ui-contract-v1 .clean-admin-master { position:sticky; top:8px; display:grid; gap:8px; padding:10px; border:1px solid var(--ui-color-border); border-radius:8px; background:var(--ui-color-surface); }
 .ui-contract-v1 .clean-admin-master nav { display:grid; gap:2px; }
 .ui-contract-v1 .clean-admin-master a { min-height:32px; padding:7px 9px; border-radius:6px; color:var(--ui-color-text); text-decoration:none; font-size:12px; font-weight:700; white-space:nowrap; }
 .ui-contract-v1 .clean-admin-master a:is(:hover,.active) { background:var(--ui-color-surface-muted); color:var(--ui-color-primary); }
 .ui-contract-v1 .clean-admin-master small { color:var(--ui-color-text-muted); line-height:1.35; }
-.ui-contract-v1 .clean-admin-detail { display:grid; min-width:0; max-height:calc(100vh - 175px); overflow:auto; gap:12px; align-content:start; }
+.ui-contract-v1 .clean-admin-detail { display:grid; min-width:0; min-height:0; height:100%; max-height:none; padding-bottom:16px; overflow:auto; scrollbar-gutter:stable; gap:12px; align-content:start; }
 .ui-contract-v1 .clean-admin-detail > .clean-card-wide { width:100%; min-width:0; }
 .ui-contract-v1 .clean-admin-overview-strip { grid-template-columns:repeat(3,minmax(0,1fr)); }
 

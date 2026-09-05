@@ -106,6 +106,15 @@ def test_email_inline_mailboxes_and_mobile_overflow_contract() -> None:
     assert ".email-mailbox-summary { grid-template-columns:1fr; }" in css
 
 
+def test_email_inline_preview_prioritizes_message_reading_space() -> None:
+    css = CONTRACT_CSS.read_text(encoding="utf-8")
+
+    assert ".email-list-inline .visual-email-table thead th { position:sticky" in css
+    assert ".email-inline-preview-body .email-modal-header { height:64px; min-height:64px; }" in css
+    assert ".email-inline-preview-body .email-reader-grid { grid-template-rows:minmax(220px,1fr)" in css
+    assert ".email-inline-preview-body .email-body-frame { height:clamp(150px,26vh,260px)" in css
+
+
 def test_email_full_page_return_context_is_local_and_feature_gated() -> None:
     source = ROUTER.read_text(encoding="utf-8")
 

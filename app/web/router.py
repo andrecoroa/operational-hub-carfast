@@ -19,6 +19,7 @@ from time import monotonic
 from types import SimpleNamespace
 from typing import Any
 from urllib.parse import parse_qsl, quote, quote_plus, urlencode, urlsplit, urlunsplit
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, File, Form, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
@@ -79,6 +80,7 @@ from app.models.tasks import (
     TaskComment,
     TaskCase,
     TaskDocument,
+    TaskDecision,
     TaskEmailOrigin,
     TaskGuidedFlowRun,
     TaskGuidedFlowStepRun,
@@ -2302,6 +2304,7 @@ TASK_STATUSES = [
     ("delegated", "Execução delegada"),
     ("waiting", "A aguardar"),
     ("support_requested", "Suporte solicitado"),
+    ("waiting_decision", "Aguarda decisão"),
     ("execution_done", "Execução concluída"),
     ("ready_validation", "Pronta para validação"),
     ("closed", "Fechada"),
@@ -2353,6 +2356,7 @@ TASK_CLEAN_STATUS_LABELS = {
     "in_execution": "Em curso",
     "waiting": "Em espera",
     "support_requested": "Suporte solicitado",
+    "waiting_decision": "Aguarda decisão",
     "delegated": "Delegada",
     "planned": "Planeada",
     "execution_done": "Execução concluída",
@@ -4710,10 +4714,29 @@ def clean_tasks_center(
     page: int = 1,
     grouping: str = "flat",
     task_scope_view: str = "",
+    decision: str = "",
 ):
     denied = clean_experience_denied(request)
     if denied:
         return denied
+    decision_view = decision.strip().lower()
+    if decision_view not in {"", "mine"}:
+        return HTMLResponse("Filtro de decisões inválido.", status_code=400)
+    if decision_view == "mine":
+        # This is a dedicated inbox, not an extra filter layered on the
+        # caller's previous queue/view.  Normalize forged and stale context so
+        # claim/team/status/due/grouping filters cannot hide assigned decisions.
+        workspace = "mine"
+        mine_kind = "all"
+        assignment = ""
+        task_scope_view = ""
+        view = ""
+        preset = ""
+        status = "open"
+        due = ""
+        risk = ""
+        grouping = "flat"
+        page = 1
     if queue in {"all", "authorized", "todas"}:
         return HTMLResponse("Fila agregada não permitida.", status_code=400)
     if view and view not in {"mine", "unassigned", "team"}:
@@ -4783,6 +4806,25 @@ def clean_tasks_center(
         classification_permissions = (
             get_user_permission_codes(db, current_user) if current_user else set()
         )
+        decisions_enabled = settings.task_decisions_enabled
+        if decision_view and (
+            not decisions_enabled
+            or "tasks.resolve_decision" not in classification_permissions
+        ):
+            return HTMLResponse("Vista de decisões não autorizada.", status_code=403)
+        decision_resolver_ids = set(
+            db.scalars(
+                select(UserRole.user_id)
+                .join(RolePermission, RolePermission.role_id == UserRole.role_id)
+                .join(Permission, Permission.id == RolePermission.permission_id)
+                .join(User, User.id == UserRole.user_id)
+                .where(
+                    Permission.code == "tasks.resolve_decision",
+                    User.active.is_(True),
+                )
+                .distinct()
+            )
+        ) if decisions_enabled else set()
         queue_capabilities = resolve_task_queue_capabilities(db, current_user)
         queue_capabilities_by_code = {item.code: item for item in queue_capabilities}
         def workspace_allowed(code: str, action: str | None = None) -> bool:
@@ -4908,6 +4950,7 @@ def clean_tasks_center(
             "in_execution": "Em curso",
             "waiting": "Em espera",
             "support_requested": "Suporte solicitado",
+            "waiting_decision": "Aguarda decisão",
             "resolved": "Resolvida",
             "cancelled": "Cancelada",
             "closed": "Fechadas",
@@ -4964,10 +5007,10 @@ def clean_tasks_center(
             else literal(False)
         )
         active_claim_scope = requested_scope == "claim"
-        if active_workspace == "mine" and user_id:
-            member_team_ids = select(TeamMember.team_id).where(
-                TeamMember.user_id == user_id
-            )
+        member_team_ids = select(TeamMember.team_id).where(
+            TeamMember.user_id == user_id
+        )
+        if active_workspace == "mine" and user_id and not decision_view:
             participant_task_ids = select(TaskParticipant.task_id).where(
                 TaskParticipant.user_id == user_id,
                 TaskParticipant.status == "active",
@@ -5015,6 +5058,15 @@ def clean_tasks_center(
             filters.append(active_relation_filter)
         if active_claim_scope:
             filters.append(claimable_relation_filter)
+        if decision_view == "mine":
+            filters.append(
+                Task.id.in_(
+                    select(TaskDecision.task_id).where(
+                        TaskDecision.decider_id == user_id,
+                        TaskDecision.status.in_(("pending", "information_requested")),
+                    )
+                )
+            )
         if active_status == "open":
             filters.extend([Task.closed_at.is_(None), ~Task.status.in_(TASK_ARCHIVE_STATUSES)])
         elif active_status == "closed":
@@ -5224,6 +5276,7 @@ def clean_tasks_center(
         comments_by_task: dict[int, list[TaskComment]] = defaultdict(list)
         history_by_task: dict[int, list[TaskHistory]] = defaultdict(list)
         help_requests_by_task: dict[int, list[TaskHelpRequest]] = defaultdict(list)
+        decisions_by_task: dict[int, list[TaskDecision]] = defaultdict(list)
         documents_by_task: dict[int, list[Document]] = defaultdict(list)
         email_by_task: dict[int, TaskEmailOrigin] = {}
         task_relations_by_task: dict[int, list[str]] = defaultdict(list)
@@ -5252,6 +5305,13 @@ def clean_tasks_center(
                 .order_by(TaskHelpRequest.created_at.desc())
             ):
                 help_requests_by_task[help_request.task_id].append(help_request)
+            if decisions_enabled:
+                for decision_item in db.scalars(
+                    select(TaskDecision)
+                    .where(TaskDecision.task_id.in_(task_ids))
+                    .order_by(TaskDecision.created_at.desc())
+                ):
+                    decisions_by_task[decision_item.task_id].append(decision_item)
             linked_documents = db.execute(
                 select(TaskDocument.task_id, Document)
                 .join(Document, Document.id == TaskDocument.document_id)
@@ -5735,6 +5795,80 @@ def clean_tasks_center(
             )
             for task in tasks
         }
+        task_context_items_by_id: dict[int, list[dict[str, str]]] = {}
+        for task in tasks:
+            context_items: list[dict[str, str]] = []
+            if task.plate:
+                vehicle_href = (
+                    f"/v2-clean/fleet/{task.entity_id}"
+                    if task.entity_type == "vehicle"
+                    and task.entity_id
+                    and task.entity_id.isdigit()
+                    else ""
+                )
+                context_items.append(
+                    {"label": "Viatura", "value": task.plate, "href": vehicle_href}
+                )
+            for label, value in (
+                ("Contrato", task.contract_number),
+                ("Reserva", task.reservation_number),
+                ("Cliente", task.customer_name),
+            ):
+                if value:
+                    context_items.append({"label": label, "value": value, "href": ""})
+            task_case = task_cases_by_id.get(task.case_id) if task.case_id else None
+            if task_case:
+                context_items.append(
+                    {"label": "Caso", "value": task_case.title, "href": ""}
+                )
+            if task.process_instance_id:
+                context_items.append({
+                    "label": "Processo",
+                    "value": f"#{task.process_instance_id}",
+                    "href": f"/v2-clean/processes/{task.process_instance_id}",
+                })
+            email_origin = email_by_task.get(task.id)
+            if email_origin:
+                email_href = (email_origin.source_url or "").strip()
+                if email_href.startswith("//") or not email_href.startswith(
+                    ("/", "https://", "http://")
+                ):
+                    email_href = ""
+                context_items.append({
+                    "label": "Email de origem",
+                    "value": email_origin.subject or email_origin.message_id,
+                    "href": email_href,
+                })
+            task_context_items_by_id[task.id] = context_items
+        task_decision_context_by_id: dict[int, dict[str, object]] = {}
+        if decisions_enabled:
+            for task in tasks:
+                active_decision = next(
+                    (
+                        item
+                        for item in decisions_by_task.get(task.id, [])
+                        if item.status in {"pending", "information_requested"}
+                    ),
+                    None,
+                )
+                if not active_decision:
+                    continue
+                requester = users_by_id.get(active_decision.requested_by_id)
+                decider = users_by_id.get(active_decision.decider_id)
+                task_decision_context_by_id[task.id] = {
+                    "id": active_decision.id,
+                    "needed": active_decision.decision_needed,
+                    "recommendation": active_decision.recommendation,
+                    "impact": active_decision.impact_value,
+                    "requester": requester.name if requester else "Utilizador",
+                    "decider": decider.name if decider else "Utilizador",
+                    "due": active_decision.due_at.isoformat()
+                    if active_decision.due_at
+                    else "",
+                    "status": active_decision.status,
+                    "can_resolve": active_decision.decider_id == user_id
+                    and "tasks.resolve_decision" in classification_permissions,
+                }
         task_claim_allowed_by_id = {
             task.id: (
                 task.assignment_state == "team_unclaimed"
@@ -5838,10 +5972,22 @@ def clean_tasks_center(
                 "task_groups": task_groups,
                 "task_origin_labels": task_origin_labels,
                 "task_relation_labels": task_relation_labels,
+                "task_context_items_by_id": task_context_items_by_id,
+                "task_decision_context_by_id": task_decision_context_by_id,
                 "participants_by_task": participants_by_task,
                 "comments_by_task": comments_by_task,
                 "history_by_task": history_by_task,
                 "help_requests_by_task": help_requests_by_task,
+                "decisions_by_task": decisions_by_task,
+                "task_decisions_enabled": decisions_enabled,
+                "can_request_decision": decisions_enabled
+                and "tasks.request_decision" in classification_permissions,
+                "can_resolve_decision": decisions_enabled
+                and "tasks.resolve_decision" in classification_permissions,
+                "decision_view": decision_view,
+                "decision_resolvers": [
+                    user for user in all_users if user.id in decision_resolver_ids
+                ],
                 "support_return_options_by_help_id": support_return_options_by_help_id,
                 "documents_by_task": documents_by_task,
                 "email_by_task": email_by_task,
@@ -8282,6 +8428,150 @@ def clean_tasks_participant_self(
             )
         db.commit()
     return clean_task_action_redirect(return_url, task_id=task_id, flag="participant_updated")
+
+
+@web_router.post("/v2-clean/tasks/{task_id}/decisions", response_class=HTMLResponse)
+def clean_task_decision_request(
+    request: Request,
+    task_id: int,
+    decider_id: int = Form(...),
+    decision_needed: str = Form(""),
+    recommendation: str = Form(""),
+    impact_value: str = Form(""),
+    due_at: str = Form(""),
+    return_url: str = Form(""),
+):
+    user_id = get_web_user_id(request)
+    clean_fields = tuple(
+        value.strip() for value in (decision_needed, recommendation, impact_value)
+    )
+    if not user_id or not all(clean_fields) or not settings.task_decisions_enabled:
+        return clean_task_action_redirect(return_url, task_id=task_id, flag="error")
+    try:
+        parsed_due = datetime.fromisoformat(due_at.strip()) if due_at.strip() else None
+        if parsed_due and parsed_due.tzinfo is None:
+            parsed_due = parsed_due.replace(
+                tzinfo=ZoneInfo("Europe/Lisbon")
+            ).astimezone(UTC)
+    except ValueError:
+        return clean_task_action_redirect(return_url, task_id=task_id, flag="error")
+    with SessionLocal() as db:
+        actor = db.get(User, user_id)
+        decider = db.get(User, decider_id)
+        task = db.scalar(select(Task).where(Task.id == task_id).with_for_update())
+        permissions = get_user_permission_codes(db, actor) if actor else set()
+        decider_can_resolve = bool(
+            db.scalar(
+                select(UserRole.user_id)
+                .join(RolePermission, RolePermission.role_id == UserRole.role_id)
+                .join(Permission, Permission.id == RolePermission.permission_id)
+                .where(
+                    UserRole.user_id == decider_id,
+                    Permission.code == "tasks.resolve_decision",
+                )
+            )
+        )
+        pending = db.scalar(
+            select(TaskDecision.id).where(
+                TaskDecision.task_id == task_id,
+                TaskDecision.status.in_(("pending", "information_requested")),
+            )
+        )
+        if (
+            "tasks.request_decision" not in permissions
+            or not task
+            or not decider
+            or not decider.active
+            or not decider_can_resolve
+            or pending
+            or task.status in TASK_ARCHIVE_STATUSES | {"support_requested", "waiting_decision"}
+            or not user_can_access_task_workspace(
+                db, actor, workspace_for_task_type(task.task_type), action="update"
+            )
+            or not _task_hierarchy_scope_allows(db, user_id, task, action="update")
+        ):
+            return RedirectResponse("/v2-clean/tasks?error=forbidden", status_code=303)
+        previous_status = task.status
+        item = TaskDecision(
+            task_id=task.id,
+            requested_by_id=user_id,
+            decider_id=decider.id,
+            decision_needed=clean_fields[0],
+            recommendation=clean_fields[1],
+            impact_value=clean_fields[2],
+            due_at=parsed_due,
+            previous_task_status=previous_status,
+            status="pending",
+        )
+        task.status = "waiting_decision"
+        db.add(item)
+        db.flush()
+        db.add(TaskHistory(task_id=task.id, user_id=user_id, field_name="status", old_value=previous_status, new_value="waiting_decision"))
+        db.add(TaskHistory(task_id=task.id, user_id=user_id, field_name="decision_requested", old_value=None, new_value=clean_fields[0]))
+        db.add(TaskNotification(task_id=task.id, user_id=decider.id, actor_user_id=user_id, event_type="decision_requested", title=f"Decisão pedida: {task.title}", detail=clean_fields[0]))
+        record_audit(db, action="task.decision.requested", entity_type="task_decision", entity_id=item.id, detail=clean_fields[0], before_json={"task_status": previous_status}, after_json={"task_status": "waiting_decision", "decider_id": decider.id}, user_id=user_id)
+        db.commit()
+    return clean_task_action_redirect(return_url, task_id=task_id, flag="decision_requested")
+
+
+@web_router.post("/v2-clean/tasks/{task_id}/decisions/{decision_id}", response_class=HTMLResponse)
+def clean_task_decision_resolve(
+    request: Request,
+    task_id: int,
+    decision_id: int,
+    action: str = Form(""),
+    comment: str = Form(""),
+    return_url: str = Form(""),
+):
+    user_id = get_web_user_id(request)
+    if not user_id or not settings.task_decisions_enabled:
+        return RedirectResponse("/v2-clean/tasks?error=forbidden", status_code=303)
+    normalized_action = action.strip().lower()
+    if normalized_action not in {"approve", "reject", "request_information"}:
+        return clean_task_action_redirect(return_url, task_id=task_id, flag="error")
+    with SessionLocal() as db:
+        actor = db.get(User, user_id)
+        permissions = get_user_permission_codes(db, actor) if actor else set()
+        item = db.scalar(
+            select(TaskDecision)
+            .where(TaskDecision.id == decision_id)
+            .with_for_update()
+        )
+        task = db.scalar(select(Task).where(Task.id == task_id).with_for_update())
+        if (
+            "tasks.resolve_decision" not in permissions
+            or not item
+            or item.task_id != task_id
+            or item.decider_id != user_id
+            or item.status not in {"pending", "information_requested"}
+            or not task
+            or task.status != "waiting_decision"
+            or not user_can_access_task_workspace(
+                db, actor, workspace_for_task_type(task.task_type)
+            )
+            or not _task_hierarchy_scope_allows(db, user_id, task, action="read")
+        ):
+            return RedirectResponse("/v2-clean/tasks?error=forbidden", status_code=303)
+        clean_comment = comment.strip()
+        if normalized_action == "request_information" and not clean_comment:
+            return clean_task_action_redirect(return_url, task_id=task_id, flag="error")
+        now = datetime.now(UTC)
+        if normalized_action == "request_information":
+            item.status = "information_requested"
+            item.resolution_comment = clean_comment
+            db.add(TaskNotification(task_id=task.id, user_id=item.requested_by_id, actor_user_id=user_id, event_type="decision_information_requested", title=f"Informação pedida: {task.title}", detail=clean_comment))
+        else:
+            item.status = "approved" if normalized_action == "approve" else "rejected"
+            item.resolution_comment = clean_comment or None
+            item.resolved_by_id = user_id
+            item.resolved_at = now
+            task.status = "in_execution"
+            db.add(TaskHistory(task_id=task.id, user_id=user_id, field_name="status", old_value="waiting_decision", new_value="in_execution"))
+            db.add(TaskNotification(task_id=task.id, user_id=item.requested_by_id, actor_user_id=user_id, event_type=f"decision_{item.status}", title=f"Decisão {('aprovada' if item.status == 'approved' else 'recusada')}: {task.title}", detail=clean_comment or None))
+        db.add(TaskHistory(task_id=task.id, user_id=user_id, field_name="decision_result", old_value=None, new_value=item.status))
+        record_audit(db, action=f"task.decision.{item.status}", entity_type="task_decision", entity_id=item.id, detail=clean_comment or item.decision_needed, before_json={"status": "pending"}, after_json={"status": item.status, "task_status": task.status}, user_id=user_id)
+        db.commit()
+    return clean_task_action_redirect(return_url, task_id=task_id, flag="decision_updated")
 
 
 @web_router.post("/v2-clean/tasks/{task_id}/help", response_class=HTMLResponse)

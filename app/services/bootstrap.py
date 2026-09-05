@@ -74,6 +74,8 @@ INITIAL_PERMISSIONS = [
     ("tasks.audit.read", "Ver centro de tarefas auditoria"),
     ("tasks.audit.write", "Gerir centro de tarefas auditoria"),
     ("tasks.assign.peer", "Atribuir tarefas a utilizadores do mesmo nível"),
+    ("tasks.request_decision", "Solicitar decisão numa tarefa"),
+    ("tasks.resolve_decision", "Resolver decisões atribuídas"),
     ("tasks.administration.read", "Ver centro de tarefas administração"),
     ("tasks.administration.write", "Gerir centro de tarefas administração"),
     ("tasks.management.read", "Consultar fila de tarefas Gestão"),
@@ -355,6 +357,8 @@ DEFAULT_ROLE_PERMISSIONS = {
 ADMIN_EXCLUDED_OPERATIONAL_PERMISSIONS = {
     "process.instances.start",
     "process.instances.execute",
+    "tasks.request_decision",
+    "tasks.resolve_decision",
     "vehicle_sales.process.create",
 }
 

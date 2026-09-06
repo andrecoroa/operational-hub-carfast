@@ -582,3 +582,162 @@
   .ui-contract-v1 .email-inline-preview-body .email-body-frame{height:clamp(320px,55vh,620px);min-height:320px}
 }
 @media(max-width:560px){.task-filter-operational-row{grid-template-columns:minmax(0,1fr)}.task-center-approved .task-grouping-modes small{width:100%;margin-left:0}}
+
+/* Task Center compact work surface: approved dense list, preview and editor. */
+.sr-only{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;white-space:nowrap!important;border:0!important}
+.task-center-approved-toolbar{display:flex;height:42px;min-height:42px;padding:0;align-items:center;justify-content:space-between;border-bottom:1px solid #dfe6ee}
+.task-center-approved-toolbar .task-center-approved-tabs{height:42px;min-height:42px;border:0;align-items:stretch}
+.task-center-approved-toolbar .task-center-approved-tabs a{display:flex;min-height:42px;padding:0 3px;align-items:center}
+.task-center-approved-toolbar-actions,.task-center-detail-header-actions{display:flex;align-items:center;gap:6px}
+.task-center-approved-toolbar-actions :is(a,button),.task-center-detail-header-actions :is(a,button){width:auto;min-width:76px;height:30px;min-height:30px;padding:0 10px;font-size:10px}
+.task-center-approved-metrics{display:flex!important;height:34px!important;min-height:34px;gap:6px;margin:6px 0!important;overflow-x:auto}
+.task-center-approved .task-center-approved-metric{display:flex;min-width:108px;width:auto;height:34px;min-height:34px;padding:4px 9px;align-items:center;justify-content:flex-start;border-radius:7px}
+.task-center-approved .task-center-approved-metric>span,.task-center-approved .task-center-approved-metric em{display:none}
+.task-center-approved .task-center-approved-metric b{display:flex;align-items:center;gap:7px}
+.task-center-approved .task-center-approved-metric small{font-size:10px;white-space:nowrap}
+.task-center-approved .task-center-approved-metric strong{font-size:15px;line-height:1}
+.task-center-approved .task-center-approved-filters{margin:0 0 6px;padding:6px!important;border-radius:8px}
+.task-filter-primary-row{display:flex;gap:6px;align-items:end}
+.task-filter-search{flex:1 1 300px}
+.task-filter-scope{flex:0 1 auto}
+.task-filter-scope legend{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)}
+.task-filter-scope>div{gap:3px}
+.task-filter-scope button,.task-center-approved .task-grouping-modes button{min-width:64px;height:30px;min-height:30px;padding:0 8px}
+.task-center-approved .task-grouping-modes{display:flex;min-height:30px;margin:0;padding:0;border:0;gap:3px;flex-wrap:nowrap}
+.task-filter-toggle{width:auto!important;min-width:64px;height:30px!important;min-height:30px!important;padding:0 9px!important;white-space:nowrap}
+.task-filter-toggle::after{content:' ▾'}
+.task-filter-toggle[aria-expanded=true]::after{content:' ▴'}
+.task-filter-toggle.has-active-filters{border-color:#1f63d7;color:#154f9e;background:#eaf2ff}
+.task-filter-advanced{padding-top:6px;border-top:1px solid #e2e8f0}
+.task-filter-advanced[hidden]{display:none!important}
+.task-filter-operational-row{grid-template-columns:repeat(auto-fit,minmax(140px,1fr))}
+.task-filter-operational-row small{display:none}
+.task-center-approved .task-center-approved-active{margin-top:5px;padding:3px 0 0;border-top:1px solid #edf1f5}
+.task-center-approved-queue>header{height:34px;min-height:34px;padding:4px 10px}
+.task-center-approved-queue>header h2{font-size:13px}
+.task-center-approved tbody tr[data-task-row] td{height:42px;padding-top:5px;padding-bottom:5px}
+.task-center-approved .c-priority{width:7%}.task-center-approved .c-reference{width:10%}.task-center-approved .c-subject{width:28%}.task-center-approved .c-category{width:11%}.task-center-approved .c-owner{width:13%}.task-center-approved .c-due{width:10%}.task-center-approved .c-state{width:9%}.task-center-approved .c-updated{width:12%}
+.task-center-approved-table-wrap :is(th,td):last-child{white-space:nowrap;color:#607084;font-size:10px}
+.task-center-approved .task-center-approved-preview{position:relative;min-height:0}
+.task-center-approved-preview>.task-preview-closebar{position:absolute;z-index:2;top:4px;right:5px;width:24px;height:24px;min-height:24px;padding:0;background:transparent}
+.task-center-approved-preview>.task-preview-closebar button{width:24px;height:24px}
+.task-center-approved-preview-body{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(330px,.8fr);gap:6px 10px;padding:8px 38px 7px 10px}
+.task-preview-alerts{grid-column:1 / -1;margin:0}
+.task-preview-description{grid-column:1;grid-row:2 / span 2;min-height:4.1em;max-height:6.8em;margin:0;padding:7px 9px;background:#f8fafc}
+.task-preview-context{grid-column:1;grid-row:4;min-height:0;margin:0;overflow-x:auto}
+.task-preview-facts{grid-column:2;grid-row:2 / span 3;display:grid;grid-template-columns:1fr;gap:4px}
+.task-preview-facts section{min-height:32px;padding:4px 6px}
+.task-preview-facts section small{display:none}
+.task-preview-facts section strong{font-size:10px}
+.task-preview-facts section button{min-height:22px;height:22px;padding:1px 5px}
+.task-next-action{display:none}
+.task-center-approved-preview>footer{min-height:36px;padding:4px 10px;gap:5px}
+.task-center-approved .task-center-approved-preview>footer button{min-width:88px;height:26px;min-height:26px;padding:0 7px;font-size:9px}
+
+.task-center-detail-approved{gap:7px!important}
+.task-center-detail-header{display:flex;min-height:58px;height:auto;padding:7px 0;align-items:center;justify-content:space-between;border-bottom:1px solid #dfe6ee}
+.task-center-detail-title{display:grid;min-width:0;grid-template-columns:auto minmax(0,1fr);gap:1px 9px;align-items:center}
+.task-center-detail-title .breadcrumb{grid-column:1;margin:0;color:#607084;font-size:10px}
+.task-center-detail-title h2{grid-column:2;margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:16px}
+.task-center-detail-title .task-detail-status-line{grid-column:2;gap:5px;margin:2px 0 0}
+.task-center-detail-actions{display:flex;min-height:25px;gap:14px;padding:0;border:0}
+.task-center-detail-actions a{color:#155cc4;font-size:10px;font-weight:700;text-decoration:none}
+.task-detail-page-grid{grid-template-columns:minmax(0,1.55fr) minmax(320px,.85fr)!important;gap:8px!important;align-items:start}
+.task-detail-page-grid :is(.section,.form-panel){padding:10px!important;border-radius:8px}
+.task-detail-page-grid .panel-heading{margin-bottom:6px}
+.task-detail-page-grid .panel-heading .eyebrow{display:none}
+.task-detail-page-grid .panel-heading h3{font-size:13px}
+.task-detail-page-grid .form-stack{gap:7px}
+.task-detail-page-grid textarea[name=description]{min-height:92px}
+.task-detail-page-grid details>summary{font-size:11px}
+.task-detail-page-grid .compact-form-grid{gap:7px}
+.task-detail-page-grid :is(input,select,textarea){min-height:32px}
+.task-detail-page-grid button{width:auto;min-height:30px;padding:5px 10px}
+.task-detail-page-grid .task-detail-activity{max-height:260px;overflow:auto}
+
+@media(max-width:1050px){
+  .task-filter-primary-row{flex-wrap:wrap}.task-filter-search{flex-basis:100%}.task-filter-scope{flex:1 1 auto}.task-filter-scope>div{overflow-x:auto}
+  .task-center-approved .task-grouping-modes{overflow-x:auto}.task-center-approved .c-category,.task-center-approved .c-owner{display:none}.task-center-approved .c-subject{width:34%}
+}
+@media(max-width:850px){
+  .task-center-approved-toolbar{height:auto;min-height:42px;gap:6px;flex-wrap:wrap}.task-center-approved-toolbar-actions{margin-left:auto}
+  .task-center-approved-toolbar-actions :is(a,button){min-width:0;padding:0 7px}
+  .task-center-approved .task-center-approved-metric{min-width:96px}
+  .task-filter-primary-row{display:grid;grid-template-columns:minmax(0,1fr) auto}.task-filter-search{grid-column:1 / -1}.task-filter-scope,.task-center-approved .task-grouping-modes{grid-column:1 / -1}.task-filter-toggle{grid-column:2;grid-row:2}
+  .task-center-approved table :is(th,td):nth-child(4),.task-center-approved table :is(th,td):nth-child(5),.task-center-approved table :is(th,td):nth-child(6){display:none}.task-center-approved .c-updated{width:24%}
+  .task-center-approved-preview-body{display:block;padding-right:34px}.task-preview-context,.task-preview-facts{margin-top:5px}.task-preview-facts{display:flex;flex-wrap:wrap}.task-preview-facts section{flex:1 1 210px}
+  .task-detail-page-grid{grid-template-columns:minmax(0,1fr)!important}.task-center-detail-header{align-items:flex-start;gap:8px}.task-center-detail-title{display:block}.task-center-detail-title h2{margin:2px 0}.task-center-detail-title .task-detail-status-line{flex-wrap:wrap}
+}
+@media(max-width:560px){
+  .task-center-approved-toolbar-actions{width:100%;justify-content:flex-end}.task-filter-primary-row{display:flex;flex-direction:column;align-items:stretch}.task-filter-scope>div,.task-center-approved .task-grouping-modes{display:grid;grid-template-columns:repeat(3,minmax(0,1fr))}.task-filter-scope button,.task-center-approved .task-grouping-modes button{width:100%;min-width:0}.task-filter-toggle{align-self:flex-end}
+  .task-center-approved table :is(th,td):last-child{display:none}.task-center-approved-preview>footer{overflow-x:auto}.task-center-approved .task-center-approved-preview>footer button{flex:0 0 92px;width:92px;min-width:92px}
+  .task-center-detail-header{flex-direction:column}.task-center-detail-header-actions{width:100%;justify-content:flex-end}
+}
+
+/* Email compact work surface: same hierarchy as the approved Task Center. */
+.ui-contract-v1.visual-email-center{gap:6px!important}
+.ui-contract-v1 .visual-email-heading{display:flex;height:42px;min-height:42px;padding:0;align-items:center;justify-content:space-between;border-bottom:1px solid #dfe6ee;background:transparent;box-shadow:none}
+.ui-contract-v1 .visual-email-heading .email-work-views{display:flex;min-height:42px;margin:0;gap:18px;align-items:stretch;border:0}
+.ui-contract-v1 .visual-email-heading .email-work-views a{display:flex;min-height:42px;padding:0 3px;align-items:center;border:0;border-bottom:2px solid transparent;border-radius:0;background:transparent;color:#607084;font-size:11px}
+.ui-contract-v1 .visual-email-heading .email-work-views a.active{border-bottom-color:#1f63d7;background:transparent;color:#154f9e}
+.ui-contract-v1 .visual-email-heading-actions{display:flex;align-items:center;gap:6px}
+.ui-contract-v1 .visual-email-heading-actions :is(a,button){width:auto;min-width:88px;height:30px;min-height:30px;padding:0 10px;font-size:10px}
+.ui-contract-v1 .visual-email-overview{padding:0;gap:0}
+.ui-contract-v1 .visual-email-overview>header{display:none}
+.ui-contract-v1 .visual-email-metrics{display:flex;height:34px;min-height:34px;margin:0;gap:6px;overflow-x:auto}
+.ui-contract-v1 .visual-email-metrics>a{display:flex;width:auto;min-width:118px;height:34px;min-height:34px;padding:4px 9px;gap:7px;border-radius:7px;align-items:center}
+.ui-contract-v1 .visual-email-metrics>a>i{display:none}
+.ui-contract-v1 .email-metric-copy{display:flex;gap:7px;align-items:center}
+.ui-contract-v1 .email-metric-copy>strong{grid-row:auto;font-size:15px;line-height:1}
+.ui-contract-v1 .email-metric-copy>span{font-size:10px;white-space:nowrap}
+.ui-contract-v1 .email-metric-copy>small{display:none}
+.ui-contract-v1 .visual-email-workbench-header{height:30px;min-height:30px;padding:3px 10px}
+.ui-contract-v1 .visual-email-workbench-header .visual-kicker,.ui-contract-v1 .visual-email-workbench-header p{display:none}
+.ui-contract-v1 .visual-email-workbench-header h2{font-size:13px}
+.ui-contract-v1 .visual-email-workbench-header .visual-count-badge{min-width:28px;height:22px;padding:2px 7px;font-size:10px}
+.ui-contract-v1 .visual-email-filters{display:grid;grid-template-columns:minmax(260px,1fr) minmax(150px,220px) auto auto auto;min-height:42px;padding:5px 7px;gap:6px;align-items:end}
+.ui-contract-v1 .visual-email-filters label{gap:2px;font-size:9px}
+.ui-contract-v1 .visual-email-filters :is(input,select,button,.button-link),.ui-contract-v1 .email-secondary-filters>summary{height:30px;min-height:30px;padding-top:4px;padding-bottom:4px;font-size:10px}
+.ui-contract-v1 .email-secondary-filters>summary{min-width:82px;justify-content:center}
+.ui-contract-v1 .email-secondary-filters>div{top:34px;width:260px;padding:8px;gap:6px}
+.ui-contract-v1 .email-active-filters{min-height:24px;margin:0;padding:3px 7px;gap:5px;font-size:9px}
+.ui-contract-v1 .visual-email-table td{height:48px;padding:6px 9px;font-size:11px;border-bottom-color:#d7e0ea}
+.ui-contract-v1 .visual-email-table tbody tr.email-inbox-row:nth-child(even) td{background:#fbfcfe}
+.ui-contract-v1 .visual-email-table tbody tr.email-inbox-row:hover td,.ui-contract-v1 .visual-email-table tbody tr.email-inbox-row.is-selected td{background:#eef5ff}
+.ui-contract-v1 .visual-email-table td small{margin-top:2px;font-size:9px;line-height:1.25}
+.ui-contract-v1 .visual-email-table td:last-child button{width:auto;min-width:48px;height:26px;min-height:26px;padding:0 7px;font-size:9px}
+.ui-contract-v1 .email-mailbox-summary{gap:5px}
+.ui-contract-v1 .email-mailbox-row{display:grid;grid-template-columns:minmax(210px,1fr) auto auto auto;min-height:42px;padding:5px 8px;gap:8px;align-items:center}
+.ui-contract-v1 .email-mailbox-row>div{grid-row:auto}.ui-contract-v1 .email-mailbox-row>span{font-size:10px}.ui-contract-v1 .email-mailbox-row>a{grid-column:auto;width:auto;min-width:78px;height:28px;min-height:28px;padding:4px 8px;font-size:10px}
+.ui-contract-v1 .email-work-groups{gap:5px}.ui-contract-v1 .email-work-group>summary{min-height:36px;padding:5px 9px}
+
+.ui-contract-v1 .email-inline-preview-body{min-height:500px;max-height:min(820px,calc(100vh - 82px))}
+.ui-contract-v1 .email-inline-preview-body .email-modal-shell{height:min(780px,calc(100vh - 102px));min-height:480px}
+.ui-contract-v1 .email-inline-preview-body .email-modal-header{display:grid;height:48px;min-height:48px;padding:5px 9px;grid-template-columns:minmax(0,1fr) auto auto;gap:8px;align-items:center}
+.ui-contract-v1 .email-inline-preview-body .email-thread-identity{min-width:0;margin:0}.ui-contract-v1 .email-inline-preview-body .email-thread-identity h2{margin:1px 0 0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px}
+.ui-contract-v1 .email-inline-preview-body .email-title-line{gap:5px}.ui-contract-v1 .email-inline-preview-body .email-thread-reference,.ui-contract-v1 .email-inline-preview-body .email-badge{font-size:9px}
+.ui-contract-v1 .email-inline-preview-body .email-header-facts{display:flex;gap:8px}.ui-contract-v1 .email-inline-preview-body .email-header-facts>div{min-width:76px}.ui-contract-v1 .email-inline-preview-body .email-header-facts :is(dt,dd,small){font-size:9px}
+.ui-contract-v1 .email-inline-preview-body .email-header-actions{display:flex;gap:5px;align-items:center}.ui-contract-v1 .email-inline-preview-body .email-header-actions :is(button,.button-link){width:auto;min-width:0;height:26px;min-height:26px;padding:0 7px;font-size:9px;white-space:nowrap}
+.ui-contract-v1 .email-inline-preview-body .email-reader-grid{grid-template-columns:minmax(0,2.45fr) minmax(290px,.72fr)}
+.ui-contract-v1 .email-inline-preview-body .email-conversation{padding:8px}.ui-contract-v1 .email-inline-preview-body .email-triage-pane{padding:8px}
+.ui-contract-v1 .email-inline-preview-body .email-message-card>header{padding:8px 10px}.ui-contract-v1 .email-inline-preview-body .email-message-addresses dl{gap:1px}.ui-contract-v1 .email-inline-preview-body .email-message-addresses :is(dt,dd){font-size:9px}
+.ui-contract-v1 .email-inline-preview-body .email-body-switch{margin:6px 10px 0}.ui-contract-v1 .email-inline-preview-body .email-body-switch button{height:26px;min-height:26px;padding:3px 7px;font-size:9px}
+.ui-contract-v1 .email-inline-preview-body .email-body-frame{width:calc(100% - 20px);height:clamp(300px,44vh,540px);min-height:300px;margin:6px 10px 10px}
+.ui-contract-v1 .email-inline-preview-body .email-attachments,.ui-contract-v1 .email-inline-preview-body .email-embedded-images{margin-right:10px;margin-left:10px}.ui-contract-v1 .email-inline-preview-body .email-attachments{padding:8px}
+.ui-contract-v1 .email-inline-preview-body .email-attachment-row{min-height:40px;padding:5px 7px}.ui-contract-v1 .email-inline-preview-body .email-attachment-row :is(strong,small,b){font-size:9px}
+.ui-contract-v1 .email-inline-preview-body .email-triage-intro{margin-bottom:6px}.ui-contract-v1 .email-inline-preview-body .email-triage-intro .eyebrow{display:none}.ui-contract-v1 .email-inline-preview-body .email-triage-intro h3{font-size:13px}
+.ui-contract-v1 .email-inline-preview-body .email-triage-section{margin-bottom:6px;padding:7px}.ui-contract-v1 .email-inline-preview-body .email-triage-section>header{margin-bottom:5px}.ui-contract-v1 .email-inline-preview-body .email-triage-section>header>span{width:20px;height:20px;font-size:9px}.ui-contract-v1 .email-inline-preview-body .email-triage-section h4{font-size:11px}.ui-contract-v1 .email-inline-preview-body .email-triage-section header p{display:none}
+.ui-contract-v1 .email-inline-preview-body .email-work-hierarchy,.ui-contract-v1 .email-inline-preview-body .email-management-grid{gap:5px}.ui-contract-v1 .email-inline-preview-body .email-triage-pane :is(input,select,textarea){min-height:30px;font-size:10px}.ui-contract-v1 .email-inline-preview-body .email-triage-pane label{font-size:9px}
+.ui-contract-v1 .email-inline-preview-body .email-modal-footer{display:flex;min-height:36px;padding:4px 8px;gap:5px;overflow-x:auto}.ui-contract-v1 .email-inline-preview-body .email-modal-footer>*,.ui-contract-v1 .email-inline-preview-body .email-modal-footer form{flex:1 1 0;min-width:94px}.ui-contract-v1 .email-inline-preview-body .email-modal-footer :is(button,.button-link){width:100%;height:27px;min-height:27px;padding:0 6px;font-size:9px;white-space:nowrap}
+
+@media(max-width:900px){
+  .ui-contract-v1 .visual-email-heading{height:auto;min-height:42px;gap:6px;flex-wrap:wrap}.ui-contract-v1 .visual-email-heading .email-work-views{overflow-x:auto}.ui-contract-v1 .visual-email-heading-actions{margin-left:auto}
+  .ui-contract-v1 .visual-email-filters{grid-template-columns:minmax(0,1fr) minmax(130px,.45fr) auto auto}.ui-contract-v1 .visual-email-filters .email-filter-search{grid-column:1 / -1}.ui-contract-v1 .visual-email-filters>a{grid-column:auto}
+  .ui-contract-v1 .email-inline-preview-body{min-height:0;max-height:none}.ui-contract-v1 .email-inline-preview-body .email-modal-shell{height:auto;min-height:100dvh}.ui-contract-v1 .email-inline-preview-body .email-modal-header{height:auto;min-height:48px;grid-template-columns:minmax(0,1fr) auto}.ui-contract-v1 .email-inline-preview-body .email-header-facts{display:none}.ui-contract-v1 .email-inline-preview-body .email-reader-grid{grid-template-columns:minmax(0,1fr)}.ui-contract-v1 .email-inline-preview-body .email-modal-footer{position:sticky;bottom:0}
+}
+@media(max-width:560px){
+  .ui-contract-v1 .visual-email-heading .email-work-views{width:100%}.ui-contract-v1 .visual-email-heading .email-work-views a{flex:1;justify-content:center}.ui-contract-v1 .visual-email-heading-actions{width:100%;justify-content:flex-end}.ui-contract-v1 .visual-email-heading-actions a{display:none}
+  .ui-contract-v1 .visual-email-filters{display:grid;grid-template-columns:minmax(0,1fr) auto}.ui-contract-v1 .visual-email-filters .email-filter-search{grid-column:1 / -1}.ui-contract-v1 .visual-email-filters label:not(.email-filter-search){grid-column:1}.ui-contract-v1 .visual-email-filters>button{grid-column:2}.ui-contract-v1 .visual-email-filters>.email-secondary-filters{grid-column:1}.ui-contract-v1 .visual-email-filters>a{grid-column:2}
+  .ui-contract-v1 .email-mailbox-row{grid-template-columns:minmax(0,1fr) auto auto}.ui-contract-v1 .email-mailbox-row>a{grid-column:1 / -1;width:100%}
+  .ui-contract-v1 .email-inline-preview-body .email-header-actions .email-open-full{display:none}.ui-contract-v1 .email-inline-preview-body .email-modal-footer>*{flex:0 0 104px}
+}

@@ -116,11 +116,11 @@ def test_creation_offers_case_in_the_same_progressive_selector() -> None:
     assert "Criar e abrir tarefa" in TEMPLATE
 
 
-def test_approved_queue_has_exactly_seven_fields_and_refined_rows() -> None:
-    expected = ("Prior.", "Referência", "Assunto", "Categoria", "Responsável", "Prazo", "Estado")
+def test_approved_queue_has_eight_fields_and_refined_rows() -> None:
+    expected = ("Prior.", "Referência", "Assunto", "Categoria", "Responsável", "Prazo", "Estado", "Última atualização")
     for label in expected:
         assert f"<th>{label}</th>" in TEMPLATE
-    assert 'data-task-field-count="7"' in TEMPLATE
+    assert 'data-task-field-count="8"' in TEMPLATE
     assert "tbody tr[data-task-row] td{height:48px" in CSS
     assert "task-priority-text" in TEMPLATE
     assert "{{ '▲' if task.priority" not in TEMPLATE

@@ -674,6 +674,67 @@
   .task-center-detail-header{flex-direction:column}.task-center-detail-header-actions{width:100%;justify-content:flex-end}
 }
 
+/* Final Task Center density polish: presentation only; task behaviour stays unchanged. */
+.task-center-approved .task-filter-operational-row select{
+  height:34px!important;
+  min-height:34px!important;
+  padding:0 28px 0 9px;
+  line-height:normal;
+  font-size:10.5px;
+}
+.task-center-approved .task-filter-operational-row label{overflow:visible}
+.task-center-approved .task-filter-operational-row{grid-template-columns:repeat(auto-fit,minmax(155px,1fr))}
+.task-preview-description{min-height:5.4em;max-height:8.1em}
+.task-preview-context{height:24px;max-height:24px;align-items:center;overflow-y:hidden}
+.task-preview-context a,.task-preview-context span{flex:0 0 auto;padding:2px 6px;line-height:16px}
+.task-center-detail-actions{gap:5px;margin-bottom:7px}
+.task-center-detail-actions a{
+  display:inline-flex;
+  min-height:26px;
+  padding:0 9px;
+  align-items:center;
+  border:1px solid #cbd8e6;
+  border-radius:6px;
+  background:#fff;
+  box-shadow:0 1px 1px rgb(16 24 40 / 4%);
+}
+.task-center-detail-actions a:hover,.task-center-detail-actions a:focus-visible{border-color:#1f63d7;background:#eef5ff}
+.task-center-detail-approved #task-state{padding:8px!important}
+.task-center-detail-approved #task-state .panel-heading{margin-bottom:4px}
+.task-center-detail-approved #task-state dl{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px 10px;margin:0 0 7px}
+.task-center-detail-approved #task-state dl>div{min-width:0}
+.task-center-detail-approved #task-state :is(dt,dd){margin:0;font-size:10px;line-height:1.25}
+.task-center-detail-approved #task-state dt{color:#66778a}
+.task-center-detail-approved #task-state dd{margin-top:1px;color:#243b53}
+.task-center-detail-approved #task-state .form-stack{gap:5px}
+.task-center-detail-approved #task-state .muted{margin:0;font-size:9px;line-height:1.3}
+.task-center-detail-approved .task-detail-collapsible{padding:0!important;overflow:hidden}
+.task-center-detail-approved .task-detail-collapsible>summary{
+  min-height:36px;
+  padding:0 9px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  cursor:pointer;
+  color:#18344f;
+  font-size:11px;
+  font-weight:750;
+}
+.task-center-detail-approved .task-detail-collapsible>summary span{min-width:20px;padding:2px 6px;border-radius:999px;background:#edf3f9;text-align:center;font-size:9px}
+.task-center-detail-approved .task-detail-collapsible[open]>summary{border-bottom:1px solid #e2e8f0}
+.task-center-detail-approved .task-detail-collapsible-body{padding:8px}
+.task-center-detail-approved .task-detail-collapsible-body>.muted{margin:0 0 6px}
+.task-center-detail-approved .task-detail-documents .form-stack{margin-top:6px}
+@media(max-width:850px){
+  .task-center-approved .task-filter-operational-row{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .task-center-detail-approved #task-state dl{grid-template-columns:minmax(0,1fr)}
+}
+@media(max-width:560px){
+  .task-center-approved .task-filter-operational-row{grid-template-columns:minmax(0,1fr)}
+  .task-center-detail-actions{overflow-x:auto;flex-wrap:nowrap}
+  .task-center-detail-actions a{flex:0 0 auto}
+}
+
 /* Email compact work surface: same hierarchy as the approved Task Center. */
 .ui-contract-v1.visual-email-center{gap:6px!important}
 .ui-contract-v1 .visual-email-heading{display:flex;height:42px;min-height:42px;padding:0;align-items:center;justify-content:space-between;border-bottom:1px solid #dfe6ee;background:transparent;box-shadow:none}

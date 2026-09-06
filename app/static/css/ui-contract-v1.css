@@ -309,6 +309,21 @@
 .ui-contract-v1 .ui-context-preview::backdrop { display: none; }
 .ui-contract-v1 .ui-context-preview .email-preview-loading { display: grid; min-height: 100%; padding: 24px; place-content: center; gap: 6px; color: var(--ui-color-text-muted); text-align: center; }
 
+/* Email finishing pass: the inline preview prioritises the message over chrome. */
+.ui-contract-v1 .email-list-inline .visual-email-table thead th { position:sticky; top:0; z-index:2; box-shadow:0 1px 0 var(--ui-color-border); }
+.ui-contract-v1 .email-inline-preview-body .email-modal-header { height:64px; min-height:64px; }
+.ui-contract-v1 .email-inline-preview-body .email-thread-identity h2 { max-width:none; margin-top:2px; font-size:14px; }
+.ui-contract-v1 .email-inline-preview-body .email-header-facts { display:flex; align-items:center; gap:14px; }
+.ui-contract-v1 .email-inline-preview-body .email-header-facts > div { display:flex; align-items:center; gap:5px; }
+.ui-contract-v1 .email-inline-preview-body .email-header-facts :is(dt,dd,small) { margin:0; font-size:10px; }
+.ui-contract-v1 .email-inline-preview-body .email-reader-grid { grid-template-rows:minmax(220px,1fr) clamp(170px,22vh,210px); }
+.ui-contract-v1 .email-inline-preview-body .email-body-frame { height:clamp(150px,26vh,260px); min-height:150px; }
+@media (max-width:900px) {
+  .ui-contract-v1 .email-inline-preview-body .email-modal-header { height:auto; min-height:64px; }
+  .ui-contract-v1 .email-inline-preview-body .email-reader-grid { grid-template-rows:auto; }
+  .ui-contract-v1 .email-inline-preview-body .email-body-frame { height:clamp(260px,48vh,520px); }
+}
+
 .ui-contract-v1 .doc-arch-kpis { gap: 8px; }
 .ui-contract-v1 .doc-arch-kpis > a { min-height: 56px; padding: 8px 12px; }
 .ui-contract-v1 .ui-list-preview-workbench { grid-template-columns: minmax(0,2fr) minmax(280px,1fr); gap: 12px; }
@@ -500,3 +515,18 @@
 .task-row-updated{display:block!important;margin-top:2px!important;color:#66778a!important;font-size:9px!important;font-weight:400!important;white-space:nowrap}
 .task-group-child>.task-row-updated{align-self:center;margin:0!important;overflow:hidden;text-overflow:ellipsis}
 @media(max-width:850px){.task-center-approved .task-center-approved-preview{min-height:0}.task-preview-facts{flex-wrap:wrap}.task-preview-facts section{flex:1 1 220px}.task-center-approved-preview>footer{flex-wrap:wrap}.task-preview-description{min-height:4.8em;max-height:6em}.task-row-updated{white-space:normal}}
+
+/* Task Center finishing pass: readable queue, useful summary and clear action hierarchy. */
+.task-center-approved .c-priority{width:8%}
+.task-center-approved .c-reference{width:12%}
+.task-center-approved .c-subject{width:33%}
+.task-center-approved .c-category{width:12%}
+.task-center-approved .c-owner{width:14%}
+.task-center-approved .c-due{width:11%}
+.task-center-approved .c-state{width:10%}
+.task-center-approved-table-wrap thead th{position:sticky;top:0;z-index:3;box-shadow:0 1px 0 #d7e0ea}
+.task-preview-description{min-height:5.4em;max-height:8.1em;background:#f8fafc;color:#263d54}
+.task-center-approved .task-center-approved-preview>footer button:not(.primary){border:1px solid #b8c8da;background:#fff;color:#245582}
+.task-center-approved .task-center-approved-preview>footer button:not(.primary):hover{background:#eef5ff;border-color:#7da8dc}
+.task-center-approved .task-center-approved-preview>footer button.primary{font-weight:700;box-shadow:0 1px 2px rgba(21,92,196,.18)}
+@media(max-width:850px){.task-preview-description{min-height:5.4em;max-height:8.1em}}

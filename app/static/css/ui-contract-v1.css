@@ -530,3 +530,55 @@
 .task-center-approved .task-center-approved-preview>footer button:not(.primary):hover{background:#eef5ff;border-color:#7da8dc}
 .task-center-approved .task-center-approved-preview>footer button.primary{font-weight:700;box-shadow:0 1px 2px rgba(21,92,196,.18)}
 @media(max-width:850px){.task-preview-description{min-height:5.4em;max-height:8.1em}}
+
+/* Final Task Center filters: search and scope first, operational filters second, organisation last. */
+.task-center-approved .task-center-approved-filters{height:auto!important;min-height:0!important;padding:8px;gap:7px!important}
+.task-filter-primary-row{display:grid;grid-template-columns:minmax(280px,1fr) auto;gap:10px;align-items:end}
+.task-filter-primary-row label,.task-filter-operational-row label{display:grid;min-width:0;gap:3px;color:#52677c;font-size:10px;font-weight:700}
+.task-filter-primary-row input,.task-filter-operational-row select{box-sizing:border-box;width:100%;height:32px!important;min-height:32px!important;margin:0}
+.task-filter-scope{min-width:0;margin:0;padding:0;border:0}
+.task-filter-scope legend{margin-bottom:3px;color:#52677c;font-size:10px;font-weight:700}
+.task-filter-scope>div{display:flex;gap:5px}
+.task-filter-scope button,.task-grouping-modes button{width:auto;min-width:76px;height:32px;min-height:32px;padding:0 10px;border:1px solid #c7d3e1;background:#fff;color:#334b64;font-size:10px;font-weight:700;white-space:nowrap}
+.task-filter-scope button[aria-pressed=true],.task-grouping-modes button[aria-pressed=true]{border-color:#1f63d7;background:#eaf2ff;color:#154f9e;box-shadow:inset 0 -2px #1f63d7}
+.task-filter-operational-row{display:grid;grid-template-columns:minmax(132px,.9fr) minmax(150px,1fr) minmax(150px,1fr) minmax(125px,.8fr) minmax(175px,1fr) auto;gap:8px;align-items:end}
+.task-filter-operational-row>[data-task-safe-reset]{width:auto;min-width:94px;height:32px;white-space:nowrap}
+.task-center-approved .task-grouping-modes{min-height:34px;margin:0;padding-top:6px;border-top:1px solid #e2e8f0;flex-wrap:wrap}
+.task-center-approved .task-grouping-modes>span{color:#52677c;font-size:10px;font-weight:700}
+.task-center-approved .task-grouping-modes small{font-size:10px}
+.task-center-approved .task-center-approved-active{height:auto;min-height:23px;padding:3px 6px;gap:5px;flex-wrap:wrap}
+
+/* Equal, compact task actions; decision remains the final action in reading order. */
+.task-center-approved-preview>footer{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);align-items:center;gap:6px;overflow-x:auto}
+.task-center-approved-preview>footer span{display:contents}
+.task-center-approved .task-center-approved-preview>footer button{width:100%;min-width:96px;height:28px;min-height:28px;padding:0 7px;font-size:10px;white-space:nowrap}
+
+/* Email workbench: reading space dominates while triage and attachments remain actionable. */
+.ui-contract-v1 .email-inline-preview-body{min-height:520px;max-height:min(840px,calc(100vh - 88px))}
+.ui-contract-v1 .email-inline-preview-body .email-modal-shell{height:min(800px,calc(100vh - 108px));min-height:500px}
+.ui-contract-v1 .email-inline-preview-body .email-reader-grid{grid-template-columns:minmax(0,2.35fr) minmax(300px,.75fr);grid-template-rows:minmax(0,1fr);min-height:0}
+.ui-contract-v1 .email-inline-preview-body .email-conversation,.ui-contract-v1 .email-inline-preview-body .email-triage-pane{min-height:0;overflow:auto}
+.ui-contract-v1 .email-inline-preview-body .email-message-card{max-width:none;border:1px solid #dce4ed;border-radius:8px;background:#fff;box-shadow:0 1px 2px rgb(15 23 42 / 5%)}
+.ui-contract-v1 .email-inline-preview-body .email-message-card>header{padding:12px 14px;background:#f8fafc;border-radius:8px 8px 0 0}
+.ui-contract-v1 .email-inline-preview-body .email-body-switch{margin:8px 14px 0}
+.ui-contract-v1 .email-inline-preview-body .email-body-frame{box-sizing:border-box;width:calc(100% - 28px);height:clamp(280px,42vh,520px);min-height:280px;margin:8px 14px 14px;border:1px solid #e2e8f0;background:#fff}
+.ui-contract-v1 .email-inline-preview-body .email-attachments,.ui-contract-v1 .email-inline-preview-body .email-embedded-images{margin-right:14px;margin-left:14px}
+.ui-contract-v1 .email-inline-preview-body .email-attachments{padding:12px;border:1px solid #bfdbfe;border-radius:8px;background:#f8fbff}
+.ui-contract-v1 .email-inline-preview-body .email-attachment-row>b{color:#155cc4;white-space:nowrap}
+.ui-contract-v1 .email-inline-preview-body .email-embedded-images>summary{font-weight:650}
+
+@media(max-width:900px){
+  .task-filter-primary-row{grid-template-columns:minmax(0,1fr)}
+  .task-filter-scope>div{overflow-x:auto;padding-bottom:2px}
+  .task-filter-scope button{flex:1 0 88px}
+  .task-filter-operational-row{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .task-filter-operational-row>[data-task-safe-reset]{width:100%}
+  .task-center-approved-preview>footer{display:flex;flex-wrap:nowrap;padding:6px 8px}
+  .task-center-approved .task-center-approved-preview>footer button{flex:0 0 104px;width:104px;min-width:104px;height:28px}
+  .ui-contract-v1 .email-inline-preview-body{min-height:0;max-height:none;overflow:visible}
+  .ui-contract-v1 .email-inline-preview-body .email-modal-shell{height:auto;min-height:100dvh}
+  .ui-contract-v1 .email-inline-preview-body .email-reader-grid{grid-template-columns:minmax(0,1fr);grid-template-rows:auto}
+  .ui-contract-v1 .email-inline-preview-body .email-conversation,.ui-contract-v1 .email-inline-preview-body .email-triage-pane{overflow:visible}
+  .ui-contract-v1 .email-inline-preview-body .email-body-frame{height:clamp(320px,55vh,620px);min-height:320px}
+}
+@media(max-width:560px){.task-filter-operational-row{grid-template-columns:minmax(0,1fr)}.task-center-approved .task-grouping-modes small{width:100%;margin-left:0}}

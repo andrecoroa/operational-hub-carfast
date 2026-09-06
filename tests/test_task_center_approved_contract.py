@@ -99,7 +99,10 @@ def test_primary_filters_use_operational_views_and_persisted_queues() -> None:
     for label in ("Minhas", "Por assumir", "Da equipa"):
         assert label in TEMPLATE
     assert 'aria-label="Vista de trabalho"' in TEMPLATE
-    assert 'select name="task_scope_view" data-task-scope' in TEMPLATE
+    assert 'type="hidden" name="task_scope_view"' in TEMPLATE
+    assert 'data-task-scope-option="{{ code }}"' in TEMPLATE
+    assert 'class="task-filter-primary-row"' in TEMPLATE
+    assert 'class="task-filter-operational-row"' in TEMPLATE
     assert "form.querySelector('[data-task-scope]')" in TEMPLATE
     assert 'data-task-queue' in TEMPLATE
     assert 'name="category" value="all"' in TEMPLATE
@@ -156,7 +159,8 @@ def test_inline_preview_is_compact_and_does_not_repeat_selected_row_identity() -
     assert 'class="task-preview-updated"' not in preview
     assert "updated.textContent=`Atualizada ${row.dataset.update}`" in TEMPLATE
     assert ".task-center-approved .task-center-approved-preview{min-height:150px}" in CSS
-    assert "footer button{flex:0 0 auto;width:auto" in CSS
+    assert "grid-auto-columns:minmax(0,1fr)" in CSS
+    assert "footer button{width:100%;min-width:96px" in CSS
     assert ".task-preview-context[hidden]{display:none}" in CSS
 
 
@@ -166,6 +170,18 @@ def test_finishing_pass_prioritizes_subject_summary_and_primary_action() -> None
     assert ".task-preview-description{min-height:5.4em;max-height:8.1em" in CSS
     assert "footer button:not(.primary){border:1px solid" in CSS
     assert "footer button.primary{font-weight:700" in CSS
+
+
+def test_final_filters_and_actions_keep_the_approved_hierarchy() -> None:
+    assert "Pesquisa<input" in TEMPLATE
+    assert "Referência, assunto ou contexto" in TEMPLATE
+    assert "('flat','Lista'),('case','Por caso'),('category','Por categoria')" in TEMPLATE
+    assert TEMPLATE.index('data-case-flow="related"') < TEMPLATE.index(
+        'data-task-preview-action="decision"'
+    )
+    assert ".task-filter-primary-row{display:grid" in CSS
+    assert ".task-filter-operational-row{display:grid" in CSS
+    assert "decision remains the final action" in CSS
 
 
 def test_preview_renders_only_persisted_non_empty_context_without_plate_heuristics(

@@ -309,6 +309,21 @@
 .ui-contract-v1 .ui-context-preview::backdrop { display: none; }
 .ui-contract-v1 .ui-context-preview .email-preview-loading { display: grid; min-height: 100%; padding: 24px; place-content: center; gap: 6px; color: var(--ui-color-text-muted); text-align: center; }
 
+/* Email finishing pass: the inline preview prioritises the message over chrome. */
+.ui-contract-v1 .email-list-inline .visual-email-table thead th { position:sticky; top:0; z-index:2; box-shadow:0 1px 0 var(--ui-color-border); }
+.ui-contract-v1 .email-inline-preview-body .email-modal-header { height:64px; min-height:64px; }
+.ui-contract-v1 .email-inline-preview-body .email-thread-identity h2 { max-width:none; margin-top:2px; font-size:14px; }
+.ui-contract-v1 .email-inline-preview-body .email-header-facts { display:flex; align-items:center; gap:14px; }
+.ui-contract-v1 .email-inline-preview-body .email-header-facts > div { display:flex; align-items:center; gap:5px; }
+.ui-contract-v1 .email-inline-preview-body .email-header-facts :is(dt,dd,small) { margin:0; font-size:10px; }
+.ui-contract-v1 .email-inline-preview-body .email-reader-grid { grid-template-rows:minmax(220px,1fr) clamp(170px,22vh,210px); }
+.ui-contract-v1 .email-inline-preview-body .email-body-frame { height:clamp(150px,26vh,260px); min-height:150px; }
+@media (max-width:900px) {
+  .ui-contract-v1 .email-inline-preview-body .email-modal-header { height:auto; min-height:64px; }
+  .ui-contract-v1 .email-inline-preview-body .email-reader-grid { grid-template-rows:auto; }
+  .ui-contract-v1 .email-inline-preview-body .email-body-frame { height:clamp(260px,48vh,520px); }
+}
+
 .ui-contract-v1 .doc-arch-kpis { gap: 8px; }
 .ui-contract-v1 .doc-arch-kpis > a { min-height: 56px; padding: 8px 12px; }
 .ui-contract-v1 .ui-list-preview-workbench { grid-template-columns: minmax(0,2fr) minmax(280px,1fr); gap: 12px; }
@@ -344,7 +359,7 @@
 
 .ui-contract-v1 .clean-admin-directory,
 .ui-contract-v1 .clean-admin-residual-nav { margin: 0; }
-.ui-contract-v1 .clean-admin-content { height:100vh; max-height:100vh; overflow:hidden; }
+.ui-contract-v1 .clean-admin-content { height:100vh; max-height:100vh; overflow:hidden; grid-template-rows:52px auto minmax(0,1fr); }
 .ui-contract-v1 .admin-model-workbench { padding: 0; overflow: hidden; }
 .ui-contract-v1 .admin-model-workbench > .table-heading { min-height: 52px; padding: 8px 12px; }
 .ui-contract-v1 .admin-model-columns { display: grid; grid-template-columns: minmax(190px,.7fr) minmax(190px,.7fr) minmax(320px,1.4fr); min-height: 440px; gap: 0; }
@@ -406,13 +421,13 @@
 .ui-contract-v1 .email-secondary-filters > summary { display:flex; min-height:32px; padding:6px 10px; align-items:center; border:1px solid var(--ui-color-border); border-radius:6px; cursor:pointer; list-style:none; white-space:nowrap; }
 .ui-contract-v1 .email-secondary-filters > div { position:absolute; z-index:30; top:36px; right:0; display:grid; width:280px; gap:8px; padding:10px; border:1px solid var(--ui-color-border); border-radius:8px; background:var(--ui-color-surface); box-shadow:0 10px 28px rgba(15,23,42,.16); }
 .ui-contract-v1 .clean-admin-header { padding:8px 12px; }
-.ui-contract-v1 .clean-admin-master-detail { display:grid; grid-template-columns:210px minmax(0,1fr); gap:12px; min-width:0; max-height:calc(100vh - 175px); overflow:hidden; align-items:start; }
+.ui-contract-v1 .clean-admin-master-detail { display:grid; grid-template-columns:210px minmax(0,1fr); gap:12px; min-width:0; min-height:0; height:100%; max-height:none; overflow:hidden; align-items:start; }
 .ui-contract-v1 .clean-admin-master { position:sticky; top:8px; display:grid; gap:8px; padding:10px; border:1px solid var(--ui-color-border); border-radius:8px; background:var(--ui-color-surface); }
 .ui-contract-v1 .clean-admin-master nav { display:grid; gap:2px; }
 .ui-contract-v1 .clean-admin-master a { min-height:32px; padding:7px 9px; border-radius:6px; color:var(--ui-color-text); text-decoration:none; font-size:12px; font-weight:700; white-space:nowrap; }
 .ui-contract-v1 .clean-admin-master a:is(:hover,.active) { background:var(--ui-color-surface-muted); color:var(--ui-color-primary); }
 .ui-contract-v1 .clean-admin-master small { color:var(--ui-color-text-muted); line-height:1.35; }
-.ui-contract-v1 .clean-admin-detail { display:grid; min-width:0; max-height:calc(100vh - 175px); overflow:auto; gap:12px; align-content:start; }
+.ui-contract-v1 .clean-admin-detail { display:grid; min-width:0; min-height:0; height:100%; max-height:none; padding-bottom:16px; overflow:auto; scrollbar-gutter:stable; gap:12px; align-content:start; }
 .ui-contract-v1 .clean-admin-detail > .clean-card-wide { width:100%; min-width:0; }
 .ui-contract-v1 .clean-admin-overview-strip { grid-template-columns:repeat(3,minmax(0,1fr)); }
 
@@ -500,3 +515,18 @@
 .task-row-updated{display:block!important;margin-top:2px!important;color:#66778a!important;font-size:9px!important;font-weight:400!important;white-space:nowrap}
 .task-group-child>.task-row-updated{align-self:center;margin:0!important;overflow:hidden;text-overflow:ellipsis}
 @media(max-width:850px){.task-center-approved .task-center-approved-preview{min-height:0}.task-preview-facts{flex-wrap:wrap}.task-preview-facts section{flex:1 1 220px}.task-center-approved-preview>footer{flex-wrap:wrap}.task-preview-description{min-height:4.8em;max-height:6em}.task-row-updated{white-space:normal}}
+
+/* Task Center finishing pass: readable queue, useful summary and clear action hierarchy. */
+.task-center-approved .c-priority{width:8%}
+.task-center-approved .c-reference{width:12%}
+.task-center-approved .c-subject{width:33%}
+.task-center-approved .c-category{width:12%}
+.task-center-approved .c-owner{width:14%}
+.task-center-approved .c-due{width:11%}
+.task-center-approved .c-state{width:10%}
+.task-center-approved-table-wrap thead th{position:sticky;top:0;z-index:3;box-shadow:0 1px 0 #d7e0ea}
+.task-preview-description{min-height:5.4em;max-height:8.1em;background:#f8fafc;color:#263d54}
+.task-center-approved .task-center-approved-preview>footer button:not(.primary){border:1px solid #b8c8da;background:#fff;color:#245582}
+.task-center-approved .task-center-approved-preview>footer button:not(.primary):hover{background:#eef5ff;border-color:#7da8dc}
+.task-center-approved .task-center-approved-preview>footer button.primary{font-weight:700;box-shadow:0 1px 2px rgba(21,92,196,.18)}
+@media(max-width:850px){.task-preview-description{min-height:5.4em;max-height:8.1em}}

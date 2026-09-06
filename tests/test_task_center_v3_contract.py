@@ -196,7 +196,7 @@ def test_all_scope_uses_canonical_state_and_preserves_filters(
     assert response.status_code == 200
     assert task.title in response.text
     assert 'data-active-view="all"' in response.text
-    assert '<option value="all" selected>Todas</option>' in response.text
+    assert 'data-task-scope-option="all" aria-pressed="true">Todas</button>' in response.text
     assert 'name="workspace" value="all"' in response.text
     assert 'name="mine_kind" value="all"' in response.text
     assert 'name="assignment" value=""' in response.text
@@ -279,7 +279,7 @@ def test_all_scope_keeps_restricted_operator_visibility_fail_closed(
     )
 
     assert response.status_code == 200
-    assert '<option value="all" selected>Todas</option>' in response.text
+    assert 'data-task-scope-option="all" aria-pressed="true">Todas</button>' in response.text
     assert related.title in response.text
     assert outside.title not in response.text
 
@@ -422,7 +422,7 @@ def test_team_scope_is_preserved_and_limited_to_the_users_team(
     for response in (page, reload):
         assert response.status_code == 200
         assert 'data-active-view="team"' in response.text
-        assert '<option value="team" selected' in response.text
+        assert 'data-task-scope-option="team" aria-pressed="true"' in response.text
         assert team_task.title in response.text
         assert personal_task.title not in response.text
         assert 'name="task_scope_view"' in response.text
@@ -502,7 +502,7 @@ def test_team_unassigned_filter_preserves_scope_and_filters_the_list(
     for page in pages:
         assert page.status_code == 200
         assert 'data-active-view="team"' in page.text
-        assert '<option value="team" selected' in page.text
+        assert 'data-task-scope-option="team" aria-pressed="true"' in page.text
         assert unassigned.title in page.text
         assert claimed.title not in page.text
         assert outside.title not in page.text

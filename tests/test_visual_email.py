@@ -108,11 +108,17 @@ def test_email_inline_mailboxes_and_mobile_overflow_contract() -> None:
 
 def test_email_inline_preview_prioritizes_message_reading_space() -> None:
     css = CONTRACT_CSS.read_text(encoding="utf-8")
+    source = THREAD.read_text(encoding="utf-8")
 
     assert ".email-list-inline .visual-email-table thead th { position:sticky" in css
     assert ".email-inline-preview-body .email-modal-header { height:64px; min-height:64px; }" in css
-    assert ".email-inline-preview-body .email-reader-grid { grid-template-rows:minmax(220px,1fr)" in css
-    assert ".email-inline-preview-body .email-body-frame { height:clamp(150px,26vh,260px)" in css
+    assert ".email-inline-preview-body{min-height:520px" in css
+    assert ".email-inline-preview-body .email-reader-grid{grid-template-columns:minmax(0,2.35fr)" in css
+    assert ".email-inline-preview-body .email-body-frame{box-sizing:border-box" in css
+    assert "height:clamp(280px,42vh,520px)" in css
+    assert "Anexos para tratamento" in source
+    assert "Tratar anexo" in source
+    assert "Imagens incorporadas no email · não contam como anexos" in source
 
 
 def test_email_full_page_return_context_is_local_and_feature_gated() -> None:

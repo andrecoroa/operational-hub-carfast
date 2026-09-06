@@ -515,3 +515,18 @@
 .task-row-updated{display:block!important;margin-top:2px!important;color:#66778a!important;font-size:9px!important;font-weight:400!important;white-space:nowrap}
 .task-group-child>.task-row-updated{align-self:center;margin:0!important;overflow:hidden;text-overflow:ellipsis}
 @media(max-width:850px){.task-center-approved .task-center-approved-preview{min-height:0}.task-preview-facts{flex-wrap:wrap}.task-preview-facts section{flex:1 1 220px}.task-center-approved-preview>footer{flex-wrap:wrap}.task-preview-description{min-height:4.8em;max-height:6em}.task-row-updated{white-space:normal}}
+
+/* Task Center finishing pass: readable queue, useful summary and clear action hierarchy. */
+.task-center-approved .c-priority{width:8%}
+.task-center-approved .c-reference{width:12%}
+.task-center-approved .c-subject{width:33%}
+.task-center-approved .c-category{width:12%}
+.task-center-approved .c-owner{width:14%}
+.task-center-approved .c-due{width:11%}
+.task-center-approved .c-state{width:10%}
+.task-center-approved-table-wrap thead th{position:sticky;top:0;z-index:3;box-shadow:0 1px 0 #d7e0ea}
+.task-preview-description{min-height:5.4em;max-height:8.1em;background:#f8fafc;color:#263d54}
+.task-center-approved .task-center-approved-preview>footer button:not(.primary){border:1px solid #b8c8da;background:#fff;color:#245582}
+.task-center-approved .task-center-approved-preview>footer button:not(.primary):hover{background:#eef5ff;border-color:#7da8dc}
+.task-center-approved .task-center-approved-preview>footer button.primary{font-weight:700;box-shadow:0 1px 2px rgba(21,92,196,.18)}
+@media(max-width:850px){.task-preview-description{min-height:5.4em;max-height:8.1em}}

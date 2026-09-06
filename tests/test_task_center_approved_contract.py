@@ -160,6 +160,14 @@ def test_inline_preview_is_compact_and_does_not_repeat_selected_row_identity() -
     assert ".task-preview-context[hidden]{display:none}" in CSS
 
 
+def test_finishing_pass_prioritizes_subject_summary_and_primary_action() -> None:
+    assert ".task-center-approved .c-subject{width:33%}" in CSS
+    assert ".task-center-approved-table-wrap thead th{position:sticky" in CSS
+    assert ".task-preview-description{min-height:5.4em;max-height:8.1em" in CSS
+    assert "footer button:not(.primary){border:1px solid" in CSS
+    assert "footer button.primary{font-weight:700" in CSS
+
+
 def test_preview_renders_only_persisted_non_empty_context_without_plate_heuristics(
     authenticated_client, db_session, monkeypatch
 ) -> None:

@@ -138,6 +138,35 @@ def test_email_compact_surface_keeps_views_actions_and_reader_priority() -> None
     assert ".email-modal-footer{display:flex;min-height:36px" in css
 
 
+def test_email_operational_indicators_match_task_center_language_and_density() -> None:
+    template = TEMPLATE.read_text(encoding="utf-8")
+    css = CONTRACT_CSS.read_text(encoding="utf-8")
+
+    for code, label in (
+        ("to_treat", "Por tratar"),
+        ("new", "Novos"),
+        ("unassigned", "Por atribuir"),
+        ("overdue", "Atrasados"),
+        ("risk", "Em risco"),
+    ):
+        assert f"signal={code}" in template
+        assert f"<span>{label}</span>" in template
+    assert "border-radius:999px" in css
+    assert ".visual-email-metrics>a.is-danger" in css
+    assert ".visual-email-metrics>a.is-warning" in css
+
+
+def test_email_reader_exposes_structured_headers_and_attachment_separation() -> None:
+    source = THREAD.read_text(encoding="utf-8")
+
+    for label in ("Assunto:", "De:", "Para:", "Data:"):
+        assert label in source
+    assert "Anexos para tratamento" in source
+    assert "attachments_by_message[item.id]|length" in source
+    assert "Imagens incorporadas no email · não contam como anexos" in source
+    assert "embedded_images_by_message[item.id]|length" in source
+
+
 def test_email_full_page_return_context_is_local_and_feature_gated() -> None:
     source = ROUTER.read_text(encoding="utf-8")
 

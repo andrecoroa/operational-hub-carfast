@@ -1,6 +1,7 @@
 import base64
 import json
 import re
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from sqlalchemy import select
@@ -113,10 +114,80 @@ def test_inbox_facets_apply_remaining_filters_server_side(authenticated_client, 
     assert re.findall(r"\d+ resultado\(s\) com todos os filtros ativos", response.text) == [
         "2 resultado(s) com todos os filtros ativos"
     ]
-    assert '<strong>1</strong><span>Por triar</span>' in response.text
-    assert '<strong>1</strong><span>Resposta pendente</span>' in response.text
+    for label in ("Por tratar", "Novos", "Por atribuir", "Atrasados", "Em risco"):
+        assert f"<span>{label}</span>" in response.text
+    assert "signal=unassigned" in response.text
+    assert "signal=risk" in response.text
     assert 'class="email-secondary-filters"' in response.text
     assert 'aria-label="Estados das conversas"' not in response.text
+
+
+def test_operational_indicators_use_existing_email_states_and_sla_warning(
+    authenticated_client, db_session, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(settings, "email_storage_root", str(tmp_path))
+    monkeypatch.setattr(settings, "visual_foundation_enabled", True)
+    _bind_email_session(monkeypatch, db_session)
+    admin = db_session.scalar(
+        select(User).where(User.email == "admin.tests@carfast.local")
+    )
+    now = datetime.now(UTC)
+
+    def make_thread(key: str, status: str) -> EmailThread:
+        payload = _payload(f"signal-{key}")
+        payload["Subject"] = f"Indicador sintético {key}"
+        thread, _ = ingest_inbound(db_session, payload)
+        thread.status = status
+        thread.assigned_to_id = admin.id
+        thread.assignment_state = "assigned_user"
+        thread.first_response_at = now
+        thread.first_response_due_at = None
+        thread.resolution_due_at = now + timedelta(days=2)
+        thread.sla_warning_minutes = 60
+        return thread
+
+    new = make_thread("novo", "triage")
+    make_thread("resposta", "new_reply")
+    unassigned = make_thread("sem-executor", "in_progress")
+    unassigned.assigned_to_id = None
+    unassigned.executor_team_id = None
+    unassigned.assignment_state = "waiting_assignment"
+    overdue = make_thread("atrasado", "in_progress")
+    overdue.resolution_due_at = now - timedelta(minutes=5)
+    risk = make_thread("risco", "in_progress")
+    risk.resolution_due_at = now + timedelta(minutes=30)
+    closed = make_thread("fechado", "resolved")
+    closed.resolved_at = now
+    db_session.commit()
+
+    overview = authenticated_client.get(
+        "/v2-clean/email?view=all&status=all&q=Indicador+sint%C3%A9tico"
+    )
+
+    assert overview.status_code == 200
+    for label, count in (
+        ("Por tratar", 5),
+        ("Novos", 2),
+        ("Por atribuir", 1),
+        ("Atrasados", 1),
+        ("Em risco", 1),
+    ):
+        assert f"<span>{label}</span><strong>{count}</strong>" in overview.text
+
+    risk_view = authenticated_client.get(
+        "/v2-clean/email?view=all&status=all&signal=risk&q=Indicador+sint%C3%A9tico"
+    )
+    unassigned_view = authenticated_client.get(
+        "/v2-clean/email?view=all&status=all&signal=unassigned&q=Indicador+sint%C3%A9tico"
+    )
+
+    assert risk.subject in risk_view.text
+    assert overdue.subject not in risk_view.text
+    assert closed.subject not in risk_view.text
+    assert "1 resultado(s) com todos os filtros ativos" in risk_view.text
+    assert unassigned.subject in unassigned_view.text
+    assert new.subject not in unassigned_view.text
+    assert "1 resultado(s) com todos os filtros ativos" in unassigned_view.text
 
 
 def test_email_work_views_group_without_duplicates_and_mine_stays_scoped(

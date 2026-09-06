@@ -132,6 +132,13 @@ EMAIL_WORK_VIEW_LABELS = {
     "all": "Todas",
 }
 EMAIL_CLOSED_STATUSES = {"resolved", "archived"}
+EMAIL_SIGNAL_LABELS = {
+    "to_treat": "Por tratar",
+    "new": "Novos",
+    "unassigned": "Por atribuir",
+    "overdue": "Atrasados",
+    "risk": "Em risco",
+}
 
 EMAIL_ADDRESS_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 EMAIL_LINK_KINDS = {
@@ -944,6 +951,7 @@ def email_inbox(
     q: str = "",
     responsible: str = "",
     due: str = "",
+    signal: str = "",
     supplier_id: int | None = None,
     module_code: str = "",
     compose: str = "",
@@ -976,13 +984,20 @@ def email_inbox(
                 "user_id": user_id,
                 "view": selected_view,
             }
-        selected_status = status if status in STATUS_LABELS or status == "all" else "triage"
+        selected_status = (
+            status
+            if status in STATUS_LABELS or status in {"all", "active"}
+            else "triage"
+        )
+        selected_signal = signal if signal in EMAIL_SIGNAL_LABELS else ""
         query = (
             select(EmailThread, EmailChannel)
             .join(EmailChannel, EmailChannel.id == EmailThread.channel_id)
             .where(_email_visibility_filter(db, user_id, channel_access))
         )
-        if selected_status != "all":
+        if selected_status == "active":
+            query = query.where(EmailThread.status.not_in(EMAIL_CLOSED_STATUSES))
+        elif selected_status != "all":
             query = query.where(EmailThread.status == selected_status)
         if selected_view == "mine":
             query = query.where(EmailThread.assigned_to_id == user_id)
@@ -1041,6 +1056,29 @@ def email_inbox(
             if reference_tail.isdigit():
                 search_terms.append(EmailThread.id == int(reference_tail))
             query = query.where(or_(*search_terms))
+        if selected_signal == "to_treat":
+            query = query.where(EmailThread.status.not_in(EMAIL_CLOSED_STATUSES))
+        elif selected_signal == "new":
+            query = query.where(EmailThread.status.in_({"triage", "new_reply"}))
+        elif selected_signal == "unassigned":
+            query = query.where(
+                EmailThread.status.not_in(EMAIL_CLOSED_STATUSES),
+                EmailThread.assigned_to_id.is_(None),
+                EmailThread.executor_team_id.is_(None),
+            )
+        elif selected_signal == "overdue":
+            query = query.where(
+                EmailThread.status.not_in(EMAIL_CLOSED_STATUSES),
+                EmailThread.resolution_due_at < now,
+            )
+        elif selected_signal == "risk":
+            risk_ids = [
+                item.id
+                for item in db.execute(query).scalars().unique().all()
+                if item.status not in EMAIL_CLOSED_STATUSES
+                and sla_snapshot(item, now=now).overall == "warning"
+            ]
+            query = query.where(EmailThread.id.in_(risk_ids or [-1]))
         filtered_threads = query.with_only_columns(
             EmailThread.channel_id,
             EmailThread.status,
@@ -1101,13 +1139,10 @@ def email_inbox(
         }
         ordered_query = query.order_by(EmailThread.last_message_at.desc())
         if selected_view == "mailbox":
-            rows = [
-                row
-                for channel_id in mailbox_group_counts
-                for row in db.execute(
-                    ordered_query.where(EmailThread.channel_id == channel_id).limit(100)
-                ).all()
-            ]
+            # The mailbox view is a navigation summary.  Messages are only
+            # loaded after the operator opens a mailbox, avoiding hidden work
+            # and long pages when many mailboxes are available.
+            rows = []
         elif selected_view == "mine":
             rows = [
                 row
@@ -1125,7 +1160,8 @@ def email_inbox(
             effective_status = selected_status if facet_status is None else facet_status
             effective_responsible = responsible if facet_responsible is None else facet_responsible
             effective_due = due if facet_due is None else facet_due
-            if effective_status != "all": statement = statement.where(EmailThread.status == effective_status)
+            if effective_status == "active": statement = statement.where(EmailThread.status.not_in(EMAIL_CLOSED_STATUSES))
+            elif effective_status != "all": statement = statement.where(EmailThread.status == effective_status)
             if selected_view == "mine": statement = statement.where(EmailThread.assigned_to_id == user_id)
             if channel: statement = statement.where(EmailChannel.code == channel)
             if effective_responsible == "mine": statement = statement.where(EmailThread.assigned_to_id == user_id)
@@ -1148,8 +1184,77 @@ def email_inbox(
 
         counts = {code: facet_count(facet_status=code) for code in STATUS_LABELS}
         all_status_count = facet_count(facet_status="all")
-        filtered_total_count = facet_count()
-        operational_counters = {"triage": facet_count(facet_status="triage"), "mine": facet_count(facet_responsible="mine"), "unassigned": facet_count(facet_responsible="unassigned"), "overdue": facet_count(facet_due="overdue"), "waiting": facet_count(facet_status="waiting_reply")}
+        filtered_total_count = int(
+            db.scalar(select(func.count()).select_from(filtered_threads)) or 0
+        )
+        # Rebuild from the same authorized mailbox/search scope so every
+        # indicator remains stable when another indicator is selected.
+        indicator_base = (
+            select(EmailThread)
+            .join(EmailChannel, EmailChannel.id == EmailThread.channel_id)
+            .where(_email_visibility_filter(db, user_id, channel_access))
+        )
+        if selected_view == "mine":
+            indicator_base = indicator_base.where(EmailThread.assigned_to_id == user_id)
+        if channel:
+            indicator_base = indicator_base.where(EmailChannel.code == channel)
+        if clean_query:
+            indicator_base = indicator_base.where(or_(*search_terms))
+        indicator_rows = indicator_base.subquery()
+
+        def indicator_count(*conditions) -> int:
+            return int(
+                db.scalar(
+                    select(func.count())
+                    .select_from(indicator_rows)
+                    .where(*conditions)
+                )
+                or 0
+            )
+
+        active_condition = indicator_rows.c.status.not_in(EMAIL_CLOSED_STATUSES)
+        maximum_warning_minutes = int(
+            db.scalar(select(func.max(indicator_rows.c.sla_warning_minutes))) or 0
+        )
+        warning_cutoff = now + timedelta(minutes=max(maximum_warning_minutes, 0))
+        risk_candidates = db.execute(
+            indicator_base.where(
+                EmailThread.status.not_in(EMAIL_CLOSED_STATUSES),
+                EmailThread.sla_paused_at.is_(None),
+                or_(
+                    (
+                        EmailThread.first_response_at.is_(None)
+                        & (EmailThread.first_response_due_at >= now)
+                        & (EmailThread.first_response_due_at <= warning_cutoff)
+                    ),
+                    (
+                        EmailThread.resolved_at.is_(None)
+                        & (EmailThread.resolution_due_at >= now)
+                        & (EmailThread.resolution_due_at <= warning_cutoff)
+                    ),
+                ),
+            )
+        ).scalars().unique().all()
+        operational_counters = {
+            "to_treat": indicator_count(active_condition),
+            "new": indicator_count(
+                active_condition,
+                indicator_rows.c.status.in_({"triage", "new_reply"}),
+            ),
+            "unassigned": indicator_count(
+                active_condition,
+                indicator_rows.c.assigned_to_id.is_(None),
+                indicator_rows.c.executor_team_id.is_(None),
+            ),
+            "overdue": indicator_count(
+                active_condition,
+                indicator_rows.c.resolution_due_at < now,
+            ),
+            "risk": sum(
+                sla_snapshot(item, now=now).overall == "warning"
+                for item in risk_candidates
+            ),
+        }
         channels = list(
             db.scalars(
                 select(EmailChannel)
@@ -1203,19 +1308,18 @@ def email_inbox(
         grouped_rows: list[SimpleNamespace] = []
         if selected_view == "mailbox":
             for item in channels:
-                group_rows = [row for row in inbox_rows if row.channel.id == item.id]
-                if group_rows:
+                if item.id in mailbox_group_counts:
                     group_counts = mailbox_group_counts[item.id]
                     grouped_rows.append(
                         SimpleNamespace(
                             key=f"mailbox-{item.id}",
                             label=item.name,
                             channel=item,
-                            rows=group_rows,
+                            rows=[],
                             new_count=int(group_counts.new_count or 0),
                             open_count=int(group_counts.open_count or 0),
                             total_count=int(group_counts.total),
-                            is_truncated=len(group_rows) < int(group_counts.total),
+                            is_truncated=False,
                         )
                     )
         elif selected_view == "mine":
@@ -1284,12 +1388,14 @@ def email_inbox(
                 "all_is_truncated": selected_view == "all"
                 and len(inbox_rows) < filtered_total_count,
                 "status_labels": STATUS_LABELS,
+                "email_signal_labels": EMAIL_SIGNAL_LABELS,
                 "filters": {
                     "status": selected_status,
                     "channel": channel,
                     "q": clean_query,
                     "responsible": responsible,
                     "due": due,
+                    "signal": selected_signal,
                     "view": selected_view,
                 },
                 "filter_users": [item for item in users if item.active],

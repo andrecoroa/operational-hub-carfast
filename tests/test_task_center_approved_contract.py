@@ -409,6 +409,23 @@ def test_management_clarifies_current_state_and_uses_minimal_disclosure() -> Non
     assert "<details><summary>Mais opções</summary>" in DETAIL
 
 
+def test_management_keeps_support_and_documents_compact_until_requested() -> None:
+    assert '<details class="section task-detail-collapsible" id="task-support">' in DETAIL
+    assert '<summary>Solicitar suporte</summary>' in DETAIL
+    assert '<details class="section task-detail-collapsible task-detail-documents">' in DETAIL
+    assert '<summary>Documentos <span>{{ documents|length }}</span></summary>' in DETAIL
+    assert "target?.matches('details'))target.open=true" in DETAIL
+
+
+def test_final_task_density_polish_preserves_legibility_and_responsiveness() -> None:
+    assert ".task-center-approved .task-filter-operational-row select{" in CSS
+    assert "padding:0 28px 0 9px" in CSS
+    assert ".task-preview-description{min-height:5.4em;max-height:8.1em}" in CSS
+    assert ".task-preview-context{height:24px;max-height:24px" in CSS
+    assert ".task-center-detail-approved #task-state dl{display:grid" in CSS
+    assert ".task-center-detail-actions a{" in CSS
+
+
 def test_queue_and_state_controls_explain_their_distinct_contracts() -> None:
     assert "Única fila autorizada" in TEMPLATE
     assert 'data-task-queue aria-label="Fila ativa"' in TEMPLATE

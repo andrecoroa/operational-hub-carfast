@@ -121,6 +121,23 @@ def test_email_inline_preview_prioritizes_message_reading_space() -> None:
     assert "Imagens incorporadas no email · não contam como anexos" in source
 
 
+def test_email_compact_surface_keeps_views_actions_and_reader_priority() -> None:
+    template = TEMPLATE.read_text(encoding="utf-8")
+    css = CONTRACT_CSS.read_text(encoding="utf-8")
+
+    header = template.split('<header class="email-header', 1)[1].split("</header>", 1)[0]
+    assert "email-work-views" in header
+    assert "Parametrizar caixas" in header
+    assert "data-email-compose-open" in header
+    assert "<h1>Email</h1>" not in header
+    assert "Referência / atualização" in template
+    assert "Email compact work surface" in css
+    assert ".visual-email-heading{display:flex;height:42px" in css
+    assert ".visual-email-table td{height:48px" in css
+    assert "grid-template-columns:minmax(0,2.45fr) minmax(290px,.72fr)" in css
+    assert ".email-modal-footer{display:flex;min-height:36px" in css
+
+
 def test_email_full_page_return_context_is_local_and_feature_gated() -> None:
     source = ROUTER.read_text(encoding="utf-8")
 

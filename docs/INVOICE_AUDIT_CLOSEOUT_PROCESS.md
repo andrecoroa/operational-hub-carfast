@@ -30,11 +30,12 @@ O processo termina quando todas as faturas técnicas existentes têm uma naturez
    - tratar Sinistro como motivo e Garantia como cobertura;
    - manter operações auxiliares fora da contagem técnica.
 4. **Simulação sem escrita**
-   - executar `python scripts/audit_invoices_dry_run.py`;
+   - executar `python -m scripts.audit_invoices_dry_run`;
    - no PostgreSQL, a própria transação é marcada `READ ONLY`;
    - o relatório declara `write_operations: 0` e inclui proposta, evidência e bloqueios por documento.
    - `technical_blockers` contém apenas impedimentos de faturas técnicas reais;
    - `protections` identifica decisões humanas preservadas e não é somado aos bloqueios técnicos;
+   - os contadores `technical_invoices_with_human_protections` e `technical_protection_*` isolam essas proteções nas faturas técnicas, sem as misturar com controlos ou relatórios internos;
    - `blockers` é um alias de compatibilidade de `technical_blockers` no schema v2.
 5. **Fila de exceções**
    - prioridade P0: conflitos matrícula/VIN, duplicados fortes e documentos misturados;

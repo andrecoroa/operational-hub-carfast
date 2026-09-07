@@ -167,6 +167,7 @@ def build_invoice_audit_dry_run(
             "scope_excluded": 0,
             "scope_review": 0,
             "technical_invoices_with_blockers": 0,
+            "technical_invoices_with_human_protections": 0,
             "with_blockers": 0,
             "with_human_protections": 0,
         }
@@ -252,10 +253,14 @@ def build_invoice_audit_dry_run(
             counters["technical_invoices_with_blockers"] += 1
         if protections:
             counters["with_human_protections"] += 1
+            if is_technical_invoice:
+                counters["technical_invoices_with_human_protections"] += 1
         for blocker in dict.fromkeys(technical_blockers):
             counters[f"technical_blocker_{blocker}"] += 1
         for protection in protections:
             counters[f"protection_{protection}"] += 1
+            if is_technical_invoice:
+                counters[f"technical_protection_{protection}"] += 1
         counters["extracted_lines"] += len(lines)
         counters["unclassified_lines"] += unclassified_lines
         rows.append(

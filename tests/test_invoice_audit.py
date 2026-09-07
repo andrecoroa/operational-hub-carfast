@@ -99,6 +99,7 @@ def test_dry_run_separates_scope_and_never_writes(db_session) -> None:
     assert report["summary"]["scope_technical"] == 1
     assert report["summary"]["scope_excluded"] == 2
     assert report["summary"]["with_human_protections"] == 1
+    assert report["summary"]["technical_invoices_with_human_protections"] == 1
     assert report["summary"]["unclassified_lines"] == 1
     technical_row = next(row for row in report["documents"] if row["document_id"] == technical.id)
     assert technical_row["human_locked"] is True
@@ -196,6 +197,7 @@ def test_internal_reports_and_excluded_controls_never_inflate_technical_blockers
     assert result["summary"].get("with_blockers", 0) == 0
     assert result["summary"].get("technical_invoices_with_blockers", 0) == 0
     assert result["summary"]["with_human_protections"] == 2
+    assert result["summary"]["technical_invoices_with_human_protections"] == 0
 
 
 def test_real_invoice_counts_technical_blockers_separately_from_human_protection(
@@ -228,3 +230,5 @@ def test_real_invoice_counts_technical_blockers_separately_from_human_protection
     assert result["summary"]["technical_blocker_physical_file_missing"] == 1
     assert result["summary"]["technical_blocker_extraction_not_requested"] == 1
     assert result["summary"]["protection_human_classification_locked"] == 1
+    assert result["summary"]["technical_invoices_with_human_protections"] == 1
+    assert result["summary"]["technical_protection_human_classification_locked"] == 1

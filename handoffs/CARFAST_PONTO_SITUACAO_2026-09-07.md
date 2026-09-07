@@ -25,11 +25,13 @@ Atualizado em 07/09/2026. Este documento é o ponto de retoma para coordenar tra
 - Merge commit: `5bd7b9c787167294c347a9e459e482556459c0bb`.
 - O resultado integrado ficou aquém da proposta visual aprovada.
 - Correção visual concluída e publicada na branch `codex/email-mockup-fidelity-20260907`: base funcional `fa501cbf` e ajuste final dos contadores `f1bb8ec`.
-- PR #138 criado como Draft contra `integration/modular-architecture`: https://github.com/andrecoroa/operational-hub-carfast/pull/138.
+- PR #138 integrado em `integration/modular-architecture`: https://github.com/andrecoroa/operational-hub-carfast/pull/138.
+- Merge commit: `5004b02f09b723bb5ff96aab4e99456c05fb2fea`.
 - Validação: 33 testes focados de Email aprovados; QA local a 1440×731 e 390×844; sintaxe Python e `git diff --check` sem erro.
 - O CI remoto do PR #138 concluiu com sucesso (workflow run #404); o GitHub indica que o PR é integrável.
 - A execução local da suite global apresentou falhas fora dos testes focados de Email; manter esta ressalva na revisão da baseline.
-- Estado: aguarda decisão para passar de Draft a Ready; sem merge ou deploy.
+- Deploy Green confirmado: `/health` e CSS público responderam HTTP 200; as assinaturas da nova superfície de Email e da correção dos contadores estão publicadas.
+- Estado: implementação publicada; falta apenas validação funcional autenticada pelo utilizador.
 
 ### Oficina
 
@@ -82,7 +84,7 @@ Atualizado em 07/09/2026. Este documento é o ponto de retoma para coordenar tra
 
 ## Ordem de retoma
 
-1. Rever tecnicamente o PR Draft #138 e confirmar a baseline local antes de qualquer integração; CI remoto aprovado.
+1. Validar funcionalmente o Centro de Email autenticado no Green.
 2. Decidir a proposta de Oficina antes de iniciar implementação.
 3. Auditar o checkout principal, worktrees antigas e PR #25.
 4. Arquivar apenas conversas e projetos comprovadamente concluídos ou obsoletos.

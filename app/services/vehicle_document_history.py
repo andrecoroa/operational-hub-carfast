@@ -23,6 +23,7 @@ from app.models.documents import (
 )
 from app.models.management_center import ClaimIncident, ClaimRentwayAR
 from app.models.vehicles import Vehicle, VehicleIdentifier, VehicleManualField
+from app.services.invoice_service_classifier import legacy_service_matrix
 from app.services.spreadsheets import (
     build_column_lookup,
     clean_int,
@@ -1579,39 +1580,10 @@ def _service_matrix_from_text_and_tags(
     for category, values in values_by_category.items():
         if values:
             matrix[category] = " · ".join(values)
-    normalized = normalize_header(text or "")
-    if matrix["maintenance"] == "-":
-        maintenance_suggestions: list[str] = []
-        if "telecarreg" in normalized:
-            maintenance_suggestions.append("Telecarregamento")
-        if (
-            "filtrohabitac" in normalized
-            or "filtrodohabitac" in normalized
-            or "filtropolen" in normalized
-            or "filtrodepolen" in normalized
-        ):
-            maintenance_suggestions.append("Filtro de habitáculo")
-        if "degrad" in normalized and ("oleo" in normalized or "oil" in normalized):
-            maintenance_suggestions.append("Degradação")
-        elif "revis" in normalized or "manutenc" in normalized:
-            maintenance_suggestions.append("Revisão")
-        if maintenance_suggestions:
-            matrix["maintenance"] = " · ".join(maintenance_suggestions)
-    if matrix["pads"] == "-" and ("calco" in normalized or "pastilha" in normalized or "travo" in normalized):
-        matrix["pads"] = "Por definir"
-    if matrix["discs"] == "-" and "disco" in normalized:
-        matrix["discs"] = "Por definir"
-    if matrix["tyres"] == "-" and "furo" in normalized:
-        matrix["tyres"] = "Furo"
-    elif matrix["tyres"] == "-" and ("pneu" in normalized or "roda" in normalized):
-        matrix["tyres"] = "Por definir"
-    if matrix["ipo"] == "-" and ("ipo" in normalized or "inspec" in normalized):
-        matrix["ipo"] = "IPO"
-    if matrix["other"] == "-":
-        if "sinistr" in normalized or "acident" in normalized:
-            matrix["other"] = "Sinistro"
-        elif "vidro" in normalized or "parabris" in normalized:
-            matrix["other"] = "Vidros"
+    safe_suggestions = legacy_service_matrix(text or "")
+    for category in matrix:
+        if matrix[category] == "-" and safe_suggestions.get(category) not in (None, "-"):
+            matrix[category] = safe_suggestions[category]
     return matrix
 
 

@@ -43,9 +43,13 @@ Atualizado em 07/09/2026. Este documento é o ponto de retoma para coordenar tra
 ### Auditoria documental e matrículas
 
 - Operador em `C:/Users/andre/Documents/Codex/2026-09-05/operador-ia-auditoria-viaturas`.
-- Levantamento parcial: 8 matrículas identificadas em 32 documentos.
-- Permanecem 105 matrículas / 156 documentos sem exportação detalhada local.
-- Estado: solicitar checkpoint e exportação completa, apenas leitura, antes de classificar ou renomear.
+- Inventário integral confirmado: 1.434 documentos e 7.724 linhas extraídas; 225 documentos sem linhas, dos quais 152 são importações diretas de stock fora do universo técnico.
+- Permanecem problemas de qualidade e âmbito: duplicados, conflitos matrícula/VIN, regressões de quilometragem, linhas contaminadas e campos incorretos; a comparação visual integral dos PDFs ainda não foi realizada.
+- Taxonomia v1.1 com 65 classes e amostra de 62 linhas reais: aprovada como baseline de auditoria, ainda não como versão de produção.
+- Ajustes obrigatórios antes da implementação: bloquear `GLASS.REPLACE` para lava-vidros; formalizar eixo/lado como dimensões sem pseudocódigos; criar mapa explícito de códigos legados; guardar `taxonomy_version`, origem, confiança e bloqueio de validação humana.
+- Ordem segura: (1) corrigir falsos positivos sem migrar dados; (2) fechar universo das verdadeiras faturas técnicas; (3) executar simulação sem escrita apenas sobre falhas reais; (4) apresentar impacto e riscos; (5) só depois autorizar migração/reprocessamento controlado.
+- Princípios: preservar texto e documento originais, classificação anterior e rastreabilidade; contar serviços por `service_event_id`, nunca por linha.
+- Estado: preparar especificação e testes das correções de falsos positivos; nenhuma alteração em massa autorizada.
 
 ### Estratégia de gestão
 
@@ -85,9 +89,10 @@ Atualizado em 07/09/2026. Este documento é o ponto de retoma para coordenar tra
 ## Ordem de retoma
 
 1. Validar funcionalmente o Centro de Email autenticado no Green.
-2. Decidir a proposta de Oficina antes de iniciar implementação.
-3. Auditar o checkout principal, worktrees antigas e PR #25.
-4. Arquivar apenas conversas e projetos comprovadamente concluídos ou obsoletos.
+2. Preparar especificação/testes dos falsos positivos do classificador, sem escrita em dados existentes.
+3. Decidir a proposta de Oficina antes de iniciar implementação.
+4. Auditar o checkout principal, worktrees antigas e PR #25.
+5. Arquivar apenas conversas e projetos comprovadamente concluídos ou obsoletos.
 
 ## Instrução para novos trabalhos no Codex Cloud
 

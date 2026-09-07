@@ -674,6 +674,98 @@
   .task-center-detail-header{flex-direction:column}.task-center-detail-header-actions{width:100%;justify-content:flex-end}
 }
 
+/* Email mock-up fidelity pass: presentation only; workflow and permissions stay intact. */
+.ui-contract-v1 .visual-email-workbench{border:1px solid #dbe3ec;border-radius:8px;background:#fff;overflow:hidden}
+.ui-contract-v1 .visual-email-workbench-header{height:38px;min-height:38px;padding:5px 10px;border-bottom:1px solid #e2e8f0;background:#fff}
+.ui-contract-v1 .visual-email-workbench-header>div{display:flex;gap:8px;align-items:baseline}
+.ui-contract-v1 .visual-email-workbench-header h2{margin:0;font-size:14px}
+.ui-contract-v1 .visual-email-workbench-header p{display:block;margin:0;color:#718096;font-size:9px}
+.ui-contract-v1 .visual-email-filters{grid-template-columns:minmax(260px,1.7fr) repeat(4,minmax(120px,.72fr)) auto auto;min-height:48px;padding:6px 8px;border:0;border-bottom:1px solid #e2e8f0;border-radius:0}
+.ui-contract-v1 .visual-email-table{min-width:880px;table-layout:fixed}
+.ui-contract-v1 .visual-email-table th:nth-child(1){width:19%}
+.ui-contract-v1 .visual-email-table th:nth-child(2){width:31%}
+.ui-contract-v1 .visual-email-table th:nth-child(3){width:20%}
+.ui-contract-v1 .visual-email-table th:nth-child(4){width:13%}
+.ui-contract-v1 .visual-email-table th:nth-child(5){width:12%}
+.ui-contract-v1 .visual-email-table th:nth-child(6){width:5%}
+.ui-contract-v1 .visual-email-table td{height:52px;padding:6px 9px}
+.ui-contract-v1 .visual-email-table td>strong{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ui-contract-v1 .visual-email-table td>time{white-space:nowrap;color:#4b5f76;font-size:10px}
+.ui-contract-v1 .email-mailbox-summary{display:block;grid-template-columns:1fr;gap:0;padding:0}
+.ui-contract-v1 .email-mailbox-head,.ui-contract-v1 .email-mailbox-row{display:grid;grid-template-columns:minmax(190px,1.35fr) minmax(80px,.55fr) minmax(220px,1.3fr) minmax(100px,.65fr) minmax(100px,.65fr) auto;gap:10px;align-items:center}
+.ui-contract-v1 .email-mailbox-head{min-height:28px;padding:4px 10px;border-bottom:1px solid #dbe3ec;background:#f7f9fc;color:#61728a;font-size:9px;font-weight:800;text-transform:uppercase}
+.ui-contract-v1 .email-mailbox-row{min-height:58px;padding:6px 10px;border:0;border-bottom:1px solid #dbe3ec;border-radius:0;background:#fff}
+.ui-contract-v1 .email-mailbox-row:hover{background:#f8fbff}
+.ui-contract-v1 .email-mailbox-row>div,.ui-contract-v1 .email-mailbox-row>span{display:grid;gap:2px;min-width:0}
+.ui-contract-v1 .email-mailbox-row strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px}
+.ui-contract-v1 .email-mailbox-row small{color:#66788f;font-size:9px}
+.ui-contract-v1 .email-mailbox-row time{font-size:10px;white-space:nowrap}
+.ui-contract-v1 .email-mailbox-count b{display:inline-grid;width:26px;height:26px;place-items:center;border-radius:999px;background:#2161d1;color:#fff;font-size:12px}
+.ui-contract-v1 .email-mailbox-row>a{min-width:76px}
+
+.ui-contract-v1 .email-inline-preview-row>td{padding:0!important;background:#fff;border-bottom:2px solid #2161d1}
+.ui-contract-v1 .email-inline-preview-body{min-height:350px;max-height:min(620px,calc(100vh - 118px));overflow:hidden;border-left:3px solid #2161d1}
+.ui-contract-v1 .email-inline-preview-body .email-modal-shell{height:min(600px,calc(100vh - 138px));min-height:340px}
+.ui-contract-v1 .email-inline-preview-body .email-modal-header{height:52px;min-height:52px;padding:5px 10px}
+.ui-contract-v1 .email-inline-preview-body .email-reader-grid{grid-template-columns:minmax(0,2.9fr) minmax(245px,.72fr)}
+.ui-contract-v1 .email-inline-preview-body .email-conversation{padding:6px 10px}
+.ui-contract-v1 .email-inline-preview-body .email-message-card{margin:0 0 7px;border:0;border-bottom:1px solid #dbe3ec;border-radius:0;box-shadow:none}
+.ui-contract-v1 .email-inline-preview-body .email-message-card>header{grid-template-columns:28px minmax(0,1fr) auto;padding:5px 2px;background:#fff}
+.ui-contract-v1 .email-inline-preview-body .email-avatar{width:26px;height:26px}
+.ui-contract-v1 .email-inline-preview-body .email-message-addresses>strong{font-size:11px}
+.ui-contract-v1 .email-inline-preview-body .email-message-addresses dl{display:flex;flex-wrap:wrap;column-gap:10px}
+.ui-contract-v1 .email-inline-preview-body .email-message-addresses dl>div:first-child{flex-basis:100%}
+.ui-contract-v1 .email-inline-preview-body .email-body-frame{height:clamp(210px,32vh,360px);min-height:210px;margin:4px 2px 8px;width:calc(100% - 4px);border:0}
+.ui-contract-v1 .email-inline-preview-body .email-body-switch{margin:3px 2px 0}
+.ui-contract-v1 .email-inline-preview-body .email-triage-pane{padding:7px;background:#f8fafc}
+.ui-contract-v1 .email-treatment-summary{padding:8px;border:1px solid #dbe3ec;border-radius:7px;background:#fff}
+.ui-contract-v1 .email-treatment-summary header,.ui-contract-v1 .email-side-attachments header{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:7px}
+.ui-contract-v1 .email-treatment-summary h3,.ui-contract-v1 .email-side-attachments h3{margin:0;font-size:12px}
+.ui-contract-v1 .email-treatment-summary dl{display:grid;grid-template-columns:1fr;gap:5px;margin:0}
+.ui-contract-v1 .email-treatment-summary dl>div{display:grid;grid-template-columns:78px minmax(0,1fr);gap:5px}
+.ui-contract-v1 .email-treatment-summary :is(dt,dd){margin:0;font-size:9px;line-height:1.25}
+.ui-contract-v1 .email-treatment-summary dt{color:#64748b}.ui-contract-v1 .email-treatment-summary dd{font-weight:700}
+.ui-contract-v1 .email-triage-controls{margin-top:6px;border:1px solid #dbe3ec;border-radius:7px;background:#fff;overflow:hidden}
+.ui-contract-v1 .email-triage-controls>summary{display:flex;min-height:30px;padding:5px 8px;align-items:center;cursor:pointer;color:#174ea6;font-size:10px;font-weight:800}
+.ui-contract-v1 .email-triage-controls[open]>summary{border-bottom:1px solid #e2e8f0}
+.ui-contract-v1 .email-triage-controls>div{padding:7px}
+.ui-contract-v1 .email-inline-preview-body .email-triage-controls .email-triage-section{padding:6px}
+.ui-contract-v1 .email-inline-preview-body .email-triage-controls .email-triage-intro{display:none}
+.ui-contract-v1 .email-modal-footer{display:flex;min-height:38px;padding:5px 10px;gap:5px;justify-content:flex-start;overflow-x:auto}
+.ui-contract-v1 .email-modal-footer>*,.ui-contract-v1 .email-modal-footer form{flex:0 0 auto;min-width:0}
+.ui-contract-v1 .email-modal-footer :is(button,.button-link){width:auto;min-width:88px;height:28px;min-height:28px;padding:0 9px;font-size:9px;white-space:nowrap}
+
+.ui-contract-v1 .visual-email-thread-page .email-modal-shell{min-height:calc(100vh - 56px)}
+.ui-contract-v1 .visual-email-thread-page .email-reader-grid{grid-template-columns:minmax(0,3.2fr) minmax(255px,.8fr)}
+.ui-contract-v1 .visual-email-thread-page .email-conversation{padding:10px 14px}
+.ui-contract-v1 .visual-email-thread-page .email-triage-pane{display:flex;flex-direction:column;gap:7px;padding:8px;background:#f8fafc}
+.ui-contract-v1 .visual-email-thread-page .email-body-frame{height:clamp(350px,54vh,680px)}
+.ui-contract-v1 .email-side-attachments{padding:8px;border:1px solid #dbe3ec;border-radius:7px;background:#fff}
+.ui-contract-v1 .email-side-attachments header>span{display:inline-grid;min-width:22px;height:22px;padding:0 5px;place-items:center;border-radius:999px;background:#edf3f9;font-size:9px}
+.ui-contract-v1 .email-side-attachments .email-attachment-row{grid-template-columns:28px minmax(0,1fr) auto;padding:5px;gap:6px}
+.ui-contract-v1 .email-side-attachments .email-attachment-icon{width:26px;height:26px;font-size:8px}
+.ui-contract-v1 .email-side-attachments .email-attachment-row :is(strong,small,b){font-size:9px}
+.ui-contract-v1 .email-side-inline{margin-top:7px;padding-top:6px;border-top:1px solid #e2e8f0;color:#61728a;font-size:9px}
+.ui-contract-v1 .email-side-inline p{margin:5px 0 0}
+
+@media(max-width:1050px){
+  .ui-contract-v1 .visual-email-filters{grid-template-columns:minmax(220px,1.5fr) repeat(2,minmax(120px,.7fr)) auto auto}
+  .ui-contract-v1 .visual-email-filters label:nth-of-type(4),.ui-contract-v1 .visual-email-filters label:nth-of-type(5){grid-row:2}
+  .ui-contract-v1 .visual-email-thread-page .email-reader-grid{grid-template-columns:minmax(0,2.2fr) minmax(240px,.8fr)}
+}
+@media(max-width:900px){
+  .ui-contract-v1 .visual-email-filters{grid-template-columns:repeat(2,minmax(0,1fr)) auto auto}.ui-contract-v1 .visual-email-filters .email-filter-search{grid-column:1/-1}
+  .ui-contract-v1 .email-mailbox-head{display:none}.ui-contract-v1 .email-mailbox-row{grid-template-columns:minmax(0,1.4fr) auto minmax(180px,1fr) auto}.ui-contract-v1 .email-mailbox-row>time{display:none}
+  .ui-contract-v1 .email-inline-preview-body{max-height:none;overflow:visible}.ui-contract-v1 .email-inline-preview-body .email-modal-shell{height:auto;min-height:0}.ui-contract-v1 .email-inline-preview-body .email-reader-grid,.ui-contract-v1 .visual-email-thread-page .email-reader-grid{grid-template-columns:minmax(0,1fr)}
+  .ui-contract-v1 .email-inline-preview-body .email-triage-pane{border-top:1px solid #dbe3ec}.ui-contract-v1 .email-modal-footer{position:sticky;bottom:0}
+}
+@media(max-width:560px){
+  .ui-contract-v1 .visual-email-filters{grid-template-columns:minmax(0,1fr) auto}.ui-contract-v1 .visual-email-filters label{grid-column:1/-1!important;grid-row:auto!important}.ui-contract-v1 .visual-email-filters>button{grid-column:1}.ui-contract-v1 .visual-email-filters>a{grid-column:2}
+  .ui-contract-v1 .email-mailbox-row{grid-template-columns:minmax(0,1fr) auto}.ui-contract-v1 .email-mailbox-responsibility{grid-column:1/-1}.ui-contract-v1 .email-mailbox-row>a{grid-column:1/-1;width:100%}
+  .ui-contract-v1 .visual-email-table{min-width:0}.ui-contract-v1 .visual-email-table :is(th,td):nth-child(3),.ui-contract-v1 .visual-email-table :is(th,td):nth-child(5){display:none}.ui-contract-v1 .visual-email-table th:nth-child(1){width:30%}.ui-contract-v1 .visual-email-table th:nth-child(2){width:42%}.ui-contract-v1 .visual-email-table th:nth-child(4){width:20%}.ui-contract-v1 .visual-email-table th:nth-child(6){width:8%}
+  .ui-contract-v1 .email-modal-footer :is(button,.button-link){min-width:82px}
+}
+
 /* Final Task Center density polish: presentation only; task behaviour stays unchanged. */
 .task-center-approved .task-filter-operational-row select{
   height:34px!important;
@@ -806,3 +898,37 @@
   .ui-contract-v1 .email-mailbox-row{grid-template-columns:minmax(0,1fr) auto auto}.ui-contract-v1 .email-mailbox-row>a{grid-column:1 / -1;width:100%}
   .ui-contract-v1 .email-inline-preview-body .email-header-actions .email-open-full{display:none}.ui-contract-v1 .email-inline-preview-body .email-modal-footer>*{flex:0 0 104px}
 }
+
+/* Final cascade for the approved Email work surface. */
+.ui-contract-v1 .visual-email-workbench-header{height:38px;min-height:38px;padding:5px 10px;background:#fff}
+.ui-contract-v1 .visual-email-workbench-header>div{display:flex;gap:8px;align-items:baseline}
+.ui-contract-v1 .visual-email-workbench-header p{display:block;margin:0;color:#718096;font-size:9px}
+.ui-contract-v1 .visual-email-filters{grid-template-columns:minmax(260px,1.7fr) repeat(4,minmax(120px,.72fr)) auto auto;min-height:48px;padding:6px 8px;border:0;border-bottom:1px solid #e2e8f0;border-radius:0}
+.ui-contract-v1 .visual-email-table{min-width:880px}
+.ui-contract-v1 .visual-email-table td{height:52px;padding:6px 9px}
+.ui-contract-v1 .email-mailbox-summary{display:block;grid-template-columns:1fr;gap:0;padding:0}
+.ui-contract-v1 .email-mailbox-head,.ui-contract-v1 .email-mailbox-row{grid-template-columns:minmax(190px,1.35fr) minmax(80px,.55fr) minmax(220px,1.3fr) minmax(100px,.65fr) minmax(100px,.65fr) auto}
+.ui-contract-v1 .email-mailbox-row{min-height:58px;padding:6px 10px;border:0;border-bottom:1px solid #dbe3ec;border-radius:0}
+.ui-contract-v1 .email-inline-preview-body{min-height:350px;max-height:min(620px,calc(100vh - 118px));overflow:hidden}
+.ui-contract-v1 .email-inline-preview-body .email-modal-shell{height:min(600px,calc(100vh - 138px));min-height:340px}
+.ui-contract-v1 .email-inline-preview-body .email-modal-header{height:52px;min-height:52px;padding:5px 10px}
+.ui-contract-v1 .email-inline-preview-body .email-reader-grid{grid-template-columns:minmax(0,2.9fr) minmax(245px,.72fr)}
+.ui-contract-v1 .email-inline-preview-body .email-conversation{padding:6px 10px}
+.ui-contract-v1 .email-inline-preview-body .email-message-card>header{padding:5px 2px}
+.ui-contract-v1 .email-inline-preview-body .email-message-addresses dl{display:flex;flex-wrap:wrap;column-gap:10px}
+.ui-contract-v1 .email-inline-preview-body .email-message-addresses dl>div:first-child{flex-basis:100%}
+.ui-contract-v1 .email-inline-preview-body .email-body-switch{margin:3px 2px 0}
+.ui-contract-v1 .email-inline-preview-body .email-body-frame{width:calc(100% - 4px);height:clamp(210px,32vh,360px);min-height:210px;margin:4px 2px 8px;border:0}
+.ui-contract-v1 .email-inline-preview-body .email-triage-pane{padding:7px;background:#f8fafc}
+.ui-contract-v1 .email-inline-preview-body .email-modal-footer{display:flex;min-height:38px;padding:5px 10px;gap:5px;justify-content:flex-start}
+.ui-contract-v1 .email-inline-preview-body .email-modal-footer>*,.ui-contract-v1 .email-inline-preview-body .email-modal-footer form{flex:0 0 auto;min-width:0}
+.ui-contract-v1 .email-inline-preview-body .email-modal-footer :is(button,.button-link){width:auto;min-width:88px;height:28px;min-height:28px;padding:0 9px}
+.ui-contract-v1 .visual-email-thread-page .email-modal-shell{min-height:calc(100vh - 56px)}
+.ui-contract-v1 .visual-email-thread-page .email-reader-grid{grid-template-columns:minmax(0,3.2fr) minmax(255px,.8fr)}
+.ui-contract-v1 .visual-email-thread-page .email-conversation{padding:10px 14px}
+.ui-contract-v1 .visual-email-thread-page .email-triage-pane{display:flex;flex-direction:column;gap:7px;padding:8px;background:#f8fafc}
+.ui-contract-v1 .visual-email-thread-page .email-body-frame{height:clamp(350px,54vh,680px)}
+.ui-contract-v1 .visual-email-thread-page .email-modal-footer{justify-content:flex-start}.ui-contract-v1 .visual-email-thread-page .email-modal-footer>*,.ui-contract-v1 .visual-email-thread-page .email-modal-footer form{flex:0 0 auto;min-width:0}
+@media(max-width:1050px){.ui-contract-v1 .visual-email-filters{grid-template-columns:minmax(220px,1.5fr) repeat(2,minmax(120px,.7fr)) auto auto}.ui-contract-v1 .visual-email-thread-page .email-reader-grid{grid-template-columns:minmax(0,2.2fr) minmax(240px,.8fr)}}
+@media(max-width:900px){.ui-contract-v1 .visual-email-filters{grid-template-columns:repeat(2,minmax(0,1fr)) auto auto}.ui-contract-v1 .email-mailbox-head{display:none}.ui-contract-v1 .email-mailbox-row{grid-template-columns:minmax(0,1.4fr) auto minmax(180px,1fr) auto}.ui-contract-v1 .email-mailbox-row>time{display:none}.ui-contract-v1 .email-inline-preview-body{max-height:none;overflow:visible}.ui-contract-v1 .email-inline-preview-body .email-modal-shell{height:auto;min-height:0}.ui-contract-v1 .email-inline-preview-body .email-reader-grid,.ui-contract-v1 .visual-email-thread-page .email-reader-grid{grid-template-columns:minmax(0,1fr)}}
+@media(max-width:560px){.ui-contract-v1 .visual-email-filters{grid-template-columns:minmax(0,1fr) auto}.ui-contract-v1 .visual-email-filters label{grid-column:1/-1!important;grid-row:auto!important}.ui-contract-v1 .email-mailbox-row{grid-template-columns:minmax(0,1fr) auto}.ui-contract-v1 .email-mailbox-responsibility{grid-column:1/-1}.ui-contract-v1 .visual-email-table :is(th,td):nth-child(3),.ui-contract-v1 .visual-email-table :is(th,td):nth-child(5){display:none}}

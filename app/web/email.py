@@ -1082,6 +1082,7 @@ def email_inbox(
         filtered_threads = query.with_only_columns(
             EmailThread.channel_id,
             EmailThread.status,
+            EmailThread.last_message_at,
         ).subquery()
         mailbox_group_counts = {
             row.channel_id: row
@@ -1107,6 +1108,12 @@ def email_inbox(
                             else_=0,
                         )
                     ).label("open_count"),
+                    func.min(filtered_threads.c.last_message_at).label(
+                        "oldest_message_at"
+                    ),
+                    func.max(filtered_threads.c.last_message_at).label(
+                        "latest_message_at"
+                    ),
                 ).group_by(filtered_threads.c.channel_id)
             )
         }
@@ -1319,6 +1326,22 @@ def email_inbox(
                             new_count=int(group_counts.new_count or 0),
                             open_count=int(group_counts.open_count or 0),
                             total_count=int(group_counts.total),
+                            responsibility_primary=(
+                                f"Supervisor: {users_by_id[item.supervisor_user_id].name}"
+                                if item.supervisor_user_id in users_by_id
+                                else f"Responsável: {users_by_id[item.functional_owner_user_id].name}"
+                                if item.functional_owner_user_id in users_by_id
+                                else "Responsável por definir"
+                            ),
+                            responsibility_secondary=(
+                                f"Executor: {users_by_id[item.default_assignee_id].name}"
+                                if item.default_assignee_id in users_by_id
+                                else f"Equipa: {teams_by_id[item.default_team_id].name}"
+                                if item.default_team_id in teams_by_id
+                                else "Executor: por atribuir"
+                            ),
+                            oldest_message_at=group_counts.oldest_message_at,
+                            latest_message_at=group_counts.latest_message_at,
                             is_truncated=False,
                         )
                     )
@@ -1718,6 +1741,13 @@ def email_thread(request: Request, thread_id: int):
                 team_name=thread_team.name if thread_team else None,
             ),
             "email_sla": sla_snapshot(thread),
+            "thread_assignee": thread_assignee,
+            "thread_team": thread_team,
+            "current_category": (
+                db.get(WorkCategory, thread.work_category_id)
+                if thread.work_category_id
+                else None
+            ),
             "functional_owner": (
                 db.get(User, thread.functional_owner_user_id)
                 if thread.functional_owner_user_id
@@ -1865,6 +1895,13 @@ def email_thread_preview(request: Request, thread_id: int):
                 team_name=thread_team.name if thread_team else None,
             ),
             "email_sla": sla_snapshot(thread),
+            "thread_assignee": thread_assignee,
+            "thread_team": thread_team,
+            "current_category": (
+                db.get(WorkCategory, thread.work_category_id)
+                if thread.work_category_id
+                else None
+            ),
             "functional_owner": (
                 db.get(User, thread.functional_owner_user_id)
                 if thread.functional_owner_user_id

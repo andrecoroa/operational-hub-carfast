@@ -21,6 +21,7 @@ O processo termina quando todas as faturas técnicas existentes têm uma naturez
    - recolher o último estado de extração e as classificações guardadas.
 2. **Definição do universo**
    - `technical`: fatura operacional candidata ao histórico da viatura;
+   - `internal`: relatório técnico gerado pelo processo, inventariado sem exigir OCR ou ficheiro de fatura;
    - `excluded`: stock, IUC, financeiro, venda ou outro documento não técnico;
    - `review`: natureza ainda não confirmada.
 3. **Guardrails do classificador**
@@ -32,6 +33,9 @@ O processo termina quando todas as faturas técnicas existentes têm uma naturez
    - executar `python scripts/audit_invoices_dry_run.py`;
    - no PostgreSQL, a própria transação é marcada `READ ONLY`;
    - o relatório declara `write_operations: 0` e inclui proposta, evidência e bloqueios por documento.
+   - `technical_blockers` contém apenas impedimentos de faturas técnicas reais;
+   - `protections` identifica decisões humanas preservadas e não é somado aos bloqueios técnicos;
+   - `blockers` é um alias de compatibilidade de `technical_blockers` no schema v2.
 5. **Fila de exceções**
    - prioridade P0: conflitos matrícula/VIN, duplicados fortes e documentos misturados;
    - prioridade P1: faturas técnicas sem ficheiro, sem linhas ou com extração falhada;

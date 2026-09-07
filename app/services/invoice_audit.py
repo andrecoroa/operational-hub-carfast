@@ -20,7 +20,7 @@ from app.models.documents import (
 from app.services.invoice_service_classifier import classify_invoice_service_text
 
 
-AUDIT_SCHEMA = "carfast.invoice-audit-dry-run.v1"
+AUDIT_SCHEMA = "carfast.invoice-audit-dry-run.v2"
 SUPPORTED_EXTRACTION_ACTIONS = frozenset(
     {
         "invoice.ocr.extracted",
@@ -119,7 +119,7 @@ def _scope(document: Document, state: DocumentWorkflowState | None) -> tuple[str
     if document_type == "workshop_supplier_invoice":
         return "technical", "operational_invoice"
     if document_type == "workshop_report":
-        return "technical", "workshop_report"
+        return "internal", "workshop_report"
     return "review", "nature_unconfirmed"
 
 
@@ -160,7 +160,17 @@ def build_invoice_audit_dry_run(
     payloads = _event_payloads(db, document_ids)
     root = _archive_root()
     rows: list[dict[str, Any]] = []
-    counters: Counter[str] = Counter()
+    counters: Counter[str] = Counter(
+        {
+            "scope_technical": 0,
+            "scope_internal": 0,
+            "scope_excluded": 0,
+            "scope_review": 0,
+            "technical_invoices_with_blockers": 0,
+            "with_blockers": 0,
+            "with_human_protections": 0,
+        }
+    )
 
     for document in documents:
         state = states.get(document.id)
@@ -187,28 +197,45 @@ def build_invoice_audit_dry_run(
         human_locked = bool(state and state.human_confirmed) or any(
             tag.source_kind != "auto_suggested" for tag in saved_tags
         )
-        path = _resolve_document_file(document, root) if verify_files else None
-        file_state = "not_checked" if not verify_files else "present" if path else "missing"
+        is_technical_invoice = scope == "technical"
+        path = (
+            _resolve_document_file(document, root)
+            if verify_files and is_technical_invoice
+            else None
+        )
+        file_state = (
+            "not_applicable"
+            if not is_technical_invoice
+            else "not_checked"
+            if not verify_files
+            else "present"
+            if path
+            else "missing"
+        )
         verified_hash = _sha256(path) if hash_files and path else None
         hash_matches = (
             None
             if not verified_hash or not document.file_hash
             else verified_hash.casefold() == document.file_hash.casefold()
         )
-        blockers = list(proposal.blocked_reasons)
-        if scope == "technical" and not lines:
-            blockers.append("technical_invoice_without_lines")
-        if verify_files and not path:
-            blockers.append("physical_file_missing")
-        if hash_matches is False:
-            blockers.append("physical_file_hash_mismatch")
-        if human_locked:
-            blockers.append("human_classification_locked")
+        technical_blockers = list(proposal.blocked_reasons) if is_technical_invoice else []
+        if is_technical_invoice and not lines:
+            technical_blockers.append("technical_invoice_without_lines")
+        if is_technical_invoice and verify_files and not path:
+            technical_blockers.append("physical_file_missing")
+        if is_technical_invoice and hash_matches is False:
+            technical_blockers.append("physical_file_hash_mismatch")
+        protections = ["human_classification_locked"] if human_locked else []
         extraction_status = (
             str(state.extraction_status) if state else str(document.status or "unknown")
         )
-        if extraction_status in {"failed", "not_requested", "queued", "processing"}:
-            blockers.append(f"extraction_{extraction_status}")
+        if is_technical_invoice and extraction_status in {
+            "failed",
+            "not_requested",
+            "queued",
+            "processing",
+        }:
+            technical_blockers.append(f"extraction_{extraction_status}")
         unclassified_lines = sum(
             1
             for line in lines
@@ -218,10 +245,17 @@ def build_invoice_audit_dry_run(
         counters[f"scope_{scope}"] += 1
         counters[f"scope_reason_{scope_reason}"] += 1
         counters[f"file_{file_state}"] += 1
-        if not lines:
+        if is_technical_invoice and not lines:
             counters["without_lines"] += 1
-        if blockers:
+        if technical_blockers:
             counters["with_blockers"] += 1
+            counters["technical_invoices_with_blockers"] += 1
+        if protections:
+            counters["with_human_protections"] += 1
+        for blocker in dict.fromkeys(technical_blockers):
+            counters[f"technical_blocker_{blocker}"] += 1
+        for protection in protections:
+            counters[f"protection_{protection}"] += 1
         counters["extracted_lines"] += len(lines)
         counters["unclassified_lines"] += unclassified_lines
         rows.append(
@@ -252,7 +286,20 @@ def build_invoice_audit_dry_run(
                     for tag in saved_tags
                 ],
                 "proposal": proposal.as_dict(),
-                "blockers": list(dict.fromkeys(blockers)),
+                # ``blockers`` remains as a compatibility alias, but now contains
+                # only blockers that can prevent processing a real technical invoice.
+                "blockers": list(dict.fromkeys(technical_blockers)),
+                "technical_blockers": list(dict.fromkeys(technical_blockers)),
+                "protections": protections,
+                "inventory_role": (
+                    "technical_invoice"
+                    if is_technical_invoice
+                    else "internal_process_report"
+                    if scope == "internal"
+                    else "excluded_control"
+                    if scope == "excluded"
+                    else "review_required"
+                ),
             }
         )
 

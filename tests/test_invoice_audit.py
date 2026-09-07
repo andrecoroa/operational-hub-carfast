@@ -125,3 +125,19 @@ def test_dry_run_verifies_the_physical_hash_without_updating_the_document(
     assert row["hash_matches"] is False
     assert "physical_file_hash_mismatch" in row["blockers"]
     assert db_session.get(Document, document.id).file_hash == "0" * 64
+
+
+def test_dry_run_limits_technical_scope_to_invoices_and_reports(db_session) -> None:
+    invoice = _document(document_type="workshop_supplier_invoice")
+    report = _document(document_type="workshop_report", original_name="report.pdf")
+    diagnostic = _document(document_type="workshop_diagnostic", original_name="diag.pdf")
+    photo = _document(document_type="workshop_photo", original_name="photo.jpg")
+    db_session.add_all([invoice, report, diagnostic, photo])
+    db_session.commit()
+
+    result = build_invoice_audit_dry_run(db_session, verify_files=False)
+
+    selected_ids = {row["document_id"] for row in result["documents"]}
+    assert selected_ids == {invoice.id, report.id}
+    assert result["summary"]["documents"] == 2
+    assert result["summary"]["scope_technical"] == 2

@@ -49,7 +49,10 @@ Atualizado em 07/09/2026. Este documento é o ponto de retoma para coordenar tra
 - Ajustes obrigatórios antes da implementação: bloquear `GLASS.REPLACE` para lava-vidros; formalizar eixo/lado como dimensões sem pseudocódigos; criar mapa explícito de códigos legados; guardar `taxonomy_version`, origem, confiança e bloqueio de validação humana.
 - Ordem segura: (1) corrigir falsos positivos sem migrar dados; (2) fechar universo das verdadeiras faturas técnicas; (3) executar simulação sem escrita apenas sobre falhas reais; (4) apresentar impacto e riscos; (5) só depois autorizar migração/reprocessamento controlado.
 - Princípios: preservar texto e documento originais, classificação anterior e rastreabilidade; contar serviços por `service_event_id`, nunca por linha.
-- Estado: preparar especificação e testes das correções de falsos positivos; nenhuma alteração em massa autorizada.
+- Gate A concluído na branch `codex/invoice-audit-closeout-20260907`, commit `e2bb682f`; PR Draft #139: https://github.com/andrecoroa/operational-hub-carfast/pull/139.
+- O PR #139 acrescenta classificador determinístico v1.1, mapa legado seguro, inventário/reconciliação de ficheiros e hashes e comando de dry-run PostgreSQL `READ ONLY`. Não altera classificações nem dados de negócio.
+- Validação: 15 testes críticos aprovados; suite documental com 109 aprovados e 2 falhas antigas não relacionadas (vocabulário `other` e texto de UI removido).
+- Próximo gate: CI/revisão do PR #139; depois executar o dry-run no Render e rever o relatório de impacto antes de qualquer reprocessamento.
 
 ### Estratégia de gestão
 
@@ -89,7 +92,7 @@ Atualizado em 07/09/2026. Este documento é o ponto de retoma para coordenar tra
 ## Ordem de retoma
 
 1. Validar funcionalmente o Centro de Email autenticado no Green.
-2. Preparar especificação/testes dos falsos positivos do classificador, sem escrita em dados existentes.
+2. Rever o PR #139 e, após aprovação, executar o dry-run no Render sem escrita em dados existentes.
 3. Decidir a proposta de Oficina antes de iniciar implementação.
 4. Auditar o checkout principal, worktrees antigas e PR #25.
 5. Arquivar apenas conversas e projetos comprovadamente concluídos ou obsoletos.

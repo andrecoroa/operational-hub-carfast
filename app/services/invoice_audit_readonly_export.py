@@ -21,7 +21,7 @@ from app.models.documents import (
 )
 from app.models.vehicles import Vehicle, VehicleIdentifier
 
-EXPORT_CONTRACT_VERSION = "invoice-audit-readonly/1.0"
+EXPORT_CONTRACT_VERSION = "invoice-audit-readonly/1.1"
 EXTRACTION_ACTIONS = {
     "invoice.ocr.extracted",
     "invoice.lines.extracted",
@@ -67,6 +67,7 @@ DOCUMENT_COLUMNS = [
     "km_source",
     "work_order_source",
     "vehicle_id_associated",
+    "association_confirmed",
     "vehicle_plate_associated",
     "vehicle_vin_associated",
     "vehicle_match_ids",
@@ -86,6 +87,7 @@ DOCUMENT_COLUMNS = [
     "primary_queue",
     "eligible_for_service_proposal",
     "eligible_for_counting",
+    "eligibility_reason",
     "duplicate_group_id",
     "duplicate_match_types",
     "issue_codes",
@@ -121,6 +123,7 @@ SERVICE_COLUMNS = [
     "confidence",
     "proposal_status",
     "eligible_for_counting",
+    "eligibility_reason",
 ]
 
 ISSUE_COLUMNS = [
@@ -281,6 +284,7 @@ def _service_proposals(
     document_id: int,
     classified_lines: list[dict[str, Any]],
     eligible: bool,
+    eligibility_reason: str,
 ) -> list[dict[str, Any]]:
     by_code: dict[str, list[str]] = defaultdict(list)
     for row in classified_lines:
@@ -338,6 +342,7 @@ def _service_proposals(
                 "confidence": f"{confidence:.2f}",
                 "proposal_status": "PROPOSED" if eligible else "PROVISIONAL_BLOCKED",
                 "eligible_for_counting": eligible,
+                "eligibility_reason": eligibility_reason,
             }
         )
     return result
@@ -617,6 +622,9 @@ def build_readonly_export(
 
         extracted_status = "usable" if payload and invoice_lines else "missing_or_empty"
         associated_vehicle = vehicle_by_id.get(document.vehicle_id)
+        association_confirmed = bool(
+            document.vehicle_id and workflow and workflow.association_status == "associated"
+        )
         document_row = {
             "run_id": run_id,
             "document_id": document.id,
@@ -661,6 +669,7 @@ def build_readonly_export(
             )
             or "",
             "vehicle_id_associated": document.vehicle_id or "",
+            "association_confirmed": association_confirmed,
             "vehicle_plate_associated": associated_vehicle.plate if associated_vehicle else "",
             "vehicle_vin_associated": associated_vehicle.vin if associated_vehicle else "",
             "vehicle_match_ids": "|".join(str(value) for value in sorted(match_ids)),
@@ -680,6 +689,7 @@ def build_readonly_export(
             "primary_queue": "",
             "eligible_for_service_proposal": False,
             "eligible_for_counting": False,
+            "eligibility_reason": "",
             "duplicate_group_id": "",
             "duplicate_match_types": "",
             "issue_codes": "",
@@ -795,14 +805,33 @@ def build_readonly_export(
         else:
             queue = "AUTO_HIGH"
         eligible_for_proposal = bool(row["line_count"] and not observed_hard_block)
-        eligible_for_counting = bool(queue == "AUTO_HIGH" and not row["human_protected"])
+        eligibility_reasons = []
+        if not row["association_confirmed"] or not row["vehicle_id_associated"]:
+            eligibility_reasons.append("association_not_confirmed")
+        if row["human_protected"]:
+            eligibility_reasons.append("human_protected")
+        if is_duplicate or "DOCUMENT_CHAIN_UNRESOLVED" in issue_codes:
+            eligibility_reasons.append("duplicate_or_chain_blocked")
+        if row["technical_blocker"] or observed_hard_block:
+            eligibility_reasons.append("technical_blocker")
+        if queue != "AUTO_HIGH" and not eligibility_reasons:
+            eligibility_reasons.append("manual_review_required")
+        eligibility_reason = "|".join(eligibility_reasons)
+        eligible_for_counting = not eligibility_reasons
         row["primary_queue"] = queue
         row["eligible_for_service_proposal"] = eligible_for_proposal
         row["eligible_for_counting"] = eligible_for_counting
+        row["eligibility_reason"] = eligibility_reason
         row["issue_codes"] = "|".join(sorted(issue_codes))
         if eligible_for_proposal:
             service_rows.extend(
-                _service_proposals(run_id, document_id, classified_lines, eligible_for_counting)
+                _service_proposals(
+                    run_id,
+                    document_id,
+                    classified_lines,
+                    eligible_for_counting,
+                    eligibility_reason,
+                )
             )
 
     counts = {

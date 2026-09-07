@@ -24,7 +24,7 @@ Atualizado em 07/09/2026. Este documento é o ponto de retoma para coordenar tra
 - PR #137 integrado em `integration/modular-architecture`.
 - Merge commit: `5bd7b9c787167294c347a9e459e482556459c0bb`.
 - O resultado integrado ficou aquém da proposta visual aprovada.
-- Correção visual concluída na branch local `codex/email-mockup-fidelity-20260907`, commit `fa501cbf`.
+- Correção visual concluída na branch local `codex/email-mockup-fidelity-20260907`: base funcional `fa501cbf` e ajuste dos contadores `81d8dbd`.
 - Validação: 251 testes aprovados, sintaxe Python e `git diff --check` sem erro.
 - Estado: aguarda revisão visual; sem push, PR, merge ou deploy.
 
@@ -66,6 +66,16 @@ Atualizado em 07/09/2026. Este documento é o ponto de retoma para coordenar tra
 3. Auditoria de viaturas, Estratégia e Tratamento documental permanecem projetos separados.
 4. Cada operador deixa no PR ou checkpoint: objetivo, alterações, testes, riscos e pendências.
 5. O operador principal revê novos PRs e atualiza este documento antes de integrar.
+
+## Checkpoint do Operador Cloud
+
+- Auditoria inicial concluída na cópia Cloud limpa, branch interna `work`, commit `f17f2a7`.
+- Os merges dos PRs #136 e #137 estão presentes no histórico dessa cópia.
+- Nenhum código foi alterado pelo Operador Cloud.
+- O checkout disponibilizado à tarefa não contém `remote` Git configurado nem autenticação GitHub; por isso o operador ainda não consegue confirmar PRs em tempo real, publicar branches ou criar PRs Draft pelo terminal.
+- A correção local de Email (`fa501cbf` + `81d8dbd`) não existe no clone Cloud e não deve ser recriada em paralelo.
+- Antes de lhe atribuir desenvolvimento, validar num teste controlado o mecanismo de publicação de branch/PR disponibilizado pela plataforma.
+- Mantêm-se proibidos merge, deploy, encerramento de PRs e eliminação de branches ou worktrees sem autorização explícita.
 
 ## Ordem de retoma
 

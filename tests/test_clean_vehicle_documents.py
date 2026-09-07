@@ -4008,7 +4008,7 @@ def test_clean_vehicle_documents_service_choices_match_operational_vocabulary(
     assert "cabin_filter" in context["structured_rows"][0]["service_suggestion_codes"]["maintenance"]
 
 
-def test_preclassify_invoices_and_work_orders_persists_suggestions_without_validation(
+def test_preclassify_does_not_persist_services_in_wrong_legacy_categories(
     db_session,
 ):
     vehicle = _create_vehicle(db_session)
@@ -4056,21 +4056,17 @@ def test_preclassify_invoices_and_work_orders_persists_suggestions_without_valid
 
     db_session.refresh(invoice)
     db_session.refresh(work_order)
-    assert invoice.status == "pending_validation"
+    assert invoice.status == "extracted"
     assert work_order.status == "pending_validation"
     assert work_order.comparison_state == "por_validar"
-    assert result["invoice_documents"] == 1
+    assert result["invoice_documents"] == 0
     assert result["work_orders"] == 1
     invoice_tags = db_session.scalars(
         select(VehicleDocumentRecordTag).where(
             VehicleDocumentRecordTag.document_id == invoice.id
         )
     ).all()
-    assert {(tag.category, tag.value) for tag in invoice_tags} == {
-        ("maintenance", "telecharge"),
-        ("maintenance", "cabin_filter"),
-    }
-    assert {tag.source_kind for tag in invoice_tags} == {"auto_suggested"}
+    assert invoice_tags == []
     work_order_tags = db_session.scalars(
         select(VehicleDocumentRecordTag).where(
             VehicleDocumentRecordTag.record_id == work_order.id

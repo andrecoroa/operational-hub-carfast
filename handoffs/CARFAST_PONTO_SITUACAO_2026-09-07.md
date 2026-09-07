@@ -27,8 +27,9 @@ Atualizado em 07/09/2026. Este documento é o ponto de retoma para coordenar tra
 - Correção visual concluída e publicada na branch `codex/email-mockup-fidelity-20260907`: base funcional `fa501cbf` e ajuste final dos contadores `f1bb8ec`.
 - PR #138 criado como Draft contra `integration/modular-architecture`: https://github.com/andrecoroa/operational-hub-carfast/pull/138.
 - Validação: 33 testes focados de Email aprovados; QA local a 1440×731 e 390×844; sintaxe Python e `git diff --check` sem erro.
-- A suite global não está integralmente verde e apresentou falhas fora dos testes focados de Email; confirmar a baseline antes de integrar.
-- Estado: revisão técnica/CI pendente; sem merge ou deploy.
+- O CI remoto do PR #138 concluiu com sucesso (workflow run #404); o GitHub indica que o PR é integrável.
+- A execução local da suite global apresentou falhas fora dos testes focados de Email; manter esta ressalva na revisão da baseline.
+- Estado: aguarda decisão para passar de Draft a Ready; sem merge ou deploy.
 
 ### Oficina
 
@@ -81,7 +82,7 @@ Atualizado em 07/09/2026. Este documento é o ponto de retoma para coordenar tra
 
 ## Ordem de retoma
 
-1. Rever tecnicamente o PR Draft #138 e confirmar CI/baseline antes de qualquer integração.
+1. Rever tecnicamente o PR Draft #138 e confirmar a baseline local antes de qualquer integração; CI remoto aprovado.
 2. Decidir a proposta de Oficina antes de iniciar implementação.
 3. Auditar o checkout principal, worktrees antigas e PR #25.
 4. Arquivar apenas conversas e projetos comprovadamente concluídos ou obsoletos.

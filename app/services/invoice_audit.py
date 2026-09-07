@@ -31,9 +31,13 @@ SUPPORTED_EXTRACTION_ACTIONS = frozenset(
         "ocr.extracted",
     }
 )
-INVOICE_DOCUMENT_TYPES = frozenset(
-    {"workshop_supplier_invoice", "finance_supplier_invoice", "stock_supplier_invoice"}
+TECHNICAL_DOCUMENT_TYPES = frozenset(
+    {"workshop_supplier_invoice", "workshop_report"}
 )
+CONTROL_DOCUMENT_TYPES = frozenset(
+    {"finance_supplier_invoice", "stock_supplier_invoice"}
+)
+AUDIT_DOCUMENT_TYPES = TECHNICAL_DOCUMENT_TYPES | CONTROL_DOCUMENT_TYPES
 
 
 def _archive_root() -> Path:
@@ -108,13 +112,14 @@ def _scope(document: Document, state: DocumentWorkflowState | None) -> tuple[str
     nature = str(state.invoice_nature or "").strip().lower() if state else ""
     document_type = str(document.document_type or "").strip().lower()
     source = str(document.source or "").strip().lower()
-    classification = str(document.classification or "").strip().lower()
     if nature == "stock" or source == "stock_direct_import" or "stock" in document_type:
         return "excluded", "stock"
-    if nature == "financeira" or document_type == "finance_supplier_invoice" or classification == "finance":
+    if nature == "financeira" or document_type == "finance_supplier_invoice":
         return "excluded", "financial"
-    if nature == "operacional" or document_type == "workshop_supplier_invoice" or classification == "workshop":
+    if document_type == "workshop_supplier_invoice":
         return "technical", "operational_invoice"
+    if document_type == "workshop_report":
+        return "technical", "workshop_report"
     return "review", "nature_unconfirmed"
 
 
@@ -131,8 +136,7 @@ def build_invoice_audit_dry_run(
             select(Document)
             .where(
                 or_(
-                    Document.document_type.in_(INVOICE_DOCUMENT_TYPES),
-                    Document.classification.in_(("invoice", "workshop", "finance")),
+                    Document.document_type.in_(AUDIT_DOCUMENT_TYPES),
                     Document.source == "stock_direct_import",
                 )
             )

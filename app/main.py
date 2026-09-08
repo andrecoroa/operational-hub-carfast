@@ -15,6 +15,7 @@ from app.services.audit import record_audit
 from app.services.authorization import get_user_permission_codes
 from app.services.navigation import navigation_permission_for_path
 from app.web.email import email_router
+from app.web.microsoft365 import microsoft365_router
 from app.web.portal import portal_router
 from app.web.router import web_router
 from app.web.stock import stock_router
@@ -498,6 +499,7 @@ def create_app() -> FastAPI:
     app.include_router(stock_router)
     app.include_router(supplier_router)
     app.include_router(email_router)
+    app.include_router(microsoft365_router)
     app.include_router(web_router)
     return app
 

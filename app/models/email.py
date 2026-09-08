@@ -122,6 +122,70 @@ class EmailChannelAlias(TimestampMixin, Base):
     active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
 
 
+class EmailChannelTransport(TimestampMixin, Base):
+    """Per-mailbox transport selection without changing the email domain model.
+
+    Credential fields contain opaque secret-manager references only.  Secret or
+    token material must never be persisted in this table.
+    """
+
+    __tablename__ = "email_channel_transports"
+    __table_args__ = (
+        UniqueConstraint("channel_id", name="uq_email_channel_transport_channel"),
+        CheckConstraint(
+            "provider IN ('postmark', 'microsoft365')",
+            name="ck_email_channel_transports_provider",
+        ),
+        CheckConstraint(
+            "initial_sync_days > 0 AND initial_sync_days <= 30",
+            name="ck_email_channel_transports_initial_sync_days",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    channel_id: Mapped[int] = mapped_column(
+        ForeignKey("email_channels.id", ondelete="CASCADE"), unique=True, index=True
+    )
+    provider: Mapped[str] = mapped_column(String(30), default="postmark", index=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    mailbox_address: Mapped[str | None] = mapped_column(String(255), index=True)
+    tenant_id: Mapped[str | None] = mapped_column(String(80))
+    client_id: Mapped[str | None] = mapped_column(String(80))
+    client_credential_reference: Mapped[str | None] = mapped_column(String(255))
+    token_reference: Mapped[str | None] = mapped_column(String(255))
+    delegated_user_principal_name: Mapped[str | None] = mapped_column(String(255))
+    initial_sync_days: Mapped[int] = mapped_column(Integer, default=30)
+    connected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_error: Mapped[str | None] = mapped_column(Text)
+
+
+class EmailSyncCheckpoint(TimestampMixin, Base):
+    __tablename__ = "email_sync_checkpoints"
+    __table_args__ = (
+        UniqueConstraint(
+            "transport_id", "folder", name="uq_email_sync_checkpoint_folder"
+        ),
+        CheckConstraint(
+            "folder IN ('inbox', 'sentitems', 'drafts')",
+            name="ck_email_sync_checkpoints_folder",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    transport_id: Mapped[int] = mapped_column(
+        ForeignKey("email_channel_transports.id", ondelete="CASCADE"), index=True
+    )
+    folder: Mapped[str] = mapped_column(String(30), index=True)
+    delta_link: Mapped[str | None] = mapped_column(Text)
+    initial_window_started_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
+    last_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    status: Mapped[str] = mapped_column(String(30), default="pending", index=True)
+    last_error: Mapped[str | None] = mapped_column(Text)
+
+
 class EmailInboxRule(TimestampMixin, Base):
     __tablename__ = "email_inbox_rules"
     __table_args__ = (

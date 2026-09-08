@@ -4825,6 +4825,13 @@ def clean_tasks_center(
                 .distinct()
             )
         ) if decisions_enabled else set()
+        decision_resolver_team_ids = set(
+            db.scalars(
+                select(TeamMember.team_id)
+                .where(TeamMember.user_id.in_(tuple(decision_resolver_ids)))
+                .distinct()
+            )
+        ) if decision_resolver_ids else set()
         queue_capabilities = resolve_task_queue_capabilities(db, current_user)
         queue_capabilities_by_code = {item.code: item for item in queue_capabilities}
         def workspace_allowed(code: str, action: str | None = None) -> bool:
@@ -5062,7 +5069,10 @@ def clean_tasks_center(
             filters.append(
                 Task.id.in_(
                     select(TaskDecision.task_id).where(
-                        TaskDecision.decider_id == user_id,
+                        or_(
+                            TaskDecision.decider_id == user_id,
+                            TaskDecision.decider_team_id.in_(member_team_ids),
+                        ),
                         TaskDecision.status.in_(("pending", "information_requested")),
                     )
                 )
@@ -5387,6 +5397,7 @@ def clean_tasks_center(
         }
         task_notifications: list[TaskNotification] = []
         task_notification_unread_count = 0
+        unread_comment_notifications_by_task: dict[int, int] = {}
         if user_id and readable_task_type_codes:
             notification_conditions = [
                 TaskNotification.user_id == user_id,
@@ -5419,6 +5430,19 @@ def clean_tasks_center(
                 )
                 or 0
             )
+            if task_ids:
+                unread_comment_notifications_by_task = dict(
+                    db.execute(
+                        select(TaskNotification.task_id, func.count())
+                        .where(
+                            TaskNotification.user_id == user_id,
+                            TaskNotification.task_id.in_(task_ids),
+                            TaskNotification.event_type == "task_commented",
+                            TaskNotification.read_at.is_(None),
+                        )
+                        .group_by(TaskNotification.task_id)
+                    ).all()
+                )
         recent_documents = db.scalars(
             select(Document).order_by(Document.created_at.desc()).limit(80)
         ).all()
@@ -5855,18 +5879,25 @@ def clean_tasks_center(
                     continue
                 requester = users_by_id.get(active_decision.requested_by_id)
                 decider = users_by_id.get(active_decision.decider_id)
+                decider_team = teams_by_id.get(active_decision.decider_team_id)
                 task_decision_context_by_id[task.id] = {
                     "id": active_decision.id,
                     "needed": active_decision.decision_needed,
                     "recommendation": active_decision.recommendation,
                     "impact": active_decision.impact_value,
                     "requester": requester.name if requester else "Utilizador",
-                    "decider": decider.name if decider else "Utilizador",
+                    "decider": (
+                        decider.name if decider else
+                        f"Equipa · {decider_team.name}" if decider_team else "Destinatário"
+                    ),
                     "due": active_decision.due_at.isoformat()
                     if active_decision.due_at
                     else "",
                     "status": active_decision.status,
-                    "can_resolve": active_decision.decider_id == user_id
+                    "can_resolve": (
+                        active_decision.decider_id == user_id
+                        or active_decision.decider_team_id in current_team_ids
+                    )
                     and "tasks.resolve_decision" in classification_permissions,
                 }
         task_claim_allowed_by_id = {
@@ -5988,6 +6019,10 @@ def clean_tasks_center(
                 "decision_resolvers": [
                     user for user in all_users if user.id in decision_resolver_ids
                 ],
+                "decision_resolver_teams": [
+                    {"id": team.id, "name": team.name}
+                    for team in all_teams if team.id in decision_resolver_team_ids
+                ],
                 "support_return_options_by_help_id": support_return_options_by_help_id,
                 "documents_by_task": documents_by_task,
                 "email_by_task": email_by_task,
@@ -6006,6 +6041,7 @@ def clean_tasks_center(
                 "mine_counts": mine_counts,
                 "task_notifications": task_notifications,
                 "task_notification_unread_count": task_notification_unread_count,
+                "unread_comment_notifications_by_task": unread_comment_notifications_by_task,
                 "task_due_soon_days": TASK_DUE_SOON_DAYS,
                 "task_today": date.today(),
                 "task_due_soon_limit": date.today()
@@ -8179,7 +8215,7 @@ def clean_task_notification_open(request: Request, notification_id: int):
             db.commit()
         task_id = task.id
     return RedirectResponse(
-        f"/v2-clean/tasks?workspace=mine&open_task={task_id}#task-preview-{task_id}",
+        f"/v2-clean/tasks/{task_id}/detail?notification_opened=1#task-comment",
         status_code=303,
     )
 
@@ -8434,7 +8470,8 @@ def clean_tasks_participant_self(
 def clean_task_decision_request(
     request: Request,
     task_id: int,
-    decider_id: int = Form(...),
+    requested_target: str = Form(""),
+    decider_id: str = Form(""),
     decision_needed: str = Form(""),
     recommendation: str = Form(""),
     impact_value: str = Form(""),
@@ -8442,6 +8479,9 @@ def clean_task_decision_request(
     return_url: str = Form(""),
 ):
     user_id = get_web_user_id(request)
+    target_user_id, target_team_id = parse_delegation_target(requested_target)
+    if not target_user_id and not target_team_id:
+        target_user_id = parse_int_from_text(decider_id)
     clean_fields = tuple(
         value.strip() for value in (decision_needed, recommendation, impact_value)
     )
@@ -8457,20 +8497,28 @@ def clean_task_decision_request(
         return clean_task_action_redirect(return_url, task_id=task_id, flag="error")
     with SessionLocal() as db:
         actor = db.get(User, user_id)
-        decider = db.get(User, decider_id)
+        decider = db.get(User, target_user_id) if target_user_id else None
+        decider_team = db.get(Team, target_team_id) if target_team_id else None
         task = db.scalar(select(Task).where(Task.id == task_id).with_for_update())
         permissions = get_user_permission_codes(db, actor) if actor else set()
-        decider_can_resolve = bool(
-            db.scalar(
+        resolver_query = (
                 select(UserRole.user_id)
                 .join(RolePermission, RolePermission.role_id == UserRole.role_id)
                 .join(Permission, Permission.id == RolePermission.permission_id)
                 .where(
-                    UserRole.user_id == decider_id,
                     Permission.code == "tasks.resolve_decision",
                 )
-            )
         )
+        if target_user_id:
+            resolver_query = resolver_query.where(UserRole.user_id == target_user_id)
+        else:
+            resolver_query = resolver_query.join(
+                TeamMember, TeamMember.user_id == UserRole.user_id
+            ).join(User, User.id == UserRole.user_id).where(
+                TeamMember.team_id == target_team_id,
+                User.active.is_(True),
+            )
+        resolver_ids = set(db.scalars(resolver_query.distinct()))
         pending = db.scalar(
             select(TaskDecision.id).where(
                 TaskDecision.task_id == task_id,
@@ -8480,9 +8528,10 @@ def clean_task_decision_request(
         if (
             "tasks.request_decision" not in permissions
             or not task
-            or not decider
-            or not decider.active
-            or not decider_can_resolve
+            or (target_user_id and (not decider or not decider.active))
+            or (target_team_id and (not decider_team or not decider_team.active))
+            or (not target_user_id and not target_team_id)
+            or not resolver_ids
             or pending
             or task.status in TASK_ARCHIVE_STATUSES | {"support_requested", "waiting_decision"}
             or not user_can_access_task_workspace(
@@ -8495,7 +8544,8 @@ def clean_task_decision_request(
         item = TaskDecision(
             task_id=task.id,
             requested_by_id=user_id,
-            decider_id=decider.id,
+            decider_id=decider.id if decider else None,
+            decider_team_id=decider_team.id if decider_team else None,
             decision_needed=clean_fields[0],
             recommendation=clean_fields[1],
             impact_value=clean_fields[2],
@@ -8508,8 +8558,9 @@ def clean_task_decision_request(
         db.flush()
         db.add(TaskHistory(task_id=task.id, user_id=user_id, field_name="status", old_value=previous_status, new_value="waiting_decision"))
         db.add(TaskHistory(task_id=task.id, user_id=user_id, field_name="decision_requested", old_value=None, new_value=clean_fields[0]))
-        db.add(TaskNotification(task_id=task.id, user_id=decider.id, actor_user_id=user_id, event_type="decision_requested", title=f"Decisão pedida: {task.title}", detail=clean_fields[0]))
-        record_audit(db, action="task.decision.requested", entity_type="task_decision", entity_id=item.id, detail=clean_fields[0], before_json={"task_status": previous_status}, after_json={"task_status": "waiting_decision", "decider_id": decider.id}, user_id=user_id)
+        for resolver_id in sorted(resolver_ids):
+            db.add(TaskNotification(task_id=task.id, user_id=resolver_id, actor_user_id=user_id, event_type="decision_requested", title=f"Decisão pedida: {task.title}", detail=clean_fields[0]))
+        record_audit(db, action="task.decision.requested", entity_type="task_decision", entity_id=item.id, detail=clean_fields[0], before_json={"task_status": previous_status}, after_json={"task_status": "waiting_decision", "decider_id": decider.id if decider else None, "decider_team_id": decider_team.id if decider_team else None}, user_id=user_id)
         db.commit()
     return clean_task_action_redirect(return_url, task_id=task_id, flag="decision_requested")
 
@@ -8538,11 +8589,21 @@ def clean_task_decision_resolve(
             .with_for_update()
         )
         task = db.scalar(select(Task).where(Task.id == task_id).with_for_update())
+        is_team_decider = bool(
+            item
+            and item.decider_team_id
+            and db.scalar(
+                select(TeamMember.id).where(
+                    TeamMember.team_id == item.decider_team_id,
+                    TeamMember.user_id == user_id,
+                )
+            )
+        )
         if (
             "tasks.resolve_decision" not in permissions
             or not item
             or item.task_id != task_id
-            or item.decider_id != user_id
+            or (item.decider_id != user_id and not is_team_decider)
             or item.status not in {"pending", "information_requested"}
             or not task
             or task.status != "waiting_decision"
@@ -8907,7 +8968,13 @@ def clean_tasks_upload_attachments(
                 )
             )
         db.commit()
-    return clean_task_action_redirect(return_url, task_id=task_id, flag="document_linked")
+    destination = _normalized_task_return_target(
+        return_url,
+        f"/v2-clean/tasks/{task_id}/detail",
+        additions=(("document_linked", "1"),),
+        fragment="task-documents",
+    )
+    return RedirectResponse(destination, status_code=303)
 
 
 @web_router.get("/v2-clean/admin", response_class=HTMLResponse)
@@ -36382,6 +36449,33 @@ def task_detail(
         comments = db.scalars(
             select(TaskComment).where(TaskComment.task_id == task.id).order_by(TaskComment.created_at.desc())
         ).all()
+        unread_comment_count = db.scalar(
+            select(func.count()).select_from(TaskNotification).where(
+                TaskNotification.task_id == task.id,
+                TaskNotification.user_id == current_user.id,
+                TaskNotification.event_type == "task_commented",
+                TaskNotification.read_at.is_(None),
+            )
+        ) or 0 if is_clean_detail else 0
+        if unread_comment_count:
+            now = datetime.now(UTC)
+            for notification in db.scalars(
+                select(TaskNotification).where(
+                    TaskNotification.task_id == task.id,
+                    TaskNotification.user_id == current_user.id,
+                    TaskNotification.read_at.is_(None),
+                )
+            ):
+                notification.read_at = now
+            db.commit()
+        pending_decision = db.scalar(
+            select(TaskDecision)
+            .where(
+                TaskDecision.task_id == task.id,
+                TaskDecision.status.in_(("pending", "information_requested")),
+            )
+            .order_by(TaskDecision.created_at.desc())
+        ) if is_clean_detail else None
         history = db.scalars(
             select(TaskHistory).where(TaskHistory.task_id == task.id).order_by(TaskHistory.changed_at.desc())
         ).all()
@@ -36585,6 +36679,8 @@ def task_detail(
                 "return_context": return_context if resolved_return else "",
                 "can_write_workspace": user_can_access_task_workspace(db, current_user, task_workspace, write=True),
                 "comments": comments,
+                "unread_comment_count": unread_comment_count,
+                "pending_decision": pending_decision,
                 "history": history,
                 "linked_vehicle": linked_vehicle,
                 "task_case": task_case,

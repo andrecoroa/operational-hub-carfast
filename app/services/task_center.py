@@ -11,6 +11,7 @@ from app.models.admin import Role, User, UserRole
 from app.models.organization import Team, TeamMember
 from app.models.tasks import (
     Task,
+    TaskDecision,
     TaskHelpRequest,
     TaskNotification,
     TaskParticipant,
@@ -165,15 +166,26 @@ def task_visibility_filter(db, *, user_id: int, task_model=Task):
     if not user_is_restricted_task_operator(db, user_id):
         return hierarchy
     direct = task_direct_relation_filter(user_id=user_id, task_model=task_model)
+    decision = task_model.id.in_(
+        select(TaskDecision.task_id).where(
+            or_(
+                TaskDecision.decider_id == user_id,
+                TaskDecision.decider_team_id.in_(
+                    select(TeamMember.team_id).where(TeamMember.user_id == user_id)
+                ),
+            ),
+            TaskDecision.status.in_(("pending", "information_requested")),
+        )
+    )
     team = task_team_relation_filter(db, user_id=user_id, task_model=task_model)
     claimable = task_claimable_relation_filter(
         db, user_id=user_id, task_model=task_model
     )
     if team is None:
-        return or_(direct, claimable)
+        return or_(direct, decision, claimable)
     if hierarchy is None:
-        return or_(direct, team, claimable)
-    return or_(direct, and_(team, hierarchy), claimable)
+        return or_(direct, decision, team, claimable)
+    return or_(direct, decision, and_(team, hierarchy), claimable)
 
 
 def user_can_view_task(db, *, user_id: int, task: Task) -> bool:

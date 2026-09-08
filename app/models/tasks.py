@@ -287,6 +287,11 @@ class TaskDecision(TimestampMixin, Base):
     __tablename__ = "task_decisions"
     __table_args__ = (
         CheckConstraint(
+            "(decider_id IS NOT NULL AND decider_team_id IS NULL) OR "
+            "(decider_id IS NULL AND decider_team_id IS NOT NULL)",
+            name="ck_task_decisions_single_target",
+        ),
+        CheckConstraint(
             "status IN ('pending', 'approved', 'rejected', 'information_requested')",
             name="ck_task_decisions_status",
         ),
@@ -297,7 +302,10 @@ class TaskDecision(TimestampMixin, Base):
         ForeignKey("tasks.id", ondelete="CASCADE"), index=True
     )
     requested_by_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
-    decider_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    decider_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), index=True)
+    decider_team_id: Mapped[int | None] = mapped_column(
+        ForeignKey("teams.id"), index=True
+    )
     decision_needed: Mapped[str] = mapped_column(Text)
     recommendation: Mapped[str] = mapped_column(Text)
     impact_value: Mapped[str] = mapped_column(Text)

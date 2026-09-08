@@ -1,7 +1,7 @@
 """Add invoice-derived vehicle service history.
 
-Revision ID: fffc017b8d9e
-Revises: fffbf06a7c8d
+Revision ID: fffd128c9e0f
+Revises: fffc017b8d9e
 """
 
 from collections.abc import Sequence
@@ -9,8 +9,8 @@ from collections.abc import Sequence
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = "fffc017b8d9e"
-down_revision: str | Sequence[str] | None = "fffbf06a7c8d"
+revision: str = "fffd128c9e0f"
+down_revision: str | Sequence[str] | None = "fffc017b8d9e"
 branch_labels = None
 depends_on = None
 

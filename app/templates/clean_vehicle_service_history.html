@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="app-shell clean-shell{% if print_view %} print-service-history{% endif %}">
+  {% if not print_view %}{% set active_menu = "fleet" %}{% include "_sidebar.html" %}{% endif %}
+  <main class="content clean-content service-history-page">
+    <header class="page-header">
+      <div><p class="eyebrow">Ficha da viatura · serviços de faturas</p><h1>Histórico de serviços</h1><p>{{ vehicle.plate or "Sem matrícula" }} · {{ vehicle.brand or "" }} {{ vehicle.model or "" }}</p></div>
+      {% if not print_view %}<div class="actions"><a class="button secondary" href="?service={{ service_filter }}&print_view=1" target="_blank">Imprimir</a>{% if can_write %}<a class="button" href="/v2-clean/fleet/{{ vehicle.id }}/services/import">Importar lote</a>{% endif %}</div>{% endif %}
+    </header>
+    <section class="metric-grid">
+      <div class="metric"><span>Primeiro serviço confirmado</span><strong>{{ history.first_service_date.strftime('%d/%m/%Y') if history.first_service_date else '-' }}</strong></div>
+      <div class="metric"><span>Quilómetros iniciais</span><strong>{{ history.first_service_km if history.first_service_km is not none else '-' }}</strong></div>
+      <div class="metric"><span>Confirmados</span><strong>{{ history.confirmed|length }}</strong></div>
+      <div class="metric"><span>Propostas pendentes</span><strong>{{ history.pending|length }}</strong></div>
+    </section>
+    {% if not print_view %}<form class="filter-bar" method="get"><label>Tipo de serviço<input name="service" value="{{ service_filter }}" placeholder="Ex.: MAINT, TYRE, BRAKE"></label><button type="submit">Filtrar</button><a href="?">Limpar</a></form>{% endif %}
+    <section class="section"><div class="table-shell"><table class="service-history-table">
+      <thead><tr><th>Data</th><th>Km</th><th>Serviço</th><th>Classificação</th><th>Eixo/localização</th><th>Fornecedor</th><th>FO</th><th>Valor</th><th>Estado</th><th>Evidência</th></tr></thead>
+      <tbody>{% for event in history.events %}{% set document = documents.get(event.document_id) %}<tr class="{% if event.status != 'validated' %}is-pending{% endif %}">
+        <td>{{ event.service_date.strftime('%d/%m/%Y') if event.service_date else '-' }}</td><td>{{ event.odometer_km if event.odometer_km is not none else '-' }}</td>
+        <td><strong>{{ event.service_label }}</strong><small>{{ event.service_code }}</small></td><td>{{ event.classification or '-' }}</td><td>{{ event.axle or '-' }}{% if event.position %} · {{ event.position }}{% endif %}</td>
+        <td>{{ event.supplier_name or '-' }}</td><td>{{ event.work_order_reference or '-' }}{% if event.work_order_confidence is not none %}<small>{{ (event.work_order_confidence * 100)|round|int }}%</small>{% endif %}</td>
+        <td>{{ '%.2f'|format(event.amount) if event.amount is not none else '-' }} {{ event.currency if event.amount is not none else '' }}</td><td><span class="status-pill">{{ status_labels.get(event.status, event.status) }}</span></td>
+        <td>{% if document %}<a href="/v2-clean/documents/{{ document.id }}" target="_blank">Abrir fatura</a>{% endif %}{% if not print_view %}<a href="/v2-clean/fleet/{{ vehicle.id }}/services/{{ event.id }}">Tratar</a>{% endif %}<small>{{ event.evidence_text or '-' }}</small></td>
+      </tr>{% else %}<tr><td colspan="10">Sem serviços para os filtros escolhidos.</td></tr>{% endfor %}</tbody>
+    </table></div></section>
+  </main>
+</div>
+{% if print_view %}<script>window.addEventListener('load',()=>window.print())</script>{% endif %}
+{% endblock %}

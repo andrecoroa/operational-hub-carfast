@@ -58,6 +58,11 @@ from app.models.evolution import (
 )
 from app.models.imports import ImportBatch, ImportError, ImportFile, ImportMapping, ImportRawRow
 from app.models.incidents import Incident, IncidentEvent, IncidentEvidence
+from app.models.invoice_service_history import (
+    InvoiceServiceEvent,
+    InvoiceServiceEventRevision,
+    InvoiceServiceImportBatch,
+)
 from app.models.integrations import EmailIntake, EmailIntakeAttachment
 from app.models.management_center import (
     ClaimIncident,
@@ -231,6 +236,9 @@ __all__ = [
     "DocumentEvent",
     "DocumentLink",
     "DocumentWorkflowState",
+    "InvoiceServiceEvent",
+    "InvoiceServiceEventRevision",
+    "InvoiceServiceImportBatch",
     "VehicleDocumentAlert",
     "VehicleDocumentAuditField",
     "VehicleDocumentPendingAction",

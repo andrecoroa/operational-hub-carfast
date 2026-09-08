@@ -52,6 +52,7 @@ from app.services.email_postmark import (
     ingest_outbound_event,
     outbound_identity,
     reply_all_recipients,
+    send_message,
     webhook_authorized,
 )
 from app.services.email_transport import send_channel_message
@@ -1640,6 +1641,7 @@ def email_new_message(
                     message,
                     sender_address,
                     reply_to=reply_to_address,
+                    postmark_sender=send_message,
                 )
             except RuntimeError as exc:
                 message.postmark_error = str(exc)
@@ -2883,6 +2885,7 @@ def email_reply(
                     message,
                     transport_sender,
                     reply_to=reply_to_address,
+                    postmark_sender=send_message,
                     parent_message_id=parent_message_id,
                     references=references,
                     attachments=outbound_attachments,
@@ -3114,6 +3117,7 @@ def email_approve(request: Request, thread_id: int, message_id: int):
                 message,
                 transport_sender,
                 reply_to=reply_to_address,
+                postmark_sender=send_message,
                 parent_message_id=parent_message_id,
                 references=references,
                 attachments=outbound_attachments,

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any
 
 from sqlalchemy import select
@@ -37,10 +38,11 @@ def send_channel_message(
     parent_message_id: str | None = None,
     references: list[str] | None = None,
     attachments: list[EmailAttachment] | None = None,
+    postmark_sender: Callable[..., dict[str, Any]] = send_postmark_message,
 ) -> dict[str, Any]:
     provider = provider_for_channel(db, channel.id)
     if provider == POSTMARK:
-        return send_postmark_message(
+        return postmark_sender(
             message,
             sender,
             reply_to=reply_to,

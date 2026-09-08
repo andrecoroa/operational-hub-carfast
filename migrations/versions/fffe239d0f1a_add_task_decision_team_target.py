@@ -1,7 +1,7 @@
 """Allow a task decision to target one person or one team.
 
-Revision ID: fffd128c9e0f
-Revises: fffc017b8d9e
+Revision ID: fffe239d0f1a
+Revises: fffd128c9e0f
 """
 
 from collections.abc import Sequence
@@ -9,8 +9,8 @@ from collections.abc import Sequence
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = "fffd128c9e0f"
-down_revision: str | Sequence[str] | None = "fffc017b8d9e"
+revision: str = "fffe239d0f1a"
+down_revision: str | Sequence[str] | None = "fffd128c9e0f"
 branch_labels = None
 depends_on = None
 

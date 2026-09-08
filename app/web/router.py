@@ -52,6 +52,7 @@ from app.models.documents import (
 )
 from app.models.imports import ImportBatch, ImportError, ImportFile, ImportMapping, ImportRawRow
 from app.models.incidents import Incident, IncidentEvent, IncidentEvidence
+from app.models.invoice_service_history import InvoiceServiceEvent, InvoiceServiceImportBatch
 from app.models.integrations import EmailIntake, EmailIntakeAttachment
 from app.models.management_center import (
     ClaimIncident,
@@ -198,6 +199,16 @@ from app.services.diagnostic_ocr import (
 from app.services.document_import_preview import (
     RENTWAY_IMPORT_KINDS,
     preview_structured_spreadsheet,
+)
+from app.services.invoice_service_history import (
+    STATUS_LABELS as INVOICE_SERVICE_STATUS_LABELS,
+    InvoiceServiceImportError,
+    apply_invoice_service_import,
+    decide_invoice_service_event,
+    link_event_to_work_order,
+    preview_invoice_service_import,
+    rollback_invoice_service_batch,
+    vehicle_service_history,
 )
 from app.services.document_service_classification import save_service_classifications
 from app.services.document_workflow import (
@@ -37707,6 +37718,186 @@ def confirm_change_notice(
 def logout(request: Request):
     request.session.clear()
     return RedirectResponse("/login", status_code=303)
+
+
+@web_router.get("/v2-clean/fleet/{vehicle_id}/services", response_class=HTMLResponse)
+def clean_vehicle_service_history(
+    request: Request, vehicle_id: int, service: str = "", print_view: int = 0
+):
+    denied = clean_experience_denied(request)
+    if denied:
+        return denied
+    if not can_view_fleet(request):
+        return RedirectResponse("/v2-clean?error=forbidden", status_code=303)
+    with SessionLocal() as db:
+        vehicle = db.get(Vehicle, vehicle_id)
+        if not vehicle:
+            return RedirectResponse("/v2-clean/fleet", status_code=303)
+        history = vehicle_service_history(db, vehicle.id, service_code=service)
+        documents = {
+            item.id: item
+            for item in db.scalars(
+                select(Document).where(
+                    Document.id.in_({event.document_id for event in history["events"]})
+                )
+            ).all()
+        } if history["events"] else {}
+        return templates.TemplateResponse(
+            request,
+            "clean_vehicle_service_history.html",
+            {
+                "vehicle": vehicle,
+                "history": history,
+                "documents": documents,
+                "status_labels": INVOICE_SERVICE_STATUS_LABELS,
+                "service_filter": service,
+                "print_view": bool(print_view),
+                "can_write": has_any_web_permission(
+                    request, "documents.write", "workshop.write", "admin.manage"
+                ),
+            },
+        )
+
+
+@web_router.get("/v2-clean/fleet/{vehicle_id}/services/import", response_class=HTMLResponse)
+def clean_vehicle_service_import(request: Request, vehicle_id: int):
+    denied = require_any_web_permission(request, "imports.run", "admin.manage")
+    if denied:
+        return denied
+    with SessionLocal() as db:
+        vehicle = db.get(Vehicle, vehicle_id)
+        if not vehicle:
+            return RedirectResponse("/v2-clean/fleet", status_code=303)
+        batches = db.scalars(
+            select(InvoiceServiceImportBatch).order_by(InvoiceServiceImportBatch.id.desc()).limit(30)
+        ).all()
+        return templates.TemplateResponse(
+            request, "clean_vehicle_service_import.html",
+            {"vehicle": vehicle, "preview": None, "batches": batches, "error": ""},
+        )
+
+
+@web_router.post("/v2-clean/fleet/{vehicle_id}/services/import/preview", response_class=HTMLResponse)
+async def clean_vehicle_service_import_preview(
+    request: Request, vehicle_id: int, upload: UploadFile = File(...),
+    version: str = Form(...), source: str = Form("invoice_audit_export"),
+):
+    denied = require_any_web_permission(request, "imports.run", "admin.manage")
+    if denied:
+        return denied
+    content = await upload.read()
+    with SessionLocal() as db:
+        vehicle = db.get(Vehicle, vehicle_id)
+        if not vehicle:
+            return RedirectResponse("/v2-clean/fleet", status_code=303)
+        try:
+            preview = preview_invoice_service_import(
+                db,
+                content,
+                upload.filename or "lote.xlsx",
+                version=version,
+                source=source,
+                allowed_vehicle_id=vehicle_id,
+            )
+            error = ""
+        except InvoiceServiceImportError as exc:
+            preview, error = None, str(exc)
+        batches = db.scalars(select(InvoiceServiceImportBatch).order_by(InvoiceServiceImportBatch.id.desc()).limit(30)).all()
+        return templates.TemplateResponse(
+            request, "clean_vehicle_service_import.html",
+            {"vehicle": vehicle, "preview": preview, "batches": batches, "error": error},
+        )
+
+
+@web_router.post("/v2-clean/fleet/{vehicle_id}/services/import/apply")
+async def clean_vehicle_service_import_apply(
+    request: Request, vehicle_id: int, upload: UploadFile = File(...),
+    version: str = Form(...), source: str = Form("invoice_audit_export"),
+    dry_run_hash: str = Form(...), allow_validated_updates: bool = Form(False),
+):
+    denied = require_any_web_permission(request, "imports.run", "admin.manage")
+    if denied:
+        return denied
+    content = await upload.read()
+    with SessionLocal() as db:
+        preview = preview_invoice_service_import(
+            db,
+            content,
+            upload.filename or "lote.xlsx",
+            version=version,
+            source=source,
+            allowed_vehicle_id=vehicle_id,
+        )
+        if preview["file_hash"] != dry_run_hash:
+            return RedirectResponse(f"/v2-clean/fleet/{vehicle_id}/services/import?error=file_changed", status_code=303)
+        try:
+            apply_invoice_service_import(db, preview, actor_id=get_web_user_id(request), allow_validated_updates=allow_validated_updates)
+            db.commit()
+        except (InvoiceServiceImportError, IntegrityError):
+            db.rollback()
+            return RedirectResponse(f"/v2-clean/fleet/{vehicle_id}/services/import?error=conflict", status_code=303)
+    return RedirectResponse(f"/v2-clean/fleet/{vehicle_id}/services?imported=1", status_code=303)
+
+
+@web_router.post("/v2-clean/fleet/{vehicle_id}/services/import/{batch_id}/rollback")
+def clean_vehicle_service_import_rollback(request: Request, vehicle_id: int, batch_id: int):
+    denied = require_any_web_permission(request, "imports.run", "admin.manage")
+    if denied:
+        return denied
+    with SessionLocal() as db:
+        try:
+            rollback_invoice_service_batch(db, batch_id, actor_id=get_web_user_id(request))
+            db.commit()
+        except InvoiceServiceImportError:
+            db.rollback()
+    return RedirectResponse(f"/v2-clean/fleet/{vehicle_id}/services/import", status_code=303)
+
+
+@web_router.get("/v2-clean/fleet/{vehicle_id}/services/{event_id}", response_class=HTMLResponse)
+def clean_vehicle_service_treatment(request: Request, vehicle_id: int, event_id: int):
+    denied = clean_experience_denied(request)
+    if denied:
+        return denied
+    if not can_view_fleet(request):
+        return RedirectResponse("/v2-clean?error=forbidden", status_code=303)
+    with SessionLocal() as db:
+        event = db.get(InvoiceServiceEvent, event_id)
+        if not event or event.vehicle_id != vehicle_id:
+            return RedirectResponse(f"/v2-clean/fleet/{vehicle_id}/services", status_code=303)
+        return templates.TemplateResponse(request, "clean_vehicle_service_treatment.html", {
+            "vehicle": db.get(Vehicle, vehicle_id), "event": event,
+            "document": db.get(Document, event.document_id),
+            "work_orders": db.scalars(select(WorkshopProcess).where(WorkshopProcess.vehicle_id == vehicle_id).order_by(WorkshopProcess.id.desc())).all(),
+            "status_labels": INVOICE_SERVICE_STATUS_LABELS,
+        })
+
+
+@web_router.post("/v2-clean/fleet/{vehicle_id}/services/{event_id}")
+def clean_vehicle_service_treatment_save(
+    request: Request, vehicle_id: int, event_id: int, status: str = Form(...),
+    service_code: str = Form(...), axle: str = Form(""), position: str = Form(""),
+    workshop_process_id: int | None = Form(None), work_order_confidence: str = Form(""),
+    reason: str = Form(""),
+):
+    denied = require_any_web_permission(request, "documents.write", "workshop.write", "admin.manage")
+    if denied:
+        return denied
+    with SessionLocal() as db:
+        event = db.get(InvoiceServiceEvent, event_id)
+        if not event or event.vehicle_id != vehicle_id:
+            return RedirectResponse(f"/v2-clean/fleet/{vehicle_id}/services", status_code=303)
+        try:
+            decide_invoice_service_event(db, event, status=status, service_code=service_code, axle=axle, position=position, actor_id=get_web_user_id(request), reason=reason)
+            if workshop_process_id:
+                process = db.get(WorkshopProcess, workshop_process_id)
+                if not process:
+                    raise InvoiceServiceImportError("Folha de obra inexistente.")
+                link_event_to_work_order(db, event, process, confidence=Decimal(work_order_confidence) if work_order_confidence else None, actor_id=get_web_user_id(request))
+            db.commit()
+        except (InvoiceServiceImportError, InvalidOperation):
+            db.rollback()
+            return RedirectResponse(f"/v2-clean/fleet/{vehicle_id}/services/{event_id}?error=invalid", status_code=303)
+    return RedirectResponse(f"/v2-clean/fleet/{vehicle_id}/services", status_code=303)
 
 
 def get_web_user_id(request: Request) -> int | None:

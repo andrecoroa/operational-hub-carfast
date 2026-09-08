@@ -55,6 +55,7 @@ from app.services.email_postmark import (
     send_message,
     webhook_authorized,
 )
+from app.services.email_transport import send_channel_message
 from app.services.service_desk import (
     assignment_label,
     assignment_target_user_allowed,
@@ -1634,7 +1635,14 @@ def email_new_message(
         audit_action = state
         if submit == "send":
             try:
-                result = send_message(message, sender_address, reply_to=reply_to_address)
+                result = send_channel_message(
+                    db,
+                    channel,
+                    message,
+                    sender_address,
+                    reply_to=reply_to_address,
+                    postmark_sender=send_message,
+                )
             except RuntimeError as exc:
                 message.postmark_error = str(exc)
                 db.commit()
@@ -2871,10 +2879,13 @@ def email_reply(
                 item.external_message_id for item in prior_messages if item.external_message_id
             ]
             try:
-                result = send_message(
+                result = send_channel_message(
+                    db,
+                    sender_channel,
                     message,
                     transport_sender,
                     reply_to=reply_to_address,
+                    postmark_sender=send_message,
                     parent_message_id=parent_message_id,
                     references=references,
                     attachments=outbound_attachments,
@@ -3100,10 +3111,13 @@ def email_approve(request: Request, thread_id: int, message_id: int):
                 status_code=303,
             )
         try:
-            result = send_message(
+            result = send_channel_message(
+                db,
+                sender_channel,
                 message,
                 transport_sender,
                 reply_to=reply_to_address,
+                postmark_sender=send_message,
                 parent_message_id=parent_message_id,
                 references=references,
                 attachments=outbound_attachments,

@@ -154,7 +154,7 @@ class EmailChannelTransport(TimestampMixin, Base):
     client_credential_reference: Mapped[str | None] = mapped_column(String(255))
     token_reference: Mapped[str | None] = mapped_column(String(255))
     delegated_user_principal_name: Mapped[str | None] = mapped_column(String(255))
-    initial_sync_days: Mapped[int] = mapped_column(Integer, default=30)
+    initial_sync_days: Mapped[int] = mapped_column(Integer, default=5)
     connected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_error: Mapped[str | None] = mapped_column(Text)

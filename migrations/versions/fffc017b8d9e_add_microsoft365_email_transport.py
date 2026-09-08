@@ -33,7 +33,7 @@ def upgrade() -> None:
         sa.Column("client_credential_reference", sa.String(255)),
         sa.Column("token_reference", sa.String(255)),
         sa.Column("delegated_user_principal_name", sa.String(255)),
-        sa.Column("initial_sync_days", sa.Integer(), nullable=False, server_default="30"),
+        sa.Column("initial_sync_days", sa.Integer(), nullable=False, server_default="5"),
         sa.Column("connected_at", sa.DateTime(timezone=True)),
         sa.Column("revoked_at", sa.DateTime(timezone=True)),
         sa.Column("last_error", sa.Text()),

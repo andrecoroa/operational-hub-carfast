@@ -7,6 +7,7 @@ from alembic.script import ScriptDirectory
 
 from app.core.config import Settings
 from app.main import app
+from app.models.email import EmailChannelTransport
 from app.services import email_transport
 from app.services.microsoft365_oauth import (
     GRAPH_DELEGATED_SCOPES,
@@ -41,6 +42,10 @@ def test_microsoft365_is_disabled_by_default_and_redirect_is_green():
     assert settings.microsoft365_redirect_uri == (
         "https://carfast-green.onrender.com/v2-clean/integrations/microsoft/callback"
     )
+
+
+def test_pilot_initial_sync_window_defaults_to_five_days():
+    assert EmailChannelTransport.__table__.c.initial_sync_days.default.arg == 5
 
 
 def test_authorization_url_uses_pkce_and_required_delegated_scopes():

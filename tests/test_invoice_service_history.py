@@ -146,6 +146,9 @@ def test_clean_history_route_shows_confirmed_and_pending(authenticated_client, d
     assert "Primeiro serviço confirmado" in response.text
     assert "MAINT.PLAN" in response.text
     assert f"/v2-clean/documents/{document.id}" in response.text
+    assert f"/v2-clean/fleet/{vehicle.id}/documents?main_group=invoices" in response.text
+    assert f"open_item=document%3A{document.id}" in response.text
+    assert "Mudança adicional de óleo" in response.text
 
 
 def test_clean_history_route_requires_authentication(client, db_session):

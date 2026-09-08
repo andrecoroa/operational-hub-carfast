@@ -29729,6 +29729,7 @@ body:has(.email-preview-dialog[open]) { overflow: hidden; }
 .service-history-page .actions,
 .service-treatment-grid { display: flex; gap: 1rem; align-items: flex-start; }
 .service-treatment-grid > section { flex: 1 1 0; }
+.service-treatment-document { width: 100%; min-height: 620px; border: 1px solid #d0d5dd; border-radius: .75rem; margin: 1rem 0; }
 .service-history-table td small { display: block; margin-top: .25rem; color: var(--muted, #667085); }
 .service-history-table tr.is-pending { background: #fffaf0; }
 .service-history-table .status-pill { white-space: nowrap; }
@@ -29736,6 +29737,7 @@ body:has(.email-preview-dialog[open]) { overflow: hidden; }
 @media (max-width: 900px) {
   .service-treatment-grid { display: block; }
   .service-treatment-grid > section { margin-bottom: 1rem; }
+  .service-treatment-document { min-height: 480px; }
   .service-history-table { min-width: 1050px; }
 }
 @media print {

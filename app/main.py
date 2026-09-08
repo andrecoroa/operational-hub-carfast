@@ -14,6 +14,10 @@ from app.models.admin import User
 from app.services.audit import record_audit
 from app.services.authorization import get_user_permission_codes
 from app.services.navigation import navigation_permission_for_path
+from app.services.microsoft365_oauth import (
+    EnvironmentAndDatabaseSecretReferenceStore,
+    configure_secret_reference_store,
+)
 from app.web.email import email_router
 from app.web.microsoft365 import microsoft365_router
 from app.web.portal import portal_router
@@ -21,6 +25,13 @@ from app.web.router import web_router
 from app.web.stock import stock_router
 from app.web.suppliers import supplier_router
 from app.web.vehicle_sales import vehicle_sales_router
+
+if settings.microsoft365_token_encryption_key:
+    configure_secret_reference_store(
+        EnvironmentAndDatabaseSecretReferenceStore(
+            settings.microsoft365_token_encryption_key
+        )
+    )
 
 CHANGE_NOTICE_ALLOWED_PREFIXES = (
     "/api",

@@ -27,6 +27,7 @@ class Settings(BaseSettings):
     postmark_inbound_basic_user: str | None = None
     postmark_inbound_basic_password: str | None = None
     microsoft365_email_enabled: bool = False
+    microsoft365_token_encryption_key: str | None = None
     microsoft365_redirect_uri: str = (
         "https://carfast-green.onrender.com/v2-clean/integrations/microsoft/callback"
     )

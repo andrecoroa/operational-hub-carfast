@@ -160,6 +160,20 @@ class EmailChannelTransport(TimestampMixin, Base):
     last_error: Mapped[str | None] = mapped_column(Text)
 
 
+class EmailSecretReference(TimestampMixin, Base):
+    """Encrypted secret payload addressed by an opaque reference."""
+
+    __tablename__ = "email_secret_references"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    reference: Mapped[str] = mapped_column(String(255), unique=True, index=True)
+    ciphertext: Mapped[str] = mapped_column(Text)
+    expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), index=True
+    )
+    rotated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
 class EmailSyncCheckpoint(TimestampMixin, Base):
     __tablename__ = "email_sync_checkpoints"
     __table_args__ = (

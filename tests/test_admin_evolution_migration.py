@@ -12,7 +12,7 @@ from alembic.script import ScriptDirectory
 
 ROOT = Path(__file__).resolve().parents[1]
 MIGRATION_REVISION = "ffcf2a3b4c5d"
-CURRENT_HEAD = "fffbf06a7c8d"
+CURRENT_HEAD = "fffd028c9e10"
 PHOTO_ACTION_REVISION = "fff15d6e7f8b"
 FUNCTIONAL_MAILBOX_REVISION = "ffd02a3b4c5e"
 EMAIL_DELIVERY_REVISION = "ffe04c5d6e7f"
@@ -52,7 +52,8 @@ def test_admin_evolution_migration_is_the_single_head() -> None:
     scripts = ScriptDirectory.from_config(config)
 
     assert scripts.get_heads() == [CURRENT_HEAD]
-    assert scripts.get_revision(CURRENT_HEAD).down_revision == "fffaef5a6b7c"
+    assert scripts.get_revision(CURRENT_HEAD).down_revision == "fffd128c9e0f"
+    assert scripts.get_revision("fffbf06a7c8d").down_revision == "fffaef5a6b7c"
     assert scripts.get_revision("fffaef5a6b7c").down_revision == "fff9de4f5a6b"
     assert scripts.get_revision("fff9de4f5a6b").down_revision == "fff8cd3e4f5a"
     assert scripts.get_revision("fff8cd3e4f5a").down_revision == "fff7bc2d3e4f"

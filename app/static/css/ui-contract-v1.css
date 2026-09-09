@@ -584,6 +584,26 @@
 }
 @media(max-width:560px){.task-filter-operational-row{grid-template-columns:minmax(0,1fr)}.task-center-approved .task-grouping-modes small{width:100%;margin-left:0}}
 
+/* Shared alert rows: compact panel and full page keep the same readable rhythm. */
+.clean-task-notification-list{display:grid;gap:8px}
+.clean-task-notification-list>header{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.clean-task-notification-row{min-width:0;border:1px solid #dbe4ee;border-radius:8px;background:#fff;overflow:hidden}
+.clean-task-notification-row.is-unread{border-left:3px solid #c2410c;background:#fffaf7}
+.clean-task-notification-row-link{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px 16px;align-items:start;padding:10px 12px;color:#263d54;text-decoration:none}
+.clean-task-notification-row-link:hover{background:#f7faff}
+.clean-task-notification-row-link:focus-visible{outline:3px solid #87b7f4;outline-offset:-3px}
+.clean-task-notification-copy{display:grid;min-width:0;gap:3px}
+.clean-task-notification-event{color:#68798b;font-size:9px;font-weight:750;letter-spacing:.04em;text-transform:uppercase}
+.clean-task-notification-row-title{font-size:12px;line-height:1.35}
+.clean-task-notification-detail{color:#52677c;font-size:11px;line-height:1.45;overflow-wrap:anywhere}
+.clean-task-notification-task,.clean-task-notification-time{color:#68798b;font-size:10px}
+.clean-task-notification-time{white-space:nowrap}
+.clean-task-notification-row-action{display:flex;justify-content:flex-end;padding:0 12px 10px}
+.clean-task-notification-row-action button{width:auto;min-height:28px;padding:4px 9px;font-size:10px}
+.clean-task-notification-page{align-content:start}
+.task-center-approved-tabs .task-center-decision-count{display:inline-grid;min-width:20px;height:20px;margin-left:6px;padding:0 5px;place-items:center;border-radius:999px;background:#c2410c;color:#fff;font-size:10px;line-height:1}
+@media(max-width:700px){.clean-task-notification-list>header{align-items:flex-start;flex-direction:column}.clean-task-notification-row-link{grid-template-columns:minmax(0,1fr)}.clean-task-notification-time{justify-self:start}.clean-task-notification-row-action{justify-content:flex-start}.task-center-approved-tabs{gap:10px}.task-center-approved-tabs a{white-space:nowrap}}
+
 /* Task Center compact work surface: approved dense list, preview and editor. */
 .sr-only{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;white-space:nowrap!important;border:0!important}
 .task-center-approved-toolbar{display:flex;height:42px;min-height:42px;padding:0;align-items:center;justify-content:space-between;border-bottom:1px solid #dfe6ee}

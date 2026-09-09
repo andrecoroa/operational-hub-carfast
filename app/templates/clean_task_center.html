@@ -55,11 +55,9 @@
             <form method="post" action="/v2-clean/tasks/notifications/read-all"><button type="submit">Marcar todas como lidas</button></form>
           {% endif %}
         </header>
+        {% set notification_show_event = false %}{% set notification_allow_mark_read = false %}
         {% for notification in task_notifications %}
-          <a href="/v2-clean/tasks/notifications/{{ notification.id }}/open" class="{% if not notification.read_at %}is-unread{% endif %}">
-            <span><b>{{ notification.title }}</b>{% if notification.detail %}<small>{{ notification.detail }}</small>{% endif %}</span>
-            <time>{{ notification.created_at.strftime("%d/%m %H:%M") }}</time>
-          </a>
+          {% include "_task_notification_row.html" %}
         {% else %}
           <p>Sem notificações relacionadas com as tuas tarefas.</p>
         {% endfor %}

@@ -5408,6 +5408,7 @@ def clean_tasks_center(
         }
         task_notifications: list[TaskNotification] = []
         task_notification_unread_count = 0
+        pending_decision_count = 0
         unread_comment_notifications_by_task: dict[int, int] = {}
         if user_id and readable_task_type_codes:
             notification_conditions = [
@@ -5454,6 +5455,33 @@ def clean_tasks_center(
                         .group_by(TaskNotification.task_id)
                     ).all()
                 )
+        if (
+            user_id
+            and decisions_enabled
+            and "tasks.resolve_decision" in classification_permissions
+            and readable_task_type_codes
+        ):
+            pending_decision_conditions = [
+                Task.task_type.in_(tuple(readable_task_type_codes)),
+                Task.closed_at.is_(None),
+                ~Task.status.in_(TASK_ARCHIVE_STATUSES),
+                or_(
+                    TaskDecision.decider_id == user_id,
+                    TaskDecision.decider_team_id.in_(member_team_ids),
+                ),
+                TaskDecision.status.in_(("pending", "information_requested")),
+            ]
+            if visibility_filter is not None:
+                pending_decision_conditions.append(visibility_filter)
+            pending_decision_count = (
+                db.scalar(
+                    select(func.count(TaskDecision.id))
+                    .select_from(TaskDecision)
+                    .join(Task, Task.id == TaskDecision.task_id)
+                    .where(*pending_decision_conditions)
+                )
+                or 0
+            )
         recent_documents = db.scalars(
             select(Document).order_by(Document.created_at.desc()).limit(80)
         ).all()
@@ -6026,6 +6054,7 @@ def clean_tasks_center(
                 and "tasks.request_decision" in classification_permissions,
                 "can_resolve_decision": decisions_enabled
                 and "tasks.resolve_decision" in classification_permissions,
+                "pending_decision_count": pending_decision_count,
                 "decision_view": decision_view,
                 "decision_resolvers": [
                     user for user in all_users if user.id in decision_resolver_ids

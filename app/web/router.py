@@ -5028,6 +5028,7 @@ def clean_tasks_center(
         member_team_ids = select(TeamMember.team_id).where(
             TeamMember.user_id == user_id
         )
+        current_team_ids = set(db.scalars(member_team_ids)) if user_id else set()
         if active_workspace == "mine" and user_id and not decision_view:
             participant_task_ids = select(TaskParticipant.task_id).where(
                 TaskParticipant.user_id == user_id,
@@ -5346,8 +5347,7 @@ def clean_tasks_center(
                 for item in db.scalars(select(TaskEmailOrigin).where(TaskEmailOrigin.task_id.in_(task_ids)))
             }
         if active_workspace == "mine" and user_id:
-            member_team_id_set = set(db.scalars(member_team_ids))
-            current_team_ids = member_team_id_set
+            member_team_id_set = current_team_ids
             for task in tasks:
                 if task.assigned_to_id == user_id:
                     task_relations_by_task[task.id].append("Responsável")

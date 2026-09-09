@@ -35,12 +35,71 @@ def test_attachment_links_and_authenticated_download(authenticated_client, attac
         assert page.status_code == 200
         assert f'href="{href}"' in page.text
         assert 'Descarregar anexo' in page.text
+    task_page = authenticated_client.get(f'/v2-clean/tasks/{task.id}/detail')
+    assert f'href="/v2-clean/documents/{doc.id}?return_to=' in task_page.text
+    assert '>Abrir</a>' in task_page.text
     response = authenticated_client.get(href)
     assert response.status_code == 200
     assert response.content == path.read_bytes()
     disposition = unquote(response.headers['content-disposition'])
     assert disposition.startswith('attachment;')
     assert doc.original_name in disposition
+
+
+@pytest.mark.parametrize(
+    ("filename", "content_type", "preview_kind"),
+    [
+        ("prova.pdf", "application/pdf", "pdf"),
+        ("prova.png", "image/png", "image"),
+    ],
+)
+def test_task_attachment_pdf_and_image_open_inline_from_document_detail(
+    authenticated_client, attachment, db_session, filename, content_type, preview_kind
+):
+    _, doc, old_path = attachment
+    new_path = old_path.with_name(filename)
+    new_path.write_bytes(b"synthetic preview")
+    old_path.unlink()
+    doc.title = filename
+    doc.original_name = filename
+    doc.file_name = filename
+    doc.storage_path = str(new_path)
+    db_session.commit()
+
+    page = authenticated_client.get(f"/v2-clean/documents/{doc.id}")
+    assert page.status_code == 200
+    assert f'data-preview-src="/v2-clean/documents/{doc.id}/file?inline=1"' in page.text
+    assert f'data-preview-kind="{preview_kind}"' in page.text
+    assert ">Pré-visualizar</button>" in page.text
+
+    inline_response = authenticated_client.get(
+        f"/v2-clean/documents/{doc.id}/file?inline=1"
+    )
+    assert inline_response.status_code == 200
+    assert inline_response.headers["content-type"] == content_type
+    assert unquote(inline_response.headers["content-disposition"]).startswith("inline;")
+
+    download_response = authenticated_client.get(
+        f"/v2-clean/documents/{doc.id}/file?inline=0"
+    )
+    assert download_response.status_code == 200
+    assert download_response.headers["content-type"] == content_type
+    assert unquote(download_response.headers["content-disposition"]).startswith("attachment;")
+
+
+def test_non_previewable_task_attachment_opens_detail_without_automatic_download(
+    authenticated_client, attachment
+):
+    task, doc, _ = attachment
+    task_page = authenticated_client.get(f"/v2-clean/tasks/{task.id}/detail")
+    assert f'href="/v2-clean/documents/{doc.id}?return_to=' in task_page.text
+    assert f'href="/v2-clean/documents/{doc.id}/file?inline=1"' not in task_page.text
+
+    detail_page = authenticated_client.get(f"/v2-clean/documents/{doc.id}")
+    assert detail_page.status_code == 200
+    assert "data-preview-src=" not in detail_page.text
+    assert ">Pré-visualizar</button>" not in detail_page.text
+    assert f'/v2-clean/documents/{doc.id}/file?inline=0' in detail_page.text
 
 
 def test_attachment_download_requires_login(client, attachment):

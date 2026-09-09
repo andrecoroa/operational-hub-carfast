@@ -20,16 +20,16 @@
         {% if vehicle %}
           <a class="button-link secondary-link" href="/v2-clean/fleet/{{ vehicle.id }}">Ficha da viatura</a>
         {% endif %}
+        {% if document_preview_url %}
+          <button
+            type="button"
+            class="button-link secondary-link clean-doc-preview-trigger"
+            data-preview-src="{{ document_preview_url }}"
+            data-preview-title="{{ document.original_name or document.file_name or document.title or 'Documento' }}"
+            data-preview-kind="{{ document_preview_kind or 'pdf' }}"
+          >Pré-visualizar</button>
+        {% endif %}
         {% if document.document_type == "workshop_supplier_invoice" %}
-          {% if document_preview_url %}
-            <button
-              type="button"
-              class="button-link secondary-link clean-doc-preview-trigger"
-              data-preview-src="{{ document_preview_url }}"
-              data-preview-title="{{ document.original_name or document.file_name or document.title or 'Documento' }}"
-              data-preview-kind="{{ document_preview_kind or 'pdf' }}"
-            >Pré-visualizar</button>
-          {% endif %}
           <form method="post" action="/v2-clean/documents/{{ document.id }}/reprocess-ocr" class="clean-inline-form">
             <input type="hidden" name="return_url" value="/v2-clean/documents/{{ document.id }}">
             <button type="submit" class="button-link primary-link">Reprocessar OCR</button>

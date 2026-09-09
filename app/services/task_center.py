@@ -326,17 +326,10 @@ def task_notification_recipient_ids(
     recipient_ids.update(
         item.requested_user_id for item in help_requests if item.requested_user_id
     )
-    recipient_ids.update(
-        _team_member_user_ids(
-            db,
-            [
-                task.team_id,
-                task.delegated_to_team_id,
-                task.waiting_for_team_id,
-                *(item.requested_team_id for item in help_requests),
-            ],
-        )
-    )
+    # Team membership alone is deliberately not expanded here. Callers add
+    # members through ``extra_user_ids`` only when that team is the explicit
+    # destination of the event, preventing routine updates from notifying an
+    # entire operational team.
     if not recipient_ids:
         return set()
     return set(

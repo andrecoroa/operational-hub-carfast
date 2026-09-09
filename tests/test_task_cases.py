@@ -265,7 +265,8 @@ def test_grouped_web_flow_preserves_filters_and_exposes_preview(
     assert "Retirar reservas futuras" in page.text
     assert "data-group-task" in page.text
     assert ">Criar caso</button>" in page.text
-    assert len(re.findall(r"<button[^>]+data-task-preview-action=", page.text)) == 4
+    assert len(re.findall(r"<button[^>]+data-task-preview-action=", page.text)) == 5
+    assert 'data-task-preview-action="decision"' in page.text
     assert "Prioridade" in page.text and "Responsável" in page.text and "Prazo" in page.text
 
 

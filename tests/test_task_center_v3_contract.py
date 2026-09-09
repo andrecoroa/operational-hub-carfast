@@ -14,6 +14,7 @@ from app.models import (
     ServiceDeskCategoryExecutor,
     Task,
     TaskComment,
+    TaskDecision,
     TaskHelpRequest,
     TaskHistory,
     TaskSlaEvent,
@@ -222,6 +223,47 @@ def test_all_scope_renders_active_support_request_without_unbound_task(
     )
 
     assert requested.status_code == 303
+    response = authenticated_client.get(
+        "/v2-clean/tasks?queue=tasks_support&task_scope_view=all"
+        "&workspace=all&mine_kind=all&status=open"
+    )
+
+    assert response.status_code == 200
+    assert task.title in response.text
+    assert 'data-active-view="all"' in response.text
+
+
+def test_all_scope_renders_decision_assigned_to_another_user(
+    authenticated_client, db_session, monkeypatch
+) -> None:
+    monkeypatch.setattr(task_router.settings, "task_decisions_enabled", True)
+    actor = db_session.scalar(
+        select(User).where(User.email == "admin.tests@carfast.local")
+    )
+    other_user = create_user(
+        db_session,
+        name="Outro decisor",
+        email="outro.decisor@carfast.local",
+        password="Secret123!",
+        role_codes=["manager"],
+        organizational_unit_codes=["carfast"],
+    )
+    task = _new_task(db_session, title="Decisão visível em Todas")
+    task.status = "waiting_decision"
+    db_session.add(
+        TaskDecision(
+            task_id=task.id,
+            requested_by_id=actor.id,
+            decider_id=other_user.id,
+            decision_needed="Confirmar tratamento",
+            recommendation="Avançar",
+            impact_value="Baixo",
+            previous_task_status="in_execution",
+            status="pending",
+        )
+    )
+    db_session.commit()
+
     response = authenticated_client.get(
         "/v2-clean/tasks?queue=tasks_support&task_scope_view=all"
         "&workspace=all&mine_kind=all&status=open"

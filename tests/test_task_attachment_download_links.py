@@ -1,6 +1,8 @@
 from urllib.parse import unquote
+from pathlib import Path
 
 import pytest
+from sqlalchemy import select
 
 from app.models import Document, Task, TaskDocument
 
@@ -72,3 +74,37 @@ def test_removed_attachment_has_no_download_link(authenticated_client, attachmen
     assert f'/v2-clean/documents/{doc.id}/file?inline=0' not in response.text
     response = authenticated_client.get(f'/v2-clean/documents/{doc.id}/file?inline=0', follow_redirects=False)
     assert response.status_code == 303
+
+
+def test_detail_attachment_upload_returns_to_open_documents_and_persists(
+    authenticated_client, db_session, tmp_path, monkeypatch
+):
+    monkeypatch.setattr("app.web.router.document_archive_root", lambda: tmp_path)
+    task = Task(
+        title="Upload no detalhe",
+        task_type="operational_task",
+        category="Operação",
+        status="new",
+        priority="normal",
+    )
+    db_session.add(task)
+    db_session.commit()
+
+    response = authenticated_client.post(
+        f"/v2-clean/tasks/{task.id}/attachments",
+        data={"return_url": f"/v2-clean/tasks/{task.id}/detail"},
+        files={"attachments": ("prova.txt", b"persistido", "text/plain")},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert response.headers["location"].endswith(
+        f"/v2-clean/tasks/{task.id}/detail?document_linked=1#task-documents"
+    )
+    document = db_session.scalar(select(Document).where(Document.task_id == task.id))
+    assert document is not None
+    assert Path(document.storage_path).read_bytes() == b"persistido"
+    page = authenticated_client.get(response.headers["location"])
+    assert 'id="task-documents" open' in page.text
+    assert "prova.txt" in page.text
+    assert f'/v2-clean/documents/{document.id}/file?inline=0' in page.text

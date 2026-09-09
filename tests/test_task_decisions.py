@@ -13,6 +13,8 @@ from app.models import (
     TaskNotification,
     User,
     UserRole,
+    Team,
+    TeamMember,
 )
 from app.services.users import create_user
 
@@ -367,3 +369,44 @@ def test_decision_feature_is_off_by_default(authenticated_client, db_session) ->
     )
     assert response.status_code == 303
     assert db_session.scalar(select(TaskDecision.id)) is None
+
+
+def test_decision_can_target_team_and_alert_eligible_members(
+    authenticated_client, db_session, monkeypatch
+) -> None:
+    monkeypatch.setattr(task_router.settings, "task_decisions_enabled", True)
+    actor = _actor(db_session)
+    _grant_permissions(
+        db_session, actor, "tasks.request_decision", "tasks.resolve_decision"
+    )
+    resolver = actor
+    team = Team(code="decision-test", name="Decisão Teste", active=True)
+    db_session.add(team)
+    db_session.flush()
+    db_session.add(TeamMember(team_id=team.id, user_id=resolver.id))
+    task = _task(db_session, actor)
+
+    response = authenticated_client.post(
+        f"/v2-clean/tasks/{task.id}/decisions",
+        data={
+            "requested_target": f"team:{team.id}",
+            "decision_needed": "Escolher fornecedor",
+            "recommendation": "Fornecedor A",
+            "impact_value": "Evita atraso",
+        },
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    item = db_session.scalar(select(TaskDecision).where(TaskDecision.task_id == task.id))
+    assert item.decider_id is None
+    assert item.decider_team_id == team.id
+    assert db_session.scalar(
+        select(TaskNotification.id).where(
+            TaskNotification.task_id == task.id,
+            TaskNotification.user_id == resolver.id,
+            TaskNotification.event_type == "decision_requested",
+        )
+    )
+    page = authenticated_client.get(f"/v2-clean/tasks/{task.id}/detail")
+    assert "Decisão pedida" in page.text

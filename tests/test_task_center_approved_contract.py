@@ -38,7 +38,8 @@ def test_deadline_and_comment_signals_are_explicit_and_non_invented() -> None:
     assert "Em risco:</strong> prazo ainda não ultrapassado" in TEMPLATE
     assert "Hora (opcional, Lisboa)" in TEMPLATE
     assert "Comentários:" in TEMPLATE
-    assert "não lidos" not in TEMPLATE.lower()
+    assert "alertas não lidos" in TEMPLATE.lower()
+    assert "task-unread-comment-badge" in TEMPLATE
     assert "data-task-counter=\"new\"" in TEMPLATE
     assert "if(mode==='new')params.set('status','new')" in TEMPLATE
 
@@ -412,7 +413,7 @@ def test_management_clarifies_current_state_and_uses_minimal_disclosure() -> Non
 def test_management_keeps_support_and_documents_compact_until_requested() -> None:
     assert '<details class="section task-detail-collapsible" id="task-support">' in DETAIL
     assert '<summary>Solicitar suporte</summary>' in DETAIL
-    assert '<details class="section task-detail-collapsible task-detail-documents">' in DETAIL
+    assert '<details class="section task-detail-collapsible task-detail-documents" id="task-documents"' in DETAIL
     assert '<summary>Documentos <span>{{ documents|length }}</span></summary>' in DETAIL
     assert "target?.matches('details'))target.open=true" in DETAIL
 

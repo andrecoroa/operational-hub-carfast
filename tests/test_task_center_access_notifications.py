@@ -788,3 +788,52 @@ def test_task_table_has_compact_responsive_overflow_contract():
     assert 'data-service-desk-executor="user"' in template
     assert template.count("const form = root.closest('form');") == 1
     assert "Só são apresentados utilizadores elegíveis" in template
+
+
+def test_new_comment_is_visibly_unread_then_marked_read_on_detail(
+    authenticated_client, client, db_session, monkeypatch
+):
+    monkeypatch.setattr(task_router.settings, "visual_foundation_enabled", True)
+    operator = create_user(
+        db_session,
+        name="Destinatário comentário",
+        email="comment.alert@carfast.local",
+        password="Secret123!",
+        role_codes=["operator"],
+        organizational_unit_codes=["carfast"],
+    )
+    task = Task(
+        title="Comentário com alerta",
+        task_type="operational_task",
+        category="Operação",
+        status="new",
+        priority="normal",
+        assigned_to_id=operator.id,
+    )
+    db_session.add(task)
+    db_session.commit()
+    posted = authenticated_client.post(
+        f"/v2-clean/tasks/{task.id}/comments",
+        data={"comment": "Há uma atualização nova", "return_url": "/v2-clean/tasks"},
+        follow_redirects=False,
+    )
+    assert posted.status_code == 303
+
+    _login(client, operator.email)
+    listing = client.get("/v2-clean/tasks?workspace=mine")
+    assert "Alertas / Notificações" in listing.text
+    assert "task-unread-comment-badge" in listing.text
+    assert "novo(s) comentário(s)" in listing.text
+    notification = db_session.scalar(
+        select(TaskNotification).where(
+            TaskNotification.task_id == task.id,
+            TaskNotification.user_id == operator.id,
+            TaskNotification.event_type == "task_commented",
+        )
+    )
+    assert notification is not None and notification.read_at is None
+
+    detail = client.get(f"/v2-clean/tasks/{task.id}/detail")
+    assert "comentário(s) novo(s)" in detail.text
+    db_session.expire_all()
+    assert db_session.get(TaskNotification, notification.id).read_at is not None

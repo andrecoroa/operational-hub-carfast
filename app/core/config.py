@@ -35,7 +35,7 @@ class Settings(BaseSettings):
     modular_composer_enabled: bool = False
     visual_foundation_enabled: bool = False
     task_cases_enabled: bool = False
-    task_decisions_enabled: bool = False
+    task_decisions_enabled: bool = True
 
     @property
     def enable_docs(self) -> bool:

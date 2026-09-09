@@ -354,8 +354,11 @@ def test_decision_resolution_fails_closed_outside_hierarchy(
     assert item.status == "pending"
 
 
-def test_decision_feature_is_off_by_default(authenticated_client, db_session) -> None:
+def test_decision_feature_is_enabled_by_default(authenticated_client, db_session) -> None:
     actor = _actor(db_session)
+    _grant_permissions(
+        db_session, actor, "tasks.request_decision", "tasks.resolve_decision"
+    )
     task = _task(db_session, actor)
     response = authenticated_client.post(
         f"/v2-clean/tasks/{task.id}/decisions",
@@ -368,7 +371,26 @@ def test_decision_feature_is_off_by_default(authenticated_client, db_session) ->
         follow_redirects=False,
     )
     assert response.status_code == 303
-    assert db_session.scalar(select(TaskDecision.id)) is None
+    assert db_session.scalar(select(TaskDecision.id)) is not None
+
+
+def test_clean_task_detail_exposes_explicit_decision_action_and_target(
+    authenticated_client, db_session
+) -> None:
+    actor = _actor(db_session)
+    _grant_permissions(
+        db_session, actor, "tasks.request_decision", "tasks.resolve_decision"
+    )
+    task = _task(db_session, actor)
+
+    page = authenticated_client.get(f"/v2-clean/tasks/{task.id}/detail")
+
+    assert page.status_code == 200
+    assert 'href="#task-decision">Pedir decisão</a>' in page.text
+    assert f'action="/v2-clean/tasks/{task.id}/decisions"' in page.text
+    assert 'name="requested_target" required' in page.text
+    assert f'value="user:{actor.id}"' in page.text
+    assert 'name="decision_needed"' in page.text
 
 
 def test_decision_can_target_team_and_alert_eligible_members(

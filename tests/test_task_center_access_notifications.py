@@ -837,3 +837,113 @@ def test_new_comment_is_visibly_unread_then_marked_read_on_detail(
     assert "comentário(s) novo(s)" in detail.text
     db_session.expire_all()
     assert db_session.get(TaskNotification, notification.id).read_at is not None
+
+
+def test_task_notification_page_filters_and_marks_individual_and_all_read(
+    authenticated_client, db_session
+):
+    actor = db_session.scalar(
+        select(User).where(User.email == "admin.tests@carfast.local")
+    )
+    task = Task(
+        title="Notificação sintética",
+        task_type="operational_task",
+        status="new",
+        priority="normal",
+        assigned_to_id=actor.id,
+        created_by_id=actor.id,
+    )
+    db_session.add(task)
+    db_session.flush()
+    first = TaskNotification(
+        task_id=task.id,
+        user_id=actor.id,
+        event_type="task_commented",
+        title="Comentário novo",
+    )
+    second = TaskNotification(
+        task_id=task.id,
+        user_id=actor.id,
+        event_type="decision_requested",
+        title="Decisão pedida",
+    )
+    db_session.add_all([first, second])
+    db_session.commit()
+
+    page = authenticated_client.get(
+        "/v2-clean/tasks/notifications?status=unread&event=decision_requested"
+    )
+    assert page.status_code == 200
+    assert "Decisão pedida" in page.text
+    assert "Comentário novo" not in page.text
+    assert f'/v2-clean/tasks/notifications/{second.id}/read' in page.text
+
+    marked = authenticated_client.post(
+        f"/v2-clean/tasks/notifications/{second.id}/read",
+        data={"return_url": "/v2-clean/tasks/notifications?status=unread"},
+        follow_redirects=False,
+    )
+    assert marked.status_code == 303
+    db_session.expire_all()
+    assert db_session.get(TaskNotification, second.id).read_at is not None
+    assert db_session.get(TaskNotification, first.id).read_at is None
+
+    marked_all = authenticated_client.post(
+        "/v2-clean/tasks/notifications/read-all",
+        data={"return_url": "/v2-clean/tasks/notifications?status=read"},
+        follow_redirects=False,
+    )
+    assert marked_all.status_code == 303
+    db_session.expire_all()
+    assert db_session.get(TaskNotification, first.id).read_at is not None
+
+    topbar = Path("app/templates/_visual_topbar.html").read_text(encoding="utf-8")
+    assert 'href="/v2-clean/tasks/notifications"' in topbar
+    assert 'href="/alerts" aria-label="Notificações"' not in topbar
+
+
+def test_notification_recipients_do_not_expand_implicit_task_team(
+    db_session,
+):
+    from app.services.task_center import create_task_notifications
+
+    actor = db_session.scalar(
+        select(User).where(User.email == "admin.tests@carfast.local")
+    )
+    operator = create_user(
+        db_session,
+        name="Membro sem alerta implícito",
+        email="implicit.team.alert@carfast.local",
+        password="Secret123!",
+        role_codes=["operator"],
+    )
+    team = Team(code="implicit-alert-team", name="Equipa sem expansão", active=True)
+    db_session.add(team)
+    db_session.flush()
+    db_session.add(TeamMember(team_id=team.id, user_id=operator.id))
+    task = Task(
+        title="Sem fan-out implícito",
+        task_type="operational_task",
+        status="new",
+        priority="normal",
+        team_id=team.id,
+        created_by_id=actor.id,
+    )
+    db_session.add(task)
+    db_session.flush()
+
+    create_task_notifications(
+        db_session,
+        task=task,
+        event_type="task_commented",
+        title="Atualização",
+        actor_user_id=None,
+    )
+    db_session.commit()
+
+    assert db_session.scalar(
+        select(TaskNotification.id).where(
+            TaskNotification.task_id == task.id,
+            TaskNotification.user_id == operator.id,
+        )
+    ) is None

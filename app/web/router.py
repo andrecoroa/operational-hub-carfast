@@ -8231,22 +8231,117 @@ def clean_task_notification_open(request: Request, notification_id: int):
     )
 
 
+@web_router.get("/v2-clean/tasks/notifications", response_class=HTMLResponse)
+def clean_task_notifications(
+    request: Request, status: str = "all", event: str = "all"
+):
+    user_id = get_web_user_id(request)
+    if not user_id:
+        return RedirectResponse("/login", status_code=303)
+    normalized_status = status if status in {"all", "unread", "read"} else "all"
+    with SessionLocal() as db:
+        user = db.get(User, user_id)
+        if not user:
+            return RedirectResponse("/login", status_code=303)
+        query = (
+            select(TaskNotification, Task)
+            .join(Task, Task.id == TaskNotification.task_id)
+            .where(TaskNotification.user_id == user_id)
+            .order_by(TaskNotification.created_at.desc(), TaskNotification.id.desc())
+            .limit(250)
+        )
+        accessible_rows = [
+            (notification, task)
+            for notification, task in db.execute(query)
+            if user_can_access_task_workspace(
+                db, user, workspace_for_task_type(task.task_type)
+            ) and user_can_view_task(db, user_id=user_id, task=task)
+        ]
+        event_options = sorted({item.event_type for item, _task in accessible_rows})
+        unread_count = sum(1 for item, _task in accessible_rows if item.read_at is None)
+        visible_rows = [
+            (notification, task)
+            for notification, task in accessible_rows
+            if (
+                normalized_status == "all"
+                or (normalized_status == "unread" and notification.read_at is None)
+                or (normalized_status == "read" and notification.read_at is not None)
+            )
+            and (event == "all" or notification.event_type == event[:60])
+        ]
+        return templates.TemplateResponse(
+            request,
+            "clean_task_notifications.html",
+            {
+                "notification_rows": visible_rows,
+                "notification_status": normalized_status,
+                "notification_event": event,
+                "notification_event_options": event_options,
+                "notification_unread_count": unread_count,
+                "foundation_ui_enabled": settings.visual_foundation_enabled,
+            },
+        )
+
+
+@web_router.post("/v2-clean/tasks/notifications/{notification_id}/read")
+def clean_task_notification_read(
+    request: Request, notification_id: int, return_url: str = Form("")
+):
+    user_id = get_web_user_id(request)
+    if not user_id:
+        return RedirectResponse("/login", status_code=303)
+    with SessionLocal() as db:
+        notification = db.get(TaskNotification, notification_id)
+        task = db.get(Task, notification.task_id) if notification else None
+        user = db.get(User, user_id)
+        if (
+            not user
+            or
+            not notification
+            or notification.user_id != user_id
+            or not task
+            or not user_can_access_task_workspace(
+                db, user, workspace_for_task_type(task.task_type)
+            )
+            or not user_can_view_task(db, user_id=user_id, task=task)
+        ):
+            return RedirectResponse("/v2-clean/tasks/notifications?error=forbidden", status_code=303)
+        if notification.read_at is None:
+            notification.read_at = datetime.now(UTC)
+            db.commit()
+    return RedirectResponse(
+        _clean_v2_return_url(return_url, "/v2-clean/tasks/notifications"),
+        status_code=303,
+    )
+
+
 @web_router.post("/v2-clean/tasks/notifications/read-all")
-def clean_task_notifications_read_all(request: Request):
+def clean_task_notifications_read_all(request: Request, return_url: str = Form("")):
     user_id = get_web_user_id(request)
     if not user_id:
         return RedirectResponse("/v2-clean/tasks?error=forbidden", status_code=303)
     with SessionLocal() as db:
         now = datetime.now(UTC)
-        for notification in db.scalars(
-            select(TaskNotification).where(
+        user = db.get(User, user_id)
+        if not user:
+            return RedirectResponse("/login", status_code=303)
+        for notification, task in db.execute(
+            select(TaskNotification, Task)
+            .join(Task, Task.id == TaskNotification.task_id)
+            .where(
                 TaskNotification.user_id == user_id,
                 TaskNotification.read_at.is_(None),
             )
         ):
-            notification.read_at = now
+            if user_can_access_task_workspace(
+                db, user, workspace_for_task_type(task.task_type)
+            ) and user_can_view_task(db, user_id=user_id, task=task):
+                notification.read_at = now
         db.commit()
-    return RedirectResponse("/v2-clean/tasks?notifications=read", status_code=303)
+    return RedirectResponse(
+        _clean_v2_return_url(return_url, "/v2-clean/tasks/notifications?status=read"),
+        status_code=303,
+    )
 
 
 def _task_hierarchy_scope_allows(db, user_id: int | None, task: Task, *, action: str) -> bool:
@@ -8738,7 +8833,9 @@ def clean_tasks_help_request(
             title=f"Suporte solicitado: {task.title}",
             actor_user_id=user_id,
             detail=clean_reason,
-            extra_user_ids=(requested_user.id,) if requested_user else (),
+            extra_user_ids=(
+                (requested_user.id,) if requested_user else tuple(sorted(member_ids))
+            ),
         )
         record_audit(
             db, action="task.support.requested", entity_type="task_help_request",
@@ -36553,6 +36650,7 @@ def task_detail(
                 task.delegated_to_team_id,
                 task.waiting_for_team_id,
                 *(help.requested_team_id for help in help_requests),
+                pending_decision.decider_team_id if pending_decision else None,
             )
             if item
         )
@@ -36566,7 +36664,9 @@ def task_detail(
         delegated_team = db.get(Team, task.delegated_to_team_id) if task.delegated_to_team_id else None
         waiting_for_user = db.get(User, task.waiting_for_user_id) if task.waiting_for_user_id else None
         waiting_for_team = db.get(Team, task.waiting_for_team_id) if task.waiting_for_team_id else None
-        for current_option in (assigned_user, delegated_user, waiting_for_user):
+        decision_user = db.get(User, pending_decision.decider_id) if pending_decision and pending_decision.decider_id else None
+        decision_team = db.get(Team, pending_decision.decider_team_id) if pending_decision and pending_decision.decider_team_id else None
+        for current_option in (assigned_user, delegated_user, waiting_for_user, decision_user):
             if current_option and current_option.id not in {item.id for item in users}:
                 users.append(current_option)
                 user_by_id[current_option.id] = current_option
@@ -36646,6 +36746,69 @@ def task_detail(
                     for target in support_teams
                 ),
             ]
+        detail_permissions = get_user_permission_codes(db, current_user)
+        resolver_ids = set(
+            db.scalars(
+                select(UserRole.user_id)
+                .join(RolePermission, RolePermission.role_id == UserRole.role_id)
+                .join(Permission, Permission.id == RolePermission.permission_id)
+                .join(User, User.id == UserRole.user_id)
+                .where(
+                    Permission.code == "tasks.resolve_decision",
+                    User.active.is_(True),
+                )
+                .distinct()
+            )
+        ) if settings.task_decisions_enabled else set()
+        resolver_users = [item for item in users if item.id in resolver_ids]
+        resolver_team_ids = set(
+            db.scalars(
+                select(TeamMember.team_id)
+                .join(Team, Team.id == TeamMember.team_id)
+                .where(
+                    TeamMember.user_id.in_(tuple(resolver_ids)),
+                    Team.active.is_(True),
+                )
+                .distinct()
+            )
+        ) if resolver_ids else set()
+        resolver_teams = list(
+            db.scalars(
+                select(Team).where(Team.id.in_(tuple(resolver_team_ids))).order_by(Team.name)
+            )
+        ) if resolver_team_ids else []
+        task_decision_targets = [
+            *(
+                {"value": f"user:{target.id}", "label": target.name, "kind": "Pessoas"}
+                for target in resolver_users
+            ),
+            *(
+                {"value": f"team:{target.id}", "label": target.name, "kind": "Equipas"}
+                for target in resolver_teams
+            ),
+        ]
+        can_request_decision = bool(
+            is_clean_detail
+            and settings.task_decisions_enabled
+            and can_update_task
+            and "tasks.request_decision" in detail_permissions
+            and task_decision_targets
+            and task.status not in TASK_ARCHIVE_STATUSES | {"support_requested", "waiting_decision"}
+        )
+        can_resolve_pending_decision = bool(
+            pending_decision
+            and settings.task_decisions_enabled
+            and "tasks.resolve_decision" in detail_permissions
+            and (
+                pending_decision.decider_id == current_user.id
+                or pending_decision.decider_team_id in user_team_ids(db, current_user.id)
+            )
+            and can_update_task
+        )
+        pending_decision_target = (
+            decision_user.name if decision_user else
+            f"Equipa · {decision_team.name}" if decision_team else "Destinatário"
+        )
         detail_transition_options = tuple(
             code
             for code in task_allowed_status_transitions(task)
@@ -36692,6 +36855,10 @@ def task_detail(
                 "comments": comments,
                 "unread_comment_count": unread_comment_count,
                 "pending_decision": pending_decision,
+                "pending_decision_target": pending_decision_target,
+                "task_decision_targets": task_decision_targets,
+                "can_request_decision": can_request_decision,
+                "can_resolve_pending_decision": can_resolve_pending_decision,
                 "history": history,
                 "linked_vehicle": linked_vehicle,
                 "task_case": task_case,

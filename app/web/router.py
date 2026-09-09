@@ -37956,7 +37956,7 @@ def clean_vehicle_service_history(
 
 
 @web_router.get("/v2-clean/fleet/{vehicle_id}/services/import", response_class=HTMLResponse)
-def clean_vehicle_service_import(request: Request, vehicle_id: int):
+def clean_vehicle_service_import(request: Request, vehicle_id: int, error: str = ""):
     denied = require_any_web_permission(request, "imports.run", "admin.manage")
     if denied:
         return denied
@@ -37969,7 +37969,14 @@ def clean_vehicle_service_import(request: Request, vehicle_id: int):
         ).all()
         return templates.TemplateResponse(
             request, "clean_vehicle_service_import.html",
-            {"vehicle": vehicle, "preview": None, "batches": batches, "error": ""},
+            {
+                "vehicle": vehicle,
+                "preview": None,
+                "batches": batches,
+                "error": {
+                    "rollback_failed": "Rollback recusado; o lote não foi alterado.",
+                }.get(error, ""),
+            },
         )
 
 
@@ -38042,10 +38049,35 @@ def clean_vehicle_service_import_rollback(request: Request, vehicle_id: int, bat
         return denied
     with SessionLocal() as db:
         try:
-            rollback_invoice_service_batch(db, batch_id, actor_id=get_web_user_id(request))
+            current_batch = db.get(InvoiceServiceImportBatch, batch_id)
+            previous_status = current_batch.status if current_batch else None
+            batch = rollback_invoice_service_batch(
+                db,
+                batch_id,
+                actor_id=get_web_user_id(request),
+                expected_vehicle_id=vehicle_id,
+            )
+            record_audit(
+                db,
+                action=(
+                    "invoice_service_batch.rollback.noop"
+                    if previous_status == "rolled_back"
+                    else "invoice_service_batch.rollback"
+                ),
+                entity_type="invoice_service_import_batch",
+                entity_id=batch.id,
+                detail=f"Rollback lógico do lote {batch.id} na viatura {vehicle_id}",
+                user_id=get_web_user_id(request),
+                before_json={"status": previous_status},
+                after_json={"status": batch.status, "vehicle_id": vehicle_id},
+            )
             db.commit()
-        except InvoiceServiceImportError:
+        except (InvoiceServiceImportError, IntegrityError):
             db.rollback()
+            return RedirectResponse(
+                f"/v2-clean/fleet/{vehicle_id}/services/import?error=rollback_failed",
+                status_code=303,
+            )
     return RedirectResponse(f"/v2-clean/fleet/{vehicle_id}/services/import", status_code=303)
 
 

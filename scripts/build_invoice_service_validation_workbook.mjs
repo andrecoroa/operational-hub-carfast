@@ -57,6 +57,8 @@ const summaryRows = [
   ["Linhas bloqueadas excluídas", dryRun.blocked_ledger.count],
   ["Chaves duplicadas", dryRun.summary.duplicate_stable_keys.length],
   ["Linhas relevantes sem regra", dryRun.summary.unassigned_relevant_lines],
+  ["Candidatos de artigo repetidos", dryRun.summary.article_map_candidates_repeated],
+  ["Conflitos de artigo/eixo", dryRun.summary.article_map_conflicts],
   ["Total específico dos serviços", Number(dryRun.summary.service_amount_total)],
   ["Total das faturas", Number(dryRun.summary.invoice_total)],
   ["Total das linhas fonte", Number(dryRun.summary.source_line_total)],
@@ -64,7 +66,7 @@ const summaryRows = [
 summary.getRangeByIndexes(6, 0, summaryRows.length, 2).values = summaryRows;
 summary.getRange("A7:B7").format = headerFormat;
 summary.getRange(`A8:B${6 + summaryRows.length}`).format.font = bodyFont;
-summary.getRange(`B14:B${6 + summaryRows.length}`).format.numberFormat = "#,##0.00 [$€-pt-PT]";
+summary.getRange(`B16:B${6 + summaryRows.length}`).format.numberFormat = "#,##0.00 [$€-pt-PT]";
 summary.getRange("A:A").format.columnWidth = 38;
 summary.getRange("B:B").format.columnWidth = 24;
 summary.getRange("D7:H7").values = [["Documento", "Presente", "Serviços", "Códigos", "Valor alocado"]];
@@ -176,6 +178,28 @@ frequency.getRange("B:B").format.columnWidth = 18;
 frequency.getRange("C:C").format.columnWidth = 14;
 frequency.tables.add(`A7:C${7 + frequencyRows.length}`, true, "ServiceFrequencyTable").style = "TableStyleMedium2";
 
+const articleMap = workbook.worksheets.add("Mapa artigos");
+styleTitle(articleMap, "Candidatos de eixo por fornecedor e artigo", "Apenas evidência repetida e consistente é candidata. A ativação exige validação humana e atualização do mapa versionado.", "H");
+const articleHeaders = ["Fornecedor", "Artigo", "Eixo proposto", "Observações", "Documentos", "Estado", "Evidência", "Aprovar mapa"];
+const articleRows = dryRun.article_axle_candidates
+  .filter((row) => row.status !== "single_observation")
+  .map((row) => [row.supplier_key, row.article_reference, row.proposed_axle, row.observation_count, row.document_count, row.status, row.evidence, ""]);
+articleMap.getRangeByIndexes(6, 0, 1, articleHeaders.length).values = [articleHeaders];
+articleMap.getRangeByIndexes(7, 0, articleRows.length, articleHeaders.length).values = articleRows;
+articleMap.getRange("A7:H7").format = headerFormat;
+articleMap.getRangeByIndexes(7, 0, articleRows.length, articleHeaders.length).format.font = bodyFont;
+articleMap.getRange(`H8:H${7 + articleRows.length}`).format.fill = amber;
+articleMap.getRange(`H8:H${7 + articleRows.length}`).dataValidation = { rule: { type: "list", values: ["", "Sim", "Não"] } };
+articleMap.getRange("A:B").format.columnWidth = 24;
+articleMap.getRange("C:C").format.columnWidth = 18;
+articleMap.getRange("D:E").format.columnWidth = 14;
+articleMap.getRange("F:F").format.columnWidth = 32;
+articleMap.getRange("G:G").format.columnWidth = 80;
+articleMap.getRange("H:H").format.columnWidth = 18;
+articleMap.getRange(`G8:G${7 + articleRows.length}`).format.wrapText = true;
+articleMap.freezePanes.freezeRows(7);
+articleMap.tables.add(`A7:H${7 + articleRows.length}`, true, "ArticleAxleCandidateTable").style = "TableStyleMedium2";
+
 const blocked = workbook.worksheets.add("Exclusões 716");
 styleTitle(blocked, "Exclusões formais preservadas", "Registos bloqueados mantidos sem correção, associação ou proposta de importação.", "N");
 const blockedHeaders = Object.keys(exclusions[0]);
@@ -190,7 +214,7 @@ blocked.freezePanes.freezeColumns(3);
 blocked.tables.add(`A7:${String.fromCharCode(64 + blockedHeaders.length)}${7 + exclusions.length}`, true, "FormalExclusionsTable").style = "TableStyleMedium15";
 
 workbook.recalculate();
-const summaryInspect = await workbook.inspect({ kind: "table", range: "Resumo!A2:H18", include: "values,formulas", tableMaxRows: 18, tableMaxCols: 8 });
+const summaryInspect = await workbook.inspect({ kind: "table", range: "Resumo!A2:H20", include: "values,formulas", tableMaxRows: 20, tableMaxCols: 8 });
 console.log(summaryInspect.ndjson);
 const validationInspect = await workbook.inspect({ kind: "table", range: "Validação!A7:Y12", include: "values,formulas", tableMaxRows: 6, tableMaxCols: 25 });
 console.log(validationInspect.ndjson);
@@ -198,11 +222,12 @@ const errors = await workbook.inspect({ kind: "match", searchTerm: "#REF!|#DIV/0
 console.log(errors.ndjson);
 await fs.mkdir(path.dirname(outputPath), { recursive: true });
 const previewRanges = {
-  "Resumo": "A1:J18",
+  "Resumo": "A1:J20",
   "Validação": "A1:Y18",
   "Reconciliação": "A1:I22",
   "Faltas": "A1:F22",
   "Frequência": "A1:C30",
+  "Mapa artigos": "A1:H18",
   "Exclusões 716": "A1:N18",
 };
 for (const [sheetName, range] of Object.entries(previewRanges)) {

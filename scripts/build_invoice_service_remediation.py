@@ -12,6 +12,7 @@ from typing import Any
 from app.services.invoice_service_remediation import (
     build_article_axle_lookup,
     build_document_service_proposals,
+    classify_invoice_line,
 )
 
 
@@ -74,6 +75,47 @@ def main() -> None:
     eligible_documents = [
         row for row in documents if row.get("eligible_for_counting", "").casefold() == "true"
     ]
+    article_observations: dict[tuple[str, str], list[dict[str, str]]] = defaultdict(list)
+    for document in eligible_documents:
+        supplier_key = document.get("supplier_group") or document.get("supplier_nif_extracted") or ""
+        for line_row in lines_by_document.get(document["document_id"], []):
+            if not str(line_row.get("reference") or "").strip():
+                continue
+            classified = classify_invoice_line(line_row)
+            if not classified.service_code.startswith("BRAKE.") or classified.axle_source != "description_explicit":
+                continue
+            article_observations[(supplier_key, classified.reference)].append(
+                {
+                    "document_id": document["document_id"],
+                    "source_line_id": classified.source_line_id,
+                    "axle": classified.axle,
+                    "description": classified.description,
+                }
+            )
+    article_candidates: list[dict[str, Any]] = []
+    for (supplier_key, article_reference), observations in sorted(article_observations.items()):
+        axles = sorted({item["axle"] for item in observations})
+        document_count = len({item["document_id"] for item in observations})
+        status = (
+            "conflict"
+            if len(axles) > 1
+            else "candidate_repeated_consistent"
+            if document_count >= 2
+            else "single_observation"
+        )
+        article_candidates.append(
+            {
+                "supplier_key": supplier_key,
+                "article_reference": article_reference,
+                "proposed_axle": axles[0] if len(axles) == 1 else "",
+                "observation_count": len(observations),
+                "document_count": document_count,
+                "status": status,
+                "evidence": " || ".join(
+                    f"{item['source_line_id']}: {item['description']}" for item in observations
+                ),
+            }
+        )
     generated: list[dict[str, Any]] = []
     reconciliations: list[dict[str, Any]] = []
     missing_rows: list[dict[str, Any]] = []
@@ -201,12 +243,17 @@ def main() -> None:
                     "service_amount_total": str(sum((row["service_amount"] for row in generated), Decimal("0"))),
                     "invoice_total": str(sum((row["invoice_total"] for row in reconciliations), Decimal("0"))),
                     "source_line_total": str(sum((row["source_line_total"] for row in reconciliations), Decimal("0"))),
+                    "article_map_candidates_repeated": sum(
+                        row["status"] == "candidate_repeated_consistent" for row in article_candidates
+                    ),
+                    "article_map_conflicts": sum(row["status"] == "conflict" for row in article_candidates),
                 },
                 "acceptance_documents": acceptance,
                 "services": [{**row, "service_amount": str(row["service_amount"]), "confidence": str(row["confidence"])} for row in generated],
                 "reconciliations": [{**row, **{key: str(value) for key, value in row.items() if isinstance(value, Decimal)}} for row in reconciliations],
                 "frequencies": frequency_rows,
                 "missing_lines": [{**row, "amount": str(row["amount"])} for row in missing_rows],
+                "article_axle_candidates": article_candidates,
             },
             ensure_ascii=False,
             indent=2,
@@ -217,6 +264,7 @@ def main() -> None:
     write_csv(args.output_dir / "invoice_service_reconciliation.csv", reconciliations)
     write_csv(args.output_dir / "invoice_service_missing_lines.csv", missing_rows)
     write_csv(args.output_dir / "invoice_service_frequency.csv", frequency_rows)
+    write_csv(args.output_dir / "invoice_article_axle_candidates.csv", article_candidates)
     report = [
         "# Dry-run global de remediação de serviços",
         "",
@@ -228,6 +276,8 @@ def main() -> None:
         f"- Chaves duplicadas: {len(duplicate_keys)}.",
         f"- Linhas relevantes sem classificação: {len(missing_rows)}.",
         f"- Projeções documentais: {dict(projections)}.",
+        f"- Candidatos de artigo repetidos e consistentes: {sum(row['status'] == 'candidate_repeated_consistent' for row in article_candidates)}.",
+        f"- Códigos de artigo com conflito de eixo: {sum(row['status'] == 'conflict' for row in article_candidates)}.",
         "",
         "## Casos de aceitação",
         "",

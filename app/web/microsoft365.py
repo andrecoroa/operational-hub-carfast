@@ -2,13 +2,15 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Form, Request
 from fastapi.responses import JSONResponse, RedirectResponse
+from sqlalchemy import select
 
 from app.core.config import settings
 from app.core.database import SessionLocal
 from app.models.admin import User
-from app.models.email import EmailChannelTransport
+from app.models.email import EmailChannel, EmailChannelTransport
+from app.services.audit import record_audit
 from app.services.authorization import get_user_permission_codes
 from app.services.microsoft365_oauth import (
     authorization_url,
@@ -40,8 +42,8 @@ def microsoft365_connect(request: Request, transport_id: int):
     user_id = _integration_manager(request)
     if not user_id:
         return RedirectResponse("/login", status_code=303)
-    if not settings.microsoft365_email_enabled:
-        return JSONResponse({"error": "microsoft365_email_disabled"}, status_code=503)
+    if not settings.microsoft365_oauth_setup_enabled:
+        return JSONResponse({"error": "microsoft365_oauth_setup_disabled"}, status_code=503)
     with SessionLocal() as db:
         transport = db.get(EmailChannelTransport, transport_id)
         if not transport or transport.provider != "microsoft365":
@@ -74,8 +76,8 @@ def microsoft365_callback(
     state: str = "",
     error: str = "",
 ):
-    if not settings.microsoft365_email_enabled:
-        return JSONResponse({"error": "microsoft365_email_disabled"}, status_code=503)
+    if not settings.microsoft365_oauth_setup_enabled:
+        return JSONResponse({"error": "microsoft365_oauth_setup_disabled"}, status_code=503)
     if error:
         return JSONResponse({"error": "microsoft_authorization_rejected"}, status_code=400)
     raw_user_id = request.session.get("user_id")
@@ -108,4 +110,77 @@ def microsoft365_callback(
         db.commit()
     return RedirectResponse(
         "/v2-clean/admin?section=integrations&microsoft=connected", status_code=303
+    )
+
+
+@microsoft365_router.post("/v2-clean/integrations/microsoft/configure-disabled")
+def configure_disabled_microsoft365_transport(
+    request: Request,
+    mailbox_address: str = Form(...),
+    tenant_id: str = Form(...),
+    client_id: str = Form(...),
+    delegated_user_principal_name: str = Form(...),
+):
+    user_id = _integration_manager(request)
+    if not user_id:
+        return RedirectResponse("/login", status_code=303)
+    mailbox = mailbox_address.strip().lower()
+    if mailbox != "email@carfast.pt":
+        return JSONResponse({"error": "mailbox_not_allowed"}, status_code=400)
+    with SessionLocal() as db:
+        channel = db.scalar(select(EmailChannel).where(EmailChannel.address == mailbox))
+        if channel is None:
+            channel = EmailChannel(
+                code="microsoft365_email",
+                name="Email CarFast",
+                address=mailbox,
+                default_reply_address=mailbox,
+                from_address=mailbox,
+                from_name="CarFast",
+                reply_to_address=mailbox,
+                active=False,
+                approval_required=True,
+                assignment_mode="manual",
+            )
+            db.add(channel)
+            db.flush()
+        transport = db.scalar(
+            select(EmailChannelTransport).where(EmailChannelTransport.channel_id == channel.id)
+        )
+        if transport is None:
+            transport = EmailChannelTransport(channel_id=channel.id)
+            db.add(transport)
+            db.flush()
+        transport.provider = "microsoft365"
+        transport.enabled = False
+        transport.mailbox_address = mailbox
+        transport.tenant_id = tenant_id.strip()
+        transport.client_id = client_id.strip()
+        transport.client_credential_reference = "env://MICROSOFT365_CLIENT_SECRET"
+        transport.token_reference = f"db://microsoft365/transport/{transport.id}/tokens"
+        transport.delegated_user_principal_name = delegated_user_principal_name.strip().lower()
+        transport.initial_sync_days = 5
+        record_audit(
+            db,
+            "microsoft365.transport.configured_disabled",
+            "email_channel_transport",
+            transport.id,
+            user_id=user_id,
+            after_json={
+                "mailbox": mailbox,
+                "provider": "microsoft365",
+                "enabled": False,
+                "initial_sync_days": 5,
+                "credential_reference": transport.client_credential_reference,
+                "token_reference": transport.token_reference,
+            },
+        )
+        db.commit()
+        transport_id = transport.id
+    return JSONResponse(
+        {
+            "status": "configured_disabled",
+            "transport_id": transport_id,
+            "connect_path": f"/v2-clean/integrations/microsoft/connect/{transport_id}",
+        }
     )

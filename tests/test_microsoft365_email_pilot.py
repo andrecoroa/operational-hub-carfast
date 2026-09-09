@@ -4,10 +4,13 @@ from urllib.parse import parse_qs, urlparse
 
 from alembic.config import Config
 from alembic.script import ScriptDirectory
+from sqlalchemy import select
+from sqlalchemy.orm import sessionmaker
 
+import app.web.microsoft365 as microsoft_web
 from app.core.config import Settings
 from app.main import app
-from app.models.email import EmailChannelTransport
+from app.models.email import EmailChannel, EmailChannelTransport
 from app.services import email_transport
 from app.services.microsoft365_oauth import (
     GRAPH_DELEGATED_SCOPES,
@@ -22,8 +25,7 @@ def test_callback_route_is_exact_and_get_only():
     matches = [
         route
         for route in app.routes
-        if getattr(route, "path", None)
-        == "/v2-clean/integrations/microsoft/callback"
+        if getattr(route, "path", None) == "/v2-clean/integrations/microsoft/callback"
     ]
     assert len(matches) == 1
     assert matches[0].methods == {"GET"}
@@ -39,6 +41,7 @@ def test_transport_migration_is_the_single_additive_head():
 def test_microsoft365_is_disabled_by_default_and_redirect_is_green():
     settings = Settings(_env_file=None)
     assert settings.microsoft365_email_enabled is False
+    assert settings.microsoft365_oauth_setup_enabled is False
     assert settings.microsoft365_redirect_uri == (
         "https://carfast-green.onrender.com/v2-clean/integrations/microsoft/callback"
     )
@@ -46,6 +49,38 @@ def test_microsoft365_is_disabled_by_default_and_redirect_is_green():
 
 def test_pilot_initial_sync_window_defaults_to_five_days():
     assert EmailChannelTransport.__table__.c.initial_sync_days.default.arg == 5
+
+
+def test_admin_can_configure_fixed_mailbox_without_enabling_transport(
+    authenticated_client, db_session, monkeypatch
+):
+    monkeypatch.setattr(
+        microsoft_web,
+        "SessionLocal",
+        sessionmaker(bind=db_session.get_bind(), expire_on_commit=False),
+    )
+    response = authenticated_client.post(
+        "/v2-clean/integrations/microsoft/configure-disabled",
+        data={
+            "mailbox_address": "email@carfast.pt",
+            "tenant_id": "tenant-id",
+            "client_id": "client-id",
+            "delegated_user_principal_name": "andrecoroa@daccordinvest.pt",
+        },
+    )
+    assert response.status_code == 200
+    channel = db_session.scalar(
+        select(EmailChannel).where(EmailChannel.address == "email@carfast.pt")
+    )
+    transport = db_session.scalar(
+        select(EmailChannelTransport).where(EmailChannelTransport.channel_id == channel.id)
+    )
+    assert channel.active is False
+    assert transport.enabled is False
+    assert transport.provider == "microsoft365"
+    assert transport.client_credential_reference == "env://MICROSOFT365_CLIENT_SECRET"
+    assert transport.token_reference.startswith("db://microsoft365/transport/")
+    assert transport.initial_sync_days == 5
 
 
 def test_authorization_url_uses_pkce_and_required_delegated_scopes():

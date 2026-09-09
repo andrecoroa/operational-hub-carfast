@@ -82,49 +82,51 @@ summary.getRange("H:H").format.columnWidth = 18;
 summary.tabColor = navy;
 
 const validation = workbook.worksheets.add("Validação");
-styleTitle(validation, "Serviços propostos para validação", "Preencher apenas Aprovar, Corrigir ou Excluir. A evidência e os valores permanecem rastreáveis às linhas fonte.", "X");
+styleTitle(validation, "Serviços propostos para validação", "Preencher apenas Aprovar, Corrigir ou Excluir. A evidência e os valores permanecem rastreáveis às linhas fonte.", "Y");
 const validationHeaders = [
   "Chave estável", "Matrícula", "VIN", "Documento ID", "Fatura", "Data", "KM", "Categoria",
-  "Código", "Subcategoria", "Eixo", "Linhas fonte", "Descrições fonte", "Peças", "Mão de obra",
+  "Código", "Subcategoria", "Eixo", "Origem eixo", "Evidência eixo", "Linhas fonte", "Descrições fonte", "Peças", "Mão de obra",
   "Valor serviço", "Confiança", "Motivo", "Projeção documental", "Abrir fatura", "Aprovar", "Corrigir", "Excluir",
 ];
 const validationRows = dryRun.services.map((row, index) => [
   row.stable_key, row.plate, row.vin, row.document_id, row.document_number,
   row.document_date ? new Date(`${row.document_date}T00:00:00Z`) : "",
   row.odometer_km ? Number(row.odometer_km) : "", row.category, row.service_code, row.subcategory,
-  row.axle, row.source_line_ids, row.source_descriptions, row.parts, row.labor,
+  row.axle, row.axle_source, row.axle_evidence, row.source_line_ids, row.source_descriptions, row.parts, row.labor,
   Number(row.service_amount), Number(row.confidence), row.confidence_reason, row.document_projection,
   `=HYPERLINK("${row.invoice_link}","Abrir fatura")`, "", "", "",
 ]);
 validation.getRangeByIndexes(6, 0, 1, validationHeaders.length).values = [validationHeaders];
-validation.getRangeByIndexes(7, 0, validationRows.length, validationHeaders.length).values = validationRows.map((row) => row.map((value, column) => column === 19 ? "" : value));
-validation.getRangeByIndexes(7, 19, validationRows.length, 1).formulas = validationRows.map((row) => [row[19]]);
+validation.getRangeByIndexes(7, 0, validationRows.length, validationHeaders.length).values = validationRows.map((row) => row.map((value, column) => column === 21 ? "" : value));
+validation.getRangeByIndexes(7, 21, validationRows.length, 1).formulas = validationRows.map((row) => [row[21]]);
 validation.getRangeByIndexes(6, 0, 1, validationHeaders.length).format = headerFormat;
 validation.getRangeByIndexes(7, 0, validationRows.length, validationHeaders.length).format.font = bodyFont;
 validation.getRangeByIndexes(7, 5, validationRows.length, 1).format.numberFormat = "dd/mm/yyyy";
 validation.getRangeByIndexes(7, 6, validationRows.length, 1).format.numberFormat = "#,##0";
-validation.getRangeByIndexes(7, 15, validationRows.length, 1).format.numberFormat = "#,##0.00 [$€-pt-PT]";
-validation.getRangeByIndexes(7, 16, validationRows.length, 1).format.numberFormat = "0.00";
-validation.getRange(`U8:W${7 + validationRows.length}`).format.fill = amber;
-validation.getRange(`U8:W${7 + validationRows.length}`).dataValidation = { rule: { type: "list", values: ["", "Sim"] } };
-validation.getRange(`U8:U${7 + validationRows.length}`).conditionalFormats.add("containsText", { text: "Sim", format: { fill: green, font: { bold: true, color: "#375623" } } });
-validation.getRange(`W8:W${7 + validationRows.length}`).conditionalFormats.add("containsText", { text: "Sim", format: { fill: paleRed, font: { bold: true, color: "#9C0006" } } });
+validation.getRangeByIndexes(7, 17, validationRows.length, 1).format.numberFormat = "#,##0.00 [$€-pt-PT]";
+validation.getRangeByIndexes(7, 18, validationRows.length, 1).format.numberFormat = "0.00";
+validation.getRange(`W8:Y${7 + validationRows.length}`).format.fill = amber;
+validation.getRange(`W8:Y${7 + validationRows.length}`).dataValidation = { rule: { type: "list", values: ["", "Sim"] } };
+validation.getRange(`W8:W${7 + validationRows.length}`).conditionalFormats.add("containsText", { text: "Sim", format: { fill: green, font: { bold: true, color: "#375623" } } });
+validation.getRange(`Y8:Y${7 + validationRows.length}`).conditionalFormats.add("containsText", { text: "Sim", format: { fill: paleRed, font: { bold: true, color: "#9C0006" } } });
 validation.getRange("A:A").format.columnWidth = 42;
 validation.getRange("B:C").format.columnWidth = 20;
 validation.getRange("D:D").format.columnWidth = 12;
 validation.getRange("E:E").format.columnWidth = 26;
 validation.getRange("F:G").format.columnWidth = 13;
 validation.getRange("H:K").format.columnWidth = 18;
-validation.getRange("L:L").format.columnWidth = 24;
-validation.getRange("M:O").format.columnWidth = 45;
-validation.getRange("P:Q").format.columnWidth = 15;
-validation.getRange("R:R").format.columnWidth = 48;
-validation.getRange("S:S").format.columnWidth = 24;
-validation.getRange("T:W").format.columnWidth = 15;
-validation.getRange(`M8:R${7 + validationRows.length}`).format.wrapText = true;
+validation.getRange("L:L").format.columnWidth = 22;
+validation.getRange("M:M").format.columnWidth = 44;
+validation.getRange("N:N").format.columnWidth = 24;
+validation.getRange("O:Q").format.columnWidth = 45;
+validation.getRange("R:S").format.columnWidth = 15;
+validation.getRange("T:T").format.columnWidth = 48;
+validation.getRange("U:U").format.columnWidth = 24;
+validation.getRange("V:Y").format.columnWidth = 15;
+validation.getRange(`M8:T${7 + validationRows.length}`).format.wrapText = true;
 validation.freezePanes.freezeRows(7);
 validation.freezePanes.freezeColumns(5);
-validation.tables.add(`A7:W${7 + validationRows.length}`, true, "ServiceValidationTable").style = "TableStyleMedium2";
+validation.tables.add(`A7:Y${7 + validationRows.length}`, true, "ServiceValidationTable").style = "TableStyleMedium2";
 validation.tabColor = "#4472C4";
 
 const reconciliation = workbook.worksheets.add("Reconciliação");
@@ -190,14 +192,14 @@ blocked.tables.add(`A7:${String.fromCharCode(64 + blockedHeaders.length)}${7 + e
 workbook.recalculate();
 const summaryInspect = await workbook.inspect({ kind: "table", range: "Resumo!A2:H18", include: "values,formulas", tableMaxRows: 18, tableMaxCols: 8 });
 console.log(summaryInspect.ndjson);
-const validationInspect = await workbook.inspect({ kind: "table", range: "Validação!A7:W12", include: "values,formulas", tableMaxRows: 6, tableMaxCols: 23 });
+const validationInspect = await workbook.inspect({ kind: "table", range: "Validação!A7:Y12", include: "values,formulas", tableMaxRows: 6, tableMaxCols: 25 });
 console.log(validationInspect.ndjson);
 const errors = await workbook.inspect({ kind: "match", searchTerm: "#REF!|#DIV/0!|#VALUE!|#NAME\\?|#N/A|#NUM!|#NULL!|#SPILL!|#CALC!", options: { useRegex: true, maxResults: 300 }, summary: "final formula error scan" });
 console.log(errors.ndjson);
 await fs.mkdir(path.dirname(outputPath), { recursive: true });
 const previewRanges = {
   "Resumo": "A1:J18",
-  "Validação": "A1:W18",
+  "Validação": "A1:Y18",
   "Reconciliação": "A1:I22",
   "Faltas": "A1:F22",
   "Frequência": "A1:C30",

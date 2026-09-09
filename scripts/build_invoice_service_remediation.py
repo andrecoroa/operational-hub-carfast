@@ -9,7 +9,10 @@ import json
 from pathlib import Path
 from typing import Any
 
-from app.services.invoice_service_remediation import build_document_service_proposals
+from app.services.invoice_service_remediation import (
+    build_article_axle_lookup,
+    build_document_service_proposals,
+)
 
 
 ACCEPTANCE_DOCUMENTS = {688, 756, 816, 1122}
@@ -48,11 +51,18 @@ def main() -> None:
     parser.add_argument("--legacy-canonical", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--base-url", default="https://carfast-green.onrender.com")
+    parser.add_argument(
+        "--article-axle-map",
+        type=Path,
+        default=Path("config/invoice_article_axle_map.json"),
+    )
     args = parser.parse_args()
 
     documents = read_csv(args.source_dir / "documents.csv")
     lines = read_csv(args.source_dir / "lines.csv")
     legacy_rows = json.loads(args.legacy_canonical.read_text(encoding="utf-8"))
+    article_map_payload = json.loads(args.article_axle_map.read_text(encoding="utf-8"))
+    article_axle_map = build_article_axle_lookup(article_map_payload)
     blocked_rows = [row for row in legacy_rows if not row.get("eligible_for_counting")]
     if len(blocked_rows) != 716:
         raise RuntimeError(f"Formal exclusion invariant failed: expected 716, found {len(blocked_rows)}")
@@ -70,7 +80,11 @@ def main() -> None:
     projections: Counter[str] = Counter()
     for document in eligible_documents:
         document_id = document["document_id"]
-        result = build_document_service_proposals(document, lines_by_document.get(document_id, []))
+        result = build_document_service_proposals(
+            document,
+            lines_by_document.get(document_id, []),
+            article_axle_map=article_axle_map,
+        )
         projections[result["document_projection"]] += 1
         document_link = (
             f"{args.base_url}/v2-clean/fleet/{document['vehicle_id_associated']}/documents"
@@ -91,6 +105,8 @@ def main() -> None:
                     "service_code": service["service_code"],
                     "subcategory": service["subcategory"],
                     "axle": service["axle"],
+                    "axle_source": service["axle_source"],
+                    "axle_evidence": service["axle_evidence"],
                     "source_line_ids": service["source_line_ids"],
                     "source_descriptions": service["service_text"],
                     "parts": service["parts"],
@@ -165,6 +181,8 @@ def main() -> None:
                 "write_operations": 0,
                 "source_manifest_sha256": sha256(args.source_dir / "manifest.json"),
                 "legacy_canonical_sha256": sha256(args.legacy_canonical),
+                "article_axle_map_sha256": sha256(args.article_axle_map),
+                "validated_article_axle_mappings": len(article_axle_map),
                 "blocked_ledger": {
                     "count": len(blocked_rows),
                     "document_count": len({row["document_id"] for row in blocked_rows}),

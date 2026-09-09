@@ -1,6 +1,7 @@
 from decimal import Decimal
 
 from app.services.invoice_service_remediation import (
+    build_article_axle_lookup,
     build_document_service_proposals,
     classify_invoice_line,
 )
@@ -50,6 +51,90 @@ def test_front_and_rear_brakes_are_separate_events():
         ("BRAKE.PAD", "front"),
         ("BRAKE.PAD", "rear"),
     ]
+
+
+def test_tra_means_brake_and_never_rear_without_context():
+    classified = classify_invoice_line(line(1, "J.PASTILHAS TRA", "90,00"))
+    assert classified.service_code == "BRAKE.PAD"
+    assert classified.axle == ""
+    result = build_document_service_proposals(document(), [line(1, "J.PASTILHAS TRA", "90,00")])
+    assert result["services"][0]["axle"] == ""
+    assert result["services"][0]["axle_source"] == "unknown"
+
+
+def test_validated_supplier_article_map_is_second_priority():
+    lookup = build_article_axle_lookup(
+        {
+            "schema": "carfast.invoice-article-axle-map.v1",
+            "mappings": [
+                {
+                    "supplier_key": "NIF:123",
+                    "article_reference": "PAD-42",
+                    "axle": "rear",
+                    "evidence": "catálogo confirmado 2026-09-10",
+                }
+            ],
+        }
+    )
+    result = build_document_service_proposals(
+        {"run_id": "test", "document_id": "10", "total_extracted": "90", "supplier_group": "NIF:123"},
+        [{**line(1, "J.PASTILHAS TRA", "90,00"), "reference": "PAD-42"}],
+        article_axle_map=lookup,
+    )
+    service = result["services"][0]
+    assert service["axle"] == "rear"
+    assert service["axle_source"] == "validated_article_map"
+    assert "catálogo confirmado" in service["axle_evidence"]
+
+
+def test_explicit_description_overrides_validated_article_map():
+    lookup = build_article_axle_lookup(
+        {
+            "schema": "carfast.invoice-article-axle-map.v1",
+            "mappings": [{"supplier_key": "NIF:123", "article_reference": "PAD-42", "axle": "rear"}],
+        }
+    )
+    result = build_document_service_proposals(
+        {"run_id": "test", "document_id": "10", "total_extracted": "90", "supplier_group": "NIF:123"},
+        [{**line(1, "CALÇOS FRT", "90,00"), "reference": "PAD-42"}],
+        article_axle_map=lookup,
+    )
+    service = result["services"][0]
+    assert service["axle"] == "front"
+    assert service["axle_source"] == "description_explicit"
+
+
+def test_unspecified_brake_part_inherits_single_explicit_invoice_context():
+    result = build_document_service_proposals(
+        document(),
+        [line(1, "SUBSTITUICAO DISCO TRAVAO AF", "40,00"), line(2, "J.PASTILHAS TRA", "80,00")],
+    )
+    pad = next(item for item in result["services"] if item["service_code"] == "BRAKE.PAD")
+    assert pad["axle"] == "front"
+    assert pad["axle_source"] == "context_consistent"
+    assert "eixo front inferido" in pad["confidence_reason"]
+
+
+def test_brake_plate_with_de_supplies_explicit_context():
+    result = build_document_service_proposals(
+        document(),
+        [line(1, "SUBSTITUICAO PLACAS DE TRAVAO AF", "33,08"), line(2, "J.PASTILHAS TRA", "144,14")],
+    )
+    pads = [item for item in result["services"] if item["service_code"] == "BRAKE.PAD"]
+    assert len(pads) == 1
+    assert pads[0]["axle"] == "front"
+
+
+def test_unspecified_brake_part_stays_unresolved_with_competing_axles():
+    result = build_document_service_proposals(
+        document(),
+        [
+            line(1, "CALÇOS FRT", "40,00"),
+            line(2, "CALÇOS TRÁS", "40,00"),
+            line(3, "J.PASTILHAS TRA", "80,00"),
+        ],
+    )
+    assert any(item["service_code"] == "BRAKE.PAD" and item["axle"] == "" for item in result["services"])
 
 
 def test_parts_and_generic_labor_are_grouped_without_amount_duplication():
@@ -116,7 +201,7 @@ def test_acceptance_document_688_splits_maintenance_diagnostic_and_brakes():
         ("MAINT.OIL_INTERIM", ""),
         ("DIAG.GENERAL", ""),
         ("BRAKE.DISC", "front"),
-        ("BRAKE.PAD", "rear"),
+        ("BRAKE.PAD", "front"),
     }
 
 

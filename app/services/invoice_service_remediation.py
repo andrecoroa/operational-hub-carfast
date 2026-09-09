@@ -31,12 +31,36 @@ def _contains(text: str, *terms: str) -> bool:
     return any(term in text for term in terms)
 
 
-def _axle(text: str) -> str:
-    if re.search(r"\b(frente|frt|fr|front|dianteir[oa]s?|af)\b", text):
-        return "front"
-    if re.search(r"\b(tras|traseir[oa]s?|rear|tra|tr|at)\b", text):
-        return "rear"
-    return ""
+def build_article_axle_lookup(payload: dict[str, Any]) -> dict[str, dict[str, str]]:
+    if payload.get("schema") != "carfast.invoice-article-axle-map.v1":
+        raise ValueError("Esquema inválido para o mapa fornecedor+artigo.")
+    lookup: dict[str, dict[str, str]] = {}
+    for mapping in payload.get("mappings", []):
+        supplier_key = str(mapping.get("supplier_key") or "").strip()
+        article_reference = str(mapping.get("article_reference") or "").strip()
+        axle = str(mapping.get("axle") or "").strip()
+        if not supplier_key or not article_reference or axle not in {"front", "rear", "both"}:
+            raise ValueError("Entrada incompleta ou eixo inválido no mapa fornecedor+artigo.")
+        key = f"{_normalise(supplier_key)}|{_normalise(article_reference)}"
+        if key in lookup:
+            raise ValueError("Entrada duplicada no mapa fornecedor+artigo.")
+        lookup[key] = {
+            "axle": axle,
+            "evidence": str(mapping.get("evidence") or "").strip(),
+        }
+    return lookup
+
+
+def _explicit_axle(text: str) -> tuple[str, str]:
+    front = bool(re.search(r"\b(frente|frt|fr|front|diant|dianteir[oa]s?|af)\b", text))
+    rear = bool(re.search(r"\b(tras|traseir[oa]s?|rear|tr|at)\b", text))
+    if front and rear:
+        return "both", "descrição contém indicadores explícitos dianteiro e traseiro"
+    if front:
+        return "front", "descrição contém indicador explícito dianteiro"
+    if rear:
+        return "rear", "descrição contém indicador explícito traseiro"
+    return "", ""
 
 
 @dataclass(slots=True)
@@ -49,6 +73,8 @@ class ClassifiedLine:
     role: str
     service_code: str = ""
     axle: str = ""
+    axle_source: str = "unknown"
+    axle_evidence: str = ""
     confidence: Decimal = Decimal("0")
     reason: str = ""
     auxiliary_codes: list[str] = field(default_factory=list)
@@ -60,10 +86,16 @@ class ClassifiedLine:
         return payload
 
 
-def classify_invoice_line(row: dict[str, Any]) -> ClassifiedLine:
+def classify_invoice_line(
+    row: dict[str, Any],
+    *,
+    supplier_key: str = "",
+    article_axle_map: dict[str, dict[str, str]] | None = None,
+) -> ClassifiedLine:
     description = str(row.get("description") or "").strip()
     text = _normalise(description)
     source_role = str(row.get("line_role") or "").strip()
+    explicit_axle, explicit_evidence = _explicit_axle(text)
     line = ClassifiedLine(
         source_line_id=str(row.get("source_line_id") or "").strip(),
         line_number=int(str(row.get("line_number") or "0") or 0),
@@ -71,7 +103,9 @@ def classify_invoice_line(row: dict[str, Any]) -> ClassifiedLine:
         reference=str(row.get("reference") or "").strip(),
         amount=_money(row.get("line_total")),
         role="labor" if source_role == "LINE.LABOR" or _contains(text, "mao de obra", "operacao de servico") else "part",
-        axle=_axle(text),
+        axle=explicit_axle,
+        axle_source="description_explicit" if explicit_axle else "unknown",
+        axle_evidence=explicit_evidence,
     )
 
     if _contains(text, "ecolub", "sigou", "taxa", "lavagem", "aspiracao"):
@@ -92,10 +126,22 @@ def classify_invoice_line(row: dict[str, Any]) -> ClassifiedLine:
         line.service_code = "BRAKE.SENSOR"
         line.reason = "avisador/sensor de travão explícito"
         line.confidence = Decimal("0.91")
-    elif _contains(text, "calco", "pastilha", "placa travao", "placas travao"):
+    elif _contains(
+        text,
+        "calco",
+        "pastilha",
+        "placa travao",
+        "placas travao",
+        "placa de travao",
+        "placas de travao",
+    ):
         line.service_code = "BRAKE.PAD"
-        line.reason = "calços/pastilhas de travão explícitos"
-        line.confidence = Decimal("0.98")
+        if re.search(r"\bpastilhas? tra\b", text):
+            line.reason = "TRA interpretado como travão; eixo depende de contexto explícito"
+            line.confidence = Decimal("0.92")
+        else:
+            line.reason = "calços/pastilhas de travão explícitos"
+            line.confidence = Decimal("0.98")
     elif "disco" in text and (_contains(text, "trava", "travagem", "jogo disco", "jogo de disco") or line.axle):
         line.service_code = "BRAKE.DISC"
         line.reason = "discos de travão explícitos"
@@ -151,6 +197,17 @@ def classify_invoice_line(row: dict[str, Any]) -> ClassifiedLine:
     else:
         line.role = "labor" if line.role == "labor" else "unassigned"
         line.reason = "sem regra técnica determinística"
+
+    if not line.axle and line.reference and article_axle_map:
+        lookup_key = f"{_normalise(supplier_key)}|{_normalise(line.reference)}"
+        mapping = article_axle_map.get(lookup_key)
+        if mapping and mapping.get("axle") in {"front", "rear", "both"}:
+            line.axle = mapping["axle"]
+            line.axle_source = "validated_article_map"
+            line.axle_evidence = (
+                f"mapa validado fornecedor+artigo: {supplier_key} + {line.reference}"
+                + (f"; {mapping['evidence']}" if mapping.get("evidence") else "")
+            )
     return line
 
 
@@ -174,14 +231,69 @@ def _nearest_group(lines: list[ClassifiedLine], index: int, groups: dict[tuple[s
 
 
 def build_document_service_proposals(
-    document: dict[str, Any], line_rows: Iterable[dict[str, Any]]
+    document: dict[str, Any],
+    line_rows: Iterable[dict[str, Any]],
+    *,
+    article_axle_map: dict[str, dict[str, str]] | None = None,
 ) -> dict[str, Any]:
-    lines = sorted((classify_invoice_line(row) for row in line_rows), key=lambda line: line.line_number)
+    supplier_key = str(
+        document.get("supplier_group")
+        or document.get("supplier_nif_extracted")
+        or document.get("supplier_name_extracted")
+        or document.get("supplier_name_record")
+        or ""
+    )
+    lines = sorted(
+        (
+            classify_invoice_line(
+                row,
+                supplier_key=supplier_key,
+                article_axle_map=article_axle_map,
+            )
+            for row in line_rows
+        ),
+        key=lambda line: line.line_number,
+    )
     groups: dict[tuple[str, str], list[int]] = {}
     for index, line in enumerate(lines):
         if line.service_code:
             key = (_group_code(line.service_code), line.axle if line.service_code.startswith("BRAKE.") else "")
             groups.setdefault(key, []).append(index)
+
+    # Abbreviations such as ``TRA`` in part names mean ``travão``, not
+    # ``traseiro``.  An unspecified brake part inherits an axle only when the
+    # same invoice supplies one unambiguous explicit brake context.
+    for service_code in {key[0] for key in groups if key[0].startswith("BRAKE.")}:
+        unknown_key = (service_code, "")
+        unknown_indexes = groups.get(unknown_key, [])
+        if not unknown_indexes:
+            continue
+        same_code_axles = {key[1] for key in groups if key[0] == service_code and key[1]}
+        contextual_axles = same_code_axles or {
+            key[1] for key in groups if key[0].startswith("BRAKE.") and key[1]
+        }
+        if len(contextual_axles) == 1:
+            inferred_axle = next(iter(contextual_axles))
+            groups.setdefault((service_code, inferred_axle), []).extend(unknown_indexes)
+            groups.pop(unknown_key, None)
+            for index in unknown_indexes:
+                lines[index].axle = inferred_axle
+                lines[index].axle_source = "context_consistent"
+                context_ids = [
+                    lines[context_index].source_line_id
+                    for key, context_indexes in groups.items()
+                    if key[0].startswith("BRAKE.") and key[1] == inferred_axle
+                    for context_index in context_indexes
+                    if context_index not in unknown_indexes
+                ]
+                lines[index].axle_evidence = (
+                    f"contexto único de travagem {inferred_axle}; linhas "
+                    + "|".join(dict.fromkeys(context_ids))
+                )
+                lines[index].reason += (
+                    f"; eixo {inferred_axle} inferido pelo único contexto explícito "
+                    "de travagem na mesma fatura"
+                )
 
     for index, line in enumerate(lines):
         if line.service_code or line.role == "ancillary":
@@ -226,6 +338,16 @@ def build_document_service_proposals(
         amount = sum((line.amount for line in group_lines), Decimal("0")).quantize(TWO_PLACES)
         confidence = min((line.confidence for line in group_lines if line.confidence), default=Decimal("0.50"))
         source_ids = [line.source_line_id for line in group_lines]
+        axle_sources = [line.axle_source for line in group_lines if line.axle_source != "unknown"]
+        axle_source = (
+            "description_explicit"
+            if "description_explicit" in axle_sources
+            else "validated_article_map"
+            if "validated_article_map" in axle_sources
+            else "context_consistent"
+            if "context_consistent" in axle_sources
+            else "unknown"
+        )
         proposals.append(
             {
                 "stable_key": f"{document.get('run_id', 'remediation')}:{document['document_id']}:S{sequence:02d}:{primary_code}:{group_axle or 'NA'}",
@@ -233,6 +355,10 @@ def build_document_service_proposals(
                 "service_code": primary_code,
                 "subcategory": ", ".join(auxiliary_codes),
                 "axle": group_axle,
+                "axle_source": axle_source,
+                "axle_evidence": " | ".join(
+                    dict.fromkeys(line.axle_evidence for line in group_lines if line.axle_evidence)
+                ),
                 "service_text": " | ".join(line.description for line in group_lines),
                 "source_line_ids": "|".join(source_ids),
                 "source_lines": [line.as_dict() for line in group_lines],

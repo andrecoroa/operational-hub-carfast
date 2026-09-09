@@ -1,8 +1,13 @@
 import pytest
 from sqlalchemy import select
 
+from app.models.audit import AuditLog
 from app.models.documents import Document
-from app.models.invoice_service_history import InvoiceServiceEvent, InvoiceServiceEventRevision
+from app.models.invoice_service_history import (
+    InvoiceServiceEvent,
+    InvoiceServiceEventRevision,
+    InvoiceServiceImportBatch,
+)
 from app.models.vehicles import Vehicle
 from app.models.workshop import WorkshopProcess
 from app.services.invoice_service_history import (
@@ -106,8 +111,75 @@ def test_logical_rollback_preserves_event_and_evidence(db_session):
     db_session.commit()
     event = db_session.scalar(select(InvoiceServiceEvent))
     assert event.active is False
+    assert event.status == "rejected"
     assert event.evidence_text
     assert batch.status == "rolled_back"
+    assert db_session.get(Document, document.id) is document
+    revisions = list(db_session.scalars(select(InvoiceServiceEventRevision)))
+    assert [revision.action for revision in revisions] == ["create", "rollback"]
+    assert revisions[-1].reason == "logical_batch_rollback"
+
+    repeated = rollback_invoice_service_batch(db_session, batch.id, actor_id=None)
+    db_session.commit()
+    assert repeated.id == batch.id
+    assert len(list(db_session.scalars(select(InvoiceServiceEventRevision)))) == 2
+
+
+def test_rollback_fails_closed_when_event_changed_after_batch(db_session):
+    _, document = _document(db_session, "rollback-stale")
+    preview = preview_invoice_service_import(
+        db_session, _csv(document.id), "rollback-stale.csv", version="1", source="audit-export"
+    )
+    batch = apply_invoice_service_import(db_session, preview, actor_id=None)
+    db_session.commit()
+    event = db_session.scalar(select(InvoiceServiceEvent))
+    event.service_label = "Alteração posterior"
+    db_session.commit()
+
+    with pytest.raises(InvoiceServiceImportError, match="alterado após o lote"):
+        rollback_invoice_service_batch(db_session, batch.id, actor_id=None)
+    db_session.rollback()
+    assert event.active is True
+    assert batch.status == "applied"
+
+
+def test_idempotent_rollback_fails_closed_on_inconsistent_rolled_back_state(db_session):
+    _, document = _document(db_session, "rollback-inconsistent")
+    preview = preview_invoice_service_import(
+        db_session,
+        _csv(document.id),
+        "rollback-inconsistent.csv",
+        version="1",
+        source="audit-export",
+    )
+    batch = apply_invoice_service_import(db_session, preview, actor_id=None)
+    db_session.commit()
+    rollback_invoice_service_batch(db_session, batch.id, actor_id=None)
+    db_session.commit()
+    event = db_session.scalar(select(InvoiceServiceEvent))
+    event.active = True
+    db_session.commit()
+
+    with pytest.raises(InvoiceServiceImportError, match="Estado do rollback inconsistente"):
+        rollback_invoice_service_batch(db_session, batch.id, actor_id=None)
+
+
+def test_rollback_rejects_batch_from_another_vehicle(db_session):
+    _, document = _document(db_session, "rollback-scope")
+    preview = preview_invoice_service_import(
+        db_session, _csv(document.id), "rollback-scope.csv", version="1", source="audit-export"
+    )
+    batch = apply_invoice_service_import(db_session, preview, actor_id=None)
+    other = Vehicle(plate="OTHER-ROLLBACK")
+    db_session.add(other)
+    db_session.commit()
+
+    with pytest.raises(InvoiceServiceImportError, match="fora do âmbito"):
+        rollback_invoice_service_batch(
+            db_session, batch.id, actor_id=None, expected_vehicle_id=other.id
+        )
+    db_session.rollback()
+    assert batch.status == "applied"
 
 
 def test_work_order_link_rejects_other_vehicle(db_session):
@@ -184,3 +256,93 @@ def test_import_and_print_surfaces_render(authenticated_client, db_session):
     assert "O dry-run é obrigatório" in import_page.text
     assert "@media print" in open("app/static/css/app.css", encoding="utf-8").read()
     assert "window.print()" in print_page.text
+
+
+def test_rollback_route_is_audited_and_idempotent(authenticated_client, db_session):
+    vehicle, document = _document(db_session, "rollback-web")
+    preview = preview_invoice_service_import(
+        db_session, _csv(document.id), "rollback-web.csv", version="1", source="audit-export"
+    )
+    batch = apply_invoice_service_import(db_session, preview, actor_id=None)
+    db_session.commit()
+
+    response = authenticated_client.post(
+        f"/v2-clean/fleet/{vehicle.id}/services/import/{batch.id}/rollback",
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    assert response.headers["location"] == f"/v2-clean/fleet/{vehicle.id}/services/import"
+    db_session.expire_all()
+    assert db_session.get(InvoiceServiceImportBatch, batch.id).status == "rolled_back"
+    event = db_session.scalar(select(InvoiceServiceEvent))
+    assert event.active is False
+    assert event.status == "rejected"
+    assert db_session.get(Document, document.id) is not None
+    assert [
+        revision.action
+        for revision in db_session.scalars(
+            select(InvoiceServiceEventRevision).order_by(InvoiceServiceEventRevision.id)
+        )
+    ] == ["create", "rollback"]
+    assert db_session.scalar(
+        select(AuditLog).where(
+            AuditLog.action == "invoice_service_batch.rollback",
+            AuditLog.entity_id == str(batch.id),
+        )
+    ) is not None
+
+    repeated = authenticated_client.post(
+        f"/v2-clean/fleet/{vehicle.id}/services/import/{batch.id}/rollback",
+        follow_redirects=False,
+    )
+    assert repeated.status_code == 303
+    db_session.expire_all()
+    assert len(list(db_session.scalars(select(InvoiceServiceEventRevision)))) == 2
+
+
+def test_rollback_route_requires_permission(client, db_session):
+    vehicle, document = _document(db_session, "rollback-permission")
+    preview = preview_invoice_service_import(
+        db_session, _csv(document.id), "rollback-permission.csv", version="1", source="audit-export"
+    )
+    batch = apply_invoice_service_import(db_session, preview, actor_id=None)
+    db_session.commit()
+
+    response = client.post(
+        f"/v2-clean/fleet/{vehicle.id}/services/import/{batch.id}/rollback",
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    assert response.headers["location"].startswith("/login")
+    assert db_session.get(InvoiceServiceImportBatch, batch.id).status == "applied"
+
+
+def test_rollback_route_surfaces_scope_failure_without_mutation(
+    authenticated_client, db_session
+):
+    _, document = _document(db_session, "rollback-route-scope")
+    preview = preview_invoice_service_import(
+        db_session,
+        _csv(document.id),
+        "rollback-route-scope.csv",
+        version="1",
+        source="audit-export",
+    )
+    batch = apply_invoice_service_import(db_session, preview, actor_id=None)
+    other = Vehicle(plate="OTHER-ROLLBACK-ROUTE")
+    db_session.add(other)
+    db_session.commit()
+
+    response = authenticated_client.post(
+        f"/v2-clean/fleet/{other.id}/services/import/{batch.id}/rollback",
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    assert response.headers["location"].endswith("?error=rollback_failed")
+    db_session.expire_all()
+    assert db_session.get(InvoiceServiceImportBatch, batch.id).status == "applied"
+    assert db_session.scalar(select(InvoiceServiceEvent)).active is True
+
+    error_page = authenticated_client.get(response.headers["location"])
+    assert error_page.status_code == 200
+    assert "Rollback recusado; o lote não foi alterado." in error_page.text

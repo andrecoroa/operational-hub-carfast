@@ -278,6 +278,7 @@ def _snapshot(event: InvoiceServiceEvent) -> dict[str, Any]:
         "evidence_text",
         "evidence_json",
         "active",
+        "last_batch_id",
     )
     return {
         key: (
@@ -377,23 +378,68 @@ def apply_invoice_service_import(
 
 
 def rollback_invoice_service_batch(
-    db: Session, batch_id: int, *, actor_id: int | None
+    db: Session,
+    batch_id: int,
+    *,
+    actor_id: int | None,
+    expected_vehicle_id: int | None = None,
 ) -> InvoiceServiceImportBatch:
     batch = db.get(InvoiceServiceImportBatch, batch_id)
-    if not batch or batch.status != "applied":
+    if not batch or batch.status not in {"applied", "rolled_back"}:
         raise InvoiceServiceImportError("Lote inexistente ou não aplicável.")
     revisions = list(
         db.scalars(
             select(InvoiceServiceEventRevision)
-            .where(InvoiceServiceEventRevision.batch_id == batch.id)
+            .where(
+                InvoiceServiceEventRevision.batch_id == batch.id,
+                InvoiceServiceEventRevision.action.in_({"create", "update"}),
+            )
             .order_by(InvoiceServiceEventRevision.id.desc())
         )
     )
-    for revision in revisions:
-        event = db.get(InvoiceServiceEvent, revision.event_id)
-        if not event:
-            continue
+    if not revisions:
+        raise InvoiceServiceImportError("Lote sem revisões de aplicação; rollback recusado.")
+    events = [db.get(InvoiceServiceEvent, revision.event_id) for revision in revisions]
+    if any(event is None for event in events):
+        raise InvoiceServiceImportError("Evento do lote inexistente; rollback recusado.")
+    if expected_vehicle_id is not None and any(
+        event.vehicle_id != expected_vehicle_id for event in events if event is not None
+    ):
+        raise InvoiceServiceImportError("Lote fora do âmbito da viatura selecionada.")
+    if batch.status == "rolled_back":
+        rollback_revisions = list(
+            db.scalars(
+                select(InvoiceServiceEventRevision).where(
+                    InvoiceServiceEventRevision.batch_id == batch.id,
+                    InvoiceServiceEventRevision.action == "rollback",
+                )
+            )
+        )
+        rollback_by_event = {revision.event_id: revision for revision in rollback_revisions}
+        if any(
+            event is None
+            or event.id not in rollback_by_event
+            or any(
+                _snapshot(event).get(key) != value
+                for key, value in (rollback_by_event[event.id].after_json or {}).items()
+            )
+            for event in events
+        ):
+            raise InvoiceServiceImportError(
+                "Estado do rollback inconsistente; operação idempotente recusada."
+            )
+        return batch
+
+    for revision, event in zip(revisions, events, strict=True):
+        assert event is not None
         current = _snapshot(event)
+        expected = revision.after_json or {}
+        if event.last_batch_id != batch.id or any(
+            current.get(key) != value for key, value in expected.items()
+        ):
+            raise InvoiceServiceImportError(
+                "Evento alterado após o lote; rollback recusado para preservar auditoria."
+            )
         if revision.before_json is None:
             event.active = False
             event.status = "rejected"

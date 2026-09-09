@@ -78,6 +78,7 @@ def test_request_and_approve_decision_preserve_owner_and_audit(
     authenticated_client, db_session, monkeypatch
 ) -> None:
     monkeypatch.setattr(task_router.settings, "task_decisions_enabled", True)
+    monkeypatch.setattr(task_router.settings, "visual_foundation_enabled", True)
     actor = _actor(db_session)
     _grant_permissions(
         db_session, actor, "tasks.request_decision", "tasks.resolve_decision"
@@ -115,6 +116,9 @@ def test_request_and_approve_decision_preserve_owner_and_audit(
         )
     )
 
+    pending_page = authenticated_client.get("/v2-clean/tasks")
+    assert 'aria-label="1 decisões pendentes"' in pending_page.text
+
     resolved = authenticated_client.post(
         f"/v2-clean/tasks/{task.id}/decisions/{item.id}",
         data={
@@ -131,6 +135,8 @@ def test_request_and_approve_decision_preserve_owner_and_audit(
     assert item.status == "approved"
     assert task.status == "in_execution"
     assert task.assigned_to_id == actor.id
+    resolved_page = authenticated_client.get("/v2-clean/tasks")
+    assert 'decisões pendentes"' not in resolved_page.text
 
 
 def test_decision_request_and_resolution_fail_closed_without_permissions(
@@ -157,6 +163,36 @@ def test_decision_request_and_resolution_fail_closed_without_permissions(
     db_session.refresh(task)
     assert task.status == "new"
     assert db_session.scalar(select(TaskDecision.id)) is None
+
+
+def test_pending_decision_badge_is_hidden_without_resolve_permission(
+    authenticated_client, db_session, monkeypatch
+) -> None:
+    monkeypatch.setattr(task_router.settings, "task_decisions_enabled", True)
+    monkeypatch.setattr(task_router.settings, "visual_foundation_enabled", True)
+    actor = _actor(db_session)
+    task = _task(db_session, actor)
+    task.status = "waiting_decision"
+    db_session.add(
+        TaskDecision(
+            task_id=task.id,
+            requested_by_id=actor.id,
+            decider_id=actor.id,
+            decision_needed="Confirmar exceção",
+            recommendation="Aprovar",
+            impact_value="Baixo",
+            previous_task_status="new",
+            status="pending",
+        )
+    )
+    db_session.commit()
+    _remove_permission(db_session, actor, "tasks.resolve_decision")
+
+    page = authenticated_client.get("/v2-clean/tasks")
+
+    assert page.status_code == 200
+    assert 'href="/v2-clean/tasks?decision=mine"' not in page.text
+    assert 'decisões pendentes"' not in page.text
 
 
 def test_decision_target_must_be_active_explicit_resolver(
@@ -251,6 +287,7 @@ def test_decisions_for_me_filter_and_information_request(
     assert page.status_code == 200
     assert "Decisões para mim" in page.text
     assert "Decisão controlada" in page.text
+    assert 'aria-label="1 decisões pendentes"' in page.text
 
     missing_detail = authenticated_client.post(
         f"/v2-clean/tasks/{task.id}/decisions/{item.id}",
@@ -271,6 +308,8 @@ def test_decisions_for_me_filter_and_information_request(
     db_session.refresh(task)
     assert item.status == "information_requested"
     assert task.status == "waiting_decision"
+    refreshed = authenticated_client.get("/v2-clean/tasks")
+    assert 'aria-label="1 decisões pendentes"' in refreshed.text
 
 
 def test_decisions_for_me_normalizes_incompatible_work_view_filters(
@@ -397,6 +436,7 @@ def test_decision_can_target_team_and_alert_eligible_members(
     authenticated_client, db_session, monkeypatch
 ) -> None:
     monkeypatch.setattr(task_router.settings, "task_decisions_enabled", True)
+    monkeypatch.setattr(task_router.settings, "visual_foundation_enabled", True)
     actor = _actor(db_session)
     _grant_permissions(
         db_session, actor, "tasks.request_decision", "tasks.resolve_decision"
@@ -430,5 +470,8 @@ def test_decision_can_target_team_and_alert_eligible_members(
             TaskNotification.event_type == "decision_requested",
         )
     )
+    inbox = authenticated_client.get("/v2-clean/tasks?decision=mine")
+    assert inbox.status_code == 200
+    assert 'aria-label="1 decisões pendentes"' in inbox.text
     page = authenticated_client.get(f"/v2-clean/tasks/{task.id}/detail")
     assert "Decisão pedida" in page.text

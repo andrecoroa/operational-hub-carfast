@@ -15,8 +15,9 @@
         <button type="submit">Filtrar</button>
       </form>
     </section>
-    <section class="clean-card-wide clean-task-notification-list" aria-label="Notificações de tarefas">
-      {% for notification, task in notification_rows %}<article class="section{% if not notification.read_at %} is-unread{% endif %}"><p class="eyebrow">{{ notification.event_type|replace('_', ' ') }}</p><h3>{{ notification.title }}</h3>{% if notification.detail %}<p>{{ notification.detail }}</p>{% endif %}<p class="muted">Tarefa #{{ task.id }} · {{ (notification.created_at|lisbon_datetime).strftime('%d/%m/%Y %H:%M') }}</p><div class="button-row"><a class="button-link secondary-link" href="/v2-clean/tasks/notifications/{{ notification.id }}/open">Abrir tarefa</a>{% if not notification.read_at %}<form method="post" action="/v2-clean/tasks/notifications/{{ notification.id }}/read"><input type="hidden" name="return_url" value="{{ request.url.path }}?{{ request.url.query }}"><button type="submit">Marcar como lida</button></form>{% endif %}</div></article>{% else %}<p class="muted">Sem notificações para estes filtros.</p>{% endfor %}
+    <section class="clean-card-wide clean-task-notification-list clean-task-notification-page" aria-label="Notificações de tarefas">
+      {% set notification_show_event = true %}{% set notification_allow_mark_read = true %}{% set notification_date_format = '%d/%m/%Y %H:%M' %}
+      {% for notification, notification_task in notification_rows %}{% include "_task_notification_row.html" %}{% else %}<p class="muted">Sem notificações para estes filtros.</p>{% endfor %}
     </section>
   </main>
 </div>

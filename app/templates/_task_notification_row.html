@@ -1,0 +1,17 @@
+<article class="clean-task-notification-row{% if not notification.read_at %} is-unread{% endif %}">
+  <a class="clean-task-notification-row-link" href="/v2-clean/tasks/notifications/{{ notification.id }}/open" aria-label="Abrir notificação: {{ notification.title }}">
+    <span class="clean-task-notification-copy">
+      {% if notification_show_event %}<small class="clean-task-notification-event">{{ notification.event_type|replace('_', ' ') }}</small>{% endif %}
+      <strong class="clean-task-notification-row-title">{{ notification.title }}</strong>
+      {% if notification.detail %}<span class="clean-task-notification-detail">{{ notification.detail }}</span>{% endif %}
+      {% if notification_task %}<small class="clean-task-notification-task">Tarefa #{{ notification_task.id }}</small>{% endif %}
+    </span>
+    <time class="clean-task-notification-time" datetime="{{ notification.created_at.isoformat() }}">{{ (notification.created_at|lisbon_datetime).strftime(notification_date_format|default('%d/%m %H:%M')) }}</time>
+  </a>
+  {% if notification_allow_mark_read and not notification.read_at %}
+    <form class="clean-task-notification-row-action" method="post" action="/v2-clean/tasks/notifications/{{ notification.id }}/read">
+      <input type="hidden" name="return_url" value="{{ request.url.path }}?{{ request.url.query }}">
+      <button type="submit">Marcar como lida</button>
+    </form>
+  {% endif %}
+</article>

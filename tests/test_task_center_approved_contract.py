@@ -23,6 +23,12 @@ TEMPLATE = "\n".join(
 CSS = (ROOT / "app/static/css/ui-contract-v1.css").read_text(encoding="utf-8")
 ROUTER = (ROOT / "app/web/router.py").read_text(encoding="utf-8")
 DETAIL = (ROOT / "app/templates/clean_task_detail.html").read_text(encoding="utf-8")
+NOTIFICATION_ROW = (ROOT / "app/templates/_task_notification_row.html").read_text(
+    encoding="utf-8"
+)
+NOTIFICATION_PAGE = (ROOT / "app/templates/clean_task_notifications.html").read_text(
+    encoding="utf-8"
+)
 
 
 def test_approved_task_center_has_five_contractual_keyboard_counters() -> None:
@@ -278,6 +284,26 @@ def test_decision_inbox_link_is_canonical_and_does_not_carry_list_filters() -> N
     assert 'href="/v2-clean/tasks?decision=mine"' in TEMPLATE
     assert "include_query_params(decision='mine'" not in TEMPLATE
     assert 'href="/v2-clean/tasks"' in TEMPLATE
+
+
+def test_alerts_share_one_row_component_across_compact_and_full_views() -> None:
+    assert TEMPLATE.count('{% include "_task_notification_row.html" %}') == 2
+    assert '{% include "_task_notification_row.html" %}' in NOTIFICATION_PAGE
+    assert 'class="clean-task-notification-row-link"' in NOTIFICATION_ROW
+    assert "clean-task-notification-row-title" in NOTIFICATION_ROW
+    assert "clean-task-notification-detail" in NOTIFICATION_ROW
+    assert "clean-task-notification-time" in NOTIFICATION_ROW
+    assert "notification.read_at" in NOTIFICATION_ROW
+
+
+def test_alert_rows_and_decision_badge_have_responsive_contract() -> None:
+    assert ".clean-task-notification-list{display:grid;gap:8px}" in CSS
+    assert ".clean-task-notification-row{min-width:0;border:1px solid" in CSS
+    assert ".clean-task-notification-row.is-unread" in CSS
+    assert "@media(max-width:700px){.clean-task-notification-list>header" in CSS
+    assert ".clean-task-notification-row-link{grid-template-columns:minmax(0,1fr)}" in CSS
+    assert "task-center-decision-count" in TEMPLATE
+    assert 'aria-label="{{ pending_decision_count }} decisões pendentes"' in TEMPLATE
 
 
 def test_support_targets_are_scoped_server_side_and_not_globally_rendered() -> None:

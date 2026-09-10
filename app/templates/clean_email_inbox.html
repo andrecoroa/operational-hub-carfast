@@ -47,7 +47,6 @@
     </section></div>{% if foundation_ui_enabled %}</section>{% endif %}
   </main>
 </div>
-<dialog class="email-preview-dialog{% if foundation_ui_enabled %} visual-email-preview{% endif %}" id="email-preview-dialog"><div class="email-preview-loading">A abrir conversa…</div></dialog>
 {% if compose_channels %}
 <dialog class="email-compose-dialog{% if foundation_ui_enabled %} visual-email-compose{% endif %}" id="email-compose-dialog">
   <form method="post" action="/v2-clean/email/new" class="email-new-message-form">
@@ -74,7 +73,7 @@
   </form>
 </dialog>
 {% endif %}
-<script src="/static/js/email.js?v=20260910-email-conversation-drawer"></script>
+<script src="/static/js/email.js?v=20260910-email-full-page-navigation"></script>
 {% if compose_channels %}<script>
   (() => {
     const dialog = document.getElementById('email-compose-dialog');

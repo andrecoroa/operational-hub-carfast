@@ -110,9 +110,8 @@ def test_email_inline_mailboxes_and_mobile_overflow_contract() -> None:
     assert "email-mailbox-summary" in template
     assert "Abrir caixa" in template
     assert "Recebido originalmente em:" not in template.split("{% block body %}", 1)[0]
-    assert "email-inline-preview-row" in script
-    assert "sourceRow.after(inlinePreviewRow)" in script
-    assert "inlinePreviewRow.scrollIntoView" in script
+    assert "email-inline-preview-row" not in script
+    assert "sourceRow.after(inlinePreviewRow)" not in script
     assert "@media (max-width:900px)" in css
     assert ".email-inline-preview-body { max-height:none; overflow:visible; }" in css
     assert ".email-mailbox-summary { grid-template-columns:1fr; }" in css

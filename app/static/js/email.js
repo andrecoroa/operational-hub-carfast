@@ -273,48 +273,10 @@
       }
     }));
   };
-  const openPreview = async (threadId, trigger = null, forceRefresh = false) => {
+  const openPreview = async (threadId) => {
     if (!threadId) return;
-    const sourceRow = trigger?.closest?.("[data-email-preview]") || document.querySelector(`[data-email-preview="${threadId}"]`);
-    if (!sourceRow) return;
-    if (!forceRefresh && inlinePreviewRow?.dataset.emailInlineThread === String(threadId)) {
-      resetInlinePreview();
-      return;
-    }
-    inlinePreviewRow?.remove();
-    inlinePreviewRow = document.createElement("tr");
-    inlinePreviewRow.className = "email-inline-preview-row";
-    inlinePreviewRow.dataset.emailInlineThread = String(threadId);
-    const cell = document.createElement("td");
-    cell.colSpan = sourceRow.children.length || 7;
-    const previewRoot = document.createElement("div");
-    previewRoot.className = "email-inline-preview-body";
-    previewRoot.setAttribute("aria-live", "polite");
-    cell.append(previewRoot);
-    inlinePreviewRow.append(cell);
-    sourceRow.after(inlinePreviewRow);
-    if (trigger) previewTrigger = trigger;
-    else if (!(previewTrigger instanceof HTMLElement) || !previewTrigger.isConnected) previewTrigger = document.activeElement;
-    previewRoot.innerHTML = '<div class="email-preview-loading">A abrir conversa…</div>';
-    try {
-      const response = await fetch(`/v2-clean/email/${threadId}/preview`, {headers: {"X-Requested-With": "fetch"}});
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      previewRoot.innerHTML = await response.text();
-    } catch (_) {
-      previewRoot.innerHTML = `<div class="email-preview-error" role="alert"><strong>Não foi possível abrir a conversa.</strong><a class="button-link" href="/v2-clean/email/${threadId}">Abrir página completa</a></div>`;
-      return;
-    }
-    bindThread(previewRoot);
-    const fullPageLink = previewRoot.querySelector(".email-open-full");
-    if (fullPageLink) fullPageLink.href = `${fullPageLink.pathname}?return_context=${encodeURIComponent(location.pathname + location.search)}`;
-    previewRoot.querySelector("[data-email-modal-close], button, a, input, select, textarea")?.focus({preventScroll: true});
-    document.querySelectorAll("[data-email-preview]").forEach((row) => {
-      const selected = row.dataset.emailPreview === String(threadId);
-      row.classList.toggle("is-selected", selected);
-      row.setAttribute("aria-expanded", String(selected));
-    });
-    document.querySelectorAll("[data-email-preview-trigger]").forEach((button) => button.setAttribute("aria-expanded", String(button.dataset.emailPreviewTrigger === String(threadId))));
-    inlinePreviewRow.scrollIntoView({block: "nearest"});
+    const returnContext = `${window.location.pathname}${window.location.search}`;
+    window.location.assign(`/v2-clean/email/${threadId}?return_context=${encodeURIComponent(returnContext)}`);
   };
   document.querySelectorAll("[data-email-thread-url]").forEach((element) => element.addEventListener("click", (event) => {
     if (event.target.closest("a, button, input, select, textarea")) return;

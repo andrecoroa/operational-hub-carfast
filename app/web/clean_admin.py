@@ -15,6 +15,7 @@ from sqlalchemy import delete, func, or_, select
 
 from app.core.config import settings
 from app.core.database import SessionLocal
+from app.core.return_context import issue_return_context, resolve_return_context
 from app.core.security import hash_password
 from app.models.admin import Permission, Role, RolePermission, User, UserRole
 from app.models.audit import AuditLog
@@ -47,6 +48,7 @@ from app.models.organization import (
 )
 from app.models.settings import SettingsCatalog, SettingsValue
 from app.models.tasks import Task, TaskDocument, TaskHistory
+from app.models.task_templates import ProcessModel, ProcessModelVersion, TaskTemplate, TaskTemplateVersion
 from app.models.work_hierarchy import (
     RoleWorkScope,
     ServiceDeskCategoryExecutor,
@@ -77,6 +79,7 @@ from app.services.email_access_admin import (
     grant_snapshot,
     plan_email_role_batch,
 )
+from app.services.email_postmark import outbound_identity
 from app.services.service_desk import (
     ASSIGNMENT_MODES,
     assignment_target_user_allowed,
@@ -93,7 +96,9 @@ from app.services.users import create_user
 from app.services.work_classification import user_work_scope_allows
 
 clean_admin_router = APIRouter()
-templates = Jinja2Templates(directory="app/templates")
+from app.web.template_runtime import configure_visual_template_runtime
+
+templates = configure_visual_template_runtime(Jinja2Templates(directory="app/templates"))
 templates.env.filters["lisbon_datetime"] = local_datetime
 
 CODE_PATTERN = re.compile(r"^[a-z][a-z0-9_.-]{1,79}$")
@@ -192,6 +197,12 @@ PERMISSION_GROUP_LABELS = {
 
 ADMIN_NAV = (
     (
+        "setup",
+        "Configuração inicial",
+        "/v2-clean/admin/setup",
+        ("admin.manage",),
+    ),
+    (
         "overview",
         "Visão geral",
         "/v2-clean/admin/overview",
@@ -265,6 +276,18 @@ ADMIN_NAV = (
         ),
     ),
     (
+        "task_process_models",
+        "Tarefas-tipo e Processos-modelo",
+        "/v2-clean/admin/task-process-models",
+        (
+            "tasks.templates.read",
+            "tasks.templates.manage",
+            "process.models.read",
+            "process.models.manage",
+            "admin.manage",
+        ),
+    ),
+    (
         "evolution",
         "Registo de Evolução",
         "/v2-clean/admin/evolution",
@@ -332,6 +355,19 @@ QUICK_EVOLUTION_TYPE_LABELS = {
 }
 
 ADMIN_DOMAIN_DEFINITIONS = (
+    {
+        "code": "setup",
+        "label": "Configuração inicial",
+        "description": "Percurso guiado para preparar a instalação pela ordem segura.",
+        "items": (
+            (
+                "setup",
+                "Assistente operacional",
+                "/v2-clean/admin/setup",
+                ("admin.manage",),
+            ),
+        ),
+    },
     {
         "code": "operations",
         "label": "Operações e Service Desk",
@@ -759,6 +795,7 @@ def _layout_context(
         "admin_module_labels": ADMIN_MODULE_LABELS,
         "admin_module_nav": ADMIN_MODULE_NAV,
         "admin_module_dimension_labels": ADMIN_MODULE_DIMENSION_LABELS,
+        "foundation_ui_enabled": settings.visual_foundation_enabled,
         **extra,
     }
 
@@ -766,6 +803,34 @@ def _layout_context(
 def _redirect(path: str, flag: str, value: str = "1") -> RedirectResponse:
     separator = "&" if "?" in path else "?"
     return RedirectResponse(f"{path}{separator}{flag}={value}", status_code=303)
+
+
+EVOLUTION_RETURN_PREFIXES = ("/v2-clean/admin/evolution",)
+
+
+def _evolution_return_context(request: Request) -> tuple[str, str]:
+    raw_token = request.query_params.get("return_context", "")
+    resolved = resolve_return_context(
+        settings.app_secret_key,
+        raw_token,
+        allowed_prefixes=EVOLUTION_RETURN_PREFIXES,
+    )
+    if resolved:
+        return raw_token, resolved.url
+    token = issue_return_context(
+        settings.app_secret_key,
+        path="/v2-clean/admin/evolution",
+    )
+    return token, "/v2-clean/admin/evolution"
+
+
+def _evolution_post_action_target(token: str, fallback: str) -> str:
+    resolved = resolve_return_context(
+        settings.app_secret_key,
+        token,
+        allowed_prefixes=EVOLUTION_RETURN_PREFIXES,
+    )
+    return resolved.url if resolved else fallback
 
 
 def _role_codes_for_user(db, user_id: int) -> set[str]:
@@ -790,6 +855,100 @@ def _active_admin_count(db) -> int:
         )
         or 0
     )
+
+
+@clean_admin_router.get("/v2-clean/admin/setup", response_class=HTMLResponse)
+def clean_admin_setup(request: Request):
+    access = _authorized(
+        request,
+        "admin.manage",
+    )
+    if not access:
+        return _denied(request)
+    user_id, permissions = access
+    with SessionLocal() as db:
+        counts = {
+            "units": db.scalar(select(func.count()).select_from(OrganizationalUnit)) or 0,
+            "teams": db.scalar(select(func.count()).select_from(Team)) or 0,
+            "roles": db.scalar(select(func.count()).select_from(Role).where(Role.active.is_(True))) or 0,
+            "permissions": db.scalar(select(func.count()).select_from(Permission)) or 0,
+            "users": db.scalar(select(func.count()).select_from(User).where(User.active.is_(True))) or 0,
+            "categories": db.scalar(select(func.count()).select_from(WorkCategory).where(WorkCategory.active.is_(True))) or 0,
+            "subcategories": db.scalar(select(func.count()).select_from(WorkSubcategory).where(WorkSubcategory.active.is_(True))) or 0,
+            "email_channels": db.scalar(select(func.count()).select_from(EmailChannel).where(EmailChannel.active.is_(True))) or 0,
+            "ticket_types": db.scalar(select(func.count()).select_from(ServiceDeskTicketType).where(ServiceDeskTicketType.active.is_(True))) or 0,
+            "document_types": db.scalar(
+                select(func.count())
+                .select_from(SettingsValue)
+                .join(SettingsCatalog, SettingsCatalog.id == SettingsValue.catalog_id)
+                .where(
+                    SettingsCatalog.code == "document_type",
+                    SettingsCatalog.active.is_(True),
+                    SettingsValue.active.is_(True),
+                )
+            ) or 0,
+            "workshop_models": db.scalar(select(func.count()).select_from(WorkshopTemplate).where(WorkshopTemplate.active.is_(True))) or 0,
+            "audit": db.scalar(select(func.count()).select_from(AuditLog)) or 0,
+        }
+        setup_steps = (
+            {"code": "organization", "label": "Estrutura organizacional", "description": "Definir áreas e equipas antes de atribuir pessoas.", "href": "/v2-clean/admin/organization", "metric": f"{counts['units']} áreas · {counts['teams']} equipas", "ready": counts["units"] > 0 and counts["teams"] > 0},
+            {"code": "roles", "label": "Perfis", "description": "Criar os perfis funcionais que representam responsabilidades reais.", "href": "/v2-clean/admin/roles", "metric": f"{counts['roles']} perfis ativos", "ready": counts["roles"] > 0},
+            {"code": "permissions", "label": "Permissões, capacidades e âmbitos", "description": "Rever capacidades gerais e limitar o trabalho por âmbito.", "href": "/v2-clean/admin/work-classification?view=permissions", "metric": f"{counts['permissions']} capacidades catalogadas", "ready": counts["permissions"] > 0},
+            {"code": "users", "label": "Utilizadores", "description": "Associar pessoas a perfis, áreas e equipas já revistos.", "href": "/v2-clean/admin/users", "metric": f"{counts['users']} utilizadores ativos", "ready": counts["users"] > 0},
+            {"code": "classification", "label": "Categorias e subcategorias", "description": "Configurar a linguagem operacional usada nas filas.", "href": "/v2-clean/admin/work-classification?view=desk", "metric": f"{counts['categories']} categorias · {counts['subcategories']} subcategorias", "ready": counts["categories"] > 0},
+            {"code": "email", "label": "Caixas e canais de Email", "description": "Rever canais, acesso e regras; segredos continuam fora da interface.", "href": "/v2-clean/admin/work-classification?view=channels", "metric": f"{counts['email_channels']} canais ativos", "ready": counts["email_channels"] > 0},
+            {"code": "operations", "label": "Tickets, tarefas e processos", "description": "Validar tipos, filas, responsáveis e modelos antes da entrada em operação.", "href": "/v2-clean/admin/operations", "metric": f"{counts['ticket_types']} tipos de ticket", "ready": counts["ticket_types"] > 0},
+            {"code": "documents", "label": "Tipos de documento", "description": "Rever o catálogo documental antes de configurar modelos específicos.", "href": "/v2-clean/admin/settings", "metric": f"{counts['document_types']} tipos ativos", "ready": counts["document_types"] > 0},
+            {"code": "models", "label": "Modelos operacionais", "description": "Rever modelos versionados; nenhuma publicação é automática.", "href": "/v2-clean/admin/workshop-models", "metric": f"{counts['workshop_models']} modelos ativos", "ready": counts["workshop_models"] > 0},
+        )
+        first_pending = next((step["code"] for step in setup_steps if not step["ready"]), None)
+        context = _layout_context(
+            db,
+            user_id,
+            permissions,
+            "setup",
+            setup_steps=setup_steps,
+            setup_ready=sum(1 for step in setup_steps if step["ready"]),
+            setup_total=len(setup_steps),
+            setup_first_pending=first_pending,
+            setup_audit_count=counts["audit"],
+        )
+    return templates.TemplateResponse(request, "clean_admin.html", context)
+
+
+@clean_admin_router.get("/v2-clean/admin/task-process-models", response_class=HTMLResponse)
+def clean_admin_task_process_models(request: Request):
+    access = _authorized(
+        request,
+        "tasks.templates.read",
+        "tasks.templates.manage",
+        "process.models.read",
+        "process.models.manage",
+        "admin.manage",
+    )
+    if not access:
+        return _denied(request)
+    user_id, permissions = access
+    with SessionLocal() as db:
+        task_rows = db.execute(
+            select(TaskTemplate, TaskTemplateVersion)
+            .join(TaskTemplateVersion, TaskTemplateVersion.template_id == TaskTemplate.id)
+            .order_by(TaskTemplate.name, TaskTemplateVersion.version.desc())
+        ).all()
+        process_rows = db.execute(
+            select(ProcessModel, ProcessModelVersion)
+            .join(ProcessModelVersion, ProcessModelVersion.model_id == ProcessModel.id)
+            .order_by(ProcessModel.name, ProcessModelVersion.version.desc())
+        ).all()
+        context = _layout_context(
+            db,
+            user_id,
+            permissions,
+            "task_process_models",
+            task_model_rows=task_rows,
+            process_model_rows=process_rows,
+        )
+    return templates.TemplateResponse(request, "clean_admin.html", context)
 
 
 @clean_admin_router.get("/v2-clean/admin/overview", response_class=HTMLResponse)
@@ -1789,11 +1948,14 @@ def clean_admin_work_classification(request: Request):
         )
         service_desk_category_ids = {item.id for item in service_desk_categories}
 
-        roles = (
-            db.scalars(select(Role).where(Role.active.is_(True)).order_by(Role.name)).all()
+        all_roles = (
+            db.scalars(select(Role).order_by(Role.name)).all()
             if can_read_global_configuration
             else []
         )
+        # Active roles are the only valid choices for new grants. Keep every
+        # existing role in the lookup so historical grants continue to render.
+        roles = [item for item in all_roles if item.active]
         scopes = (
             db.scalars(select(RoleWorkScope).order_by(RoleWorkScope.role_id)).all()
             if can_read_global_configuration
@@ -2030,7 +2192,7 @@ def clean_admin_work_classification(request: Request):
             work_categories_by_id={item.id: item for item in categories},
             work_subcategories_by_id={item.id: item for item in subcategories},
             roles=roles,
-            roles_by_id={item.id: item for item in roles},
+            roles_by_id={item.id: item for item in all_roles},
             work_scopes=scopes,
             email_channels=channels,
             email_channel_aliases=channel_aliases,
@@ -3121,7 +3283,9 @@ def clean_admin_create_email_channel(
     code: str = Form(...),
     name: str = Form(...),
     active: str = Form("on"),
+    from_address: str = Form(""),
     default_reply_address: str = Form(""),
+    from_name: str = Form(""),
     reply_policy: str = Form("mailbox"),
     requires_triage: str = Form(""),
     administrative_review_on_unclassified: str = Form(""),
@@ -3131,13 +3295,24 @@ def clean_admin_create_email_channel(
         return _denied(request)
     clean_code = code.strip().lower()
     clean_name = name.strip()
+    clean_from = from_address.strip().lower() or None
     clean_reply = default_reply_address.strip().lower() or None
+    supplied_from_name = from_name.strip()
+    if len(supplied_from_name) > 160:
+        return _redirect("/v2-clean/admin/work-classification", "error", "invalid_channel")
+    clean_from_name = supplied_from_name or f"CarFast — {clean_name}"[:160]
+    try:
+        outbound_identity(clean_from_name, clean_from, clean_reply)
+    except ValueError:
+        return _redirect("/v2-clean/admin/work-classification", "error", "invalid_channel")
     if (
         not clean_name
         or not CODE_PATTERN.fullmatch(clean_code)
         or reply_policy not in {"original", "mailbox"}
-        or clean_reply
-        and not EMAIL_PATTERN.fullmatch(clean_reply)
+        or not clean_from
+        or not EMAIL_PATTERN.fullmatch(clean_from)
+        or not clean_reply
+        or not EMAIL_PATTERN.fullmatch(clean_reply)
     ):
         return _redirect("/v2-clean/admin/work-classification", "error", "invalid_channel")
     with SessionLocal() as db:
@@ -3157,6 +3332,9 @@ def clean_admin_create_email_channel(
             name=clean_name,
             address=None,
             default_reply_address=clean_reply,
+            from_address=clean_from,
+            from_name=clean_from_name,
+            reply_to_address=clean_reply,
             reply_policy=reply_policy,
             inbound_hash=None,
             inbound_forward_address=None,
@@ -3184,6 +3362,8 @@ def clean_admin_create_email_channel(
                 "name": channel.name,
                 "active": channel.active,
                 "reply_policy": channel.reply_policy,
+                "from_address": channel.from_address,
+                "from_name": channel.from_name,
             },
         )
         db.commit()
@@ -3214,7 +3394,9 @@ def clean_admin_update_email_channel(
     warning_minutes: int = Form(60),
     pause_on_waiting: str = Form(""),
     inbound_forward_address: str = Form(""),
+    from_address: str = Form(""),
     default_reply_address: str = Form(""),
+    from_name: str = Form(""),
     reply_policy: str = Form("mailbox"),
     requires_triage: str = Form(""),
     administrative_review_on_unclassified: str = Form(""),
@@ -3312,8 +3494,28 @@ def clean_admin_update_email_channel(
             return _redirect("/v2-clean/admin/work-classification", "error", "missing_executor")
         if assignment_mode in {"auto_team", "team_claim"} and not default_team_id:
             return _redirect("/v2-clean/admin/work-classification", "error", "missing_executor")
+        clean_from = from_address.strip().lower() or None
         clean_reply = default_reply_address.strip().lower() or None
-        if clean_reply and not EMAIL_PATTERN.fullmatch(clean_reply):
+        supplied_from_name = from_name.strip()
+        if len(supplied_from_name) > 160:
+            return _redirect(
+                "/v2-clean/admin/work-classification", "error", "invalid_email"
+            )
+        clean_from_name = supplied_from_name or channel.from_name or (
+            f"CarFast — {channel.name}"[:160]
+        )
+        try:
+            outbound_identity(clean_from_name, clean_from, clean_reply)
+        except ValueError:
+            return _redirect(
+                "/v2-clean/admin/work-classification", "error", "invalid_email"
+            )
+        if (
+            not clean_from
+            or not EMAIL_PATTERN.fullmatch(clean_from)
+            or not clean_reply
+            or not EMAIL_PATTERN.fullmatch(clean_reply)
+        ):
             return _redirect(
                 "/v2-clean/admin/work-classification", "error", "invalid_email"
             )
@@ -3332,10 +3534,15 @@ def clean_admin_update_email_channel(
             "active": channel.active,
             "default_reply_address": channel.default_reply_address,
             "reply_policy": channel.reply_policy,
+            "from_address": channel.from_address,
+            "from_name": channel.from_name,
         }
         channel.name = name.strip() or channel.name
         channel.active = active == "on"
         channel.default_reply_address = clean_reply
+        channel.from_address = clean_from
+        channel.from_name = clean_from_name
+        channel.reply_to_address = clean_reply
         channel.reply_policy = reply_policy
         channel.requires_triage = requires_triage == "on"
         channel.administrative_review_on_unclassified = (
@@ -3376,6 +3583,7 @@ def clean_admin_update_email_channel(
                 "active": channel.active,
                 "default_reply_address": channel.default_reply_address,
                 "reply_policy": channel.reply_policy,
+                "from_name": channel.from_name,
             },
         )
         db.commit()
@@ -3615,8 +3823,9 @@ def clean_admin_save_email_channel_role(
     ):
         return _redirect("/v2-clean/admin/work-classification", "error", "invalid_scope")
     with SessionLocal() as db:
-        if not db.get(EmailChannel, channel_id) or not db.get(Role, role_id):
-            return _redirect("/v2-clean/admin/work-classification", "error", "invalid_scope")
+        role = db.get(Role, role_id)
+        if not db.get(EmailChannel, channel_id) or not role or not role.active:
+            return Response("Invalid email access selection.", status_code=400)
         grant = db.scalar(
             select(EmailChannelRole).where(
                 EmailChannelRole.channel_id == channel_id,
@@ -3657,7 +3866,11 @@ def _plan_email_access_from_form(
     selected_roles = set(role_ids)
     selected_channels = set(channel_ids)
     valid_role_ids = set(
-        db.scalars(select(Role.id).where(Role.id.in_(selected_roles or {-1}))).all()
+        db.scalars(
+            select(Role.id).where(
+                Role.id.in_(selected_roles or {-1}), Role.active.is_(True)
+            )
+        ).all()
     )
     valid_channel_ids = set(
         db.scalars(
@@ -3666,8 +3879,10 @@ def _plan_email_access_from_form(
     )
     if selected_roles != valid_role_ids or selected_channels != valid_channel_ids:
         raise ValueError("invalid_selection")
-    if source_role_id and not db.get(Role, source_role_id):
-        raise ValueError("missing_copy_source")
+    if source_role_id:
+        source_role = db.get(Role, source_role_id)
+        if not source_role or not source_role.active:
+            raise ValueError("missing_copy_source")
     if source_channel_id and not db.get(EmailChannel, source_channel_id):
         raise ValueError("missing_copy_source")
     return plan_email_role_batch(
@@ -3727,7 +3942,9 @@ def clean_admin_preview_email_access_batch(
                 }
             )
     except ValueError as exc:
-        return JSONResponse({"error": str(exc)}, status_code=422)
+        error = str(exc)
+        status_code = 400 if error in {"invalid_selection", "missing_copy_source"} else 422
+        return JSONResponse({"error": error}, status_code=status_code)
 
 
 @clean_admin_router.post("/v2-clean/admin/work-classification/email-access/batch")
@@ -3792,6 +4009,8 @@ def clean_admin_apply_email_access_batch(
             )
             db.commit()
     except ValueError as exc:
+        if str(exc) in {"invalid_selection", "missing_copy_source"}:
+            return Response("Invalid email access selection.", status_code=400)
         return _redirect(
             "/v2-clean/admin/work-classification?view=channels", "error", str(exc)
         )
@@ -4827,6 +5046,12 @@ def clean_admin_evolution(request: Request):
     status = query_params.get("status", "").strip()
     sort = query_params.get("sort", "updated")
     direction = query_params.get("direction", "desc")
+    foundation_enabled = settings.visual_foundation_enabled
+    return_context_token = issue_return_context(
+        settings.app_secret_key,
+        path=request.url.path,
+        query=str(request.url.query),
+    )
     sort_fields = {
         "created": EvolutionRecord.created_at,
         "updated": EvolutionRecord.updated_at,
@@ -4899,6 +5124,8 @@ def clean_admin_evolution(request: Request):
             users_by_id=all_users,
             teams_by_id=all_teams,
             can_manage=bool(permissions.intersection({"admin.evolution.manage", "admin.manage"})),
+            foundation_ui_enabled=foundation_enabled,
+            return_context_token=return_context_token,
         )
     return templates.TemplateResponse(request, "clean_admin.html", context)
 
@@ -4917,6 +5144,8 @@ def clean_admin_create_evolution_record(
     reference_chat: str = Form(""),
     reference_branch: str = Form(""),
     reference_commit: str = Form(""),
+    submit_action: str = Form("save"),
+    return_context: str = Form(""),
 ):
     access = _evolution_access(request, create=True)
     if not access:
@@ -4967,7 +5196,15 @@ def clean_admin_create_evolution_record(
             after_json=_evolution_record_snapshot(record),
         )
         db.commit()
-        return _redirect(f"/v2-clean/admin/evolution/{record.id}", "created")
+        if settings.visual_foundation_enabled and submit_action == "save_close":
+            return _redirect(
+                _evolution_post_action_target(return_context, "/v2-clean/admin/evolution"),
+                "created",
+            )
+        detail_url = f"/v2-clean/admin/evolution/{record.id}"
+        if settings.visual_foundation_enabled and return_context:
+            detail_url = f"{detail_url}?return_context={return_context}"
+        return _redirect(detail_url, "created")
 
 
 @clean_admin_router.post("/evolution/quick")
@@ -5037,6 +5274,7 @@ def clean_admin_evolution_detail(request: Request, record_id: int):
     if not access:
         return _denied(request)
     user_id, permissions = access
+    return_context_token, return_target = _evolution_return_context(request)
     with SessionLocal() as db:
         record = db.get(EvolutionRecord, record_id)
         if not record:
@@ -5095,6 +5333,9 @@ def clean_admin_evolution_detail(request: Request, record_id: int):
             users_by_id={item.id: item for item in users},
             teams_by_id={item.id: item for item in teams},
             can_manage=bool(permissions.intersection({"admin.evolution.manage", "admin.manage"})),
+            foundation_ui_enabled=settings.visual_foundation_enabled,
+            return_context_token=return_context_token,
+            return_target=return_target,
         )
     return templates.TemplateResponse(request, "clean_admin_evolution_detail.html", context)
 
@@ -5117,6 +5358,8 @@ def clean_admin_update_evolution_record(
     reference_chat: str = Form(""),
     reference_branch: str = Form(""),
     reference_commit: str = Form(""),
+    submit_action: str = Form("save"),
+    return_context: str = Form(""),
 ):
     access = _evolution_access(request, manage=True)
     if not access:
@@ -5193,7 +5436,15 @@ def clean_admin_update_evolution_record(
                 after_json=_evolution_record_snapshot(record),
             )
             db.commit()
-        return _redirect(f"/v2-clean/admin/evolution/{record_id}", "saved")
+        if settings.visual_foundation_enabled and submit_action == "save_close":
+            return _redirect(
+                _evolution_post_action_target(return_context, "/v2-clean/admin/evolution"),
+                "saved",
+            )
+        detail_url = f"/v2-clean/admin/evolution/{record_id}"
+        if settings.visual_foundation_enabled and return_context:
+            detail_url = f"{detail_url}?return_context={return_context}"
+        return _redirect(detail_url, "saved")
 
 
 @clean_admin_router.post("/v2-clean/admin/evolution/{record_id}/comments")

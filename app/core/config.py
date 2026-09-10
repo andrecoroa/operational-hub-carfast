@@ -26,6 +26,17 @@ class Settings(BaseSettings):
     postmark_message_stream: str = "outbound"
     postmark_inbound_basic_user: str | None = None
     postmark_inbound_basic_password: str | None = None
+    microsoft365_email_enabled: bool = False
+    microsoft365_oauth_setup_enabled: bool = False
+    microsoft365_token_encryption_key: str | None = None
+    microsoft365_redirect_uri: str = (
+        "https://carfast-green.onrender.com/v2-clean/integrations/microsoft/callback"
+    )
+    cases_v1_enabled: bool = False
+    modular_composer_enabled: bool = False
+    visual_foundation_enabled: bool = False
+    task_cases_enabled: bool = False
+    task_decisions_enabled: bool = True
 
     @property
     def enable_docs(self) -> bool:

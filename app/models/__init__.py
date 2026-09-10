@@ -1,6 +1,18 @@
 from app.models.admin import Permission, Role, RolePermission, User, UserRole
 from app.models.audit import AuditLog
 from app.models.base import Base
+from app.models.case_workflow import (
+    CaseDocumentLink,
+    CaseEmailLink,
+    CaseVehicleLink,
+    CaseWorkshopLink,
+    OperationalCase,
+    ProcessPhaseExecution,
+    ProcessPhaseInstance,
+    ProcessProposalAcceptance,
+    WorkflowAuditEvent,
+    WorkflowOutboxEvent,
+)
 from app.models.classification_proposals import (
     ClassificationProposal,
     ClassificationProposalAudit,
@@ -26,11 +38,14 @@ from app.models.email import (
     EmailChannel,
     EmailChannelAlias,
     EmailChannelRole,
+    EmailChannelTransport,
+    EmailSecretReference,
     EmailChannelUser,
     EmailExecutorEligibility,
     EmailInboxRule,
     EmailMessage,
     EmailMessageDelivery,
+    EmailSyncCheckpoint,
     EmailTemplate,
     EmailThread,
     EmailThreadLink,
@@ -44,6 +59,11 @@ from app.models.evolution import (
 )
 from app.models.imports import ImportBatch, ImportError, ImportFile, ImportMapping, ImportRawRow
 from app.models.incidents import Incident, IncidentEvent, IncidentEvidence
+from app.models.invoice_service_history import (
+    InvoiceServiceEvent,
+    InvoiceServiceEventRevision,
+    InvoiceServiceImportBatch,
+)
 from app.models.integrations import EmailIntake, EmailIntakeAttachment
 from app.models.management_center import (
     ClaimIncident,
@@ -65,6 +85,12 @@ from app.models.photo_capture import (
     PhotoMedia,
 )
 from app.models.pilot import PilotFeedback
+from app.models.platform import (
+    InstallationModule,
+    ModuleCapability,
+    ModuleDefinition,
+    ModuleDependency,
+)
 from app.models.portal import (
     PortalInvitation,
     PortalOrganization,
@@ -100,12 +126,23 @@ from app.models.suppliers import (
     SupplierType,
     SupplierTypeAssignment,
 )
+from app.models.task_templates import (
+    ProcessInstance,
+    ProcessInstanceEvent,
+    ProcessModel,
+    ProcessModelVersion,
+    TaskTemplate,
+    TaskTemplateUsage,
+    TaskTemplateVersion,
+)
 from app.models.tasks import (
     QuickRecord,
     Task,
     TaskAssignmentEvent,
+    TaskCase,
     TaskComment,
     TaskDocument,
+    TaskDecision,
     TaskEmailOrigin,
     TaskGuidedFlowRun,
     TaskGuidedFlowStepRun,
@@ -183,6 +220,10 @@ from app.models.workshop_phased import (
 __all__ = [
     "AuditLog",
     "Base",
+    "CaseDocumentLink",
+    "CaseEmailLink",
+    "CaseVehicleLink",
+    "CaseWorkshopLink",
     "ClassificationProposal",
     "ClassificationProposalAudit",
     "ClassificationProposalUsage",
@@ -196,6 +237,9 @@ __all__ = [
     "DocumentEvent",
     "DocumentLink",
     "DocumentWorkflowState",
+    "InvoiceServiceEvent",
+    "InvoiceServiceEventRevision",
+    "InvoiceServiceImportBatch",
     "VehicleDocumentAlert",
     "VehicleDocumentAuditField",
     "VehicleDocumentPendingAction",
@@ -207,13 +251,16 @@ __all__ = [
     "EmailAuditEvent",
     "EmailChannel",
     "EmailChannelAlias",
-    "EmailChannelUser",
     "EmailChannelRole",
+    "EmailChannelTransport",
+    "EmailSecretReference",
+    "EmailChannelUser",
     "EmailExecutorEligibility",
     "EmailInboxRule",
     "EmailTemplate",
     "EmailMessage",
     "EmailMessageDelivery",
+    "EmailSyncCheckpoint",
     "EmailThread",
     "EmailThreadLink",
     "EmailWebhookEvent",
@@ -237,12 +284,17 @@ __all__ = [
     "ManagementProcessType",
     "ManagementRule",
     "OrganizationalUnit",
+    "OperationalCase",
     "Permission",
     "PhotoActionDefinition",
     "PhotoCaptureItem",
     "PhotoCaptureSession",
     "PhotoMedia",
     "PilotFeedback",
+    "InstallationModule",
+    "ModuleCapability",
+    "ModuleDefinition",
+    "ModuleDependency",
     "PortalInvitation",
     "PortalOrganization",
     "PortalPublicationAccess",
@@ -277,9 +329,11 @@ __all__ = [
     "SupplierType",
     "SupplierTypeAssignment",
     "Task",
+    "TaskCase",
     "TaskAssignmentEvent",
     "TaskComment",
     "TaskDocument",
+    "TaskDecision",
     "TaskEmailOrigin",
     "TaskGuidedFlowRun",
     "TaskGuidedFlowStepRun",
@@ -290,6 +344,16 @@ __all__ = [
     "TaskRecurrenceOccurrence",
     "TaskRecurrenceTemplate",
     "TaskSlaEvent",
+    "TaskTemplate",
+    "TaskTemplateVersion",
+    "TaskTemplateUsage",
+    "ProcessModel",
+    "ProcessModelVersion",
+    "ProcessInstance",
+    "ProcessInstanceEvent",
+    "ProcessPhaseExecution",
+    "ProcessPhaseInstance",
+    "ProcessProposalAcceptance",
     "Team",
     "TeamMember",
     "User",
@@ -321,6 +385,8 @@ __all__ = [
     "WorkshopProcessNote",
     "WorkshopProcessService",
     "WorkshopTechnicalReading",
+    "WorkflowAuditEvent",
+    "WorkflowOutboxEvent",
     "WorkshopDiagnosticCatalogItem",
     "WorkshopDiagnosticSuggestion",
     "WorkshopMaterialNeed",

@@ -1,21 +1,27 @@
 from __future__ import annotations
 
-from datetime import date, timedelta
-from typing import Iterable
+from collections.abc import Iterable
+from dataclasses import dataclass
+from datetime import date, datetime, time, timedelta
+from zoneinfo import ZoneInfo
 
-from sqlalchemy import and_, or_, select
+from sqlalchemy import and_, false, or_, select
 
 from app.models.admin import Role, User, UserRole
-from app.models.organization import TeamMember
+from app.models.organization import Team, TeamMember
 from app.models.tasks import (
     Task,
+    TaskDecision,
     TaskHelpRequest,
     TaskNotification,
     TaskParticipant,
 )
+from app.models.work_hierarchy import ServiceDeskCategoryExecutor
 from app.services.authorization import get_user_permission_codes
-from app.services.work_classification import user_work_scope_allows, user_work_scope_filter
-
+from app.services.work_classification import (
+    user_work_scope_allows,
+    user_work_scope_filter,
+)
 
 TASK_DUE_SOON_DAYS = 3
 TASK_ELEVATED_ROLE_CODES = {
@@ -25,6 +31,34 @@ TASK_ELEVATED_ROLE_CODES = {
     "manager",
     "auditor",
 }
+ACTIVE_SUPPORT_STATUSES = ("pending", "accepted")
+
+
+@dataclass(frozen=True)
+class TaskScopeView:
+    code: str
+    workspace: str
+    mine_kind: str
+    assignment: str
+
+
+def resolve_task_scope_view(
+    db, *, user_id: int | None, requested: str
+) -> tuple[TaskScopeView | None, str | None]:
+    """Resolve the public Task Center view without silently changing scope."""
+
+    scopes = {
+        "mine": TaskScopeView("mine", "mine", "assigned", ""),
+        "claim": TaskScopeView("claim", "all", "assigned", "unassigned"),
+        "team": TaskScopeView("team", "mine", "team", ""),
+        "all": TaskScopeView("all", "all", "all", ""),
+    }
+    scope = scopes.get(requested)
+    if scope is None:
+        return None, "invalid"
+    if requested == "team" and (not user_id or not user_team_ids(db, user_id)):
+        return None, "forbidden"
+    return scope, None
 
 
 def task_role_codes(db, user_id: int) -> set[str]:
@@ -44,7 +78,11 @@ def user_is_restricted_task_operator(db, user_id: int) -> bool:
 
 def user_team_ids(db, user_id: int) -> set[int]:
     return set(
-        db.scalars(select(TeamMember.team_id).where(TeamMember.user_id == user_id))
+        db.scalars(
+            select(TeamMember.team_id)
+            .join(Team, Team.id == TeamMember.team_id)
+            .where(TeamMember.user_id == user_id, Team.active.is_(True))
+        )
     )
 
 
@@ -55,7 +93,7 @@ def task_direct_relation_filter(*, user_id: int, task_model=Task):
     )
     support_ids = select(TaskHelpRequest.task_id).where(
         TaskHelpRequest.requested_user_id == user_id,
-        TaskHelpRequest.status != "cancelled",
+        TaskHelpRequest.status.in_(ACTIVE_SUPPORT_STATUSES),
     )
     return or_(
         task_model.assigned_to_id == user_id,
@@ -73,7 +111,7 @@ def task_team_relation_filter(db, *, user_id: int, task_model=Task):
         return None
     support_team_ids = select(TaskHelpRequest.task_id).where(
         TaskHelpRequest.requested_team_id.in_(tuple(team_ids)),
-        TaskHelpRequest.status != "cancelled",
+        TaskHelpRequest.status.in_(ACTIVE_SUPPORT_STATUSES),
     )
     return or_(
         task_model.team_id.in_(tuple(team_ids)),
@@ -81,6 +119,37 @@ def task_team_relation_filter(db, *, user_id: int, task_model=Task):
         task_model.waiting_for_team_id.in_(tuple(team_ids)),
         task_model.id.in_(support_team_ids),
     )
+
+
+def task_claimable_relation_filter(db, *, user_id: int, task_model=Task):
+    """Return tasks the actor may assume through an active team and work scope.
+
+    Team membership alone never makes a task part of ``Minhas``.  It only
+    participates here when the task is unassigned and either targets one of
+    the actor's teams or belongs to a category for which that team is an
+    active eligible executor.  A configured ``assume`` scope is mandatory.
+    """
+
+    team_ids = user_team_ids(db, user_id)
+    if not team_ids:
+        return false()
+    assume_scope = user_work_scope_filter(
+        db, user_id=user_id, task_model=task_model, action="assume"
+    )
+    if assume_scope is None:
+        return false()
+    eligible_category_ids = select(ServiceDeskCategoryExecutor.category_id).where(
+        ServiceDeskCategoryExecutor.team_id.in_(tuple(team_ids)),
+        ServiceDeskCategoryExecutor.active.is_(True),
+    )
+    team_or_category = or_(
+        task_model.team_id.in_(tuple(team_ids)),
+        and_(
+            task_model.team_id.is_(None),
+            task_model.work_category_id.in_(eligible_category_ids),
+        ),
+    )
+    return and_(task_model.assigned_to_id.is_(None), team_or_category, assume_scope)
 
 
 def task_visibility_filter(db, *, user_id: int, task_model=Task):
@@ -97,12 +166,26 @@ def task_visibility_filter(db, *, user_id: int, task_model=Task):
     if not user_is_restricted_task_operator(db, user_id):
         return hierarchy
     direct = task_direct_relation_filter(user_id=user_id, task_model=task_model)
+    decision = task_model.id.in_(
+        select(TaskDecision.task_id).where(
+            or_(
+                TaskDecision.decider_id == user_id,
+                TaskDecision.decider_team_id.in_(
+                    select(TeamMember.team_id).where(TeamMember.user_id == user_id)
+                ),
+            ),
+            TaskDecision.status.in_(("pending", "information_requested")),
+        )
+    )
     team = task_team_relation_filter(db, user_id=user_id, task_model=task_model)
+    claimable = task_claimable_relation_filter(
+        db, user_id=user_id, task_model=task_model
+    )
     if team is None:
-        return direct
+        return or_(direct, decision, claimable)
     if hierarchy is None:
-        return or_(direct, team)
-    return or_(direct, and_(team, hierarchy))
+        return or_(direct, decision, team, claimable)
+    return or_(direct, decision, and_(team, hierarchy), claimable)
 
 
 def user_can_view_task(db, *, user_id: int, task: Task) -> bool:
@@ -113,15 +196,32 @@ def user_can_view_task(db, *, user_id: int, task: Task) -> bool:
     return db.scalar(statement) is not None
 
 
-def task_due_condition(code: str, *, task_model=Task, today: date | None = None):
-    current_day = today or date.today()
+def task_due_condition(
+    code: str,
+    *,
+    task_model=Task,
+    today: date | None = None,
+    local_time: time | None = None,
+):
+    lisbon_now = datetime.now(ZoneInfo("Europe/Lisbon"))
+    current_day = today or lisbon_now.date()
+    current_time = local_time or lisbon_now.time().replace(tzinfo=None)
+    overdue_today = and_(
+        task_model.due_on == current_day,
+        task_model.due_time.is_not(None),
+        task_model.due_time < current_time,
+    )
     if code == "due_soon":
         return and_(
             task_model.due_on >= current_day,
             task_model.due_on <= current_day + timedelta(days=TASK_DUE_SOON_DAYS),
+            ~overdue_today,
         )
     if code == "overdue":
-        return and_(task_model.due_on.is_not(None), task_model.due_on < current_day)
+        return and_(
+            task_model.due_on.is_not(None),
+            or_(task_model.due_on < current_day, overdue_today),
+        )
     return None
 
 
@@ -219,24 +319,17 @@ def task_notification_recipient_ids(
         db.scalars(
             select(TaskHelpRequest).where(
                 TaskHelpRequest.task_id == task.id,
-                TaskHelpRequest.status != "cancelled",
+                TaskHelpRequest.status.in_(ACTIVE_SUPPORT_STATUSES),
             )
         )
     )
     recipient_ids.update(
         item.requested_user_id for item in help_requests if item.requested_user_id
     )
-    recipient_ids.update(
-        _team_member_user_ids(
-            db,
-            [
-                task.team_id,
-                task.delegated_to_team_id,
-                task.waiting_for_team_id,
-                *(item.requested_team_id for item in help_requests),
-            ],
-        )
-    )
+    # Team membership alone is deliberately not expanded here. Callers add
+    # members through ``extra_user_ids`` only when that team is the explicit
+    # destination of the event, preventing routine updates from notifying an
+    # entire operational team.
     if not recipient_ids:
         return set()
     return set(

@@ -11,6 +11,7 @@ Cada manual separa **Disponível agora** de **Planeado/em implementação**. Os 
 
 ## Operação e arquitetura relacionada
 
+- [Arquitetura-alvo modular — Fase 1](architecture/README.md)
 - [Matriz de permissões administrativas](ADMIN_PERMISSION_MATRIX.md)
 - [Relatório de integração Service Desk e Email](RELATORIO_INTEGRACAO_SERVICE_DESK_EMAIL.md)
 - [Decisões do modelo do Centro de Tarefas](MODELO_CENTRO_TAREFAS_DECISOES.md)

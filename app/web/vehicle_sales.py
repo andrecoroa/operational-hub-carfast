@@ -18,6 +18,7 @@ from sqlalchemy import and_, func, not_, or_, select
 import app.web.router as base_router
 from app.core.config import settings
 from app.models import (
+    Document,
     PortalOrganization,
     PortalPublicationAccess,
     Vehicle,
@@ -362,6 +363,20 @@ def _load_sale_rows(db, vehicle_statement=None) -> list[dict[str, Any]]:
         .order_by(VehicleFinancialPlan.updated_at.desc(), VehicleFinancialPlan.id.desc())
     ).all():
         financial_plans.setdefault(plan.vehicle_id, plan)
+    installments_by_plan: dict[int, list[VehicleFinancialPlanInstallment]] = {}
+    if financial_plans:
+        for installment in db.scalars(
+            select(VehicleFinancialPlanInstallment)
+            .where(
+                VehicleFinancialPlanInstallment.financial_plan_id.in_(
+                    [plan.id for plan in financial_plans.values()]
+                )
+            )
+            .order_by(VehicleFinancialPlanInstallment.period_number)
+        ).all():
+            installments_by_plan.setdefault(installment.financial_plan_id, []).append(
+                installment
+            )
     manual_by_vehicle: dict[int, dict[str, Any]] = {vehicle_id: {} for vehicle_id in vehicle_ids}
     for field in db.scalars(
         select(VehicleManualField).where(
@@ -377,6 +392,9 @@ def _load_sale_rows(db, vehicle_statement=None) -> list[dict[str, Any]]:
             manual_by_vehicle.get(vehicle.id, {}),
             profiles.get(vehicle.id),
             financial_plans.get(vehicle.id),
+            installments_by_plan.get(financial_plans[vehicle.id].id, [])
+            if vehicle.id in financial_plans
+            else [],
         )
         for vehicle in vehicles
     ]
@@ -589,6 +607,8 @@ def _proposal_snapshot(row: dict[str, Any]) -> dict[str, Any]:
         "gearbox": row.get("gearbox") or "-",
         "cost": str(row["cost"]) if row.get("cost") is not None else None,
         "debt": str(row["debt"]) if row.get("debt") is not None else None,
+        "finance_entity": row.get("finance_entity") or "",
+        "contract_number": str(row.get("contract_number") or ""),
         "km": str(row["km"]) if row["km"] is not None else None,
         "status": row["status_label"],
         "vehicle_state": row.get("vehicle_state_label") or "-",
@@ -1208,6 +1228,62 @@ def vehicle_sale_opportunities(
             "lead_statuses": LEAD_STATUSES,
             "lead_status_labels": LEAD_STATUS_LABELS,
             "money": money,
+        },
+    )
+
+
+@vehicle_sales_router.get(
+    "/v2-clean/fleet/sales/publications",
+    response_class=HTMLResponse,
+)
+def vehicle_sale_publications_page(
+    request: Request,
+    status: str = "published",
+    q: str = "",
+):
+    denied = _sales_access_denied(request)
+    if denied:
+        return denied
+    clean_status = status if status in {"published", "revoked", "all"} else "published"
+    with base_router.SessionLocal() as db:
+        statement = (
+            select(VehicleSalePublication, Vehicle)
+            .join(Vehicle, Vehicle.id == VehicleSalePublication.vehicle_id)
+            .order_by(VehicleSalePublication.id.desc())
+            .limit(250)
+        )
+        conditions = []
+        if clean_status != "all":
+            conditions.append(VehicleSalePublication.status == clean_status)
+        if q.strip():
+            token = f"%{q.strip()}%"
+            conditions.append(
+                or_(Vehicle.plate.ilike(token), Vehicle.brand.ilike(token), Vehicle.model.ilike(token))
+            )
+        if conditions:
+            statement = statement.where(*conditions)
+        rows = db.execute(statement).all()
+        published_count = db.scalar(
+            select(func.count()).select_from(VehicleSalePublication).where(
+                VehicleSalePublication.status == "published"
+            )
+        ) or 0
+        revoked_count = db.scalar(
+            select(func.count()).select_from(VehicleSalePublication).where(
+                VehicleSalePublication.status == "revoked"
+            )
+        ) or 0
+    return base_router.templates.TemplateResponse(
+        request,
+        "clean_vehicle_sale_publications.html",
+        {
+            "rows": rows,
+            "status_filter": clean_status,
+            "q": q.strip(),
+            "published_count": published_count,
+            "revoked_count": revoked_count,
+            "audience_labels": PUBLICATION_AUDIENCE_LABELS,
+            "visibility_labels": PORTAL_VISIBILITY_LABELS,
         },
     )
 
@@ -2016,6 +2092,8 @@ def vehicle_sale_proposal_xlsx(request: Request, proposal_id: int):
         "Cliente",
         "Data de devolução",
         "Proposto CarFast",
+        "Entidade financeira",
+        "N.º contrato",
         "Valor em dívida",
         "Margem CarFast",
         "Contraproposta cliente",
@@ -2041,6 +2119,10 @@ def vehicle_sale_proposal_xlsx(request: Request, proposal_id: int):
             if line.customer_counteroffer is not None and debt is not None
             else None
         )
+        finance_entity = data.get("finance_entity") or current.get("finance_entity") or ""
+        contract_number = str(
+            data.get("contract_number") or current.get("contract_number") or ""
+        )
         sheet.append([
             data.get("plate"), data.get("registration"), data.get("brand"),
             data.get("model"), data.get("version"), data.get("colour"),
@@ -2049,10 +2131,15 @@ def vehicle_sale_proposal_xlsx(request: Request, proposal_id: int):
             data.get("vehicle_state") or current.get("vehicle_state_label") or "-",
             data.get("client") or (current_vehicle.rentway_client if current_vehicle else None) or "-",
             data.get("return_on") or current.get("return_on_display") or "-",
-            line.proposed_price, debt, negotiation_margin,
+            line.proposed_price, finance_entity, contract_number, debt, negotiation_margin,
             line.customer_counteroffer, counteroffer_margin,
             line.notes,
         ])
+        contract_cell = sheet.cell(
+            row=sheet.max_row,
+            column=headers.index("N.º contrato") + 1,
+        )
+        contract_cell.number_format = "@"
     for column in sheet.columns:
         letter = column[0].column_letter
         sheet.column_dimensions[letter].width = min(40, max(12, max(len(str(cell.value or "")) for cell in column) + 2))
@@ -2256,6 +2343,12 @@ def vehicle_sale_detail(
             .where(PortalOrganization.status == "active")
             .order_by(PortalOrganization.name.asc())
         ).all()
+        documents = db.scalars(
+            select(Document)
+            .where(Document.vehicle_id == vehicle.id, Document.archived.is_(False))
+            .order_by(Document.document_date.desc().nullslast(), Document.id.desc())
+            .limit(100)
+        ).all()
         public_urls = {
             publication.id: _public_url(request, publication.token) for publication in publications
         }
@@ -2281,6 +2374,7 @@ def vehicle_sale_detail(
             "publication_visibilities": PORTAL_VISIBILITIES,
             "publication_visibility_labels": PORTAL_VISIBILITY_LABELS,
             "portal_organizations": portal_organizations,
+            "documents": documents,
             "lead_kind_labels": LEAD_KIND_LABELS,
             "lead_statuses": LEAD_STATUSES,
             "lead_status_labels": LEAD_STATUS_LABELS,
@@ -2552,6 +2646,12 @@ async def vehicle_sale_publish(request: Request, vehicle_id: int):
             selected_organization_ids.add(int(str(raw_id)))
         except ValueError:
             continue
+    selected_document_ids: set[int] = set()
+    for raw_id in form.getlist("document_ids"):
+        try:
+            selected_document_ids.add(int(str(raw_id)))
+        except ValueError:
+            continue
     with base_router.SessionLocal() as db:
         vehicle = db.get(Vehicle, vehicle_id)
         if not vehicle:
@@ -2585,6 +2685,13 @@ async def vehicle_sale_publish(request: Request, vehicle_id: int):
                 )
             ).all()
         )
+        allowed_documents = db.scalars(
+            select(Document).where(
+                Document.vehicle_id == vehicle.id,
+                Document.archived.is_(False),
+                Document.id.in_(selected_document_ids or {-1}),
+            )
+        ).all()
         if visibility != "selected_organizations":
             allowed_organization_ids = set()
         if visibility == "selected_organizations" and not allowed_organization_ids:
@@ -2592,13 +2699,23 @@ async def vehicle_sale_publish(request: Request, vehicle_id: int):
                 f"/v2-clean/fleet/sales/{vehicle_id}?error=publication_organizations",
                 status_code=303,
             )
+        publication_snapshot = _public_snapshot(vehicle, profile, row, audience)
+        publication_snapshot["documents"] = [
+            {
+                "id": document.id,
+                "title": document.title or document.original_name,
+                "type": document.document_type or document.file_type,
+                "date": document.document_date.isoformat() if document.document_date else None,
+            }
+            for document in allowed_documents
+        ]
         publication = VehicleSalePublication(
             vehicle_id=vehicle.id,
             token=secrets.token_urlsafe(18),
             audience=audience,
             visibility=visibility,
             status="published",
-            snapshot_json=_public_snapshot(vehicle, profile, row, audience),
+            snapshot_json=publication_snapshot,
             selected_image_ids_json=sorted(allowed_image_ids),
             expires_on=expires_on,
             created_by_id=user_id,
@@ -2627,6 +2744,7 @@ async def vehicle_sale_publish(request: Request, vehicle_id: int):
                 "organization_ids": sorted(allowed_organization_ids),
                 "expires_on": expires_on.isoformat() if expires_on else None,
                 "image_count": len(allowed_image_ids),
+                "document_count": len(allowed_documents),
             },
             user_id=user_id,
         )

@@ -2,18 +2,20 @@
 {% block body %}
 <div class="app-shell clean-shell">
   {% set active_menu = "fleet_sales" %}{% include "_sidebar.html" %}
-  <main class="content clean-content sale-page">
-    <header class="clean-workshop-header clean-workshop-header-final">
-      <div><p class="eyebrow">Frota / venda</p><h2>Propostas comerciais</h2><p>Cada linha representa uma negociação; as versões ficam reunidas no respetivo histórico.</p></div>
+  <main class="content clean-content sale-page{% if foundation_ui_enabled %} visual-fleet-sales visual-sales-secondary-page{% endif %}">
+    {% if foundation_ui_enabled %}{% set visual_section = "Frota" %}{% set visual_page = "Processos de venda" %}{% include "_visual_topbar.html" %}
+    {% set active_sales_view = "processes" %}{% include "_sales_context_nav.html" %}{% endif %}
+    <header class="clean-workshop-header clean-workshop-header-final{% if foundation_ui_enabled %} visual-fleet-heading visual-sales-heading{% endif %}">
+      <div><p class="eyebrow">Frota / processo comercial</p><h2>Processos de venda</h2><p>Negociações, versões e decisões comerciais reunidas num workbench único.</p></div>
       <div class="clean-header-actions"><a class="button-link secondary-link" href="/v2-clean/fleet/sales">Voltar às viaturas</a></div>
     </header>
-    <section class="clean-panel clean-card-wide">
-      <form method="get" class="sale-proposal-list-filters">
+    <section class="clean-panel clean-card-wide{% if foundation_ui_enabled %} visual-sales-workbench{% endif %}">
+      <div class="table-heading flat-heading{% if foundation_ui_enabled %} visual-sales-workbench-header{% endif %}"><div><p class="eyebrow">Carteira comercial</p><h3>Negociações em curso</h3><p>{{ proposal_groups|length }} processos nos filtros atuais.</p></div></div>
+      <form method="get" class="sale-proposal-list-filters{% if foundation_ui_enabled %} visual-sales-secondary-filters{% endif %}">
         <label>Pesquisar<input type="search" name="q" value="{{ q }}" placeholder="Referência, título ou destinatário"></label>
         <label>Estado<select name="status"><option value="active" {% if status_filter == 'active' %}selected{% endif %}>Rascunhos e enviadas</option><option value="draft" {% if status_filter == 'draft' %}selected{% endif %}>Rascunhos</option><option value="sent" {% if status_filter == 'sent' %}selected{% endif %}>Enviadas</option><option value="closed" {% if status_filter == 'closed' %}selected{% endif %}>Terminadas e canceladas</option><option value="all" {% if status_filter == 'all' %}selected{% endif %}>Todas</option></select></label>
         <button type="submit">Filtrar</button>
       </form>
-      <div class="table-heading flat-heading"><div><h3>Negociações</h3><p>{{ proposal_groups|length }} propostas nos filtros atuais.</p></div></div>
       <div class="clean-doc-table-wrap"><table class="clean-doc-table">
         <thead><tr><th>Referência</th><th>Destinatário</th><th>Viaturas</th><th>Versão atual</th><th>Validade</th><th>Estado</th><th>Ação</th></tr></thead>
         <tbody>{% for group in proposal_groups %}{% set proposal = group.latest %}<tr>

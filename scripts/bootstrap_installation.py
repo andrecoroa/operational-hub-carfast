@@ -5,7 +5,13 @@ CarFast data or copy a production database.
 """
 
 from app.core.database import SessionLocal
-from app.services.bootstrap import seed_catalogs, seed_permissions, seed_roles
+from app.services.bootstrap import (
+    seed_catalogs,
+    seed_permissions,
+    seed_process_model_library,
+    seed_roles,
+    seed_task_template_library,
+)
 
 
 def main() -> None:
@@ -13,6 +19,8 @@ def main() -> None:
         seed_permissions(db)
         seed_roles(db)
         seed_catalogs(db)
+        seed_task_template_library(db)
+        seed_process_model_library(db)
         db.commit()
     print("Versioned installation baseline seeded.")
 

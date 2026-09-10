@@ -1,0 +1,42 @@
+{
+  "composition": {
+    "navigation_path_rules": 8,
+    "navigation_paths_sha256": "15be85ae832e7c7d455b550f9d23677929f70625b94066fdc23aaf399dbeee63",
+    "navigation_permission_codes_sha256": "e9506cee850921319d531c49a4af563306ede8f4a055dc58fca1048a091e543a",
+    "navigation_permissions": 9,
+    "navigation_source_groups": 9,
+    "navigation_sources_sha256": "c22cd26b570ea5cb796fcbb5fa65975493fd29ccef03924373b2bed5e829102e"
+  },
+  "invariants": {
+    "effective_permission_semantics": "legacy_set_membership",
+    "legacy_composer_default": true,
+    "operational_data_read": false,
+    "sqlalchemy_table_count_after_additive_catalogue": 190
+  },
+  "permissions": {
+    "legacy_alias_roots": 14,
+    "legacy_aliases_sha256": "834782c0abf9dc45c6f16cfeb58bccad57a1907d2d1f0d9e23a4e7b8dc34cd24",
+    "web_rule_groups": 21,
+    "web_rules_sha256": "a351cae7bcd33e116649d92030325687d282d67ced53bbfbaa39045677b9c213"
+  },
+  "post_actions": {
+    "form_action_count": 584,
+    "form_action_occurrence_count": 802,
+    "form_actions_sha256": "63c9dc2bd5b25c0e314722c4daa09135dbfe82f2aaa05165aa58f28882cf4930",
+    "redirect_destination_count": 418,
+    "redirect_destinations_sha256": "214134f3da2e7525a4e1063574906ea8f3176789a3c4885bbe01867d54bc20f7",
+    "redirect_occurrence_count": 948
+  },
+  "routes": {
+    "by_method": {
+      "DELETE": 2,
+      "GET": 45,
+      "PATCH": 8,
+      "POST": 63
+    },
+    "count": 118,
+    "sha256": "ee4e7b0b4f65a84763a8ea4a5513966101d40631a41742d43a1374f99921bec2"
+  },
+  "schema_version": 1,
+  "source_base": "integration/modular-architecture@0491b84d"
+}

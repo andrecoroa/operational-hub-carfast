@@ -1,0 +1,18 @@
+{
+  "before": 2,
+  "after": 3,
+  "returnContext": "/v2-clean/tasks?queue=tasks_support&workspace=mine&grouping=case&status=open&sort=priority&q=",
+  "desktop": {
+    "width": 1440,
+    "height": 731,
+    "bodyWidth": 1440,
+    "uncontainedOverflow": []
+  },
+  "mobile": {
+    "width": 390,
+    "height": 844,
+    "bodyWidth": 390,
+    "uncontainedOverflow": 0
+  },
+  "pageErrors": []
+}

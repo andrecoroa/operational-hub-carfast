@@ -1,0 +1,185 @@
+{
+  "stockImplementationCommit": "0d1ff691",
+  "evidenceHead": "working-tree-after-b161302e",
+  "syntheticFixture": true,
+  "capturedAt": "2026-08-26T01:45:42.208Z",
+  "metrics": [
+    {
+      "name": "desktop-1440x900",
+      "path": "C:/Users/andre/.codex/worktrees/75c4/New project/.visual-elevation-v3/docs/evidence/visual-elevation-v3-stock/desktop-1440x900.png",
+      "asset": "/static/css/visual-v2.css?v=20260826-elevation-v3",
+      "clientWidth": 1425,
+      "globalOverflow": false,
+      "main": {
+        "height": 1609,
+        "hidden": false,
+        "position": "static",
+        "width": 1217,
+        "x": 208,
+        "y": 0
+      },
+      "navGroups": [
+        "Operação",
+        "Operações de negócio",
+        "Sistema"
+      ],
+      "preview": {
+        "height": 429,
+        "hidden": false,
+        "position": "sticky",
+        "width": 384,
+        "x": 1017,
+        "y": 496
+      },
+      "rootFontSize": "16px",
+      "scrollWidth": 1425,
+      "sidebar": {
+        "height": 900,
+        "hidden": false,
+        "position": "sticky",
+        "width": 208,
+        "x": 0,
+        "y": 0
+      },
+      "table": {
+        "height": 1017,
+        "hidden": false,
+        "position": "static",
+        "width": 769,
+        "x": 232,
+        "y": 496
+      },
+      "url": "http://127.0.0.1:8765/v2-clean/stock/articles?availability=all",
+      "viewport": {
+        "height": 900,
+        "width": 1440
+      },
+      "workspace": {
+        "height": 1017,
+        "hidden": false,
+        "position": "static",
+        "width": 1169,
+        "x": 232,
+        "y": 496
+      }
+    },
+    {
+      "name": "tablet-1024x900",
+      "path": "C:/Users/andre/.codex/worktrees/75c4/New project/.visual-elevation-v3/docs/evidence/visual-elevation-v3-stock/tablet-1024x900.png",
+      "asset": "/static/css/visual-v2.css?v=20260826-elevation-v3",
+      "clientWidth": 1009,
+      "globalOverflow": false,
+      "main": {
+        "height": 2166,
+        "hidden": false,
+        "position": "static",
+        "width": 945,
+        "x": 64,
+        "y": 0
+      },
+      "navGroups": [
+        "Operação",
+        "Operações de negócio",
+        "Sistema"
+      ],
+      "preview": {
+        "height": 429,
+        "hidden": false,
+        "position": "relative",
+        "width": 897,
+        "x": 88,
+        "y": 1641
+      },
+      "rootFontSize": "16px",
+      "scrollWidth": 1009,
+      "sidebar": {
+        "height": 900,
+        "hidden": false,
+        "position": "sticky",
+        "width": 64,
+        "x": 0,
+        "y": 0
+      },
+      "table": {
+        "height": 1017,
+        "hidden": false,
+        "position": "static",
+        "width": 897,
+        "x": 88,
+        "y": 608
+      },
+      "url": "http://127.0.0.1:8765/v2-clean/stock/articles?availability=all",
+      "viewport": {
+        "height": 900,
+        "width": 1024
+      },
+      "workspace": {
+        "height": 1462,
+        "hidden": false,
+        "position": "static",
+        "width": 897,
+        "x": 88,
+        "y": 608
+      }
+    },
+    {
+      "name": "mobile-390x844",
+      "path": "C:/Users/andre/.codex/worktrees/75c4/New project/.visual-elevation-v3/docs/evidence/visual-elevation-v3-stock/mobile-390x844.png",
+      "asset": "/static/css/visual-v2.css?v=20260826-elevation-v3",
+      "clientWidth": 375,
+      "globalOverflow": false,
+      "main": {
+        "height": 2804,
+        "hidden": false,
+        "position": "static",
+        "width": 375,
+        "x": 0,
+        "y": 0
+      },
+      "navGroups": [
+        "Operação",
+        "Operações de negócio",
+        "Sistema"
+      ],
+      "preview": {
+        "height": 429,
+        "hidden": false,
+        "position": "relative",
+        "width": 343,
+        "x": 16,
+        "y": 2263
+      },
+      "rootFontSize": "16px",
+      "scrollWidth": 375,
+      "sidebar": {
+        "height": 844,
+        "hidden": false,
+        "position": "fixed",
+        "width": 320,
+        "x": -326,
+        "y": 0
+      },
+      "table": {
+        "height": 1109,
+        "hidden": false,
+        "position": "static",
+        "width": 343,
+        "x": 16,
+        "y": 1143
+      },
+      "url": "http://127.0.0.1:8765/v2-clean/stock/articles?availability=all",
+      "viewport": {
+        "height": 844,
+        "width": 390
+      },
+      "workspace": {
+        "height": 1550,
+        "hidden": false,
+        "position": "static",
+        "width": 343,
+        "x": 16,
+        "y": 1143
+      }
+    }
+  ]
+}

@@ -3,8 +3,10 @@
 <div class="app-shell clean-shell">
   {% set active_menu = "fleet_sales" %}
   {% include "_sidebar.html" %}
-  <main class="content clean-content sale-page">
-    <header class="clean-workshop-header clean-workshop-header-final">
+  <main class="content clean-content sale-page ui-foundation ui-page-shell visual-final-closeout visual-sales-access">
+    {% set visual_section = "Frota" %}{% set visual_page = "Acessos de Vendas" %}{% include "_visual_topbar.html" %}
+    {% set active_sales_view = "access" %}{% include "_sales_context_nav.html" %}
+    <header class="clean-workshop-header clean-workshop-header-final ui-page-header visual-fleet-heading visual-sales-heading">
       <div>
         <p class="eyebrow">Frota / comércio de usados</p>
         <h2>Acessos ao portal externo</h2>
@@ -34,8 +36,14 @@
       </div>
     {% endif %}
 
+    <section class="visual-final-metrics visual-sales-access-metrics" aria-label="Resumo dos acessos externos">
+      <article><span>Entidades</span><strong>{{ organizations|length }}</strong><small>registadas</small></article>
+      <article><span>Utilizadores</span><strong>{{ users_by_organization.values() | map('length') | sum }}</strong><small>associados</small></article>
+      <article><span>Convites</span><strong>{{ invitations|length }}</strong><small>no histórico</small></article>
+    </section>
+
     <section class="portal-admin-grid">
-      <article class="clean-panel">
+      <article class="clean-panel visual-final-form-card">
         <div class="table-heading flat-heading"><div><p class="eyebrow">Entidades</p><h3>Criar empresa</h3></div></div>
         <form method="post" action="/v2-clean/fleet/sales-access/organizations" class="form-stack">
           <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
@@ -53,7 +61,7 @@
         </form>
       </article>
 
-      <article class="clean-panel">
+      <article class="clean-panel visual-final-form-card">
         <div class="table-heading flat-heading"><div><p class="eyebrow">Acesso</p><h3>Criar convite</h3></div></div>
         <form method="post" action="/v2-clean/fleet/sales-access/invitations" class="form-stack">
           <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
@@ -113,7 +121,7 @@
             </form>
           {% endfor %}
         {% else %}
-          <p class="muted">Ainda não existem entidades externas.</p>
+          <div class="visual-final-empty"><strong>Sem entidades externas</strong><span>Crie uma entidade antes de emitir convites de acesso.</span></div>
         {% endfor %}
       </div>
     </section>
@@ -135,7 +143,7 @@
             {% endif %}
           </article>
         {% else %}
-          <p class="muted">Ainda não existem convites.</p>
+          <div class="visual-final-empty"><strong>Sem convites</strong><span>Os convites emitidos e revogados aparecem aqui para auditoria.</span></div>
         {% endfor %}
       </div>
     </section>

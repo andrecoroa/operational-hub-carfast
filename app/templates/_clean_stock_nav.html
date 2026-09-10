@@ -1,3 +1,20 @@
+{% if foundation_ui_enabled %}
+{% set stock_nav_perms = nav_permissions(request) %}
+<section class="stock-context-bar" aria-label="Contexto Stock e Compras">
+  <div><p class="eyebrow">{% if "navigation.workshop.access" in stock_nav_perms and nav_has_permission(request, "workshop.read", "workshop.write", "admin.manage") %}Oficina / {% endif %}Stock e Compras</p><strong>Centro de abastecimento</strong><span>Existências, pedidos, compras e conferência numa cadeia auditável.</span></div>
+  {% if "navigation.workshop.access" in stock_nav_perms and nav_has_permission(request, "workshop.read", "workshop.write", "admin.manage") %}<a class="button-link secondary-link" href="/v2-clean/workshop">Voltar à Oficina</a>{% endif %}
+</section>
+<div class="stock-nav-rail"><nav class="stock-nav" aria-label="Navegação Stock e Compras" tabindex="0">
+  <a href="/v2-clean/stock" {% if stock_nav == "summary" %}class="active" aria-current="page"{% endif %}>Visão geral</a>
+  <a href="/v2-clean/stock/articles" {% if stock_nav in ["articles", "current"] %}class="active" aria-current="page"{% endif %}>Stock</a>
+  <a href="/v2-clean/stock/movements" {% if stock_nav == "movements" %}class="active" aria-current="page"{% endif %}>Movimentos</a>
+  <a href="/v2-clean/stock/workshop-requests" {% if stock_nav == "workshop_requests" %}class="active" aria-current="page"{% endif %}>Pedidos</a>
+  <a href="/v2-clean/stock/orders" {% if stock_nav == "orders" %}class="active" aria-current="page"{% endif %}>Compras / Encomendas</a>
+  <a href="/v2-clean/stock/receipts" {% if stock_nav == "receipts" %}class="active" aria-current="page"{% endif %}>Receções</a>
+  <a href="/v2-clean/stock/inventory" {% if stock_nav == "inventory" %}class="active" aria-current="page"{% endif %}>Inventários</a>
+  <a href="/v2-clean/stock/invoices" {% if stock_nav == "invoices" %}class="active" aria-current="page"{% endif %}>Conferência</a>
+</nav><span class="stock-nav-affordance" aria-hidden="true">Mais →</span></div>
+{% else %}
 <nav class="stock-nav" aria-label="Navegação Stock">
   <a href="/v2-clean/stock" {% if stock_nav == "summary" %}class="active"{% endif %}>Resumo</a>
   <a href="/v2-clean/stock/articles" {% if stock_nav in ["articles", "current"] %}class="active"{% endif %}>Artigos e existências</a>
@@ -9,3 +26,4 @@
   <a href="/v2-clean/stock/invoices" {% if stock_nav == "invoices" %}class="active"{% endif %}>Conferência</a>
   <a href="/v2-clean/stock/movements" {% if stock_nav == "movements" %}class="active"{% endif %}>Movimentos</a>
 </nav>
+{% endif %}

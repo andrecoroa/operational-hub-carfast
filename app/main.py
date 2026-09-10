@@ -14,12 +14,24 @@ from app.models.admin import User
 from app.services.audit import record_audit
 from app.services.authorization import get_user_permission_codes
 from app.services.navigation import navigation_permission_for_path
+from app.services.microsoft365_oauth import (
+    EnvironmentAndDatabaseSecretReferenceStore,
+    configure_secret_reference_store,
+)
 from app.web.email import email_router
+from app.web.microsoft365 import microsoft365_router
 from app.web.portal import portal_router
 from app.web.router import web_router
 from app.web.stock import stock_router
 from app.web.suppliers import supplier_router
 from app.web.vehicle_sales import vehicle_sales_router
+
+if settings.microsoft365_token_encryption_key:
+    configure_secret_reference_store(
+        EnvironmentAndDatabaseSecretReferenceStore(
+            settings.microsoft365_token_encryption_key
+        )
+    )
 
 CHANGE_NOTICE_ALLOWED_PREFIXES = (
     "/api",
@@ -115,6 +127,10 @@ WEB_PERMISSION_RULES = (
                 "settings.manage",
                 "service_desk.classifications.manage",
                 "suppliers.configuration.manage",
+                "tasks.templates.read",
+                "tasks.templates.manage",
+                "process.models.read",
+                "process.models.manage",
             },
             "POST": {
                 "admin.users.manage",
@@ -133,6 +149,10 @@ WEB_PERMISSION_RULES = (
                 "settings.manage",
                 "service_desk.classifications.manage",
                 "suppliers.configuration.manage",
+                "tasks.templates.manage",
+                "tasks.templates.publish",
+                "process.models.manage",
+                "process.models.publish",
             },
         },
     ),
@@ -197,6 +217,12 @@ WEB_PERMISSION_RULES = (
         },
     ),
     (
+        ("/v2-clean/task-cases",),
+        {
+            "POST": {"cases.create", "cases.update"},
+        },
+    ),
+    (
         ("/v2-clean/workshop", "/v2-clean/workshop-entry"),
         {
             "GET": {"workshop.read", "workshop.write", "admin.manage"},
@@ -227,9 +253,17 @@ WEB_PERMISSION_RULES = (
             "GET": {
                 "management_center.read",
                 "management_center.write",
+                "tasks.management.read",
+                "tasks.management.update",
+                "tasks.management.close",
                 "admin.manage",
             },
-            "POST": {"management_center.write", "admin.manage"},
+            "POST": {
+                "management_center.write",
+                "tasks.management.update",
+                "tasks.management.close",
+                "admin.manage",
+            },
         },
     ),
     (
@@ -294,7 +328,7 @@ WEB_PERMISSION_RULES = (
     ),
     (("/workshop",), {"GET": {"workshop.read"}, "POST": {"workshop.write"}}),
     (("/fleet",), {"GET": {"vehicles.read"}, "POST": {"vehicles.write", "fleet.commerce.manage"}}),
-    (("/management-center",), {"GET": {"management_center.read", "management_center.write"}, "POST": {"management_center.write"}}),
+    (("/management-center",), {"GET": {"management_center.read", "management_center.write", "tasks.management.read", "tasks.management.update", "tasks.management.close"}, "POST": {"management_center.write", "tasks.management.update", "tasks.management.close"}}),
     (("/imports",), {"GET": {"imports.run", "imports.approve"}, "POST": {"imports.run"}}),
     (("/documents",), {"GET": {"documents.read", "documents.write"}, "POST": {"documents.write"}}),
 )
@@ -476,6 +510,7 @@ def create_app() -> FastAPI:
     app.include_router(stock_router)
     app.include_router(supplier_router)
     app.include_router(email_router)
+    app.include_router(microsoft365_router)
     app.include_router(web_router)
     return app
 

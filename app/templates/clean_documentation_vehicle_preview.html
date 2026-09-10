@@ -1,22 +1,42 @@
 {% extends "base.html" %}
 {% block body %}
 {% macro simple_document_table(rows, kind) -%}
+  {% if foundation_ui_enabled %}
+  <div class="vehicle-document-table-wrap"><table class="doc-arch-table vehicle-document-table"><thead><tr><th>Data</th><th>Documento</th><th>Tipo / subtipo</th><th>Validade</th><th>Visibilidade</th><th>Partilha</th><th>Ação</th></tr></thead><tbody>
+    {% for row in rows %}<tr{% if selected_row and selected_row.kind == row.kind and selected_row.id == row.id %} class="is-selected"{% endif %}><td>{{ row.date_display or '—' }}</td><td><strong>{{ row.title or row.document_number or row.external_reference or '—' }}</strong><small>{{ row.supplier_name or row.archive_label or '—' }}</small></td><td>{{ row.document_type or row.archive_label or 'Documento' }}<small>{{ row.subtype or row.archive_label or 'Sem subtipo' }}</small></td><td>{% if row.validity_state == 'expired' %}<span class="vehicle-doc-state danger">Expirado</span><small>{{ row.validity_date.strftime('%d/%m/%Y') }}</small>{% elif row.validity_state == 'valid' %}<span class="vehicle-doc-state success">Válido</span><small>{{ row.validity_date.strftime('%d/%m/%Y') }}</small>{% else %}<span class="vehicle-doc-state neutral">Sem validade registada</span>{% endif %}</td><td><span class="vehicle-doc-state {% if row.confidentiality == 'management' %}warning{% endif %}">{{ row.visibility_label or 'Interno' }}</span></td><td><span class="vehicle-doc-state neutral">{{ row.sharing_label or 'Seleção explícita' }}</span></td><td><a href="?selected={{ row.kind }}:{{ row.id }}{% if return_context_token %}&return_context={{ return_context_token|urlencode }}{% endif %}#document-preview">Pré-visualizar</a>{% if kind == 'invoice' %} · <a href="/v2-clean/documentation/treatment?family=invoices&q={{ (row.document_number or row.title or '')|urlencode }}">Tratar</a>{% elif kind == 'diagnostic' %} · <a href="/v2-clean/documentation/treatment?family=diagnostics&q={{ (row.title or '')|urlencode }}">Tratar</a>{% else %} · <a href="/v2-clean/fleet/{{ vehicle.id }}/documents?return_to={{ request.url.path|urlencode }}">Ficha</a>{% endif %}</td></tr>{% else %}<tr><td colspan="7" class="doc-arch-empty">Sem registos.</td></tr>{% endfor %}
+  </tbody></table></div>
+  {% else %}
   <div class="doc-arch-table-wrap"><table class="doc-arch-table"><thead><tr><th>Data</th><th>Documento</th><th>Fornecedor/Origem</th><th>Estado</th><th>Ação</th></tr></thead><tbody>
     {% for row in rows %}<tr><td>{{ row.date_display or '—' }}</td><td><strong>{{ row.title or row.document_number or row.external_reference or '—' }}</strong></td><td>{{ row.supplier_name or row.archive_label or '—' }}</td><td>{{ row.comparison_state or row.extraction_state or row.status or '—' }}</td><td>{% if kind == 'invoice' %}<a href="/v2-clean/documentation/treatment?family=invoices&q={{ (row.document_number or row.title or '')|urlencode }}">Tratar</a>{% elif kind == 'diagnostic' %}<a href="/v2-clean/documentation/treatment?family=diagnostics&q={{ (row.title or '')|urlencode }}">Tratar</a>{% else %}<a href="/v2-clean/fleet/{{ vehicle.id }}/documents">Abrir ficha</a>{% endif %}</td></tr>{% else %}<tr><td colspan="5" class="doc-arch-empty">Sem registos.</td></tr>{% endfor %}
   </tbody></table></div>
+  {% endif %}
 {%- endmacro %}
 <div class="app-shell clean-shell">
   {% set active_menu = "documentation_by_vehicle" %}
   {% include "_sidebar.html" %}
-  <main class="content clean-content doc-arch-page doc-vehicle-preview-page">
+  <main class="content clean-content doc-arch-page doc-vehicle-preview-page{% if foundation_ui_enabled %} vehicle-document-workbench vehicle-document-detail{% endif %}">
     {% set doc_nav = "by_vehicle" %}
     {% include "_clean_documentation_nav.html" %}
-    <header class="doc-arch-header">
-      <div><p class="eyebrow">Preview central por viatura</p><h1>{{ vehicle.plate or vehicle.vin or vehicle.rentway_unit_nr }}</h1><p>{{ vehicle.brand or '' }} {{ vehicle.model or '' }} · leitura centralizada, sem estados paralelos.</p></div>
-      <div class="doc-arch-header-actions"><a class="button-link secondary-link" href="/v2-clean/documentation/by-vehicle">Voltar</a><a class="button-link secondary-link" href="/v2-clean/fleet/{{ vehicle.id }}/documents">Ficha documental</a><a class="button-link" href="/v2-clean/documentation/treatment?family=invoices&q={{ (vehicle.plate or vehicle.vin or '')|urlencode }}">Tratar documentos</a></div>
+    <header class="doc-arch-header{% if foundation_ui_enabled %} vehicle-document-header{% endif %}">
+      <div><p class="eyebrow">Preview central por viatura · {{ vehicle.plate or vehicle.vin or vehicle.rentway_unit_nr }}</p><h1>{% if foundation_ui_enabled %}Arquivo documental da viatura{% else %}{{ vehicle.plate or vehicle.vin or vehicle.rentway_unit_nr }}{% endif %}</h1><p>{{ vehicle.brand or '' }} {{ vehicle.model or '' }} · leitura centralizada, sem estados paralelos.</p></div>
+      <div class="doc-arch-header-actions"><a class="button-link secondary-link" href="{{ return_to }}">Voltar</a><a class="button-link secondary-link" href="/v2-clean/fleet/{{ vehicle.id }}/documents?return_to={{ request.url.path|urlencode }}">Ficha documental</a><a class="button-link" href="/v2-clean/documentation/treatment?family=invoices&q={{ (vehicle.plate or vehicle.vin or '')|urlencode }}">Tratar documentos</a></div>
     </header>
 
     <section class="doc-arch-kpis doc-vehicle-preview-kpis"><div><strong>{{ real_invoice_rows|length }}</strong><span>Faturas reais</span></div><div><strong>{{ expected_rows|length }}</strong><span>Faturas esperadas</span></div><div><strong>{{ work_order_rows|length }}</strong><span>Folhas de obra</span></div><div><strong>{{ diagnostic_rows|length }}</strong><span>Diagnósticos/relatórios</span></div><div><strong>{{ other_rows|length }}</strong><span>Outros documentos</span></div></section>
+
+    {% if foundation_ui_enabled %}
+    <section class="vehicle-document-preview-grid" id="document-preview">
+      <article class="vehicle-document-preview-pane" aria-label="Pré-visualização documental">
+        <header><div><p class="eyebrow">Pré-visualização</p><h2>{% if selected_row %}{{ selected_row.title }}{% else %}Nenhum documento selecionado{% endif %}</h2></div>{% if selected_row and selected_row.open_href %}<a class="button-link secondary-link" href="{{ selected_row.open_href }}?return_to={{ request.url.path|urlencode }}">Abrir detalhe</a>{% endif %}</header>
+        {% if selected_row and selected_row.preview_href %}<iframe title="Pré-visualização de {{ selected_row.title }}" src="{{ selected_row.preview_href }}"></iframe>{% else %}<div class="vehicle-document-preview-empty"><strong>Pré-visualização indisponível</strong><span>Registos esperados e documentos em falta não expõem ficheiros inexistentes.</span></div>{% endif %}
+      </article>
+      <aside class="vehicle-document-control-pane" aria-label="Classificação e visibilidade">
+        <header><p class="eyebrow">Controlo documental</p><h2>Classificação e destino</h2></header>
+        {% if selected_row %}<dl><div><dt>Tipo</dt><dd>{{ selected_row.document_type or selected_row.archive_label or 'Documento' }}</dd></div><div><dt>Subtipo</dt><dd>{{ selected_row.subtype or 'Sem subtipo' }}</dd></div><div><dt>Validade</dt><dd>{% if selected_row.validity_state == 'expired' %}Expirado · {{ selected_row.validity_date.strftime('%d/%m/%Y') }}{% elif selected_row.validity_state == 'valid' %}Válido · {{ selected_row.validity_date.strftime('%d/%m/%Y') }}{% else %}Sem validade registada{% endif %}</dd></div><div><dt>Visibilidade</dt><dd>{{ selected_row.visibility_label or 'Interno' }}</dd></div></dl>{% else %}<p class="doc-arch-empty">Sem documento selecionado.</p>{% endif %}
+        <section class="vehicle-document-sharing"><h3>Partilha externa</h3><p><strong>Fail-closed:</strong> nenhum documento segue para venda, portal ou email por omissão.</p>{% if can_publish_documents %}<a class="button-link secondary-link" href="/v2-clean/fleet/sales/{{ vehicle.id }}#publication">Selecionar para venda / portal</a>{% else %}<span class="vehicle-document-sharing-denied">Sem permissão para publicar em venda / portal</span>{% endif %}{% if can_email_documents %}<a class="button-link secondary-link" href="/v2-clean/email">Anexar explicitamente por Email</a>{% else %}<span class="vehicle-document-sharing-denied">Sem permissão para anexar por Email</span>{% endif %}</section>
+      </aside>
+    </section>
+    {% endif %}
 
     <section class="doc-arch-card"><div class="doc-arch-card-heading"><div><h2>Faturas reais</h2><p>As ações abrem o mesmo Tratamento central.</p></div></div>{{ simple_document_table(real_invoice_rows, 'invoice') }}</section>
     <section class="doc-arch-card"><div class="doc-arch-card-heading"><div><h2>Faturas esperadas</h2><p>Associação e reconciliação usam os registos existentes.</p></div>{% if can_manage_documents %}<form method="post" action="/v2-clean/documentation/invoices/reconcile-pending"><input type="hidden" name="return_url" value="/v2-clean/documentation/by-vehicle/{{ vehicle.id }}"><button type="submit">Reconciliar</button></form>{% endif %}</div>{{ simple_document_table(expected_rows, 'invoice') }}</section>

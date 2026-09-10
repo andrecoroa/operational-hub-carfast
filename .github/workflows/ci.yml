@@ -57,15 +57,16 @@ jobs:
           cache-dependency-path: requirements-dev.txt
 
       - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install -r requirements-dev.txt
+        run: bash scripts/setup_codex_cloud.sh
 
       - name: Compile and import application
         run: |
           python -m compileall -q app scripts
           python -c "from app.main import app; assert app.title"
-          python -m ruff check scripts/check_migration_heads.py scripts/bootstrap_installation.py scripts/check_clean_install.py
+          python -m ruff check scripts/check_migration_heads.py scripts/bootstrap_installation.py scripts/check_clean_install.py scripts/capture_architecture_baseline.py scripts/export_legacy_inventory.py scripts/run_phase10_rehearsal.py scripts/validate_isolated_environment.py app/platform app/partners app/documents app/service_desk app/stock_domain app/automotive app/models/platform.py app/core/return_context.py app/core/post_action.py migrations/versions/fff37f8a9b0d_add_module_catalogue.py tests/test_modular_foundation.py tests/test_visual_foundation.py tests/test_partners_boundary.py tests/test_documents_boundary.py tests/test_service_desk_boundary.py tests/test_stock_boundary.py tests/test_automotive_boundary.py tests/test_legacy_consolidation.py tests/test_phase10_rehearsal.py tests/test_isolated_environment.py
+
+      - name: Verify frozen architecture baseline
+        run: python -m scripts.capture_architecture_baseline --check
 
       - name: Validate Alembic graph
         run: python scripts/check_migration_heads.py
@@ -73,17 +74,15 @@ jobs:
       - name: Apply migrations to isolated PostgreSQL
         run: |
           python -m alembic upgrade head
+          python -m alembic downgrade ffae1f2a3b4c
+          python -m alembic upgrade head
           python -m alembic current --check-heads
 
       - name: Validate reusable clean installation
         run: |
           python -m scripts.bootstrap_installation
           python -m scripts.check_clean_install
+          python -m scripts.run_phase10_rehearsal
 
       - name: Run tests
-        run: >-
-          python -m pytest -q
-          tests/test_foundation_api.py
-          tests/test_navigation_rbac.py
-          tests/test_email_postmark.py
-          tests/test_service_desk_operations.py
+        run: bash scripts/verify_codex_cloud.sh

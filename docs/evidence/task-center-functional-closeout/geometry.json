@@ -1,0 +1,358 @@
+{
+  "viewport": {
+    "width": 1440,
+    "height": 731
+  },
+  "list": {
+    "boxes": {
+      ".task-center-approved": {
+        "clientWidth": 1232,
+        "overflowX": false,
+        "scrollWidth": 1232
+      },
+      "body": {
+        "clientWidth": 1440,
+        "overflowX": false,
+        "scrollWidth": 1440
+      }
+    },
+    "overflow": [
+      {
+        "clientWidth": 18,
+        "cls": "sr-only",
+        "scrollWidth": 111,
+        "tag": "SPAN"
+      },
+      {
+        "clientWidth": 18,
+        "cls": "sr-only",
+        "scrollWidth": 128,
+        "tag": "SPAN"
+      },
+      {
+        "clientWidth": 1,
+        "cls": "sidebar-action-label",
+        "scrollWidth": 97,
+        "tag": "SPAN"
+      },
+      {
+        "clientWidth": 68,
+        "cls": "",
+        "scrollWidth": 85,
+        "tag": "LABEL"
+      },
+      {
+        "clientWidth": 82,
+        "cls": "",
+        "scrollWidth": 114,
+        "tag": "LABEL"
+      },
+      {
+        "clientWidth": 65,
+        "cls": "",
+        "scrollWidth": 69,
+        "tag": "TD"
+      },
+      {
+        "clientWidth": 65,
+        "cls": "",
+        "scrollWidth": 70,
+        "tag": "TD"
+      },
+      {
+        "clientWidth": 65,
+        "cls": "",
+        "scrollWidth": 69,
+        "tag": "TD"
+      },
+      {
+        "clientWidth": 65,
+        "cls": "",
+        "scrollWidth": 76,
+        "tag": "TD"
+      },
+      {
+        "clientWidth": 211,
+        "cls": "",
+        "scrollWidth": 234,
+        "tag": "TD"
+      },
+      {
+        "clientWidth": 102,
+        "cls": "",
+        "scrollWidth": 121,
+        "tag": "TD"
+      }
+    ],
+    "viewport": [
+      1440,
+      731
+    ]
+  },
+  "detail": {
+    "all": {
+      ".compact-form-grid": [
+        {
+          "clientWidth": 510,
+          "overflowX": false,
+          "rect": {
+            "height": 76,
+            "width": 510,
+            "x": 307,
+            "y": 536.9921875
+          },
+          "scrollWidth": 510
+        },
+        {
+          "clientWidth": 508,
+          "overflowX": false,
+          "rect": {
+            "height": 135.5,
+            "width": 510,
+            "x": 307,
+            "y": 978.640625
+          },
+          "scrollWidth": 508
+        }
+      ],
+      ".task-assignment-exclusive": [
+        {
+          "clientWidth": 508,
+          "overflowX": false,
+          "rect": {
+            "height": 135.5,
+            "width": 510,
+            "x": 307,
+            "y": 978.640625
+          },
+          "scrollWidth": 508
+        }
+      ],
+      ".task-detail-layout": [],
+      ".task-detail-page": [],
+      "[data-work-hierarchy]": [
+        {
+          "clientWidth": 502,
+          "overflowX": false,
+          "rect": {
+            "height": 333.6484375,
+            "width": 506,
+            "x": 309,
+            "y": 628.9921875
+          },
+          "scrollWidth": 502
+        }
+      ],
+      "body": [
+        {
+          "clientWidth": 1425,
+          "overflowX": false,
+          "rect": {
+            "height": 1230.5390625,
+            "width": 1425,
+            "x": 0,
+            "y": 0
+          },
+          "scrollWidth": 1425
+        }
+      ],
+      "form": [
+        {
+          "clientWidth": 123,
+          "overflowX": false,
+          "rect": {
+            "height": 42,
+            "width": 123.0546875,
+            "x": 68,
+            "y": 555.359375
+          },
+          "scrollWidth": 123
+        },
+        {
+          "clientWidth": 0,
+          "overflowX": false,
+          "rect": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 0
+          },
+          "scrollWidth": 0
+        },
+        {
+          "clientWidth": 558,
+          "overflowX": false,
+          "rect": {
+            "height": 1022.3828125,
+            "width": 560,
+            "x": 282,
+            "y": 168.15625
+          },
+          "scrollWidth": 558
+        },
+        {
+          "clientWidth": 358,
+          "overflowX": false,
+          "rect": {
+            "height": 125.8984375,
+            "width": 358,
+            "x": 1016,
+            "y": 370.9921875
+          },
+          "scrollWidth": 358
+        },
+        {
+          "clientWidth": 358,
+          "overflowX": false,
+          "rect": {
+            "height": 185.3984375,
+            "width": 358,
+            "x": 1016,
+            "y": 620.7265625
+          },
+          "scrollWidth": 358
+        },
+        {
+          "clientWidth": 0,
+          "overflowX": false,
+          "rect": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 0
+          },
+          "scrollWidth": 0
+        }
+      ]
+    },
+    "viewport": [
+      1440,
+      731
+    ]
+  },
+  "creationModels": {
+    ".task-create-model": [
+      {
+        "clientWidth": 217,
+        "overflowX": false,
+        "scrollWidth": 217,
+        "whiteSpace": "normal"
+      },
+      {
+        "clientWidth": 217,
+        "overflowX": false,
+        "scrollWidth": 217,
+        "whiteSpace": "normal"
+      },
+      {
+        "clientWidth": 217,
+        "overflowX": false,
+        "scrollWidth": 217,
+        "whiteSpace": "normal"
+      }
+    ],
+    ".task-create-models": [
+      {
+        "clientWidth": 682,
+        "overflowX": false,
+        "scrollWidth": 682,
+        "whiteSpace": "normal"
+      }
+    ],
+    "dialog[open]": [
+      {
+        "clientWidth": 718,
+        "overflowX": false,
+        "scrollWidth": 718,
+        "whiteSpace": "normal"
+      }
+    ]
+  },
+  "creationForm": {
+    "all": {
+      ".task-create-hierarchy": [
+        {
+          "clientHeight": 107,
+          "clientWidth": 665,
+          "overflowX": false,
+          "rect": {
+            "height": 109,
+            "width": 667,
+            "x": 379,
+            "y": 264
+          },
+          "scrollHeight": 88,
+          "scrollWidth": 665
+        }
+      ],
+      ".task-create-relation": [
+        {
+          "clientHeight": 110,
+          "clientWidth": 665,
+          "overflowX": false,
+          "rect": {
+            "height": 112,
+            "width": 667,
+            "x": 379,
+            "y": 385
+          },
+          "scrollHeight": 91,
+          "scrollWidth": 665
+        }
+      ],
+      "[data-create-more]": [
+        {
+          "clientHeight": 197,
+          "clientWidth": 667,
+          "overflowX": false,
+          "rect": {
+            "height": 196.5,
+            "width": 667,
+            "x": 379,
+            "y": 592.5
+          },
+          "scrollHeight": 197,
+          "scrollWidth": 667
+        }
+      ],
+      "[data-task-create-form]:not([hidden])": [
+        {
+          "clientHeight": 743,
+          "clientWidth": 667,
+          "overflowX": false,
+          "rect": {
+            "height": 743.3984375,
+            "width": 667,
+            "x": 379,
+            "y": 93
+          },
+          "scrollHeight": 743,
+          "scrollWidth": 667
+        }
+      ],
+      "dialog[open]": [
+        {
+          "clientHeight": 705,
+          "clientWidth": 703,
+          "overflowX": false,
+          "rect": {
+            "height": 707,
+            "width": 720,
+            "x": 360,
+            "y": 12
+          },
+          "scrollHeight": 841,
+          "scrollWidth": 703
+        }
+      ]
+    },
+    "viewport": [
+      1440,
+      731
+    ]
+  },
+  "verdict": {
+    "horizontalOverflowRelevantContainers": false,
+    "modalVerticalScrollExpected": true
+  }
+}

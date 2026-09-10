@@ -1,0 +1,112 @@
+{
+  "desktop": {
+    "stateContract": {
+      "current": "Nova",
+      "destinations": [
+        "Em curso",
+        "Em espera",
+        "Resolvida",
+        "Cancelada"
+      ]
+    },
+    "managementContract": {
+      "summaries": [
+        "Mais opções de contexto",
+        "Mais opções de planeamento e atribuição",
+        "Histórico (0)"
+      ],
+      "priorityVisible": true,
+      "dueVisible": true,
+      "hiddenPlate": true,
+      "statusInputs": 0,
+      "bodyOverflow": false
+    },
+    "returnOptions": [
+      {
+        "value": "new",
+        "label": "Retomar Nova"
+      },
+      {
+        "value": "in_execution",
+        "label": "Transitar para Em curso"
+      },
+      {
+        "value": "waiting",
+        "label": "Transitar para Em espera"
+      },
+      {
+        "value": "resolved",
+        "label": "Transitar para Resolvida"
+      },
+      {
+        "value": "cancelled",
+        "label": "Transitar para Cancelada"
+      }
+    ],
+    "stateAfterEdit": "Nova",
+    "stateAfterSupport": "Nova",
+    "pageErrors": [],
+    "scroll": {
+      "top": 0,
+      "max": 486,
+      "bodyWidth": 1440,
+      "viewportWidth": 1440,
+      "after": 486
+    }
+  },
+  "mobile": {
+    "stateContract": {
+      "current": "Nova",
+      "destinations": [
+        "Em curso",
+        "Em espera",
+        "Resolvida",
+        "Cancelada"
+      ]
+    },
+    "managementContract": {
+      "summaries": [
+        "Mais opções de contexto",
+        "Mais opções de planeamento e atribuição",
+        "Histórico (2)"
+      ],
+      "priorityVisible": true,
+      "dueVisible": true,
+      "hiddenPlate": true,
+      "statusInputs": 0,
+      "bodyOverflow": false
+    },
+    "returnOptions": [
+      {
+        "value": "new",
+        "label": "Retomar Nova"
+      },
+      {
+        "value": "in_execution",
+        "label": "Transitar para Em curso"
+      },
+      {
+        "value": "waiting",
+        "label": "Transitar para Em espera"
+      },
+      {
+        "value": "resolved",
+        "label": "Transitar para Resolvida"
+      },
+      {
+        "value": "cancelled",
+        "label": "Transitar para Cancelada"
+      }
+    ],
+    "stateAfterEdit": "Nova",
+    "stateAfterSupport": "Nova",
+    "pageErrors": [],
+    "scroll": {
+      "top": 0,
+      "max": 1070,
+      "bodyWidth": 390,
+      "viewportWidth": 390,
+      "after": 1070
+    }
+  }
+}

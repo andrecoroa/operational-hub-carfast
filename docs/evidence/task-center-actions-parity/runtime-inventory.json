@@ -1,0 +1,16 @@
+{
+  "source": "isolated synthetic fixture",
+  "queues": [
+    {"code": "tasks_support", "label": "Tarefas e Suporte", "seedActive": true},
+    {"code": "administration", "label": "Administração", "seedActive": true}
+  ],
+  "teams": [
+    {"code": "support", "label": "Suporte"},
+    {"code": "operations", "label": "Operações"},
+    {"code": "workshop", "label": "Oficina"},
+    {"code": "finance", "label": "Financeira"},
+    {"code": "management", "label": "Gestão"}
+  ],
+  "focusBuckets": ["documentacao", "oficina", "sinistros", "all"],
+  "limits": "This is not a read-back of Green configuration or permissions."
+}

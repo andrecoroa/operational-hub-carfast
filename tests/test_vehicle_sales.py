@@ -3,14 +3,15 @@ from datetime import date
 from decimal import Decimal
 from types import SimpleNamespace
 
-from sqlalchemy import select
 from openpyxl import load_workbook
-from PyPDF2 import PdfReader
+from pypdf import PdfReader
+from sqlalchemy import select
 
 import app.web.router as base_router
 from app.core.config import settings
 from app.models import (
     AuditLog,
+    Document,
     Vehicle,
     VehicleExternalSnapshot,
     VehicleFinancialPlan,
@@ -28,6 +29,7 @@ from app.services.vehicle_financials import canonical_vehicle_financial_values
 from app.web.vehicle_sales import (
     _filter_rows,
     _financial_audit_rows,
+    _load_sale_rows,
     _media_root,
     _sale_row,
     compact_finance_entity,
@@ -166,6 +168,8 @@ def test_sale_proposal_keeps_vehicle_values_independent(authenticated_client, db
     assert line.snapshot_json["fuel"] == "Diesel"
     assert line.snapshot_json["gearbox"] == "Automática"
     assert line.snapshot_json["debt"] == "20910.00"
+    assert line.snapshot_json["finance_entity"] == "Santander"
+    assert line.snapshot_json["contract_number"] == "PROP-DEBT-1"
 
     saved = authenticated_client.post(
         f"/v2-clean/fleet/sales/proposals/{proposal.id}",
@@ -198,6 +202,16 @@ def test_sale_proposal_keeps_vehicle_values_independent(authenticated_client, db
         )
     )
     plan.outstanding_amount = Decimal("16000.00")
+    db_session.add(
+        VehicleFinancialPlanInstallment(
+            financial_plan_id=plan.id,
+            period_number=1,
+            period_end=date.today(),
+            outstanding_amount=Decimal("15000.00"),
+            outstanding_with_vat=Decimal("18450.00"),
+            amortization_amount=Decimal("250.00"),
+        )
+    )
     db_session.commit()
     reopened = authenticated_client.post(
         f"/v2-clean/fleet/sales/proposals/{proposal.id}/reopen",
@@ -223,7 +237,7 @@ def test_sale_proposal_keeps_vehicle_values_independent(authenticated_client, db
         )
     )
     assert first_version_line.snapshot_json["debt"] == "20910.00"
-    assert second_version_line.snapshot_json["debt"] == "19680.00"
+    assert second_version_line.snapshot_json["debt"] == "18450.00"
     assert second_version_line.proposed_price == Decimal("19800.00")
     assert second_version_line.customer_counteroffer == Decimal("19400.00")
 
@@ -249,6 +263,8 @@ def test_sale_proposal_keeps_vehicle_values_independent(authenticated_client, db
     assert "Combustível" in headers
     assert "Caixa" in headers
     assert "Valor em dívida" in headers
+    assert "Entidade financeira" in headers
+    assert "N.º contrato" in headers
     assert "Margem CarFast" in headers
     assert "Contraproposta cliente" in headers
     assert "Margem contraproposta" in headers
@@ -261,10 +277,14 @@ def test_sale_proposal_keeps_vehicle_values_independent(authenticated_client, db
     assert sheet.cell(row=4, column=headers.index("Cor") + 1).value == "Azul"
     assert sheet.cell(row=4, column=headers.index("Combustível") + 1).value == "Diesel"
     assert sheet.cell(row=4, column=headers.index("Caixa") + 1).value == "Automática"
-    assert sheet.cell(row=4, column=headers.index("Valor em dívida") + 1).value == 19680
-    assert sheet.cell(row=4, column=headers.index("Margem CarFast") + 1).value == 120
+    assert sheet.cell(row=4, column=headers.index("Valor em dívida") + 1).value == 18450
+    assert sheet.cell(row=4, column=headers.index("Entidade financeira") + 1).value == "Santander"
+    contract_cell = sheet.cell(row=4, column=headers.index("N.º contrato") + 1)
+    assert contract_cell.value == "PROP-DEBT-1"
+    assert contract_cell.number_format == "@"
+    assert sheet.cell(row=4, column=headers.index("Margem CarFast") + 1).value == 1350
     assert sheet.cell(row=4, column=headers.index("Contraproposta cliente") + 1).value == 19400
-    assert sheet.cell(row=4, column=headers.index("Margem contraproposta") + 1).value == -280
+    assert sheet.cell(row=4, column=headers.index("Margem contraproposta") + 1).value == 950
     assert sheet.cell(row=4, column=headers.index("Custo") + 1).value is not None
     customer_export = authenticated_client.get(
         f"/v2-clean/fleet/sales/proposals/{proposals[1].id}/customer.xlsx"
@@ -277,6 +297,8 @@ def test_sale_proposal_keeps_vehicle_values_independent(authenticated_client, db
     assert "Proposto CarFast" in customer_headers
     assert "Contraproposta cliente" not in customer_headers
     assert "Valor em dívida" not in customer_headers
+    assert "Entidade financeira" not in customer_headers
+    assert "N.º contrato" not in customer_headers
     assert "Margem CarFast" not in customer_headers
     assert "Valor em dívida" not in customer_headers
     assert "Margem negocial" not in customer_headers
@@ -884,6 +906,13 @@ def test_sheet_audit_and_sale_share_value_and_last_amortization_date(db_session)
     ).all()
 
     sale_row = _sale_row(vehicle, snapshot, {}, None, plan, installments)
+    loaded_row = _load_sale_rows(
+        db_session, select(Vehicle).where(Vehicle.id == vehicle.id)
+    )[0]
+    assert loaded_row["debt"] == sale_row["debt"]
+    assert loaded_row["cost"] == sale_row["cost"]
+    assert loaded_row["financial_margin"] == sale_row["financial_margin"]
+    assert loaded_row["debt_reference_date"] == sale_row["debt_reference_date"]
     audit_row = next(
         row for row in _financial_audit_rows(db_session) if row["vehicle_id"] == vehicle.id
     )
@@ -911,6 +940,40 @@ def test_vehicle_sale_images_public_snapshot_and_leads(
     monkeypatch.setattr(settings, "vehicle_sale_media_root", str(tmp_path))
     base_router.EXTERNAL_PORTAL_RATE_LIMIT.clear()
     vehicle = create_sale_vehicle(db_session)
+    authorized_document = Document(
+        title="Certificado comercial autorizado",
+        document_type="certificate",
+        original_name="certificado.pdf",
+        file_name="certificado.pdf",
+        storage_provider="local",
+        storage_path="synthetic/certificado.pdf",
+        vehicle_id=vehicle.id,
+        archived=False,
+    )
+    db_session.add(authorized_document)
+    other_vehicle = Vehicle(plate="DOC-OTHER", active=True)
+    db_session.add(other_vehicle)
+    db_session.flush()
+    foreign_document = Document(
+        title="Documento de outra viatura",
+        original_name="foreign.pdf",
+        file_name="foreign.pdf",
+        storage_provider="local",
+        storage_path="synthetic/foreign.pdf",
+        vehicle_id=other_vehicle.id,
+        archived=False,
+    )
+    archived_document = Document(
+        title="Documento arquivado",
+        original_name="archived.pdf",
+        file_name="archived.pdf",
+        storage_provider="local",
+        storage_path="synthetic/archived.pdf",
+        vehicle_id=vehicle.id,
+        archived=True,
+    )
+    db_session.add_all([foreign_document, archived_document])
+    db_session.commit()
 
     saved = authenticated_client.post(
         f"/v2-clean/fleet/sales/{vehicle.id}",
@@ -957,6 +1020,11 @@ def test_vehicle_sale_images_public_snapshot_and_leads(
             "audience": "retail",
             "expires_on": "2026-12-31",
             "image_ids": [str(image.id)],
+            "document_ids": [
+                str(authorized_document.id),
+                str(foreign_document.id),
+                str(archived_document.id),
+            ],
         },
         follow_redirects=False,
     )
@@ -967,6 +1035,16 @@ def test_vehicle_sale_images_public_snapshot_and_leads(
     )
     assert publication is not None
     assert publication.snapshot_json["sale"]["price"] == "24900.00"
+    assert publication.snapshot_json["documents"] == [
+        {
+            "id": authorized_document.id,
+            "title": "Certificado comercial autorizado",
+            "type": "certificate",
+            "date": None,
+        }
+    ]
+    assert "Documento de outra viatura" not in str(publication.snapshot_json)
+    assert "Documento arquivado" not in str(publication.snapshot_json)
     serialized_snapshot = str(publication.snapshot_json)
     assert "debt" not in serialized_snapshot
     assert "margin" not in serialized_snapshot
@@ -983,6 +1061,14 @@ def test_vehicle_sale_images_public_snapshot_and_leads(
     assert "Custo CarFast" not in public_page.text
     assert "Valor em dívida" not in public_page.text
     assert "Nota interna confidencial" not in public_page.text
+    assert "Certificado comercial autorizado" in public_page.text
+
+    publications_page = authenticated_client.get(
+        "/v2-clean/fleet/sales/publications"
+    )
+    assert publications_page.status_code == 200
+    assert "Relatórios comerciais publicados" in publications_page.text
+    assert vehicle.plate in publications_page.text
 
     archived_image = authenticated_client.post(
         f"/v2-clean/fleet/sales/{vehicle.id}/images/{image.id}/archive",

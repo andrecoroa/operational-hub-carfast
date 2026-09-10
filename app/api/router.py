@@ -11,6 +11,7 @@ from app.api.routes import (
     photo_actions,
     settings,
     stock,
+    task_templates,
     tasks,
     vehicles,
     workshop,
@@ -33,6 +34,7 @@ api_router.include_router(vehicles.router, tags=["vehicles"])
 api_router.include_router(imports.router, tags=["imports"])
 api_router.include_router(tasks.router, tags=["tasks"])
 api_router.include_router(tasks.router, prefix="/api", tags=["tasks"])
+api_router.include_router(task_templates.router, prefix="/api", tags=["task-design"])
 api_router.include_router(workshop.router, prefix="/api", tags=["workshop"])
 api_router.include_router(workshop_ui.router, tags=["workshop"])
 api_router.include_router(integrations.router, tags=["integrations"])

@@ -3,17 +3,37 @@
 <div class="app-shell clean-shell">
   {% set active_menu = "documentation_by_vehicle" %}
   {% include "_sidebar.html" %}
-  <main class="content clean-content doc-arch-page doc-by-vehicle-page">
+  <main class="content clean-content doc-arch-page doc-by-vehicle-page{% if foundation_ui_enabled %} vehicle-document-workbench{% endif %}">
     {% set doc_nav = "by_vehicle" %}
     {% include "_clean_documentation_nav.html" %}
-    <header class="doc-arch-header">
+    <header class="doc-arch-header{% if foundation_ui_enabled %} vehicle-document-header{% endif %}">
       <div>
-        <p class="eyebrow">Documentação</p>
-        <h1>Por viatura</h1>
-        <p>Prioridades documentais agregadas sem duplicar ações nem estados.</p>
+        <p class="eyebrow">Documentação / Frota</p>
+        <h1>{% if foundation_ui_enabled %}Documentação por viatura{% else %}Por viatura{% endif %}</h1>
+        <p>{% if foundation_ui_enabled %}Consulte validade, classificação e visibilidade sem duplicar a triagem central.{% else %}Prioridades documentais agregadas sem duplicar ações nem estados.{% endif %}</p>
       </div>
       <a class="button-link" href="/v2-clean/documentation/treatment?family=invoices">Abrir Tratamento</a>
     </header>
+
+    {% if foundation_ui_enabled %}
+    <section class="vehicle-document-kpis" aria-label="Estado documental por viatura">
+      <a href="/v2-clean/documentation/by-vehicle"><strong>{{ vehicle_counts.total }}</strong><span>Viaturas documentadas</span></a>
+      <a class="warning" href="?attention=expired"><strong>{{ vehicle_counts.expired }}</strong><span>Com validade expirada</span></a>
+      <a href="?attention=confidential"><strong>{{ vehicle_counts.confidential }}</strong><span>Com conteúdo confidencial</span></a>
+      <a class="danger" href="?attention=missing"><strong>{{ vehicle_counts.missing }}</strong><span>Com documento em falta</span></a>
+    </section>
+    <section class="vehicle-document-list-card" aria-labelledby="vehicle-document-list-title">
+      <header><div><p class="eyebrow">Arquivo operacional</p><h2 id="vehicle-document-list-title">Viaturas e documentação associada</h2><p>Estados derivados dos registos existentes; nenhuma partilha é automática.</p></div></header>
+      <form class="vehicle-document-filters" method="get">
+        <label>Pesquisar<input name="q" value="{{ q }}" placeholder="Matrícula, VIN, unidade, marca…"></label>
+        <label>Estado<select name="attention"><option value="">Todos os estados</option><option value="expired" {% if attention == 'expired' %}selected{% endif %}>Validade expirada</option><option value="confidential" {% if attention == 'confidential' %}selected{% endif %}>Confidencial</option><option value="missing" {% if attention == 'missing' %}selected{% endif %}>Documento em falta</option></select></label>
+        <button type="submit">Filtrar</button>{% if q or attention %}<a class="button-link secondary-link" href="/v2-clean/documentation/by-vehicle">Limpar</a>{% endif %}
+      </form>
+      <div class="vehicle-document-table-wrap"><table class="doc-arch-table vehicle-document-table"><thead><tr><th>Viatura</th><th>Documentos</th><th>Registos</th><th>Validade</th><th>Visibilidade</th><th>Em falta</th><th>Ação</th></tr></thead><tbody>
+        {% for row in vehicle_rows %}<tr><td><strong>{{ row.vehicle.plate or row.vehicle.vin or row.vehicle.rentway_unit_nr }}</strong><small>{{ row.vehicle.brand or '' }} {{ row.vehicle.model or '' }}{% if row.vehicle.rentway_unit_nr %} · {{ row.vehicle.rentway_unit_nr }}{% endif %}</small></td><td>{{ row.documents }}</td><td>{{ row.records }}</td><td>{% if row.expired %}<span class="vehicle-doc-state danger">{{ row.expired }} expirado(s)</span>{% else %}<span class="vehicle-doc-state success">Sem expirados</span>{% endif %}</td><td>{% if row.confidential %}<span class="vehicle-doc-state neutral">{{ row.confidential }} confidencial</span>{% else %}<span class="vehicle-doc-state">Interno</span>{% endif %}</td><td>{% if row.missing %}<span class="vehicle-doc-state warning">{{ row.missing }} em falta</span>{% else %}—{% endif %}</td><td><a class="button-link secondary-link" href="/v2-clean/documentation/by-vehicle/{{ row.vehicle_id }}?return_context={{ return_context_token|urlencode }}">Consultar</a></td></tr>{% else %}<tr><td colspan="7" class="doc-arch-empty">Nenhuma viatura corresponde aos filtros.</td></tr>{% endfor %}
+      </tbody></table></div>
+    </section>
+    {% endif %}
 
     <section class="doc-arch-card doc-vehicle-priority-card" id="pending-invoices-by-vehicle">
       <div class="doc-arch-card-heading"><div><h2>Viaturas com mais faturas por tratar</h2><p>Faturas reais pendentes e faturas esperadas ainda não reconciliadas.</p></div></div>

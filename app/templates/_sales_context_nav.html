@@ -1,0 +1,6 @@
+<nav class="visual-fleet-context-nav visual-sales-context-nav" aria-label="Navegação de Vendas">
+  <a {% if active_sales_view == "pipeline" %}class="active" aria-current="page"{% endif %} href="/v2-clean/fleet/sales">Pipeline</a>
+  <a {% if active_sales_view == "processes" %}class="active" aria-current="page"{% endif %} href="/v2-clean/fleet/sales/proposals">Processos de venda</a>
+  <a {% if active_sales_view == "customers" %}class="active" aria-current="page"{% endif %} href="/v2-clean/fleet/sales/opportunities">Clientes / comerciantes</a>
+  <a {% if active_sales_view == "publications" %}class="active" aria-current="page"{% endif %} href="/v2-clean/fleet/sales/publications">Publicações</a>
+</nav>

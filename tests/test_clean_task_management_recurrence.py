@@ -87,11 +87,11 @@ def test_mine_counters_and_all_relationship_badges_are_complete(
 
     assert page.status_code == 200
     assert "<span>Todas as minhas</span><b>2</b>" in page.text
-    assert "<span>Atribuídas</span><b>2</b>" in page.text
-    assert "<span>Identificado</span><b>1</b>" in page.text
+    assert "<span>Atribuídas a mim</span><b>2</b>" in page.text
     assert "<span>A acompanhar</span><b>1</b>" in page.text
-    assert "<span>Suporte solicitado</span><b>1</b>" in page.text
     assert "<span>Criadas por mim</span><b>1</b>" in page.text
+    assert "<span>Identificado</span>" not in page.text
+    assert "<span>Suporte solicitado</span>" not in page.text
     for badge in ("Responsável", "Identificado", "A acompanhar", "Suporte solicitado", "Criador"):
         assert f"<em>{badge}</em>" in page.text
 

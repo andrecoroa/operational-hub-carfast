@@ -3,7 +3,8 @@
 <div class="app-shell clean-shell">
   {% set active_menu = "clean_admin" %}
   {% include "_sidebar.html" %}
-  <main class="content clean-content clean-admin-content">
+  <main class="content clean-content clean-admin-content{% if foundation_ui_enabled %} ui-foundation ui-admin-master-detail admin-section-{{ admin_section }}{% endif %}">
+    {% set visual_section = "Sistema" %}{% set visual_page = "Administração" %}{% include "_visual_topbar.html" %}
     <header class="clean-header-shell clean-card-wide clean-admin-header">
       <div class="clean-header-topbar">
         <div>
@@ -13,8 +14,13 @@
         </div>
         <span class="pill muted-pill">{{ current_admin_user.email if current_admin_user else "" }}</span>
       </div>
-      {% include "_clean_admin_directory.html" %}
     </header>
+
+    <div class="clean-admin-master-detail clean-card-wide">
+      {% include "_clean_admin_directory.html" %}
+      <section class="clean-admin-detail" aria-label="Configuração do domínio selecionado">
+    {% set admin_detail_titles = {'overview':'Setup administrativo','setup':'Setup','organization':'Organização','users':'Utilizadores','roles':'Perfis e permissões','settings':'Parametrizações','work_classification':'Categorias e Email','workshop_models':'Modelos','integrations':'Integrações','security':'Segurança e auditoria','audit':'Segurança e auditoria'} %}
+    <header class="clean-admin-detail-heading"><p class="eyebrow">Domínio selecionado</p><h1>{{ admin_detail_titles.get(admin_section, 'Configuração') }}</h1></header>
 
     {% if request.query_params.get("error") %}
       <div class="alert clean-card-wide">Não foi possível concluir a operação: {{ request.query_params.get("error") }}.</div>
@@ -77,6 +83,84 @@
             </tbody>
           </table>
         </div>
+      </section>
+    {% endif %}
+
+    {% if admin_section == "task_process_models" %}
+      <section class="clean-panel clean-card-wide admin-model-workbench" aria-labelledby="model-library-title">
+        <div class="table-heading flat-heading">
+          <div>
+            <p class="eyebrow">Biblioteca versionada</p>
+            <h3 id="model-library-title">Tarefas-tipo e Processos-modelo</h3>
+            <p>Publicar uma versão afeta apenas novas criações; tarefas e processos existentes preservam o snapshot imutável.</p>
+          </div>
+          <span class="pill muted-pill">Fail-closed por permissão e âmbito</span>
+        </div>
+        <div class="admin-model-columns">
+          <div class="admin-model-master" role="list" aria-label="Tarefas-tipo">
+            <h4>Tarefas-tipo</h4>
+            {% for model, version in task_model_rows %}
+              <button type="button" class="admin-model-row{% if loop.first %} is-selected{% endif %}" data-model-target="task-{{ version.id }}">
+                <strong>{{ model.name }}</strong><span>v{{ version.version }} · {{ version.status }}</span>
+              </button>
+            {% else %}<p class="empty-state">Ainda não existem Tarefas-tipo.</p>{% endfor %}
+          </div>
+          <div class="admin-model-master" role="list" aria-label="Processos-modelo">
+            <h4>Processos-modelo</h4>
+            {% for model, version in process_model_rows %}
+              <button type="button" class="admin-model-row{% if loop.first %} is-selected{% endif %}" data-model-target="process-{{ version.id }}">
+                <strong>{{ model.name }}</strong><span>v{{ version.version }} · {{ version.status }}</span>
+              </button>
+            {% else %}<p class="empty-state">Ainda não existem Processos-modelo.</p>{% endfor %}
+          </div>
+          <div class="admin-model-detail">
+            <h4>Contrato de criação</h4>
+            <dl>
+              <div><dt>Criar tarefa</dt><dd>Escolhe uma Tarefa-tipo autorizada e cria snapshot.</dd></div>
+              <div><dt>Iniciar processo</dt><dd>Cria uma nova instância de um Processo-modelo.</dd></div>
+              <div><dt>Criar tarefa do processo</dt><dd>Adiciona uma tarefa a uma instância já existente.</dd></div>
+            </dl>
+            <div class="alert">Leitura ou gestão nunca implica criação. O servidor revalida tipo, categoria, subcategoria, versão, perfil e âmbito no POST.</div>
+            <div class="sticky-actions"><a class="button-link secondary-link" href="/v2-clean/tasks?create=1#new-task">Pré-visualizar Criar tarefa</a></div>
+          </div>
+        </div>
+      </section>
+    {% endif %}
+
+    {% if admin_section == "setup" %}
+      <section class="clean-admin-setup-hero clean-card-wide" aria-labelledby="setup-title">
+        <div>
+          <p class="eyebrow">Percurso guiado</p>
+          <h3 id="setup-title">Preparar a instalação pela ordem segura</h3>
+          <p>O assistente valida o estado e encaminha para cada área. Não cria, ativa ou publica configurações em massa.</p>
+        </div>
+        <div class="clean-admin-setup-score" aria-label="{{ setup_ready }} de {{ setup_total }} etapas com configuração disponível">
+          <strong>{{ setup_ready }}/{{ setup_total }}</strong><span>etapas com base configurada</span>
+        </div>
+      </section>
+      <section class="clean-admin-setup-layout clean-card-wide">
+        <ol class="clean-admin-setup-steps" aria-label="Etapas de configuração inicial">
+          {% for step in setup_steps %}
+            <li class="clean-admin-setup-step{% if step.ready %} is-ready{% endif %}" id="setup-{{ step.code }}">
+              <span class="clean-admin-setup-index">{{ loop.index }}</span>
+              <div><h4>{{ step.label }}</h4><p>{{ step.description }}</p><small>{{ step.metric }}</small></div>
+              <span class="pill {{ 'priority-low' if step.ready else 'muted-pill' }}">{{ 'Base disponível' if step.ready else 'Por configurar' }}</span>
+              <a class="button-link secondary-link" href="{{ step.href }}">Rever etapa<span class="sr-only">: {{ step.label }}</span></a>
+            </li>
+          {% endfor %}
+        </ol>
+        <aside class="clean-admin-setup-review" aria-labelledby="setup-review-title">
+          <p class="eyebrow">Revisão</p><h3 id="setup-review-title">Antes de disponibilizar</h3>
+          <ul>
+            <li>Confirmar hierarquia antes dos acessos.</li>
+            <li>Aplicar o menor privilégio por perfil e âmbito.</li>
+            <li>Manter integrações e efeitos externos desligados durante validação.</li>
+            <li>Rever alterações na Auditoria antes da entrada operacional.</li>
+          </ul>
+          {% if setup_first_pending %}<a class="button-link" href="#setup-{{ setup_first_pending }}">Continuar na primeira etapa pendente</a>{% endif %}
+          <a class="button-link secondary-link" href="/v2-clean/admin/audit">Rever auditoria · {{ setup_audit_count }} registos</a>
+          <p class="clean-field-help">Cada gravação continua a usar a validação e auditoria da respetiva área. Este percurso não executa alterações irreversíveis.</p>
+        </aside>
       </section>
     {% endif %}
 
@@ -359,6 +443,8 @@
                   {% if can_manage %}<button type="submit">Guardar</button>{% endif %}
                 </form>
               </details>
+            {% else %}
+              <div class="clean-admin-empty-state" role="status"><strong>Sem áreas configuradas</strong><span>Crie a primeira área antes de associar equipas ou utilizadores.</span></div>
             {% endfor %}
           </div>
         </article>
@@ -375,6 +461,8 @@
                   {% if can_manage %}<button type="submit">Guardar</button>{% endif %}
                 </form>
               </details>
+            {% else %}
+              <div class="clean-admin-empty-state" role="status"><strong>Sem equipas configuradas</strong><span>As equipas surgem aqui depois de associadas a uma área.</span></div>
             {% endfor %}
           </div>
         </article>
@@ -441,6 +529,8 @@
               </details>
             {% endif %}
           </article>
+        {% else %}
+          <article class="clean-panel clean-admin-empty-state" role="status"><strong>Sem catálogos configurados</strong><span>Não existem parametrizações disponíveis para esta instalação.</span></article>
         {% endfor %}
       </section>
     {% endif %}
@@ -590,16 +680,29 @@ DEPOIS
         </article>
       </section>
     {% endif %}
+      </section>
+    </div>
   </main>
 </div>
 <script>
+  let lastAdminDialogTrigger = null;
   document.querySelectorAll("[data-dialog-open]").forEach((button) => {
-    button.addEventListener("click", () => document.getElementById(button.dataset.dialogOpen)?.showModal());
+    button.addEventListener("click", () => {
+      const dialog = document.getElementById(button.dataset.dialogOpen);
+      if (!dialog) return;
+      lastAdminDialogTrigger = button;
+      dialog.showModal();
+      dialog.querySelector("input:not([type='hidden']), select, textarea, button")?.focus();
+    });
   });
   document.querySelectorAll("[data-dialog-close]").forEach((button) => {
     button.addEventListener("click", () => button.closest("dialog")?.close());
   });
   document.querySelectorAll(".clean-admin-dialog").forEach((dialog) => {
+    dialog.addEventListener("close", () => {
+      lastAdminDialogTrigger?.focus();
+      lastAdminDialogTrigger = null;
+    });
     dialog.addEventListener("click", (event) => {
       if (event.target === dialog) dialog.close();
     });

@@ -20,6 +20,51 @@ The container uses disposable development credentials, a private PostgreSQL serv
 
 After the clean-installation check, the development container creates a development-only administrator (`admin@carfast.local`, password `LocalDevelopment123!`) and the current compatibility defaults required by the existing application. This happens only in the private container database and is separate from the reusable clean-installation path. These credentials must never be used in staging or production.
 
+## Codex Cloud
+
+The repository contains a versioned, secret-free setup for Codex Cloud:
+
+```bash
+bash scripts/setup_codex_cloud.sh
+bash scripts/verify_codex_cloud.sh
+```
+
+The setup requires Python 3.13. It uses the environment's `python` when that
+version is already pinned, or creates an ignored `.venv` with `uv` when the
+universal image supplies a different Python version. The verification command
+checks the Alembic graph, compiles and imports the application, and runs the
+approved stable pytest gate with integrations disabled. Run
+`bash scripts/verify_codex_cloud.sh --full` to diagnose the known debt in the
+complete baseline suite; failures there do not replace the required stable CI
+gate.
+
+Configure the repository environment in Codex settings as follows:
+
+1. select `andrecoroa/operational-hub-carfast` and pin Python `3.13` under
+   **Set package versions**;
+2. use `bash scripts/setup_codex_cloud.sh` as the setup script;
+3. use the same command as the maintenance script so a resumed cached container
+   reconciles dependency changes;
+4. do not add secrets or production environment variables;
+5. reset the environment cache after changing either script or the pinned
+   runtime.
+
+Codex Cloud does not obtain PostgreSQL from these repository files. When the
+selected runner supports an isolated local PostgreSQL 17 service, create an
+empty database whose name ends in `_test`, set `DATABASE_URL` only to that local
+database and run:
+
+```bash
+bash scripts/verify_codex_cloud.sh --postgresql
+```
+
+The PostgreSQL mode fails closed unless the existing isolated-environment guard
+accepts the target, verifies server major version 17, applies migrations,
+bootstraps the empty installation and confirms the current Alembic head. If the
+runner cannot supply PostgreSQL 17, use the pull-request CI service as the
+database validation gate; never substitute Green, production or another remote
+database.
+
 ## Local equivalent
 
 Use Python 3.13 and PostgreSQL 17. Copy `.env.example` to `.env`, replace development-only placeholders, create the database, then run:

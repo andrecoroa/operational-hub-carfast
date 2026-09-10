@@ -3,7 +3,9 @@
 <div class="app-shell clean-shell">
   {% set active_menu = "documents" if is_clean_mode else "documents" %}
   {% include "_sidebar.html" %}
-  <main class="content clean-content">
+  <main class="content clean-content doc-arch-page">
+    {% set doc_nav = "" %}
+    {% include "_clean_documentation_nav.html" %}
     <style>
       .clean-doc-type-picker {
         display: grid;
@@ -31,9 +33,9 @@
         color: #6b7280;
       }
       .clean-doc-type-card.active {
-        border-color: #b05f2f;
-        background: #fff7ef;
-        box-shadow: inset 0 0 0 1px #e9b58a;
+        border-color: #176b87;
+        background: #eef8fa;
+        box-shadow: inset 0 0 0 1px #79b9c7;
       }
       .clean-doc-form-note {
         margin: 0 0 14px;

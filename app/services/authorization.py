@@ -97,6 +97,11 @@ def expand_permission_aliases(codes: set[str]) -> set[str]:
 
 
 def get_user_permission_codes(db: Session, user: User) -> set[str]:
+    return expand_permission_aliases(get_user_direct_permission_codes(db, user))
+
+
+def get_user_direct_permission_codes(db: Session, user: User) -> set[str]:
+    """Return persisted grants without compatibility alias expansion."""
     rows = db.execute(
         select(Permission.code)
         .join(RolePermission, RolePermission.permission_id == Permission.id)
@@ -105,7 +110,7 @@ def get_user_permission_codes(db: Session, user: User) -> set[str]:
         .where(UserRole.user_id == user.id)
         .where(Role.active.is_(True))
     ).all()
-    return expand_permission_aliases({row[0] for row in rows})
+    return {row[0] for row in rows}
 
 
 def user_has_permission(db: Session, user: User, permission_code: str) -> bool:

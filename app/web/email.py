@@ -10,16 +10,17 @@ from mimetypes import guess_type
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Annotated
-from urllib.parse import urlparse
+from urllib.parse import quote, urlparse
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, File, Form, Header, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import func, or_, select
+from sqlalchemy import case, func, or_, select
 
 from app.core.config import settings
 from app.core.database import SessionLocal
+from app.service_desk import EmailOriginCommand, ServiceDeskFacade
 from app.models.admin import User, UserRole
 from app.models.email import (
     EmailAttachment,
@@ -27,6 +28,7 @@ from app.models.email import (
     EmailChannel,
     EmailChannelAlias,
     EmailChannelRole,
+    EmailChannelTransport,
     EmailChannelUser,
     EmailMessage,
     EmailMessageDelivery,
@@ -35,10 +37,10 @@ from app.models.email import (
     EmailThreadLink,
 )
 from app.models.organization import Team, TeamMember
-from app.models.stock import StockSupplier
 from app.models.suppliers import SupplierTypeAssignment
-from app.models.tasks import Task, TaskEmailOrigin
+from app.models.tasks import Task
 from app.models.work_hierarchy import WorkCategory, WorkDepartment, WorkQueue, WorkSubcategory
+from app.partners.compat import StockSupplier
 from app.services.authorization import get_user_permission_codes
 from app.services.classification_proposals import (
     attach_selection_to_entity,
@@ -48,10 +50,14 @@ from app.services.classification_proposals import (
 from app.services.email_postmark import (
     ensure_email_channels,
     ingest_inbound,
+    ingest_outbound_event,
+    outbound_identity,
     reply_all_recipients,
     send_message,
     webhook_authorized,
 )
+from app.services.email_transport import send_channel_message
+from app.services.microsoft365_oauth import move_shared_mailbox_message_to_junk
 from app.services.service_desk import (
     assignment_label,
     assignment_target_user_allowed,
@@ -59,7 +65,6 @@ from app.services.service_desk import (
     email_eligible_teams,
     email_eligible_users,
     initialize_email_operations,
-    initialize_task_service_desk,
     local_datetime,
     mark_email_first_response,
     mark_email_resolved,
@@ -86,8 +91,29 @@ from app.services.work_classification import (
 )
 
 email_router = APIRouter()
-templates = Jinja2Templates(directory="app/templates")
+from app.web.template_runtime import configure_visual_template_runtime
+
+templates = configure_visual_template_runtime(Jinja2Templates(directory="app/templates"))
 templates.env.filters["lisbon_datetime"] = local_datetime
+
+
+def _reopen_threads_after_linked_task_completion(db) -> None:
+    rows = db.execute(
+        select(EmailThread, Task).join(Task, Task.id == EmailThread.task_id).where(
+            EmailThread.status == "task_created",
+            Task.status.in_({"execution_done", "closed", "cancelled", "no_action_needed"}),
+        )
+    ).all()
+    for thread, task in rows:
+        thread.status = "triage"
+        db.add(EmailAuditEvent(
+            thread_id=thread.id,
+            user_id=None,
+            action="reopened_after_task_completion",
+            details_json={"task_id": task.id, "task_status": task.status},
+        ))
+    if rows:
+        db.commit()
 
 
 def _nav_permissions(request: Request) -> set[str]:
@@ -120,6 +146,20 @@ STATUS_LABELS = {
     "task_created": "Convertido em tarefa",
     "resolved": "Resolvido",
     "archived": "Arquivado",
+}
+
+EMAIL_WORK_VIEW_LABELS = {
+    "mailbox": "Por caixa",
+    "mine": "Minhas",
+    "all": "Todas",
+}
+EMAIL_CLOSED_STATUSES = {"resolved", "archived"}
+EMAIL_SIGNAL_LABELS = {
+    "to_treat": "Por tratar",
+    "new": "Novos",
+    "unassigned": "Por atribuir",
+    "overdue": "Atrasados",
+    "risk": "Em risco",
 }
 
 EMAIL_ADDRESS_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
@@ -165,18 +205,38 @@ class _SafeEmailHTMLParser(HTMLParser):
         "ul",
     }
     void_tags = {"br", "hr", "img"}
+    blocked_content_tags = {"embed", "iframe", "object", "script", "style"}
 
     def __init__(self) -> None:
         super().__init__(convert_charrefs=True)
         self.parts: list[str] = []
+        self.blocked_content_depth = 0
 
     @staticmethod
-    def _safe_url(value: str) -> str | None:
-        parsed = urlparse(value.strip())
-        return value.strip() if parsed.scheme.lower() in {"http", "https", "mailto"} else None
+    def _safe_url(value: str) -> tuple[str, bool] | None:
+        clean_value = value.strip()
+        if not clean_value or any(character in clean_value for character in "\r\n\x00"):
+            return None
+        parsed = urlparse(clean_value)
+        scheme = parsed.scheme.lower()
+        if scheme in {"http", "https"} and parsed.netloc:
+            return clean_value, True
+        if scheme == "mailto" and parsed.path and EMAIL_ADDRESS_PATTERN.fullmatch(parsed.path):
+            return clean_value, False
+        if not scheme and not parsed.netloc:
+            if clean_value.startswith("#"):
+                return clean_value, False
+            if clean_value.startswith("/v2-clean/"):
+                return clean_value, False
+        return None
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         tag = tag.lower()
+        if tag in self.blocked_content_tags:
+            self.blocked_content_depth += 1
+            return
+        if self.blocked_content_depth:
+            return
         if tag not in self.allowed_tags:
             return
         safe_attrs: list[str] = []
@@ -185,17 +245,20 @@ class _SafeEmailHTMLParser(HTMLParser):
             if tag == "a" and name == "href":
                 safe = self._safe_url(value)
                 if safe:
-                    safe_attrs.extend(
-                        [
-                            f'href="{escape(safe, quote=True)}"',
+                    safe_url, opens_new_tab = safe
+                    safe_attrs.append(f'href="{escape(safe_url, quote=True)}"')
+                    if opens_new_tab:
+                        safe_attrs.extend([
                             'target="_blank"',
                             'rel="noopener noreferrer"',
-                        ]
-                    )
+                        ])
             elif tag == "img" and name == "src":
                 safe = self._safe_url(value)
-                if safe:
-                    safe_attrs.append(f'data-email-src="{escape(safe, quote=True)}"')
+                if safe and safe[1]:
+                    safe_url, _ = safe
+                    safe_attrs.append(
+                        f'data-email-src="{escape(safe_url, quote=True)}"'
+                    )
             elif tag == "img" and name in {"alt", "title", "width", "height"}:
                 safe_attrs.append(f'{name}="{escape(value, quote=True)}"')
             elif name in {"colspan", "rowspan"}:
@@ -205,11 +268,17 @@ class _SafeEmailHTMLParser(HTMLParser):
 
     def handle_endtag(self, tag: str) -> None:
         tag = tag.lower()
+        if tag in self.blocked_content_tags and self.blocked_content_depth:
+            self.blocked_content_depth -= 1
+            return
+        if self.blocked_content_depth:
+            return
         if tag in self.allowed_tags and tag not in self.void_tags:
             self.parts.append(f"</{tag}>")
 
     def handle_data(self, data: str) -> None:
-        self.parts.append(escape(data))
+        if not self.blocked_content_depth:
+            self.parts.append(escape(data))
 
 
 def _safe_email_document(message: EmailMessage, *, plain_text: bool = False) -> str:
@@ -491,59 +560,32 @@ def _reply_channel_context(
 
 
 def _sender_channel(db, message: EmailMessage) -> EmailChannel | None:
-    sender = (message.sender or "").strip().lower()
-    if not sender:
+    thread = db.get(EmailThread, message.thread_id)
+    if not thread:
         return None
-    channel = db.scalar(
-        select(EmailChannel).where(
-            EmailChannel.active.is_(True),
-            or_(
-                func.lower(EmailChannel.address) == sender,
-                func.lower(EmailChannel.default_reply_address) == sender,
-            ),
-        )
-    )
-    if channel:
-        return channel
-    alias = db.scalar(
-        select(EmailChannelAlias).where(
-            EmailChannelAlias.active.is_(True),
-            func.lower(EmailChannelAlias.address) == sender,
-        )
-    )
-    return db.get(EmailChannel, alias.channel_id) if alias else None
+    channel = db.get(EmailChannel, thread.channel_id)
+    return channel if channel and channel.active else None
 
 
 def _channel_sender_address(
     db, thread: EmailThread, channel: EmailChannel
 ) -> str | None:
-    original = (thread.original_recipient_address or "").strip().lower()
-    if channel.reply_policy == "original" and original:
-        configured_original = db.scalar(
-            select(EmailChannelAlias.id).where(
-                EmailChannelAlias.channel_id == channel.id,
-                EmailChannelAlias.active.is_(True),
-                func.lower(EmailChannelAlias.address) == original,
-            )
-        ) or (
-            channel.address
-            and channel.address.casefold() == original.casefold()
+    value = (channel.from_address or "").strip().lower()
+    return value if EMAIL_ADDRESS_PATTERN.fullmatch(value) else None
+
+
+def _channel_reply_to_address(channel: EmailChannel) -> str | None:
+    try:
+        _, reply_to = outbound_identity(
+            channel.from_name, channel.from_address, channel.reply_to_address
         )
-        if configured_original:
-            return original
-    return (channel.default_reply_address or channel.address or "").strip().lower() or None
+    except ValueError:
+        return None
+    return reply_to
 
 
 def _channel_sender_options(db, channel: EmailChannel) -> list[str]:
-    values = [channel.default_reply_address, channel.address]
-    values.extend(
-        db.scalars(
-            select(EmailChannelAlias.address).where(
-                EmailChannelAlias.channel_id == channel.id,
-                EmailChannelAlias.active.is_(True),
-            )
-        )
-    )
+    values = [_channel_sender_address(db, None, channel)]
     return list(dict.fromkeys(item.casefold() for item in values if item))
 
 
@@ -728,9 +770,25 @@ def _thread_view_data(db, thread: EmailThread) -> dict:
     )
     message_positions = {message.id: pos for pos, message in enumerate(messages, 1)}
     grouped: dict[int, list[dict]] = {message.id: [] for message in messages}
+    embedded: dict[int, list[dict]] = {message.id: [] for message in messages}
+    messages_by_id = {message.id: message for message in messages}
+    hash_counts: dict[str, int] = {}
     for attachment in attachments:
-        position = len(grouped[attachment.message_id]) + 1
-        grouped[attachment.message_id].append(
+        if attachment.sha256:
+            hash_counts[attachment.sha256] = hash_counts.get(attachment.sha256, 0) + 1
+    for attachment in attachments:
+        message = messages_by_id[attachment.message_id]
+        destination = (
+            embedded[attachment.message_id]
+            if _is_embedded_email_image(
+                message,
+                attachment,
+                repeated_hash=hash_counts.get(attachment.sha256, 0) > 1,
+            )
+            else grouped[attachment.message_id]
+        )
+        position = len(grouped[attachment.message_id]) + len(embedded[attachment.message_id]) + 1
+        destination.append(
             {
                 "item": attachment,
                 "reference": attachment_reference(
@@ -769,6 +827,7 @@ def _thread_view_data(db, thread: EmailThread) -> dict:
             for position, message in enumerate(messages, 1)
         },
         "attachments_by_message": grouped,
+        "embedded_images_by_message": embedded,
         "deliveries_by_message": deliveries_by_message,
         "origins_by_message": deliveries_by_message,
         "received_originally_by_message": received_originally_by_message,
@@ -786,6 +845,56 @@ def _thread_view_data(db, thread: EmailThread) -> dict:
         ),
         "thread_reference": thread_reference(thread),
     }
+
+
+def _message_header_values(message: EmailMessage, name: str) -> list[str]:
+    headers = message.headers_json or []
+    if isinstance(headers, dict):
+        return [
+            str(value)
+            for key, value in headers.items()
+            if str(key).casefold() == name.casefold()
+        ]
+    values: list[str] = []
+    for header in headers if isinstance(headers, list) else []:
+        if not isinstance(header, dict):
+            continue
+        key = header.get("Name", header.get("name", ""))
+        if str(key).casefold() != name.casefold():
+            continue
+        value = header.get("Value", header.get("value"))
+        if value is not None:
+            values.append(str(value))
+    return values
+
+
+def _is_embedded_email_image(
+    message: EmailMessage,
+    attachment: EmailAttachment,
+    *,
+    repeated_hash: bool,
+) -> bool:
+    """Classify signature/inline images from persisted MIME evidence only."""
+    if not (attachment.content_type or "").casefold().startswith("image/"):
+        return False
+    content_id = (attachment.content_id or "").strip().strip("<>").casefold()
+    html_body = (message.html_body or "").casefold()
+    if content_id and f"cid:{content_id}" in html_body:
+        return True
+    disposition_values = _message_header_values(message, "Content-Disposition")
+    if any(
+        "inline" in value.casefold()
+        and (
+            not attachment.file_name
+            or attachment.file_name.casefold() in value.casefold()
+            or (content_id and content_id in value.casefold())
+        )
+        for value in disposition_values
+    ):
+        return True
+    # A repeated image can be a legitimate reattached photo or scan.  Repetition
+    # alone is not persisted MIME evidence that the part was inline.
+    return False
 
 
 def _reply_all_context(db, view_data: dict, channel: EmailChannel) -> dict:
@@ -842,21 +951,29 @@ async def postmark_inbound(request: Request, authorization: str | None = Header(
 
 @email_router.post("/api/webhooks/postmark/events")
 async def postmark_events(request: Request, authorization: str | None = Header(default=None)):
-    if not settings.email_inbound_enabled:
-        return JSONResponse({"detail": "Email events disabled"}, status_code=503)
     if not webhook_authorized(authorization):
         return JSONResponse({"detail": "Unauthorized"}, status_code=401)
-    return {"ok": True}
+    payload = await request.json()
+    with SessionLocal() as db:
+        result, processed = ingest_outbound_event(db, payload)
+        if result == "unmatched":
+            return JSONResponse(
+                {"ok": False, "detail": "Event not correlated; retry safely"},
+                status_code=503,
+            )
+        return {"ok": True, "processed": processed, "result": result}
 
 
 @email_router.get("/v2-clean/email", response_class=HTMLResponse)
 def email_inbox(
     request: Request,
+    view: str = "",
     status: str = "triage",
     channel: str = "",
     q: str = "",
     responsible: str = "",
     due: str = "",
+    signal: str = "",
     supplier_id: int | None = None,
     module_code: str = "",
     compose: str = "",
@@ -869,15 +986,44 @@ def email_inbox(
     with SessionLocal() as db:
         ensure_email_channels(db)
         db.commit()
+        _reopen_threads_after_linked_task_completion(db)
         channel_access = _channel_access(db, user_id, permissions)
-        selected_status = status if status in STATUS_LABELS or status == "all" else "triage"
+        stored_view = request.session.get("email_work_view")
+        stored_view_code = (
+            stored_view.get("view")
+            if isinstance(stored_view, dict)
+            and stored_view.get("user_id") == user_id
+            else None
+        )
+        selected_view = (
+            view
+            if view in EMAIL_WORK_VIEW_LABELS
+            else stored_view_code
+            if stored_view_code in EMAIL_WORK_VIEW_LABELS
+            else "mailbox"
+        )
+        if view in EMAIL_WORK_VIEW_LABELS:
+            request.session["email_work_view"] = {
+                "user_id": user_id,
+                "view": selected_view,
+            }
+        selected_status = (
+            status
+            if status in STATUS_LABELS or status in {"all", "active"}
+            else "triage"
+        )
+        selected_signal = signal if signal in EMAIL_SIGNAL_LABELS else ""
         query = (
             select(EmailThread, EmailChannel)
             .join(EmailChannel, EmailChannel.id == EmailThread.channel_id)
             .where(_email_visibility_filter(db, user_id, channel_access))
         )
-        if selected_status != "all":
+        if selected_status == "active":
+            query = query.where(EmailThread.status.not_in(EMAIL_CLOSED_STATUSES))
+        elif selected_status != "all":
             query = query.where(EmailThread.status == selected_status)
+        if selected_view == "mine":
+            query = query.where(EmailThread.assigned_to_id == user_id)
         if channel:
             query = query.where(EmailChannel.code == channel)
         if responsible == "mine":
@@ -933,50 +1079,211 @@ def email_inbox(
             if reference_tail.isdigit():
                 search_terms.append(EmailThread.id == int(reference_tail))
             query = query.where(or_(*search_terms))
-        rows = db.execute(query.order_by(EmailThread.last_message_at.desc()).limit(100)).all()
-        counts = dict(
-            db.execute(
-                select(EmailThread.status, func.count())
-                .where(_email_visibility_filter(db, user_id, channel_access))
-                .group_by(EmailThread.status)
-            ).all()
+        if selected_signal == "to_treat":
+            query = query.where(EmailThread.status.not_in(EMAIL_CLOSED_STATUSES))
+        elif selected_signal == "new":
+            query = query.where(EmailThread.status.in_({"triage", "new_reply"}))
+        elif selected_signal == "unassigned":
+            query = query.where(
+                EmailThread.status.not_in(EMAIL_CLOSED_STATUSES),
+                EmailThread.assigned_to_id.is_(None),
+                EmailThread.executor_team_id.is_(None),
+            )
+        elif selected_signal == "overdue":
+            query = query.where(
+                EmailThread.status.not_in(EMAIL_CLOSED_STATUSES),
+                EmailThread.resolution_due_at < now,
+            )
+        elif selected_signal == "risk":
+            risk_ids = [
+                item.id
+                for item in db.execute(query).scalars().unique().all()
+                if item.status not in EMAIL_CLOSED_STATUSES
+                and sla_snapshot(item, now=now).overall == "warning"
+            ]
+            query = query.where(EmailThread.id.in_(risk_ids or [-1]))
+        filtered_threads = query.with_only_columns(
+            EmailThread.channel_id,
+            EmailThread.status,
+            EmailThread.last_message_at,
+        ).subquery()
+        mailbox_group_counts = {
+            row.channel_id: row
+            for row in db.execute(
+                select(
+                    filtered_threads.c.channel_id,
+                    func.count().label("total"),
+                    func.sum(
+                        case(
+                            (
+                                filtered_threads.c.status.in_({"triage", "new_reply"}),
+                                1,
+                            ),
+                            else_=0,
+                        )
+                    ).label("new_count"),
+                    func.sum(
+                        case(
+                            (
+                                filtered_threads.c.status.not_in(EMAIL_CLOSED_STATUSES),
+                                1,
+                            ),
+                            else_=0,
+                        )
+                    ).label("open_count"),
+                    func.min(filtered_threads.c.last_message_at).label(
+                        "oldest_message_at"
+                    ),
+                    func.max(filtered_threads.c.last_message_at).label(
+                        "latest_message_at"
+                    ),
+                ).group_by(filtered_threads.c.channel_id)
+            )
+        }
+        status_group_counts = {
+            row.status: row
+            for row in db.execute(
+                select(
+                    filtered_threads.c.status,
+                    func.count().label("total"),
+                    func.sum(
+                        case(
+                            (
+                                filtered_threads.c.status.in_({"triage", "new_reply"}),
+                                1,
+                            ),
+                            else_=0,
+                        )
+                    ).label("new_count"),
+                    func.sum(
+                        case(
+                            (
+                                filtered_threads.c.status.not_in(EMAIL_CLOSED_STATUSES),
+                                1,
+                            ),
+                            else_=0,
+                        )
+                    ).label("open_count"),
+                ).group_by(filtered_threads.c.status)
+            )
+        }
+        ordered_query = query.order_by(EmailThread.last_message_at.desc())
+        if selected_view == "mailbox":
+            # The mailbox view is a navigation summary.  Messages are only
+            # loaded after the operator opens a mailbox, avoiding hidden work
+            # and long pages when many mailboxes are available.
+            rows = []
+        elif selected_view == "mine":
+            rows = [
+                row
+                for status_code in STATUS_LABELS
+                if status_code in status_group_counts
+                for row in db.execute(
+                    ordered_query.where(EmailThread.status == status_code).limit(100)
+                ).all()
+            ]
+        else:
+            rows = db.execute(ordered_query.limit(100)).all()
+
+        def facet_count(*, facet_status: str | None = None, facet_responsible: str | None = None, facet_due: str | None = None) -> int:
+            statement = select(func.count()).select_from(EmailThread).join(EmailChannel, EmailChannel.id == EmailThread.channel_id).where(_email_visibility_filter(db, user_id, channel_access))
+            effective_status = selected_status if facet_status is None else facet_status
+            effective_responsible = responsible if facet_responsible is None else facet_responsible
+            effective_due = due if facet_due is None else facet_due
+            if effective_status == "active": statement = statement.where(EmailThread.status.not_in(EMAIL_CLOSED_STATUSES))
+            elif effective_status != "all": statement = statement.where(EmailThread.status == effective_status)
+            if selected_view == "mine": statement = statement.where(EmailThread.assigned_to_id == user_id)
+            if channel: statement = statement.where(EmailChannel.code == channel)
+            if effective_responsible == "mine": statement = statement.where(EmailThread.assigned_to_id == user_id)
+            elif effective_responsible == "unassigned": statement = statement.where(EmailThread.assigned_to_id.is_(None), EmailThread.executor_team_id.is_(None))
+            elif effective_responsible.startswith("team:") and effective_responsible[5:].isdigit(): statement = statement.where(EmailThread.executor_team_id == int(effective_responsible[5:]))
+            elif effective_responsible.isdigit(): statement = statement.where(EmailThread.assigned_to_id == int(effective_responsible))
+            if effective_due == "overdue": statement = statement.where(EmailThread.resolution_due_at < now, EmailThread.status.not_in({"resolved", "archived"}))
+            elif effective_due == "today":
+                tomorrow = now + timedelta(days=1)
+                statement = statement.where(EmailThread.resolution_due_at >= now.replace(hour=0, minute=0, second=0, microsecond=0), EmailThread.resolution_due_at < tomorrow.replace(hour=0, minute=0, second=0, microsecond=0))
+            elif effective_due == "no_sla": statement = statement.where(EmailThread.resolution_due_at.is_(None))
+            if clean_query:
+                pattern = f"%{clean_query}%"
+                message_match = select(EmailMessage.thread_id).where(EmailMessage.thread_id == EmailThread.id, or_(EmailMessage.subject.ilike(pattern), EmailMessage.sender.ilike(pattern), EmailMessage.text_body.ilike(pattern), EmailMessage.html_body.ilike(pattern), EmailMessage.external_message_id.ilike(pattern)))
+                terms = [EmailThread.subject.ilike(pattern), EmailThread.sender_name.ilike(pattern), EmailThread.sender_email.ilike(pattern), EmailThread.external_conversation_id.ilike(pattern), EmailThread.id.in_(message_match)]
+                reference_tail = clean_query.upper().split(".", 1)[0].rsplit("-", 1)[-1]
+                if reference_tail.isdigit(): terms.append(EmailThread.id == int(reference_tail))
+                statement = statement.where(or_(*terms))
+            return db.scalar(statement) or 0
+
+        counts = {code: facet_count(facet_status=code) for code in STATUS_LABELS}
+        all_status_count = facet_count(facet_status="all")
+        filtered_total_count = int(
+            db.scalar(select(func.count()).select_from(filtered_threads)) or 0
         )
-        visible = _email_visibility_filter(db, user_id, channel_access)
+        # Rebuild from the same authorized mailbox/search scope so every
+        # indicator remains stable when another indicator is selected.
+        indicator_base = (
+            select(EmailThread)
+            .join(EmailChannel, EmailChannel.id == EmailThread.channel_id)
+            .where(_email_visibility_filter(db, user_id, channel_access))
+        )
+        if selected_view == "mine":
+            indicator_base = indicator_base.where(EmailThread.assigned_to_id == user_id)
+        if channel:
+            indicator_base = indicator_base.where(EmailChannel.code == channel)
+        if clean_query:
+            indicator_base = indicator_base.where(or_(*search_terms))
+        indicator_rows = indicator_base.subquery()
+
+        def indicator_count(*conditions) -> int:
+            return int(
+                db.scalar(
+                    select(func.count())
+                    .select_from(indicator_rows)
+                    .where(*conditions)
+                )
+                or 0
+            )
+
+        active_condition = indicator_rows.c.status.not_in(EMAIL_CLOSED_STATUSES)
+        maximum_warning_minutes = int(
+            db.scalar(select(func.max(indicator_rows.c.sla_warning_minutes))) or 0
+        )
+        warning_cutoff = now + timedelta(minutes=max(maximum_warning_minutes, 0))
+        risk_candidates = db.execute(
+            indicator_base.where(
+                EmailThread.status.not_in(EMAIL_CLOSED_STATUSES),
+                EmailThread.sla_paused_at.is_(None),
+                or_(
+                    (
+                        EmailThread.first_response_at.is_(None)
+                        & (EmailThread.first_response_due_at >= now)
+                        & (EmailThread.first_response_due_at <= warning_cutoff)
+                    ),
+                    (
+                        EmailThread.resolved_at.is_(None)
+                        & (EmailThread.resolution_due_at >= now)
+                        & (EmailThread.resolution_due_at <= warning_cutoff)
+                    ),
+                ),
+            )
+        ).scalars().unique().all()
         operational_counters = {
-            "triage": db.scalar(
-                select(func.count()).select_from(EmailThread).where(
-                    visible, EmailThread.status == "triage"
-                )
-            )
-            or 0,
-            "mine": db.scalar(
-                select(func.count()).select_from(EmailThread).where(
-                    visible, EmailThread.assigned_to_id == user_id
-                )
-            )
-            or 0,
-            "unassigned": db.scalar(
-                select(func.count()).select_from(EmailThread).where(
-                    visible,
-                    EmailThread.assigned_to_id.is_(None),
-                    EmailThread.executor_team_id.is_(None),
-                )
-            )
-            or 0,
-            "overdue": db.scalar(
-                select(func.count()).select_from(EmailThread).where(
-                    visible,
-                    EmailThread.resolution_due_at < now,
-                    EmailThread.status.not_in({"resolved", "archived"}),
-                )
-            )
-            or 0,
-            "waiting": db.scalar(
-                select(func.count()).select_from(EmailThread).where(
-                    visible, EmailThread.status == "waiting_reply"
-                )
-            )
-            or 0,
+            "to_treat": indicator_count(active_condition),
+            "new": indicator_count(
+                active_condition,
+                indicator_rows.c.status.in_({"triage", "new_reply"}),
+            ),
+            "unassigned": indicator_count(
+                active_condition,
+                indicator_rows.c.assigned_to_id.is_(None),
+                indicator_rows.c.executor_team_id.is_(None),
+            ),
+            "overdue": indicator_count(
+                active_condition,
+                indicator_rows.c.resolution_due_at < now,
+            ),
+            "risk": sum(
+                sla_snapshot(item, now=now).overall == "warning"
+                for item in risk_candidates
+            ),
         }
         channels = list(
             db.scalars(
@@ -1028,6 +1335,57 @@ def email_inbox(
                     due_state=due_state,
                 )
             )
+        grouped_rows: list[SimpleNamespace] = []
+        if selected_view == "mailbox":
+            for item in channels:
+                if item.id in mailbox_group_counts:
+                    group_counts = mailbox_group_counts[item.id]
+                    grouped_rows.append(
+                        SimpleNamespace(
+                            key=f"mailbox-{item.id}",
+                            label=item.name,
+                            channel=item,
+                            rows=[],
+                            new_count=int(group_counts.new_count or 0),
+                            open_count=int(group_counts.open_count or 0),
+                            total_count=int(group_counts.total),
+                            responsibility_primary=(
+                                f"Supervisor: {users_by_id[item.supervisor_user_id].name}"
+                                if item.supervisor_user_id in users_by_id
+                                else f"Responsável: {users_by_id[item.functional_owner_user_id].name}"
+                                if item.functional_owner_user_id in users_by_id
+                                else "Responsável por definir"
+                            ),
+                            responsibility_secondary=(
+                                f"Executor: {users_by_id[item.default_assignee_id].name}"
+                                if item.default_assignee_id in users_by_id
+                                else f"Equipa: {teams_by_id[item.default_team_id].name}"
+                                if item.default_team_id in teams_by_id
+                                else "Executor: por atribuir"
+                            ),
+                            oldest_message_at=group_counts.oldest_message_at,
+                            latest_message_at=group_counts.latest_message_at,
+                            is_truncated=False,
+                        )
+                    )
+        elif selected_view == "mine":
+            for status_code, status_label in STATUS_LABELS.items():
+                group_rows = [
+                    row for row in inbox_rows if row.thread.status == status_code
+                ]
+                if group_rows:
+                    group_counts = status_group_counts[status_code]
+                    grouped_rows.append(
+                        SimpleNamespace(
+                            key=f"status-{status_code}",
+                            label=status_label,
+                            rows=group_rows,
+                            new_count=int(group_counts.new_count or 0),
+                            open_count=int(group_counts.open_count or 0),
+                            total_count=int(group_counts.total),
+                            is_truncated=len(group_rows) < int(group_counts.total),
+                        )
+                    )
         compose_channels = [
             item
             for item in channels
@@ -1066,17 +1424,25 @@ def email_inbox(
                 "current_user": db.get(User, user_id),
                 "permission_codes": permissions,
                 "rows": inbox_rows,
+                "grouped_rows": grouped_rows,
+                "email_work_view_labels": EMAIL_WORK_VIEW_LABELS,
                 "channels": channels,
                 "counts": counts,
                 "operational_counters": operational_counters,
-                "total_count": sum(counts.values()),
+                "total_count": all_status_count,
+                "filtered_total_count": filtered_total_count,
+                "all_is_truncated": selected_view == "all"
+                and len(inbox_rows) < filtered_total_count,
                 "status_labels": STATUS_LABELS,
+                "email_signal_labels": EMAIL_SIGNAL_LABELS,
                 "filters": {
                     "status": selected_status,
                     "channel": channel,
                     "q": clean_query,
                     "responsible": responsible,
                     "due": due,
+                    "signal": selected_signal,
+                    "view": selected_view,
                 },
                 "filter_users": [item for item in users if item.active],
                 "filter_teams": list(teams_by_id.values()),
@@ -1092,6 +1458,7 @@ def email_inbox(
                 "compose_module_code": module_code.strip().lower(),
                 "compose_context_code": context_code.strip().lower(),
                 "compose_open": compose == "1" and compose_supplier is not None,
+                "foundation_ui_enabled": settings.visual_foundation_enabled,
             },
         )
 
@@ -1115,6 +1482,10 @@ def email_new_message(
     auth = _auth(request, "email.reply", "email.manage", "admin.manage")
     if not auth:
         return RedirectResponse("/v2-clean/email?error=forbidden", status_code=303)
+    if submit not in {"draft", "approval", "send"}:
+        return RedirectResponse("/v2-clean/email?error=invalid_action", status_code=303)
+    if submit == "send" and not settings.email_outbound_enabled:
+        return RedirectResponse("/v2-clean/email?error=send_disabled", status_code=303)
     user_id, permissions = auth
     recipient_list = [
         item.strip()
@@ -1164,8 +1535,11 @@ def email_new_message(
             db, user_id, permissions, channel.id, "use_cc_bcc"
         ):
             return RedirectResponse("/v2-clean/email?error=forbidden", status_code=303)
-        sender_address = channel.default_reply_address or channel.address
-        if not sender_address:
+        try:
+            sender_address, reply_to_address = outbound_identity(
+                channel.from_name, channel.from_address, channel.reply_to_address
+            )
+        except ValueError:
             return RedirectResponse(
                 "/v2-clean/email?error=sender_not_configured", status_code=303
             )
@@ -1283,7 +1657,14 @@ def email_new_message(
         audit_action = state
         if submit == "send":
             try:
-                result = send_message(message, sender_address, reply_to=sender_address)
+                result = send_channel_message(
+                    db,
+                    channel,
+                    message,
+                    sender_address,
+                    reply_to=reply_to_address,
+                    postmark_sender=send_message,
+                )
             except RuntimeError as exc:
                 message.postmark_error = str(exc)
                 db.commit()
@@ -1341,6 +1722,26 @@ def email_thread(request: Request, thread_id: int):
     if not auth:
         return RedirectResponse("/login?next=/v2-clean/email", status_code=303)
     user_id, permissions = auth
+    return_context = request.query_params.get("return_context", "")
+    if not return_context.startswith("/v2-clean/email") or return_context.startswith("//"):
+        return_context = "/v2-clean/email"
+    sequence_raw = request.query_params.get("sequence", "")
+    sequence_ids = [int(item) for item in sequence_raw.split(",")[:100] if item.isdigit()]
+    def _neighbor_url(raw_id: str | int | None) -> str | None:
+        try:
+            neighbor_id = int(raw_id)
+        except (TypeError, ValueError):
+            return None
+        neighbor = db.get(EmailThread, neighbor_id)
+        if not neighbor or not _can_use_channel(
+            db, user_id, permissions, neighbor.channel_id, thread=neighbor
+        ):
+            return None
+        sequence_query = f"&sequence={','.join(str(item) for item in sequence_ids)}" if sequence_ids else ""
+        return (
+            f"/v2-clean/email/{neighbor_id}?return_context="
+            f"{quote(return_context, safe='')}{sequence_query}"
+        )
     with SessionLocal() as db:
         thread = db.get(EmailThread, thread_id)
         if not thread or not _can_use_channel(
@@ -1387,6 +1788,14 @@ def email_thread(request: Request, thread_id: int):
                 team_name=thread_team.name if thread_team else None,
             ),
             "email_sla": sla_snapshot(thread),
+            "thread_assignee": thread_assignee,
+            "thread_team": thread_team,
+            "linked_task": db.get(Task, thread.task_id) if thread.task_id else None,
+            "current_category": (
+                db.get(WorkCategory, thread.work_category_id)
+                if thread.work_category_id
+                else None
+            ),
             "functional_owner": (
                 db.get(User, thread.functional_owner_user_id)
                 if thread.functional_owner_user_id
@@ -1464,6 +1873,18 @@ def email_thread(request: Request, thread_id: int):
                 ),
                 "outbound_enabled": settings.email_outbound_enabled,
                 "embedded": False,
+                "foundation_ui_enabled": settings.visual_foundation_enabled,
+                "return_context": return_context,
+                "previous_thread_url": _neighbor_url(
+                    sequence_ids[sequence_ids.index(thread.id) - 1]
+                    if thread.id in sequence_ids and sequence_ids.index(thread.id) > 0
+                    else request.query_params.get("previous_thread", "")
+                ),
+                "next_thread_url": _neighbor_url(
+                    sequence_ids[sequence_ids.index(thread.id) + 1]
+                    if thread.id in sequence_ids and sequence_ids.index(thread.id) + 1 < len(sequence_ids)
+                    else request.query_params.get("next_thread", "")
+                ),
             },
         )
 
@@ -1532,6 +1953,13 @@ def email_thread_preview(request: Request, thread_id: int):
                 team_name=thread_team.name if thread_team else None,
             ),
             "email_sla": sla_snapshot(thread),
+            "thread_assignee": thread_assignee,
+            "thread_team": thread_team,
+            "current_category": (
+                db.get(WorkCategory, thread.work_category_id)
+                if thread.work_category_id
+                else None
+            ),
             "functional_owner": (
                 db.get(User, thread.functional_owner_user_id)
                 if thread.functional_owner_user_id
@@ -1648,6 +2076,7 @@ def email_message_body(request: Request, message_id: int, view: str = "html"):
 def email_triage(
     request: Request,
     thread_id: int,
+    action: str = Form("save"),
     content_type: str = Form(""),
     nature: str = Form(""),
     document_type: str = Form(""),
@@ -1667,6 +2096,11 @@ def email_triage(
     if not auth:
         return RedirectResponse(f"/v2-clean/email/{thread_id}?error=forbidden", status_code=303)
     user_id, permissions = auth
+    clean_action = action.strip().lower()
+    if clean_action not in {"save", "validate"}:
+        return RedirectResponse(
+            f"/v2-clean/email/{thread_id}?error=action_not_supported", status_code=303
+        )
     if (
         content_type
         and content_type not in CONTENT_TYPES
@@ -1731,6 +2165,13 @@ def email_triage(
                     f"/v2-clean/email/{thread_id}?error=invalid_hierarchy",
                     status_code=303,
                 )
+        if clean_action == "validate" and (
+            not hierarchy_selection or hierarchy_selection.status != "classified"
+        ):
+            return RedirectResponse(
+                f"/v2-clean/email/{thread_id}?error=missing_classification",
+                status_code=303,
+            )
         assignee = (
             db.get(User, int(assigned_to_id)) if assigned_to_id.isdigit() else None
         )
@@ -1889,12 +2330,17 @@ def email_triage(
                     module="email",
                     origin_url=str(request.url),
                 )
-        thread.status = "in_progress" if thread.status == "triage" else thread.status
+        if clean_action == "validate" and thread.status == "triage":
+            thread.status = "in_progress"
         db.add(
             EmailAuditEvent(
                 thread_id=thread.id,
                 user_id=user_id,
-                action="triage_saved",
+                action=(
+                    "classification_validated"
+                    if clean_action == "validate"
+                    else "triage_saved"
+                ),
                 details_json={
                     "content_type": thread.content_type,
                     "nature": thread.nature,
@@ -1908,7 +2354,9 @@ def email_triage(
             )
         )
         db.commit()
-    return RedirectResponse(f"/v2-clean/email/{thread_id}?saved=triage", status_code=303)
+    return RedirectResponse(
+        f"/v2-clean/email/{thread_id}?saved={clean_action}", status_code=303
+    )
 
 
 @email_router.get(
@@ -1987,6 +2435,24 @@ def email_attachment_file(request: Request, attachment_id: int, download: bool =
             return HTMLResponse(
                 "Este formato não tem pré-visualização segura. Usa a ação Descarregar.",
                 status_code=415,
+            )
+
+        if media_type.startswith("text/") and not download:
+            try:
+                text_content = path.read_text(encoding="utf-8")
+            except UnicodeDecodeError:
+                text_content = path.read_text(encoding="utf-8", errors="replace")
+            return HTMLResponse(
+                "<!doctype html><html><head><meta charset='utf-8'>"
+                "<style>body{margin:18px;color:#13213a;font:14px/1.55 Arial,sans-serif;}"
+                "pre{margin:0;white-space:pre-wrap;overflow-wrap:anywhere}</style></head>"
+                f"<body><pre>{escape(text_content)}</pre></body></html>",
+                headers={
+                    "Content-Security-Policy": (
+                        "default-src 'none'; style-src 'unsafe-inline'; "
+                        "base-uri 'none'; form-action 'none'"
+                    )
+                },
             )
 
         return FileResponse(
@@ -2080,6 +2546,27 @@ def email_status(request: Request, thread_id: int, status: str = Form(...)):
     user_id, _ = auth
     with SessionLocal() as db:
         thread = db.get(EmailThread, thread_id)
+        if thread and status == "archived":
+            latest_classification_action = db.scalar(
+                select(EmailAuditEvent.action)
+                .where(
+                    EmailAuditEvent.thread_id == thread.id,
+                    EmailAuditEvent.action.in_(
+                        {"classification_validated", "triage_saved"}
+                    ),
+                )
+                .order_by(EmailAuditEvent.id.desc())
+                .limit(1)
+            )
+            if (
+                thread.classification_status != "classified"
+                or thread.status == "triage"
+                or latest_classification_action != "classification_validated"
+            ):
+                return RedirectResponse(
+                    f"/v2-clean/email/{thread_id}?error=invalid_transition",
+                    status_code=303,
+                )
         action = (
             "manage_sla"
             if status in {"waiting_reply", "resolved"}
@@ -2233,6 +2720,14 @@ def email_reply(
     auth = _auth(request, "email.reply", "email.manage", "admin.manage")
     if not auth:
         return RedirectResponse(f"/v2-clean/email/{thread_id}?error=forbidden", status_code=303)
+    if submit not in {"draft", "approval", "send"}:
+        return RedirectResponse(
+            f"/v2-clean/email/{thread_id}?error=invalid_action", status_code=303
+        )
+    if submit == "send" and not settings.email_outbound_enabled:
+        return RedirectResponse(
+            f"/v2-clean/email/{thread_id}?error=send_disabled", status_code=303
+        )
     user_id, permissions = auth
     with SessionLocal() as db:
         thread = db.get(EmailThread, thread_id)
@@ -2318,22 +2813,26 @@ def email_reply(
                 f"/v2-clean/email/{thread_id}?error=invalid_recipient", status_code=303
             )
         policy_sender = _channel_sender_address(db, thread, sender_channel)
+        try:
+            transport_sender, reply_to_address = outbound_identity(
+                sender_channel.from_name,
+                sender_channel.from_address,
+                sender_channel.reply_to_address,
+            )
+        except ValueError:
+            transport_sender, reply_to_address = None, None
         requested_sender = sender_address.strip().lower() or policy_sender
         configured_senders = {
             item
-            for item in (sender_channel.address, sender_channel.default_reply_address)
+            for item in (policy_sender,)
             if item
         }
-        configured_senders.update(
-            db.scalars(
-                select(EmailChannelAlias.address).where(
-                    EmailChannelAlias.channel_id == sender_channel.id,
-                    EmailChannelAlias.active.is_(True),
-                )
-            )
-        )
         configured_senders = {item.casefold() for item in configured_senders}
-        if not requested_sender or requested_sender not in configured_senders:
+        if (
+            not requested_sender
+            or requested_sender not in configured_senders
+            or not reply_to_address
+        ):
             return RedirectResponse(
                 f"/v2-clean/email/{thread_id}?error=sender_not_configured", status_code=303
             )
@@ -2430,10 +2929,13 @@ def email_reply(
                 item.external_message_id for item in prior_messages if item.external_message_id
             ]
             try:
-                result = send_message(
+                result = send_channel_message(
+                    db,
+                    sender_channel,
                     message,
-                    requested_sender,
-                    reply_to=requested_sender,
+                    transport_sender,
+                    reply_to=reply_to_address,
+                    postmark_sender=send_message,
                     parent_message_id=parent_message_id,
                     references=references,
                     attachments=outbound_attachments,
@@ -2583,7 +3085,7 @@ def email_approve(request: Request, thread_id: int, message_id: int):
     with SessionLocal() as db:
         message = db.get(EmailMessage, message_id)
         thread = db.get(EmailThread, thread_id)
-        sender_channel = _sender_channel(db, message) if message else None
+        sender_channel = db.get(EmailChannel, thread.channel_id) if thread else None
         if (
             not thread
             or not message
@@ -2620,6 +3122,10 @@ def email_approve(request: Request, thread_id: int, message_id: int):
                 f"/v2-clean/email/{thread_id}?error=approval_invalidated",
                 status_code=303,
             )
+        if not settings.email_outbound_enabled:
+            return RedirectResponse(
+                f"/v2-clean/email/{thread_id}?error=send_disabled", status_code=303
+            )
         prior_messages = db.scalars(
             select(EmailMessage)
             .where(
@@ -2642,10 +3148,26 @@ def email_approve(request: Request, thread_id: int, message_id: int):
             )
         )
         try:
-            result = send_message(
+            transport_sender, reply_to_address = outbound_identity(
+                sender_channel.from_name,
+                sender_channel.from_address,
+                sender_channel.reply_to_address,
+            )
+        except ValueError:
+            transport_sender, reply_to_address = None, None
+        if not transport_sender or not reply_to_address:
+            return RedirectResponse(
+                f"/v2-clean/email/{thread_id}?error=sender_not_configured",
+                status_code=303,
+            )
+        try:
+            result = send_channel_message(
+                db,
+                sender_channel,
                 message,
-                message.sender,
-                reply_to=message.sender,
+                transport_sender,
+                reply_to=reply_to_address,
+                postmark_sender=send_message,
                 parent_message_id=parent_message_id,
                 references=references,
                 attachments=outbound_attachments,
@@ -2753,7 +3275,11 @@ def email_add_link(
 
 
 @email_router.post("/v2-clean/email/{thread_id}/task")
-def email_create_task(request: Request, thread_id: int):
+def email_create_task(
+    request: Request,
+    thread_id: int,
+    task_outcome: str = Form("complete"),
+):
     auth = _auth(
         request,
         "tasks.write",
@@ -2857,8 +3383,8 @@ def email_create_task(request: Request, thread_id: int):
                 due_on=thread.due_at.date() if thread.due_at else None,
                 created_by_id=user_id,
             )
-            db.add(task)
-            db.flush()
+            service_desk = ServiceDeskFacade(db)
+            service_desk.persist_task(task)
             if proposal_selection and (
                 proposal_selection.category or proposal_selection.subcategory
             ):
@@ -2871,15 +3397,14 @@ def email_create_task(request: Request, thread_id: int):
                     origin_url=f"/v2-clean/email/{thread.id}",
                 )
             try:
-                initialize_task_service_desk(
-                    db,
+                service_desk.initialize_task(
                     task,
                     actor_user_id=user_id,
                     requested_user_id=thread.assigned_to_id,
                     requested_team_id=thread.executor_team_id,
                 )
             except ValueError:
-                initialize_task_service_desk(db, task, actor_user_id=user_id)
+                service_desk.initialize_task(task, actor_user_id=user_id)
                 db.add(
                     EmailAuditEvent(
                         thread_id=thread.id,
@@ -2896,12 +3421,12 @@ def email_create_task(request: Request, thread_id: int):
                 .where(EmailMessage.thread_id == thread.id)
                 .order_by(EmailMessage.id)
             )
-            db.add(
-                TaskEmailOrigin(
-                    task_id=task.id,
+            service_desk.link_email_origin(
+                task.id,
+                EmailOriginCommand(
                     message_id=first.external_message_id if first else f"email-thread:{thread.id}",
                     sender=first.sender if first else thread.sender_email,
-                    recipients_json=first.recipients_json if first else None,
+                    recipients=first.recipients_json if first else None,
                     subject=first.subject if first else thread.subject,
                     received_at=first.received_at if first else thread.created_at,
                     mailbox=(
@@ -2911,17 +3436,107 @@ def email_create_task(request: Request, thread_id: int):
                         or db.get(EmailChannel, thread.channel_id).name
                     ),
                     source_url=f"/v2-clean/email/{thread.id}",
-                )
+                ),
             )
-            thread.task_id, thread.status = task.id, "task_created"
+            thread.task_id = task.id
+            if task_outcome == "wait":
+                thread.status = "task_created"
+            else:
+                mark_email_resolved(db, thread, user_id=user_id)
+                thread.status = "resolved"
             db.add(
                 EmailAuditEvent(
                     thread_id=thread.id,
                     message_id=first.id if first else None,
                     user_id=user_id,
                     action="task_created",
-                    details_json={"task_id": task.id},
+                    details_json={
+                        "task_id": task.id,
+                        "task_outcome": (
+                            "wait" if task_outcome == "wait" else "complete"
+                        ),
+                    },
                 )
             )
             db.commit()
     return RedirectResponse(f"/v2-clean/email/{thread_id}?saved=task", status_code=303)
+
+
+@email_router.post("/v2-clean/email/{thread_id}/spam")
+def email_mark_spam(
+    request: Request,
+    thread_id: int,
+    next_url: str = Form("/v2-clean/email"),
+):
+    auth = _auth(request, "email.triage", "email.manage", "admin.manage")
+    if not auth:
+        return RedirectResponse(f"/v2-clean/email/{thread_id}?error=forbidden", status_code=303)
+    user_id, permissions = auth
+    if not next_url.startswith("/v2-clean/email") or next_url.startswith("//"):
+        next_url = "/v2-clean/email"
+    with SessionLocal() as db:
+        thread = db.get(EmailThread, thread_id)
+        if not thread or not _can_use_channel(
+            db, user_id, permissions, thread.channel_id, "alter", thread=thread
+        ):
+            return RedirectResponse(f"/v2-clean/email/{thread_id}?error=forbidden", status_code=303)
+        transport = db.scalar(
+            select(EmailChannelTransport).where(
+                EmailChannelTransport.channel_id == thread.channel_id,
+                EmailChannelTransport.provider == "microsoft365",
+                EmailChannelTransport.enabled.is_(True),
+            )
+        )
+        message = db.scalar(
+            select(EmailMessage).where(
+                EmailMessage.thread_id == thread.id,
+                EmailMessage.direction == "inbound",
+                EmailMessage.external_message_id.is_not(None),
+            ).order_by(EmailMessage.id.desc())
+        )
+        required = (
+            transport,
+            getattr(transport, "tenant_id", None),
+            getattr(transport, "client_id", None),
+            getattr(transport, "client_credential_reference", None),
+            getattr(transport, "token_reference", None),
+            getattr(transport, "mailbox_address", None),
+            message,
+            getattr(message, "external_message_id", None),
+        )
+        if not all(required):
+            return RedirectResponse(
+                f"/v2-clean/email/{thread_id}?error=spam_unavailable", status_code=303
+            )
+        try:
+            move_shared_mailbox_message_to_junk(
+                tenant_id=transport.tenant_id,
+                client_id=transport.client_id,
+                client_credential_reference=transport.client_credential_reference,
+                token_reference=transport.token_reference,
+                mailbox_address=transport.mailbox_address,
+                message_id=message.external_message_id,
+            )
+        except RuntimeError as exc:
+            db.add(EmailAuditEvent(
+                thread_id=thread.id,
+                message_id=message.id,
+                user_id=user_id,
+                action="spam_move_failed",
+                details_json={"reason": str(exc)[:200]},
+            ))
+            db.commit()
+            return RedirectResponse(
+                f"/v2-clean/email/{thread_id}?error=spam_unavailable", status_code=303
+            )
+        thread.status = "archived"
+        db.add(EmailAuditEvent(
+            thread_id=thread.id,
+            message_id=message.id,
+            user_id=user_id,
+            action="marked_as_spam",
+            details_json={"provider": "microsoft365"},
+        ))
+        db.commit()
+    separator = "&" if "?" in next_url else "?"
+    return RedirectResponse(f"{next_url}{separator}saved=spam", status_code=303)

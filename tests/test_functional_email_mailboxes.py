@@ -94,6 +94,9 @@ def test_admin_creates_edits_inactivates_and_adds_alias(
         data={
             "code": "quality_ops",
             "name": "Qualidade",
+            "from_address": "quality@example.test",
+            "default_reply_address": "quality@example.test",
+            "from_name": "CarFast — Qualidade",
             "reply_policy": "mailbox",
             "active": "on",
         },
@@ -110,7 +113,9 @@ def test_admin_creates_edits_inactivates_and_adds_alias(
         f"/v2-clean/admin/work-classification/email-channels/{channel.id}",
         data={
             "name": "Qualidade e Auditoria",
+            "from_address": "quality-sender@example.test",
             "default_reply_address": "quality@example.test",
+            "from_name": "CarFast — Qualidade e Auditoria",
             "reply_policy": "original",
             "requires_triage": "on",
             "administrative_review_on_unclassified": "on",
@@ -124,6 +129,7 @@ def test_admin_creates_edits_inactivates_and_adds_alias(
     db_session.refresh(channel)
     assert channel.active is False
     assert channel.name == "Qualidade e Auditoria"
+    assert channel.from_address == "quality-sender@example.test"
     assert channel.reply_policy == "original"
 
     response = authenticated_client.post(
@@ -281,6 +287,10 @@ def test_approval_is_invalidated_when_message_changes(
         sessionmaker(bind=db_session.get_bind(), autoflush=False, autocommit=False),
     )
     thread, _ = ingest_inbound(db_session, _payload("approval-delivery"))
+    channel = db_session.get(EmailChannel, thread.channel_id)
+    channel.from_address = "multas@carfast.pt"
+    channel.reply_to_address = "multas@carfast.pt"
+    db_session.commit()
     response = authenticated_client.post(
         f"/v2-clean/email/{thread.id}/reply",
         data={

@@ -8,7 +8,7 @@
       <div class="clean-header-topbar">
         <p class="eyebrow">Oficina / experiência nova{% if is_historical %} · processo histórico{% endif %}</p>
         <div class="clean-header-top-actions">
-          <a class="button-link secondary-link" href="/v2-clean/workshop">Voltar</a>
+          <a class="button-link secondary-link" href="{{ workshop_return_url }}">Voltar à Oficina</a>
           {% include "_clean_workshop_admin_actions.html" %}
         </div>
       </div>
@@ -100,6 +100,7 @@
 
     <form class="clean-workshop-final-grid" method="post" enctype="multipart/form-data">
       {% if workshop_process %}<input type="hidden" name="process_id" value="{{ workshop_process.id }}">{% endif %}
+      {% if return_context %}<input type="hidden" name="return_context" value="{{ return_context }}">{% endif %}
       {% if is_historical %}<input type="hidden" name="process_mode" value="historical">{% endif %}
       {% set has_vehicle_plate = workshop_process and workshop_process.plate_snapshot %}
       {% set saved_reasons = saved_entry.entry_reasons or [] %}

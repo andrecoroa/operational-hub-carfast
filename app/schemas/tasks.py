@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import date, datetime, time
 
 from pydantic import Field
 
@@ -22,7 +22,9 @@ class TaskBase(ApiModel):
     waiting_for_team_id: int | None = None
     waiting_reason: str | None = Field(default=None, max_length=80)
     waiting_reason_detail: str | None = None
+    waiting_until: datetime | None = None
     due_on: date | None = None
+    due_time: time | None = None
 
 
 class TaskCreate(TaskBase):
@@ -46,7 +48,9 @@ class TaskUpdate(ApiModel):
     waiting_for_team_id: int | None = None
     waiting_reason: str | None = Field(default=None, max_length=80)
     waiting_reason_detail: str | None = None
+    waiting_until: datetime | None = None
     due_on: date | None = None
+    due_time: time | None = None
 
 
 class TaskRead(TaskBase):

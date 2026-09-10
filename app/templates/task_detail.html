@@ -27,7 +27,7 @@
         {% if can_write_workspace %}
           <a class="button-link secondary-link" href="/task-board/new?workspace={{ task_workspace }}&parent_task_id={{ task.id }}">Criar subtarefa</a>
         {% endif %}
-        <a class="button-link secondary-link" href="{{ task_manage_url }}">Voltar</a>
+        <a class="button-link secondary-link" href="{{ task_return_url }}">Voltar ao Centro de Tarefas</a>
       </div>
     </header>
 
@@ -413,8 +413,9 @@
             </label>
             <label>
               Detalhe do motivo
-              <input type="text" name="waiting_reason_detail" maxlength="500" value="{{ task.waiting_reason_detail or '' }}" placeholder="Obrigatório se o motivo for outro">
+              <input type="text" name="waiting_reason_detail" maxlength="500" value="{{ task.waiting_reason_detail or '' }}" placeholder="Obrigatório quando a tarefa está em espera">
             </label>
+            <label>Retomar em<input type="datetime-local" name="waiting_until" value="{{ (task.waiting_until|lisbon_datetime).strftime('%Y-%m-%dT%H:%M') if task.waiting_until else '' }}"></label>
           </div>
           </section>
 

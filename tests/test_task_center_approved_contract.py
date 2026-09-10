@@ -1,0 +1,964 @@
+from pathlib import Path
+import json
+import re
+from html import unescape
+from datetime import date, time, timedelta
+
+from app.models.tasks import Task, TaskComment, TaskEmailOrigin
+from app.models.admin import User
+from sqlalchemy import event, select
+import app.web.router as task_router
+
+
+ROOT = Path(__file__).resolve().parents[1]
+TEMPLATE = "\n".join(
+    (ROOT / path).read_text(encoding="utf-8")
+    for path in (
+        "app/templates/clean_task_center.html",
+        "app/templates/_task_center_approved.html",
+        "app/templates/_task_center_create.html",
+        "app/templates/_task_classification_fields.html",
+    )
+)
+CSS = (ROOT / "app/static/css/ui-contract-v1.css").read_text(encoding="utf-8")
+ROUTER = (ROOT / "app/web/router.py").read_text(encoding="utf-8")
+DETAIL = (ROOT / "app/templates/clean_task_detail.html").read_text(encoding="utf-8")
+NOTIFICATION_ROW = (ROOT / "app/templates/_task_notification_row.html").read_text(
+    encoding="utf-8"
+)
+NOTIFICATION_PAGE = (ROOT / "app/templates/clean_task_notifications.html").read_text(
+    encoding="utf-8"
+)
+
+
+def test_approved_task_center_has_five_contractual_keyboard_counters() -> None:
+    assert 'class="task-center-approved-metrics"' in TEMPLATE
+    assert TEMPLATE.count('data-task-counter=') == 5
+    for label in ("Por tratar", "Novas", "Por assumir", "Atrasadas", "Em risco"):
+        assert label in TEMPLATE
+    assert '<button' in TEMPLATE
+
+
+def test_deadline_and_comment_signals_are_explicit_and_non_invented() -> None:
+    assert "Atrasadas:</strong> prazo ultrapassado" in TEMPLATE
+    assert "Em risco:</strong> prazo ainda não ultrapassado" in TEMPLATE
+    assert "Hora (opcional, Lisboa)" in TEMPLATE
+    assert "Comentários:" in TEMPLATE
+    assert "alertas não lidos" in TEMPLATE.lower()
+    assert "task-unread-comment-badge" in TEMPLATE
+    assert "data-task-counter=\"new\"" in TEMPLATE
+    assert "if(mode==='new')params.set('status','new')" in TEMPLATE
+
+
+def test_total_comment_count_and_optional_time_render_on_visible_rows(
+    authenticated_client, db_session, monkeypatch
+) -> None:
+    monkeypatch.setattr(task_router.settings, "visual_foundation_enabled", True)
+    user = db_session.scalar(select(User).where(User.email == "admin.tests@carfast.local"))
+    task = Task(
+        title="Sinais na linha",
+        task_type="operational_task",
+        status="new",
+        priority="normal",
+        created_by_id=user.id,
+        assigned_to_id=user.id,
+        due_on=date.today(),
+        due_time=time(16, 45),
+    )
+    db_session.add(task)
+    db_session.flush()
+    db_session.add_all(
+        [
+            TaskComment(task_id=task.id, user_id=user.id, comment="Um"),
+            TaskComment(task_id=task.id, user_id=user.id, comment="Dois"),
+        ]
+    )
+    db_session.commit()
+
+    response = authenticated_client.get("/v2-clean/tasks?task_scope_view=mine")
+
+    assert response.status_code == 200
+    assert "Sinais na linha" in response.text
+    assert "rios: 2" in response.text
+    assert "16:45" in response.text
+
+
+def test_recurrence_remains_a_permission_scoped_secondary_action() -> None:
+    assert "can_manage_recurrence" in TEMPLATE
+    assert 'href="/v2-clean/tasks/recurring">Recorrentes</a>' in TEMPLATE
+    assert '@web_router.get("/v2-clean/tasks/recurring"' in ROUTER
+    assert 'aria-label="Área do Centro de Tarefas"' in TEMPLATE
+    assert 'href="/v2-clean/tasks"' in TEMPLATE
+    assert '>Tarefas</a>' in TEMPLATE
+
+
+def test_approved_safe_default_and_reset_are_explicit() -> None:
+    assert '("mine","Minhas")' in TEMPLATE
+    assert 'task_filter_status_labels' in ROUTER
+    assert 'value="{{ code }}"' in TEMPLATE
+    assert 'name="category"' in TEMPLATE
+    assert 'data-task-safe-reset' in TEMPLATE
+    assert 'Fechadas excluídas' in TEMPLATE
+    assert 'default_task_category' in ROUTER
+
+
+def test_primary_filters_use_operational_views_and_persisted_queues() -> None:
+    for label in ("Minhas", "Por assumir", "Da equipa"):
+        assert label in TEMPLATE
+    assert 'aria-label="Vista de trabalho"' in TEMPLATE
+    assert 'type="hidden" name="task_scope_view"' in TEMPLATE
+    assert 'data-task-scope-option="{{ code }}"' in TEMPLATE
+    assert 'class="task-filter-primary-row"' in TEMPLATE
+    assert 'class="task-filter-operational-row"' in TEMPLATE
+    assert "form.querySelector('[data-task-scope]')" in TEMPLATE
+    assert 'data-task-queue' in TEMPLATE
+    assert 'name="category" value="all"' in TEMPLATE
+    assert 'Categoria de foco' not in TEMPLATE
+    assert "grid-template-columns:minmax(0,62fr) minmax(360px,38fr)" in CSS
+
+
+def test_creation_offers_case_in_the_same_progressive_selector() -> None:
+    assert "data-create-case" in TEMPLATE
+    assert "createDialog.close();openCaseFlow('new')" in TEMPLATE
+    assert "Criar e abrir tarefa" in TEMPLATE
+
+
+def test_approved_queue_has_eight_fields_and_refined_rows() -> None:
+    expected = ("Prior.", "Referência", "Assunto", "Categoria", "Responsável", "Prazo", "Estado", "Última atualização")
+    for label in expected:
+        assert f"<th>{label}</th>" in TEMPLATE
+    assert 'data-task-field-count="8"' in TEMPLATE
+    assert "tbody tr[data-task-row] td{height:48px" in CSS
+    assert "task-priority-text" in TEMPLATE
+    assert "{{ '▲' if task.priority" not in TEMPLATE
+
+
+def test_approved_preview_is_inline_and_exposes_five_direct_rbac_actions() -> None:
+    assert 'class="task-center-approved-preview ' in TEMPLATE
+    assert 'aria-live="polite"' in TEMPLATE
+    assert 'data-task-preview-close' in TEMPLATE
+    assert 'data-task-preview-action' in TEMPLATE
+    assert len(re.findall(r"<button[^>]+data-task-preview-action=", TEMPLATE)) == 5
+    assert "task_update_allowed_by_id" in TEMPLATE
+    assert "task_close_allowed_by_id" in TEMPLATE
+    assert "data-preview-origin" not in TEMPLATE
+    assert "data-preview-relation" in TEMPLATE
+    assert "task-preview-description" in TEMPLATE
+    assert "data-preview-waiting" in TEMPLATE
+    assert "data-preview-support" in TEMPLATE
+    assert "data-task-more-toggle" not in TEMPLATE
+    assert "Mais ações disponíveis" not in TEMPLATE
+    assert ">Criar caso</button>" in TEMPLATE
+    assert "function mountPreview(row,groupButton=null)" in TEMPLATE
+    assert "row.insertAdjacentElement('afterend',inlinePreviewRow)" in TEMPLATE
+    assert "groupButton.insertAdjacentElement('afterend',preview)" in TEMPLATE
+
+
+def test_inline_preview_is_compact_and_does_not_repeat_selected_row_identity() -> None:
+    preview = TEMPLATE.split('data-task-preview-home hidden', 1)[1].split(
+        '<dialog data-task-state-dialog', 1
+    )[0]
+    assert 'class="task-preview-closebar"' in preview
+    assert 'data-preview-reference' not in preview
+    assert 'data-preview-title' not in preview
+    assert 'data-preview-state' not in preview
+    assert 'data-preview-priority' not in preview
+    assert 'class="task-preview-updated"' not in preview
+    assert "updated.textContent=`Atualizada ${row.dataset.update}`" in TEMPLATE
+    assert ".task-center-approved .task-center-approved-preview{min-height:150px}" in CSS
+    assert "grid-auto-columns:minmax(0,1fr)" in CSS
+    assert "footer button{width:100%;min-width:96px" in CSS
+    assert ".task-preview-context[hidden]{display:none}" in CSS
+
+
+def test_finishing_pass_prioritizes_subject_summary_and_primary_action() -> None:
+    assert ".task-center-approved .c-subject{width:33%}" in CSS
+    assert ".task-center-approved-table-wrap thead th{position:sticky" in CSS
+    assert ".task-preview-description{min-height:5.4em;max-height:8.1em" in CSS
+    assert "footer button:not(.primary){border:1px solid" in CSS
+    assert "footer button.primary{font-weight:700" in CSS
+
+
+def test_final_filters_and_actions_keep_the_approved_hierarchy() -> None:
+    assert "Pesquisa<input" in TEMPLATE
+    assert "Referência, assunto ou contexto" in TEMPLATE
+    assert "('flat','Lista'),('case','Por caso'),('category','Por categoria')" in TEMPLATE
+    assert TEMPLATE.index('data-case-flow="related"') < TEMPLATE.index(
+        'data-task-preview-action="decision"'
+    )
+    assert ".task-filter-primary-row{display:grid" in CSS
+    assert ".task-filter-operational-row{display:grid" in CSS
+    assert "decision remains the final action" in CSS
+
+
+def test_preview_renders_only_persisted_non_empty_context_without_plate_heuristics(
+    authenticated_client, db_session, monkeypatch
+) -> None:
+    monkeypatch.setattr(task_router.settings, "visual_foundation_enabled", True)
+    actor = db_session.scalar(select(User).where(User.email == "admin.tests@carfast.local"))
+    task = Task(
+        title="Contexto persistido",
+        description="Descrição",
+        task_type="operational_task",
+        status="new",
+        priority="normal",
+        created_by_id=actor.id,
+        assigned_to_id=actor.id,
+        plate="AA-00-BB",
+        reservation_number="RES-7",
+        contract_number="CTR-9",
+        customer_name="Cliente Exemplo",
+        entity_type="vehicle",
+        entity_id="42",
+    )
+    db_session.add(task)
+    db_session.flush()
+    db_session.add(
+        TaskEmailOrigin(
+            task_id=task.id,
+            message_id="msg-context-1",
+            subject="Assunto da origem",
+            source_url="/v2-clean/email?message=msg-context-1",
+        )
+    )
+    db_session.commit()
+
+    response = authenticated_client.get("/v2-clean/tasks?task_scope_view=mine")
+
+    assert response.status_code == 200
+    row = re.search(r'<tr[^>]+data-title="Contexto persistido"[^>]+>', response.text).group(0)
+    encoded = re.search(r'data-context="([^"]*)"', row).group(1)
+    context = json.loads(unescape(encoded))
+    assert context == [
+        {"label": "Viatura", "value": "AA-00-BB", "href": "/v2-clean/fleet/42"},
+        {"label": "Contrato", "value": "CTR-9", "href": ""},
+        {"label": "Reserva", "value": "RES-7", "href": ""},
+        {"label": "Cliente", "value": "Cliente Exemplo", "href": ""},
+        {
+            "label": "Email de origem",
+            "value": "Assunto da origem",
+            "href": "/v2-clean/email?message=msg-context-1",
+        },
+    ]
+
+    origin = db_session.scalar(
+        select(TaskEmailOrigin).where(TaskEmailOrigin.task_id == task.id)
+    )
+    origin.source_url = "//external.example/path"
+    db_session.commit()
+    rejected = authenticated_client.get("/v2-clean/tasks?task_scope_view=mine")
+    rejected_row = re.search(
+        r'<tr[^>]+data-title="Contexto persistido"[^>]+>', rejected.text
+    ).group(0)
+    rejected_context = json.loads(
+        unescape(re.search(r'data-context="([^"]*)"', rejected_row).group(1))
+    )
+    assert rejected_context[-1]["href"] == ""
+    assert "find_vehicle_by_plate" not in ROUTER[ROUTER.index("task_context_items_by_id") : ROUTER.index("task_claim_allowed_by_id")]
+
+
+def test_inline_preview_toggles_single_selection_and_restores_keyboard_focus() -> None:
+    assert "const toggleSelection=(row,groupButton=null)" in TEMPLATE
+    assert "selectedRow===row&&!preview.classList.contains('is-empty')" in TEMPLATE
+    assert "selectedTrigger=groupButton||row" in TEMPLATE
+    assert "selectedRow=null;selectedTrigger=null" in TEMPLATE
+    assert "trigger?.isConnected)trigger.focus()" in TEMPLATE
+    assert "event.key!=='Escape'" in TEMPLATE
+    assert "document.querySelector('dialog[open]')" in TEMPLATE
+    assert "row.addEventListener('click',()=>toggleSelection(row))" in TEMPLATE
+    assert "if(row)toggleSelection(row,button)" in TEMPLATE
+    assert "groupButtons.find(button=>button.dataset.groupTask===id)" in TEMPLATE
+    assert "if(!row||(grouped&&!groupButton))continue" in TEMPLATE
+    assert "select(row,groupButton||null);break" in TEMPLATE
+    assert ".task-center-approved-workspace{display:block" in CSS
+
+
+def test_grouped_reload_restores_preview_only_under_a_visible_group_trigger() -> None:
+    assert "const group=groupButton.closest('details.task-group');if(group)group.open=true" in TEMPLATE
+    assert "grouped=document.querySelector('[data-task-groups]')" in TEMPLATE
+    assert "if(!row||(grouped&&!groupButton))continue" in TEMPLATE
+    assert "groupButton.insertAdjacentElement('afterend',preview)" in TEMPLATE
+
+
+def test_decision_inbox_link_is_canonical_and_does_not_carry_list_filters() -> None:
+    assert 'href="/v2-clean/tasks?decision=mine"' in TEMPLATE
+    assert "include_query_params(decision='mine'" not in TEMPLATE
+    assert 'href="/v2-clean/tasks"' in TEMPLATE
+
+
+def test_alerts_share_one_row_component_across_compact_and_full_views() -> None:
+    assert TEMPLATE.count('{% include "_task_notification_row.html" %}') == 2
+    assert '{% include "_task_notification_row.html" %}' in NOTIFICATION_PAGE
+    assert 'class="clean-task-notification-row-link"' in NOTIFICATION_ROW
+    assert "clean-task-notification-row-title" in NOTIFICATION_ROW
+    assert "clean-task-notification-detail" in NOTIFICATION_ROW
+    assert "clean-task-notification-time" in NOTIFICATION_ROW
+    assert "notification.read_at" in NOTIFICATION_ROW
+
+
+def test_alert_rows_and_decision_badge_have_responsive_contract() -> None:
+    assert ".clean-task-notification-list{display:grid;gap:8px}" in CSS
+    assert ".clean-task-notification-row{min-width:0;border:1px solid" in CSS
+    assert ".clean-task-notification-row.is-unread" in CSS
+    assert "@media(max-width:700px){.clean-task-notification-list>header" in CSS
+    assert ".clean-task-notification-row-link{grid-template-columns:minmax(0,1fr)}" in CSS
+    assert "task-center-decision-count" in TEMPLATE
+    assert 'aria-label="{{ pending_decision_count }} decisões pendentes"' in TEMPLATE
+
+
+def test_support_targets_are_scoped_server_side_and_not_globally_rendered() -> None:
+    support_dialog = TEMPLATE[TEMPLATE.index("data-task-support-dialog") :]
+    support_dialog = support_dialog[: support_dialog.index("{% include")]
+    assert "task_support_available_by_id|tojson" in TEMPLATE
+    assert "/support-targets`" in TEMPLATE
+    assert 'def clean_task_support_targets(' in ROUTER
+    assert "for user in all_users" not in support_dialog
+    assert "for team in teams" not in support_dialog
+    assert "target.replaceChildren" in TEMPLATE
+
+
+def test_support_targets_fail_closed_without_update_permission(
+    authenticated_client, db_session, monkeypatch
+) -> None:
+    monkeypatch.setattr(task_router.settings, "visual_foundation_enabled", True)
+    original_scope_check = task_router._task_hierarchy_scope_allows
+
+    def scope_check(db, user_id, task, *, action):
+        if action == "update":
+            return False
+        return original_scope_check(db, user_id, task, action=action)
+
+    monkeypatch.setattr(task_router, "_task_hierarchy_scope_allows", scope_check)
+    task = Task(
+        title="Visível sem suporte autorizado",
+        task_type="operational_task",
+        category="Documentação",
+        status="new",
+        priority="normal",
+    )
+    db_session.add(task)
+    db_session.commit()
+    actor = db_session.scalar(select(User).where(User.email == "admin.tests@carfast.local"))
+    task.created_by_id = actor.id
+    db_session.commit()
+
+    page = authenticated_client.get(
+        "/v2-clean/tasks?workspace=mine&mine_kind=all&status=open&category=documentacao"
+    )
+
+    assert page.status_code == 200
+    assert 'data-title="Visível sem suporte autorizado"' in page.text
+    row = re.search(
+        r'<tr[^>]+data-title="Visível sem suporte autorizado"[^>]+>', page.text
+    ).group(0)
+    assert 'data-can-update="0"' in row
+    payload = json.loads(
+        re.search(r"const supportAvailable=(\{.*?\});", page.text, re.S).group(1)
+    )
+    assert payload[str(task.id)] is False
+    monkeypatch.setattr(
+        task_router,
+        "_task_hierarchy_scope_allows",
+        lambda _db, _user_id, _task, *, action: action != "update",
+    )
+    denied_targets = authenticated_client.get(
+        f"/v2-clean/tasks/{task.id}/support-targets"
+    )
+    assert denied_targets.status_code == 403
+    assert denied_targets.json() == {"targets": []}
+
+
+def test_approved_workbench_loads_on_demand_through_authorized_open_resolver() -> None:
+    assert "window.openTaskWorkbench" in TEMPLATE
+    assert "openTaskWorkbenchOnDemand" in TEMPLATE
+    assert "`/v2-clean/tasks/${taskId}/open?return_url=${encodeURIComponent(returnUrl)}`" in TEMPLATE
+    assert "{% if false %}{% for task in tasks %}" in TEMPLATE
+    assert "Tarefa antiga" not in TEMPLATE
+    assert "CF-TASK-" not in TEMPLATE
+    assert 'name="status" value="{{ task.status }}"' not in TEMPLATE
+    assert "/transition`;" in TEMPLATE
+    assert 'action="/v2-clean/tasks/{{ task.id }}/update"' in DETAIL
+    assert "data-assignment-exclusive" in DETAIL
+
+
+def test_initial_list_does_not_render_one_workbench_per_task(
+    authenticated_client, db_session, monkeypatch
+) -> None:
+    monkeypatch.setattr(task_router.settings, "visual_foundation_enabled", True)
+    actor = db_session.scalar(select(User).where(User.email == "admin.tests@carfast.local"))
+    for index in range(10):
+        db_session.add(
+            Task(
+                title=f"Tarefa leve {index}",
+                task_type="operational_task",
+                category="Documentação",
+                status="new",
+                priority="normal",
+                assigned_to_id=actor.id,
+            )
+        )
+    db_session.commit()
+    queries = 0
+
+    def count_query(*_args) -> None:
+        nonlocal queries
+        queries += 1
+
+    event.listen(db_session.bind, "before_cursor_execute", count_query)
+    try:
+        page = authenticated_client.get(
+            "/v2-clean/tasks?workspace=mine&mine_kind=all&status=open&category=all"
+        )
+    finally:
+        event.remove(db_session.bind, "before_cursor_execute", count_query)
+
+    assert page.status_code == 200
+    assert page.text.count('class="clean-task-preview"') == 0
+    assert page.text.count("<form") < 20
+    assert page.text.count("<dialog") <= 7
+    # Ten extra rows must not reintroduce the former per-row workbench and
+    # support-target query fan-out (197 queries on the frozen base).
+    assert queries <= 140, queries
+
+
+def test_management_uses_the_same_comment_state_and_support_language() -> None:
+    for marker in ('href="#task-edit"', '>Comentar</a>', '>Alterar estado</a>', '>Solicitar suporte</a>'):
+        assert marker in DETAIL
+    assert 'name="comment"' in DETAIL and "required maxlength=\"4000\"" in DETAIL
+    assert 'name="requested_target" required' in DETAIL
+    assert 'name="message" rows="3" required' in DETAIL
+    assert "task_support_targets" in ROUTER
+
+
+def test_management_clarifies_current_state_and_uses_minimal_disclosure() -> None:
+    assert "Estado atual" in DETAIL
+    assert "Sem transições legais disponíveis" in DETAIL
+    assert "<details><summary>Mais opções</summary>" in DETAIL
+
+
+def test_management_keeps_support_and_documents_compact_until_requested() -> None:
+    assert '<details class="section task-detail-collapsible" id="task-support">' in DETAIL
+    assert '<summary>Solicitar suporte</summary>' in DETAIL
+    assert '<details class="section task-detail-collapsible task-detail-documents" id="task-documents"' in DETAIL
+    assert '<summary>Documentos <span>{{ documents|length }}</span></summary>' in DETAIL
+    assert "target?.matches('details'))target.open=true" in DETAIL
+
+
+def test_final_task_density_polish_preserves_legibility_and_responsiveness() -> None:
+    assert ".task-center-approved .task-filter-operational-row select{" in CSS
+    assert "padding:0 28px 0 9px" in CSS
+    assert ".task-preview-description{min-height:5.4em;max-height:8.1em}" in CSS
+    assert ".task-preview-context{height:24px;max-height:24px" in CSS
+    assert ".task-center-detail-approved #task-state dl{display:grid" in CSS
+    assert ".task-center-detail-actions a{" in CSS
+
+
+def test_queue_and_state_controls_explain_their_distinct_contracts() -> None:
+    assert "Única fila autorizada" in TEMPLATE
+    assert 'data-task-queue aria-label="Fila ativa"' in TEMPLATE
+    assert "Filtrar por estado" in TEMPLATE
+    assert "Recorta a lista; não define transições." in TEMPLATE
+    assert "Estado atual" in TEMPLATE
+    assert "Transições disponíveis" in TEMPLATE
+    assert "Destinos legais devolvidos pelo servidor" in TEMPLATE
+    assert "Transições disponíveis" in DETAIL
+
+
+def test_management_support_surface_fails_closed_without_update_scope(
+    authenticated_client, db_session, monkeypatch
+) -> None:
+    monkeypatch.setattr(task_router.settings, "visual_foundation_enabled", True)
+    actor = db_session.scalar(select(User).where(User.email == "admin.tests@carfast.local"))
+    task = Task(
+        title="Gestão sem suporte autorizado",
+        task_type="operational_task",
+        category="Documentação",
+        status="new",
+        priority="normal",
+        assigned_to_id=actor.id,
+    )
+    db_session.add(task)
+    db_session.commit()
+    original_scope_check = task_router._task_hierarchy_scope_allows
+
+    def scope_check(db, user_id, candidate, *, action):
+        if candidate.id == task.id and action == "update":
+            return False
+        return original_scope_check(db, user_id, candidate, action=action)
+
+    monkeypatch.setattr(task_router, "_task_hierarchy_scope_allows", scope_check)
+    page = authenticated_client.get(f"/v2-clean/tasks/{task.id}/detail")
+
+    assert page.status_code == 200
+    assert 'id="task-support"' not in page.text
+    assert 'href="#task-support"' not in page.text
+
+
+def test_approved_selection_preserves_return_context() -> None:
+    assert 'data-task-row' in TEMPLATE
+    assert 'data-return-context' in TEMPLATE
+    assert 'history.replaceState' in TEMPLATE
+    assert 'sessionStorage' in TEMPLATE
+    assert 'data-task-scroll' in TEMPLATE
+    assert 'scrollTop' in TEMPLATE
+    assert 'carfast.taskScroll:' in TEMPLATE
+    assert "const restoreIds=" in TEMPLATE
+    assert "grouped&&!groupButton" in TEMPLATE
+    assert "get('open_task')" not in TEMPLATE
+    assert "if(key==='open_task')return" in TEMPLATE
+    assert "['updated','case_updated'].includes(key)" in TEMPLATE
+
+
+def test_detail_main_and_activity_share_one_geometry_token() -> None:
+    assert "--task-detail-panel-padding:20px" in CSS
+    assert (
+        ".task-center-detail-approved .form-panel,.task-center-detail-approved .section"
+        "{max-width:none;padding:var(--task-detail-panel-padding)" in CSS
+    )
+
+
+def test_server_side_scope_is_shared_by_list_and_counters() -> None:
+    assert "visibility_filter =" in ROUTER
+    assert "task_visibility_filter" in ROUTER
+    assert "task_counter_metrics" in ROUTER
+    assert "counter_base_filters" in ROUTER
+
+
+def test_initial_default_excludes_closed_and_shows_complete_authorized_workload(
+    authenticated_client, db_session, monkeypatch
+) -> None:
+    monkeypatch.setattr(task_router.settings, "visual_foundation_enabled", True)
+    actor = db_session.scalar(select(User).where(User.email == "admin.tests@carfast.local"))
+    db_session.add_all(
+        [
+            Task(title="Documento ativo aprovado", task_type="operational_task", category="Documentação", status="new", priority="normal", assigned_to_id=actor.id),
+            Task(title="Oficina fora do foco inicial", task_type="workshop_task", category="Oficina", status="new", priority="normal", assigned_to_id=actor.id),
+            Task(title="Documento fechado excluído", task_type="operational_task", category="Documentação", status="closed", priority="normal"),
+            Task(title="Documento cancelado excluído", task_type="operational_task", category="Documentação", status="cancelled", priority="normal"),
+            Task(title="Documento sem ação excluído", task_type="operational_task", category="Documentação", status="no_action_needed", priority="normal"),
+        ]
+    )
+    db_session.commit()
+
+    page = authenticated_client.get("/v2-clean/tasks")
+
+    assert page.status_code == 200
+    assert "Documento ativo aprovado" in page.text
+    assert "Oficina fora do foco inicial" in page.text
+    assert "Documento fechado excluído" not in page.text
+    assert "Documento cancelado excluído" not in page.text
+    assert "Documento sem ação excluído" not in page.text
+    assert 'name="category" value="all"' in page.text
+    assert 'value="open" selected' in page.text
+
+
+def test_explicit_closed_and_category_filters_are_server_side(
+    authenticated_client, db_session
+) -> None:
+    db_session.add_all(
+        [
+            Task(title="Oficina ativa contratual", task_type="workshop_task", category="Oficina", status="new", priority="normal"),
+            Task(title="Fechada contratual", task_type="operational_task", category="Documentação", status="closed", priority="normal"),
+        ]
+    )
+    db_session.commit()
+    actor = db_session.scalar(select(User).where(User.email == "admin.tests@carfast.local"))
+    for task in db_session.scalars(select(Task).where(Task.created_by_id.is_(None))):
+        task.created_by_id = actor.id
+    db_session.commit()
+
+    workshop = authenticated_client.get("/v2-clean/tasks?workspace=mine&mine_kind=all&status=open&category=oficina")
+    closed = authenticated_client.get("/v2-clean/tasks?workspace=mine&mine_kind=all&status=closed&category=all")
+
+    assert "Oficina ativa contratual" in workshop.text
+    assert "Fechada contratual" not in workshop.text
+    assert "Fechada contratual" in closed.text
+
+
+def test_each_approved_status_filter_is_server_side(
+    authenticated_client, db_session, monkeypatch
+) -> None:
+    monkeypatch.setattr(task_router.settings, "visual_foundation_enabled", True)
+    statuses = {
+        "new": "Filtro Nova",
+        "in_execution": "Filtro Em curso",
+        "waiting": "Filtro Em espera",
+        "support_requested": "Filtro Suporte",
+        "resolved": "Filtro Resolvida",
+        "cancelled": "Filtro Cancelada",
+    }
+    db_session.add_all(
+        Task(
+            title=title,
+            task_type="operational_task",
+            category="Documentação",
+            status=status,
+            priority="normal",
+        )
+        for status, title in statuses.items()
+    )
+    db_session.commit()
+    actor = db_session.scalar(select(User).where(User.email == "admin.tests@carfast.local"))
+    for task in db_session.scalars(select(Task).where(Task.created_by_id.is_(None))):
+        task.created_by_id = actor.id
+    db_session.commit()
+
+    for status, title in statuses.items():
+        page = authenticated_client.get(
+            f"/v2-clean/tasks?workspace=mine&mine_kind=all&category=all&status={status}"
+        )
+        assert page.status_code == 200
+        assert title in page.text
+        for other_title in set(statuses.values()) - {title}:
+            assert other_title not in page.text
+
+
+def test_closed_and_risk_query_is_explicitly_normalized(
+    authenticated_client, monkeypatch
+) -> None:
+    monkeypatch.setattr(task_router.settings, "visual_foundation_enabled", True)
+    response = authenticated_client.get(
+        "/v2-clean/tasks?status=closed&due=due_soon"
+    )
+    assert response.status_code == 200
+    assert "incompatíveis" in response.text
+    assert '<option value="due_soon" selected' not in response.text
+
+
+def test_counter_values_reconcile_with_authorized_server_filters(
+    authenticated_client, db_session, monkeypatch
+) -> None:
+    monkeypatch.setattr(task_router.settings, "visual_foundation_enabled", True)
+    today = date.today()
+    db_session.add_all(
+        [
+            Task(title="Sem executor", task_type="operational_task", category="Documentação", status="new", priority="normal", due_on=today),
+            Task(title="Atrasada", task_type="operational_task", category="Documentação", status="new", priority="high", due_on=today - timedelta(days=1)),
+        ]
+    )
+    db_session.commit()
+
+    actor = db_session.scalar(select(User).where(User.email == "admin.tests@carfast.local"))
+    personal = Task(
+        title="Minha tarefa em risco",
+        task_type="operational_task",
+        category="Documentação",
+        status="new",
+        priority="high",
+        assigned_to_id=actor.id,
+        due_on=today + timedelta(days=1),
+    )
+    db_session.add(personal)
+    db_session.commit()
+
+    page = authenticated_client.get("/v2-clean/tasks?workspace=mine&status=open&category=all")
+    unassigned = authenticated_client.get("/v2-clean/tasks?workspace=all&status=open&category=all&assignment=unassigned")
+    destinations = {
+        "active": authenticated_client.get("/v2-clean/tasks?workspace=mine&status=open&category=all"),
+        "risk": authenticated_client.get("/v2-clean/tasks?workspace=mine&status=open&category=all&due=due_soon"),
+        "late": authenticated_client.get("/v2-clean/tasks?workspace=mine&status=open&category=all&due=overdue"),
+        "unassigned": unassigned,
+    }
+    for counter, destination in destinations.items():
+        page_count = int(
+            re.search(
+                rf'data-task-counter="{counter}"[^>]+aria-label="Ver (\d+) tarefas',
+                page.text,
+            ).group(1)
+        )
+        result_count = int(
+            re.search(
+                r'<section class="task-center-approved-queue[^>]*>.*?<header>.*?<span>(\d+) tarefas?',
+                destination.text,
+                re.S,
+            ).group(1)
+        )
+        assert page_count == result_count, counter
+
+
+def test_legacy_focus_cookie_is_ignored_and_invalid_category_falls_back_to_all(
+    authenticated_client, db_session, monkeypatch
+) -> None:
+    monkeypatch.setattr(task_router.settings, "visual_foundation_enabled", True)
+    actor = db_session.scalar(select(User).where(User.email == "admin.tests@carfast.local"))
+    db_session.add_all(
+        [
+            Task(title="Oficina lembrada", task_type="workshop_task", category="Oficina", status="new", priority="normal", assigned_to_id=actor.id),
+            Task(title="Documento fora do foco lembrado", task_type="operational_task", category="Documentação", status="new", priority="normal", assigned_to_id=actor.id),
+        ]
+    )
+    db_session.commit()
+    authenticated_client.cookies.set("carfast_task_category", "oficina")
+
+    remembered = authenticated_client.get("/v2-clean/tasks")
+    invalid = authenticated_client.get("/v2-clean/tasks?category=valor-invalido")
+
+    for page in (remembered, invalid):
+        assert "Oficina lembrada" in page.text
+        assert "Documento fora do foco lembrado" in page.text
+        assert 'name="category" value="all"' in page.text
+
+
+def test_category_buckets_are_mutually_exclusive_under_adversarial_type(
+    authenticated_client, db_session, monkeypatch
+) -> None:
+    monkeypatch.setattr(task_router.settings, "visual_foundation_enabled", True)
+    db_session.add(
+        Task(title="Sinistro em fluxo de oficina", task_type="workshop_task", category="Sinistros", status="new", priority="high")
+    )
+    db_session.commit()
+    actor = db_session.scalar(select(User).where(User.email == "admin.tests@carfast.local"))
+    for task in db_session.scalars(select(Task).where(Task.created_by_id.is_(None))):
+        task.created_by_id = actor.id
+    db_session.commit()
+
+    workshop = authenticated_client.get("/v2-clean/tasks?workspace=mine&mine_kind=all&status=open&category=oficina")
+    claims = authenticated_client.get("/v2-clean/tasks?workspace=mine&mine_kind=all&status=open&category=sinistros")
+
+    assert "Sinistro em fluxo de oficina" not in workshop.text
+    assert "Sinistro em fluxo de oficina" in claims.text
+
+
+def test_null_category_uses_authorized_task_type_bucket(
+    authenticated_client, db_session, monkeypatch
+) -> None:
+    monkeypatch.setattr(task_router.settings, "visual_foundation_enabled", True)
+    db_session.add_all(
+        [
+            Task(title="Oficina sem categoria", task_type="workshop_task", category=None, status="new", priority="normal"),
+            Task(title="Admin sem categoria", task_type="administration_task", category=None, status="new", priority="normal"),
+    ]
+    )
+    db_session.commit()
+    actor = db_session.scalar(select(User).where(User.email == "admin.tests@carfast.local"))
+    for task in db_session.scalars(select(Task).where(Task.created_by_id.is_(None))):
+        task.created_by_id = actor.id
+    db_session.commit()
+
+    workshop = authenticated_client.get("/v2-clean/tasks?workspace=mine&mine_kind=all&status=open&category=oficina")
+    documents = authenticated_client.get("/v2-clean/tasks?workspace=mine&mine_kind=all&status=open&category=documentacao")
+
+    assert "Oficina sem categoria" in workshop.text
+    assert "Admin sem categoria" not in workshop.text
+    assert "Admin sem categoria" not in documents.text
+    assert "Oficina sem categoria" not in documents.text
+
+
+def test_note_action_visibility_uses_distinct_server_respond_scope(
+    authenticated_client, db_session, monkeypatch
+) -> None:
+    monkeypatch.setattr(task_router.settings, "visual_foundation_enabled", True)
+    original_scope_check = task_router._task_hierarchy_scope_allows
+
+    def scope_check(db, user_id, task, *, action):
+        if action == "respond":
+            return False
+        return original_scope_check(db, user_id, task, action=action)
+
+    monkeypatch.setattr(task_router, "_task_hierarchy_scope_allows", scope_check)
+    db_session.add(
+        Task(title="Atualiza sem responder", task_type="operational_task", category="Documentação", status="new", priority="normal")
+    )
+    db_session.commit()
+    actor = db_session.scalar(select(User).where(User.email == "admin.tests@carfast.local"))
+    for task in db_session.scalars(select(Task).where(Task.created_by_id.is_(None))):
+        task.created_by_id = actor.id
+    db_session.commit()
+
+    page = authenticated_client.get("/v2-clean/tasks?workspace=mine&mine_kind=all&status=open&category=documentacao")
+    row = re.search(r'<tr[^>]+data-title="Atualiza sem responder"[^>]+>', page.text).group(0)
+
+    assert 'data-can-update="1"' in row
+    assert 'data-can-respond="0"' in row
+
+
+def test_existing_relations_are_exposed_without_repeating_generic_origin(
+    authenticated_client, db_session, monkeypatch
+) -> None:
+    monkeypatch.setattr(task_router.settings, "visual_foundation_enabled", True)
+    actor = db_session.scalar(select(User).where(User.email == "admin.tests@carfast.local"))
+    parent = Task(title="Tarefa mãe", task_type="operational_task", category="Documentação", status="new", priority="normal", assigned_to_id=actor.id)
+    db_session.add(parent)
+    db_session.flush()
+    child = Task(title="Subtarefa relacionada", task_type="operational_task", category="Documentação", status="new", priority="normal", parent_task_id=parent.id, assigned_to_id=actor.id)
+    db_session.add(child)
+    db_session.commit()
+
+    page = authenticated_client.get("/v2-clean/tasks?workspace=mine&mine_kind=all&status=open&category=all")
+    row = re.search(r'<tr[^>]+data-title="Subtarefa relacionada"[^>]+>', page.text).group(0)
+
+    assert "data-origin=" not in row
+    assert f'data-relation="Tarefa mãe CF-{parent.id:05d}"' in row
+    assert "Origem" not in re.search(r'<thead>.*?</thead>', page.text, re.S).group(0)
+
+
+def test_creation_options_and_post_share_the_same_capability_resolver() -> None:
+    assert "TaskCreationCapabilityResolver(db).options(current_user)" in ROUTER
+    service = (ROOT / "app/services/task_templates.py").read_text(encoding="utf-8")
+    assert "TaskCreationCapabilityResolver(db).require(user, version)" in service
+    assert 'data-task-create-open' in TEMPLATE
+    assert 'data-task-create-future disabled' not in TEMPLATE
+    assert "createForm.querySelector('[name=return_url]').value=location.pathname+location.search+location.hash" in TEMPLATE
+
+
+def test_preview_actions_use_clean_canonical_routes_and_accessible_editors() -> None:
+    assert "/task-board/${selectedRow.dataset.taskId}" not in TEMPLATE
+    assert "prompt('Registar nota na tarefa')" not in TEMPLATE
+    assert 'data-task-state-dialog' in TEMPLATE
+    assert 'data-task-note-dialog' in TEMPLATE
+    assert 'window.openTaskWorkbench' in TEMPLATE
+    assert '/v2-clean/tasks/${selectedRow.dataset.taskId}/transition' in TEMPLATE
+    assert '/v2-clean/tasks/${selectedRow.dataset.taskId}/comments' in TEMPLATE
+
+
+def test_state_editor_separates_current_state_and_only_builds_legal_destinations() -> None:
+    assert 'data-task-current-state' in TEMPLATE
+    assert 'Transições disponíveis' in TEMPLATE
+    assert 'taskStatusLabels={{ task_status_labels|tojson }}' in TEMPLATE
+    assert "select.replaceChildren(...allowed.map" in TEMPLATE
+    assert 'Novo estado<select' not in TEMPLATE
+
+
+def test_workbench_keeps_primary_work_visible_and_hides_rare_fields_progressively() -> None:
+    more = DETAIL.index("<details><summary>Mais opções</summary>")
+    assert DETAIL.index('name="priority"') < more
+    assert DETAIL.index('name="due_on"') < more
+    assert DETAIL.index('data-work-hierarchy') > more
+    assert "task-detail-status-line" in DETAIL
+    assert "task-detail-quick-comment" in DETAIL
+    assert "task-detail-document" in DETAIL
+    assert "user_by_id.get(item.user_id).name" in DETAIL
+
+
+def test_preview_presents_persisted_queue_and_canonical_classification() -> None:
+    assert 'data-preview-category' in TEMPLATE
+    assert 'data-preview-owner' in TEMPLATE
+    assert 'data-preview-due' in TEMPLATE
+    assert 'data-preview-sla-detail' in TEMPLATE
+    assert 'data-task-preview-edit="classification"' in TEMPLATE
+    assert 'data-preview-focus' not in TEMPLATE
+
+
+def test_list_detail_visibility_uses_one_canonical_resolver() -> None:
+    assert "user_can_view_task(db, user_id=user_id, task=task)" in ROUTER
+    assert '@web_router.get("/v2-clean/tasks/{task_id}/open")' in ROUTER
+    assert 'issue_return_context(' in ROUTER
+    assert 'f"/v2-clean/tasks/{task_id}/detail?return_context={quote(return_token)}"' in ROUTER
+    assert "task_return_url" in ROUTER
+    assert 'href="{{ task_return_url }}"' in (ROOT / "app/templates/task_detail.html").read_text(encoding="utf-8")
+
+
+def test_creation_uses_three_approved_models_and_never_labels_workspaces_as_queues() -> None:
+    assert "Pedido simples" in TEMPLATE
+    assert "Informação / Comunicação" in TEMPLATE
+    assert "Tarefa completa" in TEMPLATE
+    assert "Mais opções" in TEMPLATE
+    assert "Fila autorizada" not in TEMPLATE
+    creation_dialog = TEMPLATE[TEMPLATE.index('<dialog id="new-task"'):]
+    assert 'action="/v2-clean/tasks"' in creation_dialog
+    assert 'data-create-model="request"' in creation_dialog
+    assert 'data-create-model="information"' in creation_dialog
+    assert 'data-create-model="task"' in creation_dialog
+    assert 'href="/task-board/new' not in creation_dialog
+    assert 'name="classification_version" value="3"' in creation_dialog
+    for level in ("queue", "department", "category", "subcategory"):
+        assert f'data-work-level="{level}"' in creation_dialog
+    assert 'name="entity_type"' in creation_dialog
+    assert 'name="entity_id"' in creation_dialog
+    assert 'name="attachments" multiple' in creation_dialog
+    assert "more.hidden=model!=='task'" in TEMPLATE
+    assert "filterChildren(department,queue.value)" in TEMPLATE
+    css = (ROOT / "app/static/css/ui-contract-v1.css").read_text(encoding="utf-8")
+    assert "[data-task-create-dialog]{width:min(720px,calc(100vw - 32px))" in css
+    assert "[data-task-create-form]{display:grid;grid-template-columns:repeat(2" in css
+
+
+def test_task_forms_use_scoped_team_resolver_and_legacy_defaults_are_explicit() -> None:
+    assert "task_context_teams(" in ROUTER
+    assert "LEGACY_WORKSPACE_TEAM_CODES" in ROUTER
+    for code in ("operations", "workshop", "finance", "support"):
+        assert f'"{code}"' in ROUTER
+    form_route = ROUTER[ROUTER.index("def task_new_form("):ROUTER.index("def task_vehicle_search(")]
+    assert "select(Team).where(Team.active.is_(True)).order_by(Team.name)" not in form_route
+    update_route = ROUTER[
+        ROUTER.index("def task_update(") : ROUTER.index("def task_guided_flow_step_update(")
+    ]
+    assert "validate_task_waiting_context(" in update_route
+    assert 'waiting_until: str = Form("")' in update_route
+    assert '"Retomar em",' in update_route
+    assert "task.waiting_until.isoformat() if task.waiting_until else \"\"" in update_route
+    assert "parsed_waiting_until.isoformat() if parsed_waiting_until else \"\"" in update_route
+    assert update_route.count("task_team_allowed_for_workspace(") >= 3
+
+
+def test_general_clean_edit_cannot_mutate_waiting_context() -> None:
+    update_route = ROUTER[
+        ROUTER.index("def clean_tasks_update(") : ROUTER.index("def clean_tasks_update_context(")
+    ]
+    assert 'waiting_reason: str = Form("")' not in update_route
+    assert 'waiting_reason_detail: str = Form("")' not in update_route
+    assert '"waiting_reason": (' not in update_route
+    assert '"waiting_reason_detail": (' not in update_route
+
+
+def test_terminal_action_visibility_matches_server_complete_scope() -> None:
+    list_scope = ROUTER[ROUTER.index("task_close_allowed_by_id ="):ROUTER.index("task_respond_allowed_by_id =")]
+    detail_scope = ROUTER[ROUTER.index("can_close_task ="):ROUTER.index("detail_transition_options =")]
+    assert 'workspace_allowed(workspace_for_task_type(task.task_type), "close")' in list_scope
+    assert 'action="complete"' in list_scope
+    assert 'action="complete"' in detail_scope
+
+
+def test_inline_transition_is_server_side_and_fail_closed() -> None:
+    assert '@web_router.post("/v2-clean/tasks/{task_id}/transition"' in ROUTER
+    assert "task_allowed_status_transitions" in ROUTER
+    assert 'flag="invalid_transition"' in ROUTER
+
+
+def test_waiting_transition_collects_complete_context_without_general_edit() -> None:
+    transition = ROUTER[
+        ROUTER.index("def clean_task_transition(") : ROUTER.index(
+            '@web_router.get("/v2-clean/tasks/notifications/'
+        )
+    ]
+    for field in ("waiting_reason", "waiting_reason_detail", "waiting_until"):
+        assert f'{field}: str = Form("")' in transition
+        assert f'name="{field}"' in TEMPLATE
+    assert "validate_task_waiting_context(" in transition
+    assert "except TaskWaitingContextError as exc:" in transition
+    assert 'action="waiting_context_set"' in transition
+    assert "sla_pause_on_waiting" in transition
+    assert 'data-task-preview-action="state"' in TEMPLATE
+
+
+def test_detail_separates_task_wait_sla_and_existing_context_relations() -> None:
+    for label in ("Prazo da tarefa", "Prazo da espera", "Política SLA"):
+        assert label in DETAIL
+    for label in (
+        "Origem",
+        "Email / conversa",
+        "Fila",
+        "Departamento",
+        "Categoria",
+        "Subcategoria",
+        "Equipa",
+        "Pessoa",
+        "Viatura / matrícula",
+        "Reserva",
+        "Contrato",
+        "Fatura",
+        "Caso",
+        "Processo",
+    ):
+        assert f"<dt>{label}</dt>" in DETAIL
+
+
+def test_guardrails_keep_owner_executor_support_and_sla_concepts_distinct() -> None:
+    assert "task_assignment_labels" in ROUTER
+    assert "TaskHelpRequest" in ROUTER
+    assert "task_sla_by_id = {task.id: sla_snapshot(task)" in ROUTER
+    assert "data-preview-owner" in TEMPLATE
+    assert "data-preview-due" in TEMPLATE
+    assert "task_sla_labels_by_id" in ROUTER
+    assert "data-preview-sla" in TEMPLATE
+    assert 'data-sla="{{ task_sla_labels_by_id.get' in TEMPLATE

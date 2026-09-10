@@ -1,11 +1,12 @@
 {% extends "base.html" %}
 {% block body %}
+{% import "_ui_primitives.html" as ui %}
 <div class="app-shell clean-shell">
   {% set active_menu = "clean_admin" %}
   {% include "_sidebar.html" %}
-  <main class="content clean-content clean-admin-content">
+  <main class="content clean-content clean-admin-content{% if foundation_ui_enabled %} ui-foundation{% endif %}">
     <header class="clean-header-shell clean-card-wide clean-admin-header">
-      <div class="clean-header-topbar"><div><p class="eyebrow">Administração / Registo de Evolução</p><h2>#{{ evolution_record.id }} · {{ evolution_record.title }}</h2><p>O histórico abaixo é acrescentado; alterações anteriores não são apagadas.</p></div><a class="button-link secondary-link" href="/v2-clean/admin/evolution">Voltar ao registo</a></div>
+      <div class="clean-header-topbar"><div><p class="eyebrow">Administração / Registo de Evolução</p><h2>#{{ evolution_record.id }} · {{ evolution_record.title }}</h2><p>O histórico abaixo é acrescentado; alterações anteriores não são apagadas.</p></div><a class="button-link secondary-link{% if foundation_ui_enabled %} ui-button ui-button--secondary{% endif %}" href="{{ return_target if foundation_ui_enabled else '/v2-clean/admin/evolution' }}">Voltar ao registo</a></div>
       {% include "_clean_admin_directory.html" %}
     </header>
     {% if request.query_params.get('error') %}<div class="alert clean-card-wide">Não foi possível concluir: {{ request.query_params.get('error') }}.</div>{% endif %}
@@ -20,6 +21,7 @@
     <section class="clean-panel clean-card-wide">
       <div class="table-heading flat-heading"><div><p class="eyebrow">Detalhe e decisão</p><h3>Editar registo</h3></div>{% if evolution_record.status == 'approved' and not evolution_record.reference_task_id %}<form method="post" action="/v2-clean/admin/evolution/{{ evolution_record.id }}/convert"><button type="submit">Converter em tarefa</button></form>{% elif evolution_record.reference_task_id %}<a class="button-link" href="/task-board/{{ evolution_record.reference_task_id }}">Abrir tarefa #{{ evolution_record.reference_task_id }}</a>{% endif %}</div>
       <form class="clean-admin-form evolution-form" method="post" action="/v2-clean/admin/evolution/{{ evolution_record.id }}">
+        {% if foundation_ui_enabled %}<input type="hidden" name="return_context" value="{{ return_context_token }}">{% endif %}
         <label>Tipo<select name="record_type">{% for code,label in evolution_type_labels.items() %}<option value="{{ code }}" {% if evolution_record.record_type == code %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
         <label>Módulo<select name="module">{% for code,label in admin_module_labels.items() %}<option value="{{ code }}" {% if evolution_record.module == code %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
         <label>Prioridade<select name="priority">{% for code,label in evolution_priority_labels.items() %}<option value="{{ code }}" {% if evolution_record.priority == code %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
@@ -32,19 +34,25 @@
         <label class="evolution-span-2">Decisão<textarea name="decision">{{ evolution_record.decision or '' }}</textarea></label>
         <label class="evolution-span-2">Notas<textarea name="notes">{{ evolution_record.notes or '' }}</textarea></label>
         <label>Chat/tarefa externa<input name="reference_chat" value="{{ evolution_record.reference_chat or '' }}"></label><label>Branch<input name="reference_branch" value="{{ evolution_record.reference_branch or '' }}"></label><label>Commit<input name="reference_commit" value="{{ evolution_record.reference_commit or '' }}"></label>
-        <button type="submit">Guardar alterações</button>
+        <div class="{% if foundation_ui_enabled %}ui-action-bar{% endif %}">
+          <button type="submit">Guardar alterações</button>
+          {% if foundation_ui_enabled %}
+            {{ ui.button('Guardar e fechar', 'submit', 'secondary', 'submit_action', 'save_close') }}
+            {{ ui.link_button('Cancelar', return_target, 'quiet') }}
+          {% endif %}
+        </div>
       </form>
     </section>
     {% else %}
     <section class="clean-panel clean-card-wide"><h3>Descrição</h3><p>{{ evolution_record.description }}</p><h4>Decisão</h4><p>{{ evolution_record.decision or 'Sem decisão registada.' }}</p><h4>Notas</h4><p>{{ evolution_record.notes or 'Sem notas.' }}</p></section>
     {% endif %}
 
-    <section class="clean-admin-split clean-card-wide evolution-detail-grid">
+    <section class="clean-admin-split clean-card-wide evolution-detail-grid{% if foundation_ui_enabled %} ui-split-panel{% endif %}">
       <article class="clean-panel"><div class="table-heading flat-heading"><div><p class="eyebrow">Discussão</p><h3>Comentários</h3></div></div>{% if can_manage %}<form method="post" action="/v2-clean/admin/evolution/{{ evolution_record.id }}/comments"><label>Novo comentário<textarea name="comment" required></textarea></label><button type="submit">Adicionar</button></form>{% endif %}<div class="clean-admin-record-list">{% for item in evolution_comments %}<div><strong>{{ users_by_id.get(item.user_id).name if users_by_id.get(item.user_id) else 'Sistema' }}</strong><small>{{ item.created_at.strftime('%d/%m/%Y %H:%M') if item.created_at else '' }}</small><p>{{ item.comment }}</p></div>{% else %}<p class="muted">Sem comentários.</p>{% endfor %}</div></article>
       <article class="clean-panel"><div class="table-heading flat-heading"><div><p class="eyebrow">Documentos existentes</p><h3>Anexos ligados</h3></div></div>{% if can_manage %}<form method="post" action="/v2-clean/admin/evolution/{{ evolution_record.id }}/documents"><label>Documento<select name="document_id" required><option value="">Selecionar</option>{% for item in candidate_documents %}<option value="{{ item.id }}">#{{ item.id }} · {{ item.title or item.original_name }}</option>{% endfor %}</select></label><button type="submit">Ligar sem duplicar</button></form>{% endif %}<ul>{% for link in evolution_documents %}{% set document = documents_by_id.get(link.document_id) %}<li><a href="/documents/{{ link.document_id }}">{{ document.title or document.original_name if document else 'Documento #' ~ link.document_id }}</a></li>{% else %}<li>Sem documentos ligados.</li>{% endfor %}</ul></article>
     </section>
 
-    <section class="clean-panel clean-card-wide"><div class="table-heading flat-heading"><div><p class="eyebrow">Registo imutável</p><h3>Histórico de alterações</h3></div></div><div class="table-wrap"><table><thead><tr><th>Data</th><th>Autor</th><th>Campo</th><th>Antes</th><th>Depois</th></tr></thead><tbody>{% for item in evolution_history %}<tr><td>{{ item.changed_at.strftime('%d/%m/%Y %H:%M') if item.changed_at else '—' }}</td><td>{{ users_by_id.get(item.user_id).name if users_by_id.get(item.user_id) else 'Sistema' }}</td><td><code>{{ item.field_name }}</code></td><td>{{ item.old_value or '—' }}</td><td>{{ item.new_value or '—' }}</td></tr>{% else %}<tr><td colspan="5">Sem alterações posteriores à criação.</td></tr>{% endfor %}</tbody></table></div></section>
+    <section class="clean-panel clean-card-wide"><div class="table-heading flat-heading"><div><p class="eyebrow">Registo imutável</p><h3>Histórico de alterações</h3></div></div><div class="table-wrap{% if foundation_ui_enabled %} ui-table-container{% endif %}"{% if foundation_ui_enabled %} tabindex="0" role="region" aria-label="Histórico de alterações"{% endif %}><table><thead><tr><th>Data</th><th>Autor</th><th>Campo</th><th>Antes</th><th>Depois</th></tr></thead><tbody>{% for item in evolution_history %}<tr><td>{{ item.changed_at.strftime('%d/%m/%Y %H:%M') if item.changed_at else '—' }}</td><td>{{ users_by_id.get(item.user_id).name if users_by_id.get(item.user_id) else 'Sistema' }}</td><td><code>{{ item.field_name }}</code></td><td>{{ item.old_value or '—' }}</td><td>{{ item.new_value or '—' }}</td></tr>{% else %}<tr><td colspan="5">Sem alterações posteriores à criação.</td></tr>{% endfor %}</tbody></table></div></section>
   </main>
 </div>
 {% endblock %}

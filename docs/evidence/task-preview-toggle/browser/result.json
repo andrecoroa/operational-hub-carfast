@@ -1,0 +1,56 @@
+{
+  "flat-1440x731": {
+    "active": "3",
+    "adjacent": true,
+    "bodyWidth": 1440,
+    "hash": "#task-3",
+    "previewCount": 1,
+    "search": "?workspace=mine&mine_kind=all&assignment=&category=all&grouping=flat&task_scope_view=mine&queue=tasks_support&status=open&due=&q=&sort=priority",
+    "width": 1440
+  },
+  "case-1440x731": {
+    "active": "1",
+    "adjacent": true,
+    "bodyWidth": 1440,
+    "hash": "#task-1",
+    "previewCount": 1,
+    "search": "?workspace=mine&mine_kind=all&assignment=&category=all&grouping=case&task_scope_view=mine&queue=tasks_support&status=open&due=&q=&sort=priority",
+    "width": 1440
+  },
+  "category-1440x731": {
+    "active": "3",
+    "adjacent": true,
+    "bodyWidth": 1440,
+    "hash": "#task-3",
+    "previewCount": 1,
+    "search": "?workspace=mine&mine_kind=all&assignment=&category=all&grouping=category&task_scope_view=mine&queue=tasks_support&status=open&due=&q=&sort=priority",
+    "width": 1440
+  },
+  "flat-390x844": {
+    "active": "3",
+    "adjacent": true,
+    "bodyWidth": 390,
+    "hash": "#task-3",
+    "previewCount": 1,
+    "search": "?workspace=mine&mine_kind=all&assignment=&category=all&grouping=flat&task_scope_view=mine&queue=tasks_support&status=open&due=&q=&sort=priority",
+    "width": 390
+  },
+  "case-390x844": {
+    "active": "1",
+    "adjacent": true,
+    "bodyWidth": 390,
+    "hash": "#task-1",
+    "previewCount": 1,
+    "search": "?workspace=mine&mine_kind=all&assignment=&category=all&grouping=case&task_scope_view=mine&queue=tasks_support&status=open&due=&q=&sort=priority",
+    "width": 390
+  },
+  "category-390x844": {
+    "active": "3",
+    "adjacent": true,
+    "bodyWidth": 390,
+    "hash": "#task-3",
+    "previewCount": 1,
+    "search": "?workspace=mine&mine_kind=all&assignment=&category=all&grouping=category&task_scope_view=mine&queue=tasks_support&status=open&due=&q=&sort=priority",
+    "width": 390
+  }
+}

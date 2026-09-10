@@ -70,14 +70,15 @@ def assert_render_database_url(key: str, database_url: str) -> None:
     if not host:
         raise RuntimeError(f"{key} não tem host válido: {safe_database_url(database_url)}")
 
-    if host.startswith("dpg-") and "." not in host:
+    resolved = host_resolvable(host)
+    if host.startswith("dpg-") and "." not in host and not resolved:
         raise RuntimeError(
             f"{key} usa host interno curto '{host}', mas este serviço não o consegue resolver. "
             "No Render, ligue a base via Environment > Add from database para DATABASE_URL, "
             "ou copie o External Database URL completo da página da base para CARFAST_DATABASE_URL."
         )
 
-    if not host_resolvable(host):
+    if not resolved:
         raise RuntimeError(
             f"{key} aponta para host sem resolução DNS: '{host}'. "
             "Copie novamente o External Database URL atual do PostgreSQL no Render."
@@ -211,6 +212,7 @@ def main() -> None:
     env["DATABASE_URL"] = database_url
 
     run([sys.executable, "-m", "alembic", "upgrade", "head"], retries=5, delay_seconds=2, env=env)
+    run([sys.executable, "-m", "scripts.reconcile_email_channels"], env=env)
     if os.environ.get("CARFAST_ADMIN_EMAIL") and os.environ.get("CARFAST_ADMIN_PASSWORD"):
         run([sys.executable, "scripts/create_admin.py"], env=env)
     one_off_reassign = os.environ.get("CARFAST_ONE_OFF_202605_ANDRE_TASKS_TO_CREATORS", "").strip().lower()

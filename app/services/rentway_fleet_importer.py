@@ -536,6 +536,7 @@ def preview_rentway_fleet_xlsx(
 
     file_path = Path(path)
     preview_rows: list[dict[str, Any]] = []
+    present_vehicle_ids: set[int] = set()
     counts = {"total_rows": 0, "created_rows": 0, "updated_rows": 0, "skipped_rows": 0}
     headers: list[str] = []
     sheet_name = ""
@@ -568,6 +569,7 @@ def preview_rentway_fleet_xlsx(
         action = "updated" if vehicle else "created"
         counts[f"{action}_rows"] += 1
         if vehicle:
+            present_vehicle_ids.add(vehicle.id)
             preserve_open_workshop_vehicle_state(db, vehicle, payload)
         changes = []
         for field, value in payload.items():
@@ -592,12 +594,33 @@ def preview_rentway_fleet_xlsx(
                     "model": payload.get("model"),
                 }
             )
+    absent_stmt = select(Vehicle).where(
+        Vehicle.active.is_(True),
+        Vehicle.rentway_unit_nr.is_not(None),
+    )
+    if present_vehicle_ids:
+        absent_stmt = absent_stmt.where(Vehicle.id.not_in(present_vehicle_ids))
+    absent_vehicles = db.scalars(absent_stmt.order_by(Vehicle.plate.asc())).all()
+    absent_rows = [
+        {
+            "id": vehicle.id,
+            "plate": vehicle.plate or "-",
+            "unit": vehicle.rentway_unit_nr or "-",
+            "brand": vehicle.brand or "-",
+            "model": vehicle.model or "-",
+        }
+        for vehicle in absent_vehicles[:50]
+    ]
     return {
         **counts,
         "sheet_name": sheet_name,
         "headers": headers,
         "rows": preview_rows,
         "preview_truncated": counts["total_rows"] > len(preview_rows),
+        "absent_count": len(absent_vehicles),
+        "absent_rows": absent_rows,
+        "absent_truncated": len(absent_vehicles) > len(absent_rows),
+        "absent_action": "review_only",
     }
 
 

@@ -31,6 +31,7 @@ from app.services.email_postmark import (
     ensure_email_channels,
     ingest_inbound,
     ingest_outbound_event,
+    normalize_inbound_attachments,
     outbound_identity,
     reply_all_recipients,
     send_message,
@@ -97,6 +98,112 @@ def test_inbound_is_idempotent_and_archives_attachments(db_session, tmp_path, mo
         ).read_bytes()
         == b"conteudo"
     )
+
+
+def test_oversized_inbound_attachment_is_recorded_as_blocked(db_session, tmp_path, monkeypatch):
+    monkeypatch.setattr(settings, "email_storage_root", str(tmp_path))
+    monkeypatch.setattr(settings, "email_max_attachment_bytes", 4)
+
+    thread, _ = ingest_inbound(db_session, _payload("pm-too-large"))
+
+    attachment = db_session.scalar(select(EmailAttachment))
+    assert attachment.message_id is not None
+    assert attachment.size == len(b"conteudo")
+    assert attachment.storage_path is None
+    assert attachment.sha256 is None
+    assert attachment.ingest_state == "blocked"
+    assert attachment.ingest_reason == "attachment_size_limit_exceeded"
+    assert attachment.source_provider == "postmark"
+    assert attachment.webhook_event_id is not None
+    assert db_session.get(EmailThread, thread.id) is not None
+
+
+def test_repeated_webhook_recovers_missing_attachment_idempotently(
+    db_session, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(settings, "email_storage_root", str(tmp_path))
+    payload = _payload("pm-recover")
+    thread, _ = ingest_inbound(db_session, payload)
+    attachment = db_session.scalar(select(EmailAttachment))
+    db_session.delete(attachment)
+    db_session.commit()
+
+    recovered_thread, created = ingest_inbound(db_session, payload)
+    ingest_inbound(db_session, payload)
+
+    assert created is False
+    assert recovered_thread.id == thread.id
+    assert db_session.scalar(select(func.count()).select_from(EmailAttachment)) == 1
+    recovered = db_session.scalar(select(EmailAttachment))
+    assert recovered.ingest_state == "stored"
+    assert Path(recovered.storage_path).read_bytes() == b"conteudo"
+
+
+def test_repeated_webhook_adopts_legacy_attachment_without_duplication(
+    db_session, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(settings, "email_storage_root", str(tmp_path))
+    payload = _payload("pm-adopt-legacy")
+    ingest_inbound(db_session, payload)
+    attachment = db_session.scalar(select(EmailAttachment))
+    attachment.webhook_event_id = None
+    attachment.source_attachment_id = None
+    attachment.source_provider = "local"
+    db_session.commit()
+
+    ingest_inbound(db_session, payload)
+
+    assert db_session.scalar(select(func.count()).select_from(EmailAttachment)) == 1
+    adopted = db_session.scalar(select(EmailAttachment))
+    assert adopted.webhook_event_id is not None
+    assert adopted.source_attachment_id
+    assert adopted.source_provider == "postmark"
+
+
+def test_thread_view_alerts_when_payload_and_attachment_records_diverge(
+    db_session, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(settings, "email_storage_root", str(tmp_path))
+    thread, _ = ingest_inbound(db_session, _payload("pm-divergence"))
+    attachment = db_session.scalar(select(EmailAttachment))
+    db_session.delete(attachment)
+    db_session.commit()
+
+    view_data = email_web._thread_view_data(db_session, thread)
+
+    assert view_data["attachment_ingest_alerts"] == [
+        {"message_id": attachment.message_id, "payload_count": 1, "record_count": 0}
+    ]
+
+
+def test_graph_attachment_normalization_preserves_provider_metadata():
+    payload = {
+        "attachments": [
+            {
+                "id": "graph-attachment-1",
+                "name": "documento.pdf",
+                "contentType": "application/pdf",
+                "contentId": None,
+                "size": 3,
+                "isInline": False,
+                "contentBytes": base64.b64encode(b"pdf").decode(),
+            }
+        ]
+    }
+
+    rows = normalize_inbound_attachments(payload, "microsoft_graph")
+
+    assert rows == [
+        {
+            "source_id": "graph-attachment-1",
+            "name": "documento.pdf",
+            "content_type": "application/pdf",
+            "content_id": None,
+            "content": base64.b64encode(b"pdf").decode(),
+            "declared_size": 3,
+            "is_inline": False,
+        }
+    ]
 
 
 def test_same_logical_email_via_two_postmark_deliveries_is_merged_and_auditable(

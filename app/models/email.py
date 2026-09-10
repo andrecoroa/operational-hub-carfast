@@ -415,6 +415,13 @@ class EmailMessage(TimestampMixin, Base):
 
 class EmailAttachment(TimestampMixin, Base):
     __tablename__ = "email_attachments"
+    __table_args__ = (
+        UniqueConstraint(
+            "webhook_event_id",
+            "source_attachment_id",
+            name="uq_email_attachment_webhook_source",
+        ),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     message_id: Mapped[int] = mapped_column(
@@ -424,8 +431,15 @@ class EmailAttachment(TimestampMixin, Base):
     content_type: Mapped[str | None] = mapped_column(String(160))
     content_id: Mapped[str | None] = mapped_column(String(255))
     size: Mapped[int] = mapped_column(Integer, default=0)
-    storage_path: Mapped[str] = mapped_column(Text)
-    sha256: Mapped[str] = mapped_column(String(64), index=True)
+    storage_path: Mapped[str | None] = mapped_column(Text)
+    sha256: Mapped[str | None] = mapped_column(String(64), index=True)
+    webhook_event_id: Mapped[int | None] = mapped_column(
+        ForeignKey("email_webhook_events.id", ondelete="SET NULL"), index=True
+    )
+    source_provider: Mapped[str] = mapped_column(String(40), default="local", index=True)
+    source_attachment_id: Mapped[str | None] = mapped_column(String(128), index=True)
+    ingest_state: Mapped[str] = mapped_column(String(40), default="stored", index=True)
+    ingest_reason: Mapped[str | None] = mapped_column(String(120))
     status: Mapped[str] = mapped_column(String(40), default="pending", index=True)
     document_type: Mapped[str | None] = mapped_column(String(80), index=True)
     nature: Mapped[str | None] = mapped_column(String(60), index=True)

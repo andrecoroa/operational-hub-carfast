@@ -33,7 +33,8 @@ def test_email_center_rebuilds_real_composition() -> None:
         assert contract in source
 
     assert 'href="/v2-clean/admin/work-classification?view=channels"' in source
-    assert 'data-email-preview-trigger="{{ thread.id }}"' in source
+    assert 'data-email-thread-url="{{ thread_url }}"' in source
+    assert 'return_context=' in source
     assert 'aria-label="Conversas de email"' in source
 
 
@@ -44,9 +45,9 @@ def test_email_center_keeps_triage_preview_and_actions() -> None:
         "email-reader-grid",
         "email-conversation",
         "email-triage-pane",
-        "Guardar triagem",
+        "Guardar gestão",
         "Responder",
-        "Validar classificação",
+        "Confirmar classificação",
         "Criar tarefa",
         "email-attachment-dialog",
     ):
@@ -75,19 +76,30 @@ def test_email_responsive_contract_uses_local_overflow_and_full_screen_preview()
         assert contract in css
 
 
-def test_email_preview_keyboard_and_focus_return_contract() -> None:
+def test_email_full_page_keyboard_and_return_contract() -> None:
     source = JS.read_text(encoding="utf-8")
 
     for contract in (
-        "let previewTrigger = null",
-        "if (trigger) previewTrigger = trigger",
+        '[data-email-thread-url]',
         'event.key !== "Enter" && event.key !== " "',
-        "openPreview(element.dataset.emailPreview, element)",
-        "openPreview(button.dataset.emailPreviewTrigger, button)",
-        "trigger.focus({preventScroll: true})",
-        "return_context=${encodeURIComponent(location.pathname + location.search)}",
+        "window.location.assign(element.dataset.emailThreadUrl)",
     ):
         assert contract in source
+
+
+def test_email_thread_uses_full_width_reader_drawer_navigation_and_spam() -> None:
+    source = THREAD.read_text(encoding="utf-8")
+    css = CONTRACT_CSS.read_text(encoding="utf-8")
+    script = JS.read_text(encoding="utf-8")
+    router = ROUTER.read_text(encoding="utf-8")
+
+    for text in ("Voltar à caixa", "Anterior", "Próximo", "Confirmar classificação", "Guardar gestão", "Ligações", "Marcar email como tratado", "Aguardar conclusão da tarefa", "Abrir tarefa", "Spam"):
+        assert text in source
+    assert "email-treatment-drawer" in source
+    assert ".email-treatment-drawer{position:fixed" in css
+    assert 'window.confirm("Mover esta conversa para Spam?' in script
+    assert 'destinationId": "junkemail"' in (ROOT / "app/services/microsoft365_oauth.py").read_text(encoding="utf-8")
+    assert '@email_router.post("/v2-clean/email/{thread_id}/spam")' in router
 
 
 def test_email_inline_mailboxes_and_mobile_overflow_contract() -> None:

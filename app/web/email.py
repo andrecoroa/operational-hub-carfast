@@ -10,7 +10,7 @@ from mimetypes import guess_type
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Annotated
-from urllib.parse import urlparse
+from urllib.parse import quote, urlparse
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, File, Form, Header, Request, UploadFile
@@ -28,6 +28,7 @@ from app.models.email import (
     EmailChannel,
     EmailChannelAlias,
     EmailChannelRole,
+    EmailChannelTransport,
     EmailChannelUser,
     EmailMessage,
     EmailMessageDelivery,
@@ -56,6 +57,7 @@ from app.services.email_postmark import (
     webhook_authorized,
 )
 from app.services.email_transport import send_channel_message
+from app.services.microsoft365_oauth import move_shared_mailbox_message_to_junk
 from app.services.service_desk import (
     assignment_label,
     assignment_target_user_allowed,
@@ -93,6 +95,25 @@ from app.web.template_runtime import configure_visual_template_runtime
 
 templates = configure_visual_template_runtime(Jinja2Templates(directory="app/templates"))
 templates.env.filters["lisbon_datetime"] = local_datetime
+
+
+def _reopen_threads_after_linked_task_completion(db) -> None:
+    rows = db.execute(
+        select(EmailThread, Task).join(Task, Task.id == EmailThread.task_id).where(
+            EmailThread.status == "task_created",
+            Task.status.in_({"execution_done", "closed", "cancelled", "no_action_needed"}),
+        )
+    ).all()
+    for thread, task in rows:
+        thread.status = "triage"
+        db.add(EmailAuditEvent(
+            thread_id=thread.id,
+            user_id=None,
+            action="reopened_after_task_completion",
+            details_json={"task_id": task.id, "task_status": task.status},
+        ))
+    if rows:
+        db.commit()
 
 
 def _nav_permissions(request: Request) -> set[str]:
@@ -965,6 +986,7 @@ def email_inbox(
     with SessionLocal() as db:
         ensure_email_channels(db)
         db.commit()
+        _reopen_threads_after_linked_task_completion(db)
         channel_access = _channel_access(db, user_id, permissions)
         stored_view = request.session.get("email_work_view")
         stored_view_code = (
@@ -1703,6 +1725,23 @@ def email_thread(request: Request, thread_id: int):
     return_context = request.query_params.get("return_context", "")
     if not return_context.startswith("/v2-clean/email") or return_context.startswith("//"):
         return_context = "/v2-clean/email"
+    sequence_raw = request.query_params.get("sequence", "")
+    sequence_ids = [int(item) for item in sequence_raw.split(",")[:100] if item.isdigit()]
+    def _neighbor_url(raw_id: str | int | None) -> str | None:
+        try:
+            neighbor_id = int(raw_id)
+        except (TypeError, ValueError):
+            return None
+        neighbor = db.get(EmailThread, neighbor_id)
+        if not neighbor or not _can_use_channel(
+            db, user_id, permissions, neighbor.channel_id, thread=neighbor
+        ):
+            return None
+        sequence_query = f"&sequence={','.join(str(item) for item in sequence_ids)}" if sequence_ids else ""
+        return (
+            f"/v2-clean/email/{neighbor_id}?return_context="
+            f"{quote(return_context, safe='')}{sequence_query}"
+        )
     with SessionLocal() as db:
         thread = db.get(EmailThread, thread_id)
         if not thread or not _can_use_channel(
@@ -1751,6 +1790,7 @@ def email_thread(request: Request, thread_id: int):
             "email_sla": sla_snapshot(thread),
             "thread_assignee": thread_assignee,
             "thread_team": thread_team,
+            "linked_task": db.get(Task, thread.task_id) if thread.task_id else None,
             "current_category": (
                 db.get(WorkCategory, thread.work_category_id)
                 if thread.work_category_id
@@ -1835,6 +1875,16 @@ def email_thread(request: Request, thread_id: int):
                 "embedded": False,
                 "foundation_ui_enabled": settings.visual_foundation_enabled,
                 "return_context": return_context,
+                "previous_thread_url": _neighbor_url(
+                    sequence_ids[sequence_ids.index(thread.id) - 1]
+                    if thread.id in sequence_ids and sequence_ids.index(thread.id) > 0
+                    else request.query_params.get("previous_thread", "")
+                ),
+                "next_thread_url": _neighbor_url(
+                    sequence_ids[sequence_ids.index(thread.id) + 1]
+                    if thread.id in sequence_ids and sequence_ids.index(thread.id) + 1 < len(sequence_ids)
+                    else request.query_params.get("next_thread", "")
+                ),
             },
         )
 
@@ -3225,7 +3275,11 @@ def email_add_link(
 
 
 @email_router.post("/v2-clean/email/{thread_id}/task")
-def email_create_task(request: Request, thread_id: int):
+def email_create_task(
+    request: Request,
+    thread_id: int,
+    task_outcome: str = Form("complete"),
+):
     auth = _auth(
         request,
         "tasks.write",
@@ -3384,15 +3438,105 @@ def email_create_task(request: Request, thread_id: int):
                     source_url=f"/v2-clean/email/{thread.id}",
                 ),
             )
-            thread.task_id, thread.status = task.id, "task_created"
+            thread.task_id = task.id
+            if task_outcome == "wait":
+                thread.status = "task_created"
+            else:
+                mark_email_resolved(db, thread, user_id=user_id)
+                thread.status = "resolved"
             db.add(
                 EmailAuditEvent(
                     thread_id=thread.id,
                     message_id=first.id if first else None,
                     user_id=user_id,
                     action="task_created",
-                    details_json={"task_id": task.id},
+                    details_json={
+                        "task_id": task.id,
+                        "task_outcome": (
+                            "wait" if task_outcome == "wait" else "complete"
+                        ),
+                    },
                 )
             )
             db.commit()
     return RedirectResponse(f"/v2-clean/email/{thread_id}?saved=task", status_code=303)
+
+
+@email_router.post("/v2-clean/email/{thread_id}/spam")
+def email_mark_spam(
+    request: Request,
+    thread_id: int,
+    next_url: str = Form("/v2-clean/email"),
+):
+    auth = _auth(request, "email.triage", "email.manage", "admin.manage")
+    if not auth:
+        return RedirectResponse(f"/v2-clean/email/{thread_id}?error=forbidden", status_code=303)
+    user_id, permissions = auth
+    if not next_url.startswith("/v2-clean/email") or next_url.startswith("//"):
+        next_url = "/v2-clean/email"
+    with SessionLocal() as db:
+        thread = db.get(EmailThread, thread_id)
+        if not thread or not _can_use_channel(
+            db, user_id, permissions, thread.channel_id, "alter", thread=thread
+        ):
+            return RedirectResponse(f"/v2-clean/email/{thread_id}?error=forbidden", status_code=303)
+        transport = db.scalar(
+            select(EmailChannelTransport).where(
+                EmailChannelTransport.channel_id == thread.channel_id,
+                EmailChannelTransport.provider == "microsoft365",
+                EmailChannelTransport.enabled.is_(True),
+            )
+        )
+        message = db.scalar(
+            select(EmailMessage).where(
+                EmailMessage.thread_id == thread.id,
+                EmailMessage.direction == "inbound",
+                EmailMessage.external_message_id.is_not(None),
+            ).order_by(EmailMessage.id.desc())
+        )
+        required = (
+            transport,
+            getattr(transport, "tenant_id", None),
+            getattr(transport, "client_id", None),
+            getattr(transport, "client_credential_reference", None),
+            getattr(transport, "token_reference", None),
+            getattr(transport, "mailbox_address", None),
+            message,
+            getattr(message, "external_message_id", None),
+        )
+        if not all(required):
+            return RedirectResponse(
+                f"/v2-clean/email/{thread_id}?error=spam_unavailable", status_code=303
+            )
+        try:
+            move_shared_mailbox_message_to_junk(
+                tenant_id=transport.tenant_id,
+                client_id=transport.client_id,
+                client_credential_reference=transport.client_credential_reference,
+                token_reference=transport.token_reference,
+                mailbox_address=transport.mailbox_address,
+                message_id=message.external_message_id,
+            )
+        except RuntimeError as exc:
+            db.add(EmailAuditEvent(
+                thread_id=thread.id,
+                message_id=message.id,
+                user_id=user_id,
+                action="spam_move_failed",
+                details_json={"reason": str(exc)[:200]},
+            ))
+            db.commit()
+            return RedirectResponse(
+                f"/v2-clean/email/{thread_id}?error=spam_unavailable", status_code=303
+            )
+        thread.status = "archived"
+        db.add(EmailAuditEvent(
+            thread_id=thread.id,
+            message_id=message.id,
+            user_id=user_id,
+            action="marked_as_spam",
+            details_json={"provider": "microsoft365"},
+        ))
+        db.commit()
+    separator = "&" if "?" in next_url else "?"
+    return RedirectResponse(f"{next_url}{separator}saved=spam", status_code=303)

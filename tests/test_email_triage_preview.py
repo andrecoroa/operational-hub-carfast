@@ -14,10 +14,12 @@ from app.models.email import (
     EmailAttachment,
     EmailAuditEvent,
     EmailChannel,
+    EmailChannelTransport,
     EmailMessage,
     EmailThread,
 )
 from app.models.work_hierarchy import WorkCategory, WorkDepartment, WorkQueue
+from app.models.tasks import Task
 from app.services.email_postmark import ingest_inbound, send_message
 from app.services.users import create_user
 
@@ -60,6 +62,76 @@ def _bind_email_session(monkeypatch, db_session) -> None:
     )
 
 
+def test_spam_moves_graph_message_archives_locally_and_preserves_navigation(
+    authenticated_client, db_session, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(settings, "email_storage_root", str(tmp_path))
+    _bind_email_session(monkeypatch, db_session)
+    thread, _ = ingest_inbound(db_session, _payload("graph-message-spam"))
+    transport = EmailChannelTransport(
+        channel_id=thread.channel_id,
+        provider="microsoft365",
+        enabled=True,
+        mailbox_address="email@carfast.pt",
+        tenant_id="tenant",
+        client_id="client",
+        client_credential_reference="env://TEST_CLIENT_SECRET",
+        token_reference="db://test-token",
+    )
+    db_session.add(transport)
+    db_session.commit()
+    calls = []
+    monkeypatch.setattr(email_web, "move_shared_mailbox_message_to_junk", lambda **kwargs: calls.append(kwargs))
+
+    response = authenticated_client.post(
+        f"/v2-clean/email/{thread.id}/spam",
+        data={"next_url": "/v2-clean/email?view=all&status=triage"},
+        follow_redirects=False,
+    )
+    db_session.expire_all()
+
+    assert response.status_code == 303
+    assert response.headers["location"].endswith("&saved=spam")
+    assert calls[0]["mailbox_address"] == "email@carfast.pt"
+    assert calls[0]["message_id"] == "graph-message-spam"
+    assert db_session.get(EmailThread, thread.id).status == "archived"
+    assert db_session.scalar(select(EmailAuditEvent).where(EmailAuditEvent.action == "marked_as_spam"))
+
+
+def test_spam_fails_closed_without_microsoft_transport(
+    authenticated_client, db_session, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(settings, "email_storage_root", str(tmp_path))
+    _bind_email_session(monkeypatch, db_session)
+    thread, _ = ingest_inbound(db_session, _payload("spam-without-graph"))
+
+    response = authenticated_client.post(
+        f"/v2-clean/email/{thread.id}/spam", follow_redirects=False
+    )
+    db_session.expire_all()
+
+    assert response.status_code == 303
+    assert "error=spam_unavailable" in response.headers["location"]
+    assert db_session.get(EmailThread, thread.id).status != "archived"
+
+
+def test_completed_linked_task_returns_email_to_triage(db_session, tmp_path, monkeypatch):
+    monkeypatch.setattr(settings, "email_storage_root", str(tmp_path))
+    thread, _ = ingest_inbound(db_session, _payload("linked-task-completed"))
+    task = Task(title="Tarefa ligada", status="closed", source="email")
+    db_session.add(task)
+    db_session.flush()
+    thread.task_id = task.id
+    thread.status = "task_created"
+    db_session.commit()
+
+    email_web._reopen_threads_after_linked_task_completion(db_session)
+    db_session.expire_all()
+
+    assert db_session.get(EmailThread, thread.id).status == "triage"
+    assert db_session.scalar(select(EmailAuditEvent).where(EmailAuditEvent.action == "reopened_after_task_completion"))
+
+
 def test_preview_actions_refresh_without_closing_or_losing_selected_thread():
     script = (ROOT / "app/static/js/email.js").read_text(encoding="utf-8")
     inbox = (ROOT / "app/templates/clean_email_inbox.html").read_text(encoding="utf-8")
@@ -81,8 +153,8 @@ def test_preview_actions_refresh_without_closing_or_losing_selected_thread():
     assert "if (!forceRefresh && inlinePreviewRow?.dataset.emailInlineThread === String(threadId))" in script
     assert 'row.setAttribute("aria-expanded", String(selected))' in script
     assert 'dialog[open]:not(#email-preview-dialog)' in script
-    assert "email.js?v=20260901-email-mobile-focus" in inbox
-    assert "email.js?v=20260901-email-mobile-focus" in thread
+    assert "email.js?v=20260910-email-conversation-drawer" in inbox
+    assert "email.js?v=20260910-email-conversation-drawer" in thread
 
 
 def test_inbox_facets_apply_remaining_filters_server_side(authenticated_client, db_session, tmp_path, monkeypatch):
@@ -249,7 +321,7 @@ def test_email_work_views_group_without_duplicates_and_mine_stays_scoped(
     assert "Em tratamento" in mine_view.text
     assert 'data-email-work-view="mine"' in restored.text
     assert 'data-email-work-view="all"' in all_view.text
-    assert all_view.text.count(f'data-email-preview="{mine.id}"') == 1
+    assert all_view.text.count(f'data-email-thread-url="/v2-clean/email/{mine.id}') == 1
     assert 'name="view" value="all"' in all_view.text
 
 
@@ -398,11 +470,11 @@ def test_group_views_keep_exact_counts_and_do_not_hide_a_group_after_one_hundred
     assert mine.text.count("101 total") == 1
     assert "100 mais recentes" in mine.text
     assert "Nova resposta" in mine.text
-    assert mine.text.count('data-email-preview="') == 101
+    assert mine.text.count('data-email-thread-url="') == 101
     all_view = authenticated_client.get(
         "/v2-clean/email?view=all&status=all&q=Escala+agrupada"
     )
-    assert all_view.text.count('data-email-preview="') == 100
+    assert all_view.text.count('data-email-thread-url="') == 100
     assert "A mostrar as 100 conversas mais recentes." in all_view.text
 
 
@@ -751,20 +823,17 @@ def test_header_footer_order_read_action_and_original_text(
     db_session.expire_all()
 
     footer = preview.text.split('<footer class="email-modal-footer">', 1)[1]
-    labels = [
-        "Guardar triagem",
-        "Validar classificação",
-        "Arquivar",
-        "Responder",
-        "Criar tarefa",
-    ]
-    positions = [footer.index(label) for label in labels]
-    assert positions == sorted(positions)
+    assert "Tratamento" in footer
+    assert "Arquivar" in footer
+    assert "Responder" in footer
+    assert "Criar tarefa" in footer
+    assert "Guardar gestão" in preview.text
+    assert "Confirmar classificação" in preview.text
     assert preview.text.count("Fechar preview") == 1
     assert 'class="secondary email-modal-close"' in preview.text
     assert "Atribua apenas se a conversa exigir acompanhamento como trabalho" in preview.text
-    assert 'name="action" value="save"' in footer
-    assert 'name="action" value="validate"' in footer
+    assert 'name="action" value="save"' in preview.text
+    assert 'name="action" value="validate"' in preview.text
     assert "Concluir triagem" not in footer
     assert "Marcar como lido" in preview.text
     assert "Texto original" in preview.text

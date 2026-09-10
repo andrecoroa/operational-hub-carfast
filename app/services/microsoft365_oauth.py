@@ -258,3 +258,71 @@ def exchange_authorization_code(
         "scope": token_payload.get("scope", ""),
         "expires_in": token_payload.get("expires_in"),
     }
+
+
+def _delegated_access_token(
+    *, tenant_id: str, client_id: str, client_credential_reference: str,
+    token_reference: str,
+) -> str:
+    """Return a current delegated token, refreshing it through its opaque store."""
+    token_payload = json.loads(_secret_store.read(token_reference))
+    expires_at_raw = token_payload.get("access_expires_at")
+    expires_at = datetime.fromisoformat(expires_at_raw) if expires_at_raw else None
+    if expires_at and expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=UTC)
+    if token_payload.get("access_token") and (
+        expires_at is None or expires_at > datetime.now(UTC) + timedelta(minutes=2)
+    ):
+        return str(token_payload["access_token"])
+    client_secret = _secret_store.read(client_credential_reference)
+    payload = urllib.parse.urlencode({
+        "client_id": client_id,
+        "client_secret": client_secret,
+        "grant_type": "refresh_token",
+        "refresh_token": token_payload.get("refresh_token", ""),
+        "scope": " ".join(GRAPH_DELEGATED_SCOPES),
+    }).encode("utf-8")
+    request = urllib.request.Request(
+        f"https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/token",
+        data=payload,
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+        method="POST",
+    )
+    with urllib.request.urlopen(request, timeout=20) as response:
+        refreshed = json.loads(response.read())
+    if not refreshed.get("access_token"):
+        raise RuntimeError("A renovação OAuth Microsoft 365 não devolveu access token.")
+    refreshed.setdefault("refresh_token", token_payload.get("refresh_token"))
+    obtained_at = datetime.now(UTC)
+    refreshed["obtained_at"] = obtained_at.isoformat()
+    refreshed["access_expires_at"] = (
+        obtained_at + timedelta(seconds=int(refreshed.get("expires_in") or 0))
+    ).isoformat()
+    _secret_store.write(token_reference, json.dumps(refreshed))
+    return str(refreshed["access_token"])
+
+
+def move_shared_mailbox_message_to_junk(
+    *, tenant_id: str, client_id: str, client_credential_reference: str,
+    token_reference: str, mailbox_address: str, message_id: str,
+) -> None:
+    token = _delegated_access_token(
+        tenant_id=tenant_id,
+        client_id=client_id,
+        client_credential_reference=client_credential_reference,
+        token_reference=token_reference,
+    )
+    mailbox = urllib.parse.quote(mailbox_address, safe="")
+    message = urllib.parse.quote(message_id, safe="")
+    request = urllib.request.Request(
+        f"https://graph.microsoft.com/v1.0/users/{mailbox}/messages/{message}/move",
+        data=json.dumps({"destinationId": "junkemail"}).encode("utf-8"),
+        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=20) as response:
+            if response.status not in {200, 201}:
+                raise RuntimeError(f"Microsoft Graph devolveu HTTP {response.status}.")
+    except urllib.error.HTTPError as exc:
+        raise RuntimeError(f"Microsoft Graph devolveu HTTP {exc.code}.") from exc

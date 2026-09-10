@@ -145,7 +145,7 @@ def test_inbox_open_is_native_full_page_navigation_and_cannot_render_inline():
     assert "window.location.assign(`/v2-clean/email/${threadId}?return_context=" in script
     assert "window.location.assign(element.dataset.emailThreadUrl)" in script
     assert "email.js?v=20260910-email-page-scroll" in inbox
-    assert "email.js?v=20260910-email-page-scroll" in thread
+    assert "email.js?v=20260910-email-workspace" in thread
 
 
 def test_inbox_facets_apply_remaining_filters_server_side(authenticated_client, db_session, tmp_path, monkeypatch):
@@ -914,6 +914,45 @@ def test_validate_classification_is_explicit_and_audited(
     assert stored.classification_status == "classified"
     assert stored.status == "in_progress"
     assert audit is not None
+    assert audit.user_id is not None
+    assert audit.created_at is not None
+    assert audit.details_json["before"]["work_category_id"] is None
+    assert audit.details_json["after"]["work_category_id"] == category.id
+    assert audit.details_json["classification_changed"] is True
+
+    replacement = WorkCategory(
+        department_id=department.id,
+        code="email-reclassified-category",
+        name="Categoria alterada",
+        active=True,
+    )
+    db_session.add(replacement)
+    db_session.commit()
+    changed = authenticated_client.post(
+        f"/v2-clean/email/{thread.id}/triage",
+        data={
+            "action": "validate",
+            "work_queue_id": str(queue.id),
+            "work_department_id": str(department.id),
+            "work_category_id": str(replacement.id),
+        },
+        follow_redirects=False,
+    )
+    db_session.expire_all()
+    changed_audit = db_session.scalar(
+        select(EmailAuditEvent)
+        .where(
+            EmailAuditEvent.thread_id == thread.id,
+            EmailAuditEvent.action == "classification_validated",
+        )
+        .order_by(EmailAuditEvent.id.desc())
+    )
+
+    assert "saved=validate" in changed.headers["location"]
+    assert db_session.get(EmailThread, thread.id).work_category_id == replacement.id
+    assert changed_audit.details_json["before"]["work_category_id"] == category.id
+    assert changed_audit.details_json["after"]["work_category_id"] == replacement.id
+    assert changed_audit.details_json["classification_changed"] is True
 
     saved_after_validation = authenticated_client.post(
         f"/v2-clean/email/{thread.id}/triage",

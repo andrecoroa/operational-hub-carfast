@@ -197,10 +197,11 @@ def test_email_full_page_reader_scroll_and_action_hierarchy_contract() -> None:
 
     assert 'class="ui-contract-v1"' in base
     assert "visual-email-thread-page" in page
-    assert "body.ui-contract-v1 .visual-email-thread-page{height:auto!important;min-height:100dvh" in css
-    assert "overflow-x:clip!important;overflow-y:visible!important" in css
-    assert "body.ui-contract-v1 .visual-email-thread-page .email-modal-shell{display:block!important;height:auto!important" in css
-    assert "max-height:none!important;overflow:visible!important" in css
+    assert "body.ui-contract-v1 .visual-email-thread-page{height:100dvh!important;min-height:0!important;overflow:hidden!important" in css
+    assert ".email-modal-shell-full{display:flex!important;flex-direction:column" in css
+    assert "height:calc(100dvh - 84px)!important" in css
+    assert ".email-reader-grid{display:grid!important" in css
+    assert "overflow:auto!important;overscroll-behavior:contain" in css
     assert "body.ui-contract-v1 .visual-email-thread-page .email-modal-footer{position:relative!important" in css
     assert "min-height:52px;height:52px;padding:11px 18px" in css
     assert "font-size:14px;font-weight:700" in css
@@ -211,8 +212,32 @@ def test_email_full_page_reader_scroll_and_action_hierarchy_contract() -> None:
     assert 'class="email-reply-primary"' in source
     assert 'class="email-create-task-action"' in source
     assert "email-treatment-open" in source
+    assert 'aria-expanded="false"' in source
+    assert "data-email-drawer-close" in source
+    assert "Triagem e classificação" in source
+    assert "Responsável e prazo" in source
+    assert "Estado do email" in source
+    assert "Notas e conclusão" in source
+    assert "Histórico recente" in source
     assert "email-spam-action" in source
+    assert 'root.classList.toggle("is-treatment-open", open)' in script
+    assert 'setOpen(!drawer.classList.contains("is-open"))' in script
+    assert 'root.querySelectorAll("[data-email-open-composer]")' in script
+    assert 'event.key === "Escape"' in script
     assert "frame.contentDocument?.documentElement?.scrollHeight" in script
     assert "frame.style.height" in script
-    assert "ui-contract-v1.css?v=20260910-email-action-bar" in base
-    assert "email.js?v=20260910-email-page-scroll" in page
+    assert "ui-contract-v1.css?v=20260910-email-workspace" in base
+    assert "email.js?v=20260910-email-workspace" in page
+
+
+def test_email_classification_changes_keep_before_after_audit_contract() -> None:
+    router = ROUTER.read_text(encoding="utf-8")
+
+    assert '"classification_audit": classification_audit' in router
+    assert '"classification_audit_users": classification_audit_users' in router
+    assert '"classification_audit_rows": classification_audit_rows' in router
+    assert "classification_before = {" in router
+    assert "classification_after = {" in router
+    assert '"before": classification_before' in router
+    assert '"after": classification_after' in router
+    assert '"classification_changed": classification_before' in router

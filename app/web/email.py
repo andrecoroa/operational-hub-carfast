@@ -820,6 +820,63 @@ def _thread_view_data(db, thread: EmailThread) -> dict:
         (message for message in reversed(messages) if message.direction == "inbound"),
         None,
     )
+    classification_audit = list(
+        db.scalars(
+            select(EmailAuditEvent)
+            .where(
+                EmailAuditEvent.thread_id == thread.id,
+                EmailAuditEvent.action.in_({"classification_validated", "triage_saved"}),
+            )
+            .order_by(EmailAuditEvent.id.desc())
+            .limit(8)
+        )
+    )
+    classification_audit_user_ids = {
+        event.user_id for event in classification_audit if event.user_id
+    }
+    classification_audit_users = (
+        {
+            user.id: user
+            for user in db.scalars(
+                select(User).where(User.id.in_(classification_audit_user_ids))
+            )
+        }
+        if classification_audit_user_ids
+        else {}
+    )
+
+    def _classification_audit_label(snapshot: dict | None) -> str:
+        snapshot = snapshot or {}
+        category = (
+            db.get(WorkCategory, snapshot.get("work_category_id"))
+            if snapshot.get("work_category_id")
+            else None
+        )
+        subcategory = (
+            db.get(WorkSubcategory, snapshot.get("work_subcategory_id"))
+            if snapshot.get("work_subcategory_id")
+            else None
+        )
+        if category and subcategory:
+            return f"{category.name} / {subcategory.name}"
+        if category:
+            return category.name
+        if snapshot.get("provisional_category_id"):
+            return f"Classificação provisória #{snapshot['provisional_category_id']}"
+        return "Por classificar"
+
+    classification_audit_rows = []
+    for event in classification_audit:
+        detail = event.details_json or {}
+        classification_audit_rows.append(
+            {
+                "event": event,
+                "author": classification_audit_users.get(event.user_id),
+                "changed": bool(detail.get("classification_changed")),
+                "before_label": _classification_audit_label(detail.get("before")),
+                "after_label": _classification_audit_label(detail.get("after")),
+            }
+        )
     return {
         "messages": messages,
         "message_refs": {
@@ -844,6 +901,9 @@ def _thread_view_data(db, thread: EmailThread) -> dict:
             )
         ),
         "thread_reference": thread_reference(thread),
+        "classification_audit": classification_audit,
+        "classification_audit_users": classification_audit_users,
+        "classification_audit_rows": classification_audit_rows,
     }
 
 
@@ -2118,6 +2178,19 @@ def email_triage(
             db, user_id, permissions, thread.channel_id, "alter", thread=thread
         ):
             return RedirectResponse("/v2-clean/email?error=not_found", status_code=303)
+        classification_before = {
+            "content_type": thread.content_type,
+            "nature": thread.nature,
+            "document_type": thread.document_type,
+            "work_queue_id": thread.work_queue_id,
+            "work_department_id": thread.work_department_id,
+            "work_category_id": thread.work_category_id,
+            "work_subcategory_id": thread.work_subcategory_id,
+            "provisional_category_id": thread.provisional_category_id,
+            "provisional_subcategory_id": thread.provisional_subcategory_id,
+            "classification_status": thread.classification_status,
+            "classification_other_text": thread.classification_other_text,
+        }
         hierarchy_selection = None
         proposal_selection = None
         if work_queue_id.strip() or work_department_id.strip():
@@ -2332,6 +2405,19 @@ def email_triage(
                 )
         if clean_action == "validate" and thread.status == "triage":
             thread.status = "in_progress"
+        classification_after = {
+            "content_type": thread.content_type,
+            "nature": thread.nature,
+            "document_type": thread.document_type,
+            "work_queue_id": thread.work_queue_id,
+            "work_department_id": thread.work_department_id,
+            "work_category_id": thread.work_category_id,
+            "work_subcategory_id": thread.work_subcategory_id,
+            "provisional_category_id": thread.provisional_category_id,
+            "provisional_subcategory_id": thread.provisional_subcategory_id,
+            "classification_status": thread.classification_status,
+            "classification_other_text": thread.classification_other_text,
+        }
         db.add(
             EmailAuditEvent(
                 thread_id=thread.id,
@@ -2342,6 +2428,10 @@ def email_triage(
                     else "triage_saved"
                 ),
                 details_json={
+                    "before": classification_before,
+                    "after": classification_after,
+                    "classification_changed": classification_before
+                    != classification_after,
                     "content_type": thread.content_type,
                     "nature": thread.nature,
                     "document_type": thread.document_type,

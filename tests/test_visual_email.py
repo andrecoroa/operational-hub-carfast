@@ -198,8 +198,8 @@ def test_email_full_page_reader_scroll_and_action_hierarchy_contract() -> None:
     assert 'class="ui-contract-v1"' in base
     assert "visual-email-thread-page" in page
     assert "body.ui-contract-v1 .visual-email-thread-page{height:auto!important;min-height:100dvh" in css
-    assert "overflow-y:visible!important" in css
-    assert "body.ui-contract-v1 .visual-email-thread-page .email-modal-shell{height:auto!important" in css
+    assert "overflow-x:clip!important;overflow-y:visible!important" in css
+    assert "body.ui-contract-v1 .visual-email-thread-page .email-modal-shell{display:block!important;height:auto!important" in css
     assert "max-height:none!important;overflow:visible!important" in css
     assert "body.ui-contract-v1 .visual-email-thread-page .email-modal-footer{position:relative!important" in css
     assert "@media(max-width:1100px)" in css
@@ -210,5 +210,5 @@ def test_email_full_page_reader_scroll_and_action_hierarchy_contract() -> None:
     assert "email-spam-action" in source
     assert "frame.contentDocument?.documentElement?.scrollHeight" in script
     assert "frame.style.height" in script
-    assert "ui-contract-v1.css?v=20260910-email-page-scroll" in base
+    assert "ui-contract-v1.css?v=20260910-email-reader-flow" in base
     assert "email.js?v=20260910-email-page-scroll" in page

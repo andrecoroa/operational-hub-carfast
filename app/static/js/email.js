@@ -157,6 +157,24 @@
     root.querySelectorAll("[data-email-open-composer]").forEach((button) => button.addEventListener("click", () => showComposer(true)));
     root.querySelectorAll("[data-email-close-composer]").forEach((button) => button.addEventListener("click", () => showComposer(false)));
   };
+  const bindTreatmentDrawer = (root) => {
+    const drawer = root.querySelector("[data-email-treatment-drawer]");
+    if (!drawer) return;
+    const setOpen = (open) => {
+      drawer.classList.toggle("is-open", open);
+      drawer.setAttribute("aria-hidden", String(!open));
+      document.body.classList.toggle("email-treatment-drawer-open", open);
+      if (open) drawer.querySelector("[data-email-drawer-close]")?.focus({preventScroll: true});
+    };
+    root.querySelectorAll("[data-email-drawer-open]").forEach((button) => button.addEventListener("click", () => setOpen(true)));
+    drawer.querySelector("[data-email-drawer-close]")?.addEventListener("click", () => setOpen(false));
+    drawer.addEventListener("click", (event) => { if (event.target === drawer) setOpen(false); });
+    const sections = [...drawer.querySelectorAll(".email-drawer-section")];
+    sections.forEach((section) => section.addEventListener("toggle", () => {
+      if (!section.open) return;
+      sections.forEach((other) => { if (other !== section) other.open = false; });
+    }));
+  };
   const bindLinkKinds = (root) => {
     root.querySelectorAll("[data-email-link-kind]").forEach((select) => {
       const hidden = select.form?.querySelector("[data-email-link-type]");
@@ -172,7 +190,11 @@
     bindReplySenders(root);
     bindBodyViews(root);
     bindPanelSwitch(root);
+    bindTreatmentDrawer(root);
     bindLinkKinds(root);
+    root.querySelectorAll("[data-email-spam-form]").forEach((form) => form.addEventListener("submit", (event) => {
+      if (!window.confirm("Mover esta conversa para Spam? Esta ação também a retira da caixa Microsoft 365.")) event.preventDefault();
+    }));
     root.querySelectorAll("[data-email-modal-close]").forEach((button) => button.addEventListener("click", closeActivePreview));
     root.querySelectorAll("[data-email-show-images]").forEach((button) => button.addEventListener("click", () => {
       const frame = document.getElementById(button.dataset.emailShowImages);
@@ -274,8 +296,14 @@
     if (trigger) previewTrigger = trigger;
     else if (!(previewTrigger instanceof HTMLElement) || !previewTrigger.isConnected) previewTrigger = document.activeElement;
     previewRoot.innerHTML = '<div class="email-preview-loading">A abrir conversa…</div>';
-    const response = await fetch(`/v2-clean/email/${threadId}/preview`, {headers: {"X-Requested-With": "fetch"}});
-    previewRoot.innerHTML = await response.text();
+    try {
+      const response = await fetch(`/v2-clean/email/${threadId}/preview`, {headers: {"X-Requested-With": "fetch"}});
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      previewRoot.innerHTML = await response.text();
+    } catch (_) {
+      previewRoot.innerHTML = `<div class="email-preview-error" role="alert"><strong>Não foi possível abrir a conversa.</strong><a class="button-link" href="/v2-clean/email/${threadId}">Abrir página completa</a></div>`;
+      return;
+    }
     bindThread(previewRoot);
     const fullPageLink = previewRoot.querySelector(".email-open-full");
     if (fullPageLink) fullPageLink.href = `${fullPageLink.pathname}?return_context=${encodeURIComponent(location.pathname + location.search)}`;
@@ -288,19 +316,15 @@
     document.querySelectorAll("[data-email-preview-trigger]").forEach((button) => button.setAttribute("aria-expanded", String(button.dataset.emailPreviewTrigger === String(threadId))));
     inlinePreviewRow.scrollIntoView({block: "nearest"});
   };
-  document.querySelectorAll("[data-email-preview]").forEach((element) => element.addEventListener("click", (event) => {
-    if (event.target.closest("a, button")) return;
-    openPreview(element.dataset.emailPreview, element);
+  document.querySelectorAll("[data-email-thread-url]").forEach((element) => element.addEventListener("click", (event) => {
+    if (event.target.closest("a, button, input, select, textarea")) return;
+    window.location.assign(element.dataset.emailThreadUrl);
   }));
-  document.querySelectorAll("[data-email-preview]").forEach((element) => element.addEventListener("keydown", (event) => {
+  document.querySelectorAll("[data-email-thread-url]").forEach((element) => element.addEventListener("keydown", (event) => {
     if (event.key !== "Enter" && event.key !== " ") return;
     if (event.target.closest("a, button, input, select, textarea")) return;
     event.preventDefault();
-    openPreview(element.dataset.emailPreview, element);
-  }));
-  document.querySelectorAll("[data-email-preview-trigger]").forEach((button) => button.addEventListener("click", (event) => {
-    event.stopPropagation();
-    openPreview(button.dataset.emailPreviewTrigger, button);
+    window.location.assign(element.dataset.emailThreadUrl);
   }));
   dialog?.addEventListener("click", (event) => { if (event.target === dialog) dialog.close(); });
   dialog?.addEventListener("cancel", (event) => {

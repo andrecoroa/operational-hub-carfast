@@ -145,7 +145,7 @@ def test_inbox_open_is_native_full_page_navigation_and_cannot_render_inline():
     assert "window.location.assign(`/v2-clean/email/${threadId}?return_context=" in script
     assert "window.location.assign(element.dataset.emailThreadUrl)" in script
     assert "email.js?v=20260910-email-page-scroll" in inbox
-    assert "email.js?v=20260910-email-workspace" in thread
+    assert "email.js?v=20260910-email-drawer-fix" in thread
 
 
 def test_inbox_facets_apply_remaining_filters_server_side(authenticated_client, db_session, tmp_path, monkeypatch):

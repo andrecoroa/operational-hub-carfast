@@ -970,8 +970,8 @@
 @media (max-width:700px){.ui-contract-v1 .email-modal-header{align-items:flex-start}.ui-contract-v1 .email-header-actions,.ui-contract-v1 .email-thread-navigation{width:100%}.ui-contract-v1 .email-thread-navigation>*{flex:1 1 auto;text-align:center}.ui-contract-v1 .email-create-task-form{width:100%}.ui-contract-v1 .email-create-task-form fieldset{width:100%;flex-direction:column}.ui-contract-v1 .visual-email-thread-page .email-conversation{padding-inline:8px}}
 
 /* Full-page email reader: the document owns scrolling and actions never cover content. */
-body.ui-contract-v1 .visual-email-thread-page{height:auto!important;min-height:100dvh;overflow-x:hidden!important;overflow-y:visible!important;padding-bottom:max(40px,env(safe-area-inset-bottom))}
-body.ui-contract-v1 .visual-email-thread-page .email-modal-shell{height:auto!important;min-height:0!important;max-height:none!important;overflow:visible!important}
+body.ui-contract-v1 .visual-email-thread-page{height:auto!important;min-height:100dvh;overflow-x:clip!important;overflow-y:visible!important;padding-bottom:max(40px,env(safe-area-inset-bottom))}
+body.ui-contract-v1 .visual-email-thread-page .email-modal-shell{display:block!important;height:auto!important;min-height:0!important;max-height:none!important;overflow:visible!important}
 body.ui-contract-v1 .visual-email-thread-page .email-reader-grid,body.ui-contract-v1 .visual-email-thread-page .email-conversation{height:auto!important;max-height:none!important;overflow:visible!important}
 body.ui-contract-v1 .visual-email-thread-page .email-conversation{padding-bottom:28px}
 body.ui-contract-v1 .visual-email-thread-page .email-body-frame{display:block;width:100%;height:clamp(420px,62vh,760px);min-height:280px;max-height:none;border:1px solid var(--ui-color-border);border-radius:8px}

@@ -2031,6 +2031,7 @@ def _build_archive_rows(
                 "manual_note": "",
                 "invoice_service_events": [
                     {
+                        "id": event.id,
                         "type": event.service_code,
                         "description": event.service_label,
                         "axle": event.axle or "-",

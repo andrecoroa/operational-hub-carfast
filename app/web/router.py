@@ -204,10 +204,9 @@ from app.services.invoice_service_history import (
     STATUS_LABELS as INVOICE_SERVICE_STATUS_LABELS,
     InvoiceServiceImportError,
     apply_invoice_service_import,
-    decide_invoice_service_event,
-    link_event_to_work_order,
     preview_invoice_service_import,
     rollback_invoice_service_batch,
+    validate_document_invoice_service_events,
     vehicle_service_history,
 )
 from app.services.document_service_classification import save_service_classifications
@@ -24583,6 +24582,9 @@ def clean_fleet_documents_save_classification_row(
     return_group: str = Form(""),
     classification_action: str = Form("save"),
     open_item: str = Form(""),
+    invoice_service_event_id: list[int] = Form(default=[]),
+    invoice_service_event_decision: list[str] = Form(default=[]),
+    invoice_service_event_reason: list[str] = Form(default=[]),
 ):
     denied = clean_experience_denied(request)
     if denied:
@@ -24646,6 +24648,42 @@ def clean_fleet_documents_save_classification_row(
                     ),
                     plate=vehicle.plate or document.plate or "",
                 )
+            if should_validate:
+                if not (
+                    len(invoice_service_event_id)
+                    == len(invoice_service_event_decision)
+                    == len(invoice_service_event_reason)
+                ):
+                    return RedirectResponse(
+                        f"/v2-clean/fleet/{vehicle_id}/documents?main_group=invoices&error=invoice_service_decision&open_item=document%3A{document_id}",
+                        status_code=303,
+                    )
+                try:
+                    validate_document_invoice_service_events(
+                        db,
+                        document_id=document_id,
+                        vehicle_id=vehicle_id,
+                        decisions=[
+                            {
+                                "event_id": event_id,
+                                "decision": decision,
+                                "reason": reason,
+                            }
+                            for event_id, decision, reason in zip(
+                                invoice_service_event_id,
+                                invoice_service_event_decision,
+                                invoice_service_event_reason,
+                                strict=True,
+                            )
+                        ],
+                        actor_id=user_id,
+                    )
+                except InvoiceServiceImportError:
+                    db.rollback()
+                    return RedirectResponse(
+                        f"/v2-clean/fleet/{vehicle_id}/documents?main_group=invoices&error=invoice_service_decision&open_item=document%3A{document_id}",
+                        status_code=303,
+                    )
             save_service_classifications(
                 db,
                 vehicle_id=vehicle_id,
@@ -38092,12 +38130,10 @@ def clean_vehicle_service_treatment(request: Request, vehicle_id: int, event_id:
         event = db.get(InvoiceServiceEvent, event_id)
         if not event or event.vehicle_id != vehicle_id:
             return RedirectResponse(f"/v2-clean/fleet/{vehicle_id}/services", status_code=303)
-        return templates.TemplateResponse(request, "clean_vehicle_service_treatment.html", {
-            "vehicle": db.get(Vehicle, vehicle_id), "event": event,
-            "document": db.get(Document, event.document_id),
-            "work_orders": db.scalars(select(WorkshopProcess).where(WorkshopProcess.vehicle_id == vehicle_id).order_by(WorkshopProcess.id.desc())).all(),
-            "status_labels": INVOICE_SERVICE_STATUS_LABELS,
-        })
+        return RedirectResponse(
+            f"/v2-clean/fleet/{vehicle_id}/documents?main_group=invoices&open_item=document%3A{event.document_id}",
+            status_code=303,
+        )
 
 
 @web_router.post("/v2-clean/fleet/{vehicle_id}/services/{event_id}")
@@ -38114,18 +38150,10 @@ def clean_vehicle_service_treatment_save(
         event = db.get(InvoiceServiceEvent, event_id)
         if not event or event.vehicle_id != vehicle_id:
             return RedirectResponse(f"/v2-clean/fleet/{vehicle_id}/services", status_code=303)
-        try:
-            decide_invoice_service_event(db, event, status=status, service_code=service_code, axle=axle, position=position, actor_id=get_web_user_id(request), reason=reason)
-            if workshop_process_id:
-                process = db.get(WorkshopProcess, workshop_process_id)
-                if not process:
-                    raise InvoiceServiceImportError("Folha de obra inexistente.")
-                link_event_to_work_order(db, event, process, confidence=Decimal(work_order_confidence) if work_order_confidence else None, actor_id=get_web_user_id(request))
-            db.commit()
-        except (InvoiceServiceImportError, InvalidOperation):
-            db.rollback()
-            return RedirectResponse(f"/v2-clean/fleet/{vehicle_id}/services/{event_id}?error=invalid", status_code=303)
-    return RedirectResponse(f"/v2-clean/fleet/{vehicle_id}/services", status_code=303)
+        return RedirectResponse(
+            f"/v2-clean/fleet/{vehicle_id}/documents?main_group=invoices&open_item=document%3A{event.document_id}",
+            status_code=303,
+        )
 
 
 def get_web_user_id(request: Request) -> int | None:

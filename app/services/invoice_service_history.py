@@ -26,6 +26,30 @@ from app.services.invoice_service_classifier import classify_invoice_service_tex
 from app.services.spreadsheets import normalize_header
 
 EVENT_STATUSES = {"auto_extracted", "pending_validation", "validated", "rejected", "blocked"}
+EVENT_SNAPSHOT_FIELDS = (
+    "vehicle_id",
+    "document_id",
+    "workshop_process_id",
+    "service_date",
+    "odometer_km",
+    "service_code",
+    "service_label",
+    "classification",
+    "axle",
+    "position",
+    "supplier_name",
+    "work_order_reference",
+    "work_order_confidence",
+    "amount",
+    "currency",
+    "status",
+    "evidence_text",
+    "evidence_json",
+    "active",
+    "validated_by_id",
+    "validated_at",
+    "last_batch_id",
+)
 STATUS_LABELS = {
     "auto_extracted": "Extraído automaticamente",
     "pending_validation": "Por validar",
@@ -340,28 +364,6 @@ def preview_invoice_service_import(
 
 
 def _snapshot(event: InvoiceServiceEvent) -> dict[str, Any]:
-    fields = (
-        "vehicle_id",
-        "document_id",
-        "workshop_process_id",
-        "service_date",
-        "odometer_km",
-        "service_code",
-        "service_label",
-        "classification",
-        "axle",
-        "position",
-        "supplier_name",
-        "work_order_reference",
-        "work_order_confidence",
-        "amount",
-        "currency",
-        "status",
-        "evidence_text",
-        "evidence_json",
-        "active",
-        "last_batch_id",
-    )
     return {
         key: (
             str(value)
@@ -370,9 +372,29 @@ def _snapshot(event: InvoiceServiceEvent) -> dict[str, Any]:
             if isinstance(value, (date, datetime))
             else value
         )
-        for key in fields
-        if (value := getattr(event, key)) is not None
+        for key in EVENT_SNAPSHOT_FIELDS
+        for value in (getattr(event, key),)
     }
+
+
+def _restore_snapshot(event: InvoiceServiceEvent, snapshot: dict[str, Any]) -> None:
+    """Restore every field known by the stored snapshot, including explicit nulls.
+
+    Older revisions omitted null fields, so an absent key remains intentionally unknown.
+    New revisions contain the complete mutable state and are fully symmetric.
+    """
+
+    for key in EVENT_SNAPSHOT_FIELDS:
+        if key not in snapshot:
+            continue
+        value = snapshot[key]
+        if key == "service_date":
+            value = _date(value)
+        elif key in {"amount", "work_order_confidence"}:
+            value = _decimal(value)
+        elif key == "validated_at" and isinstance(value, str):
+            value = datetime.fromisoformat(value)
+        setattr(event, key, value)
 
 
 def _json_safe(value: Any) -> Any:
@@ -512,6 +534,13 @@ def rollback_invoice_service_batch(
             )
         return batch
 
+    if len({revision.event_id for revision in revisions}) != len(revisions):
+        raise InvoiceServiceImportError(
+            "Lote com revisões de aplicação duplicadas; rollback recusado."
+        )
+
+    # Fail closed before mutating any event. Callers should not have to rely on a
+    # transaction rollback to undo a partially processed batch.
     for revision, event in zip(revisions, events, strict=True):
         assert event is not None
         current = _snapshot(event)
@@ -520,16 +549,15 @@ def rollback_invoice_service_batch(
             raise InvoiceServiceImportError(
                 "Evento alterado após o lote; rollback recusado para preservar auditoria."
             )
+
+    for revision, event in zip(revisions, events, strict=True):
+        assert event is not None
+        current = _snapshot(event)
         if revision.before_json is None:
             event.active = False
             event.status = "rejected"
         else:
-            for key, value in revision.before_json.items():
-                if key == "service_date":
-                    value = _date(value)
-                elif key in {"amount", "work_order_confidence"}:
-                    value = _decimal(value)
-                setattr(event, key, value)
+            _restore_snapshot(event, revision.before_json)
         _sync_document_projection(db, event)
         db.add(
             InvoiceServiceEventRevision(
@@ -626,6 +654,7 @@ def decide_invoice_service_event(
         event.validated_by_id = actor_id
         event.validated_at = datetime.now(UTC)
     db.flush()
+    _sync_document_projection(db, event)
     db.add(
         InvoiceServiceEventRevision(
             event_id=event.id,
@@ -636,3 +665,72 @@ def decide_invoice_service_event(
             reason=reason.strip() or None,
         )
     )
+
+
+def validate_document_invoice_service_events(
+    db: Session,
+    *,
+    document_id: int,
+    vehicle_id: int,
+    decisions: list[dict[str, Any]],
+    actor_id: int | None,
+) -> None:
+    """Validate or reject every active imported proposal shown on an invoice.
+
+    The exact-set check prevents a stale browser form from silently omitting a
+    proposal added since the invoice was opened. All validation happens before
+    the first mutation so the command fails closed.
+    """
+
+    document = db.get(Document, document_id)
+    if not document or document.vehicle_id != vehicle_id:
+        raise InvoiceServiceImportError("Fatura ou associação de viatura inválida.")
+    events = list(
+        db.scalars(
+            select(InvoiceServiceEvent)
+            .where(
+                InvoiceServiceEvent.document_id == document_id,
+                InvoiceServiceEvent.vehicle_id == vehicle_id,
+                InvoiceServiceEvent.active.is_(True),
+            )
+            .order_by(InvoiceServiceEvent.id)
+        )
+    )
+    if not events:
+        return
+    if len({item.get("event_id") for item in decisions}) != len(decisions):
+        raise InvoiceServiceImportError("Decisões de serviços duplicadas ou inválidas.")
+    by_id = {item.get("event_id"): item for item in decisions}
+    if set(by_id) != {event.id for event in events}:
+        raise InvoiceServiceImportError("A lista de serviços mudou; reabre a fatura.")
+
+    for event in events:
+        item = by_id[event.id]
+        decision = str(item.get("decision") or "").strip()
+        reason = str(item.get("reason") or "").strip()
+        if decision not in {"accept", "reject"}:
+            raise InvoiceServiceImportError("Todos os serviços exigem uma decisão.")
+        if decision == "reject" and not reason:
+            raise InvoiceServiceImportError("A exclusão de um serviço exige motivo.")
+        if decision == "accept" and event.status == "blocked":
+            raise InvoiceServiceImportError("Um serviço bloqueado não pode ser publicado.")
+
+    for event in events:
+        item = by_id[event.id]
+        decision = str(item["decision"])
+        if decision == "accept" and event.status == "validated":
+            continue
+        decide_invoice_service_event(
+            db,
+            event,
+            status="validated" if decision == "accept" else "rejected",
+            service_code=event.service_code,
+            axle=event.axle,
+            position=event.position,
+            actor_id=actor_id,
+            reason=(
+                "validated_from_invoice"
+                if decision == "accept"
+                else str(item.get("reason") or "").strip()
+            ),
+        )

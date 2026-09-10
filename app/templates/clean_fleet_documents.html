@@ -327,7 +327,7 @@
                             <div class="clean-doc-invoice-lines">
                               <strong>Serviços importados ligados à fatura</strong>
                               <table>
-                                <thead><tr><th>Tipo</th><th>Descrição</th><th>Eixo</th><th>Valor</th><th>Data</th><th>Km</th><th>Estado</th><th>Linhas</th></tr></thead>
+                                <thead><tr><th>Tipo</th><th>Descrição</th><th>Eixo</th><th>Valor</th><th>Data</th><th>Km</th><th>Estado</th><th>Linhas</th><th>Decisão na fatura</th></tr></thead>
                                 <tbody>
                                   {% for service in row.invoice_service_events %}
                                     <tr>
@@ -335,10 +335,20 @@
                                       <td>{{ service.amount if service.amount is not none else '-' }} EUR</td><td>{{ service.date or '-' }}</td>
                                       <td>{{ service.km if service.km is not none else '-' }}</td><td>{{ service.status }}</td>
                                       <td>{{ service.source_line_ids|join(', ') or '-' }}</td>
+                                      <td>
+                                        <input type="hidden" name="invoice_service_event_id" value="{{ service.id }}" form="{{ form_id }}">
+                                        <select name="invoice_service_event_decision" form="{{ form_id }}" required aria-label="Decisão do serviço {{ service.description }}">
+                                          <option value="" {% if service.status != 'validated' %}selected{% endif %}>Escolher…</option>
+                                          <option value="accept" {% if service.status == 'validated' %}selected{% endif %}>Aceitar e publicar</option>
+                                          <option value="reject">Não publicar</option>
+                                        </select>
+                                        <input name="invoice_service_event_reason" form="{{ form_id }}" placeholder="Motivo se não publicar" aria-label="Motivo da decisão do serviço {{ service.description }}">
+                                      </td>
                                     </tr>
                                   {% endfor %}
                                 </tbody>
                               </table>
+                              <p class="clean-doc-help-text">Estas propostas só entram no histórico confirmado quando validares a fatura. A exclusão exige motivo.</p>
                               <p class="clean-doc-help-text"><strong>Reconciliação:</strong> serviços ligados {{ row.invoice_service_total }} EUR · total da fatura {{ row.total_with_vat or '-' }}.</p>
                             </div>
                           {% endif %}

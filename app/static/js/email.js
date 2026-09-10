@@ -129,6 +129,16 @@
     });
   };
   const bindBodyViews = (root) => {
+    const fitFrame = (frame) => {
+      try {
+        const height = frame.contentDocument?.documentElement?.scrollHeight;
+        if (height) frame.style.height = `${Math.max(280, height + 8)}px`;
+      } catch (_) { /* sandboxed bodies keep their own scroll as a safe fallback */ }
+    };
+    root.querySelectorAll(".email-body-frame").forEach((frame) => {
+      frame.addEventListener("load", () => fitFrame(frame));
+      fitFrame(frame);
+    });
     root.querySelectorAll("[data-email-body-view]").forEach((button) => button.addEventListener("click", () => {
       const messageId = button.dataset.emailMessageId;
       const frame = root.querySelector(`#email-body-${messageId}`);

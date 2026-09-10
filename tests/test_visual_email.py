@@ -185,3 +185,22 @@ def test_email_full_page_return_context_is_local_and_feature_gated() -> None:
     assert 'return_context.startswith("//")' in source
     assert '"foundation_ui_enabled": settings.visual_foundation_enabled' in source
     assert '"return_context": return_context' in source
+
+
+def test_email_full_page_reader_scroll_and_action_hierarchy_contract() -> None:
+    css = CONTRACT_CSS.read_text(encoding="utf-8")
+    source = THREAD.read_text(encoding="utf-8")
+    script = JS.read_text(encoding="utf-8")
+
+    assert ".ui-contract-v1.visual-email-thread-page{height:auto!important;min-height:100dvh" in css
+    assert ".ui-contract-v1.visual-email-thread-page .email-modal-shell{height:auto!important" in css
+    assert "max-height:none!important;overflow:visible!important" in css
+    assert ".ui-contract-v1.visual-email-thread-page .email-modal-footer{position:relative!important" in css
+    assert "@media(max-width:1100px)" in css
+    assert "@media(max-width:600px)" in css
+    assert 'class="email-reply-primary"' in source
+    assert 'class="email-create-task-action"' in source
+    assert "email-treatment-open" in source
+    assert "email-spam-action" in source
+    assert "frame.contentDocument?.documentElement?.scrollHeight" in script
+    assert "frame.style.height" in script

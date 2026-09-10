@@ -437,10 +437,10 @@ def test_clean_history_route_shows_confirmed_and_pending(authenticated_client, d
         f"/v2-clean/fleet/{vehicle.id}/services/{db_session.scalar(select(InvoiceServiceEvent)).id}",
         follow_redirects=False,
     )
-    assert treatment_response.status_code == 303
-    assert treatment_response.headers["location"] == (
-        f"/v2-clean/fleet/{vehicle.id}/documents?main_group=invoices&open_item=document%3A{document.id}"
-    )
+    assert treatment_response.status_code == 200
+    assert "apenas para consulta" in treatment_response.text
+    assert "Tratar na fatura" in treatment_response.text
+    assert "Guardar decisão auditada" not in treatment_response.text
 
 
 def test_clean_history_route_requires_authentication(client, db_session):

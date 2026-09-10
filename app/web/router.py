@@ -38130,10 +38130,11 @@ def clean_vehicle_service_treatment(request: Request, vehicle_id: int, event_id:
         event = db.get(InvoiceServiceEvent, event_id)
         if not event or event.vehicle_id != vehicle_id:
             return RedirectResponse(f"/v2-clean/fleet/{vehicle_id}/services", status_code=303)
-        return RedirectResponse(
-            f"/v2-clean/fleet/{vehicle_id}/documents?main_group=invoices&open_item=document%3A{event.document_id}",
-            status_code=303,
-        )
+        return templates.TemplateResponse(request, "clean_vehicle_service_treatment.html", {
+            "vehicle": db.get(Vehicle, vehicle_id), "event": event,
+            "document": db.get(Document, event.document_id),
+            "status_labels": INVOICE_SERVICE_STATUS_LABELS,
+        })
 
 
 @web_router.post("/v2-clean/fleet/{vehicle_id}/services/{event_id}")
@@ -38150,10 +38151,7 @@ def clean_vehicle_service_treatment_save(
         event = db.get(InvoiceServiceEvent, event_id)
         if not event or event.vehicle_id != vehicle_id:
             return RedirectResponse(f"/v2-clean/fleet/{vehicle_id}/services", status_code=303)
-        return RedirectResponse(
-            f"/v2-clean/fleet/{vehicle_id}/documents?main_group=invoices&open_item=document%3A{event.document_id}",
-            status_code=303,
-        )
+    return RedirectResponse(f"/v2-clean/fleet/{vehicle_id}/services", status_code=303)
 
 
 def get_web_user_id(request: Request) -> int | None:

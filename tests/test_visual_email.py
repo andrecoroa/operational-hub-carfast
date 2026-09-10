@@ -220,14 +220,30 @@ def test_email_full_page_reader_scroll_and_action_hierarchy_contract() -> None:
     assert "Notas e conclusão" in source
     assert "Histórico recente" in source
     assert "email-spam-action" in source
-    assert 'root.classList.toggle("is-treatment-open", open)' in script
+    assert 'const shell = drawer.closest("[data-email-thread-id]")' in script
+    assert 'shell.classList.toggle("is-treatment-open", open)' in script
+    assert 'shell.querySelectorAll("[data-email-drawer-open]")' in script
+    assert 'button.setAttribute("aria-expanded", String(open))' in script
+    assert 'root.classList.toggle("is-treatment-open", open)' not in script
     assert 'setOpen(!drawer.classList.contains("is-open"))' in script
-    assert 'root.querySelectorAll("[data-email-open-composer]")' in script
+    assert 'shell.querySelectorAll("[data-email-open-composer]")' in script
     assert 'event.key === "Escape"' in script
     assert "frame.contentDocument?.documentElement?.scrollHeight" in script
     assert "frame.style.height" in script
     assert "ui-contract-v1.css?v=20260910-email-workspace" in base
-    assert "email.js?v=20260910-email-workspace" in page
+    assert "email.js?v=20260910-email-drawer-fix" in page
+
+
+def test_email_treatment_drawer_layout_tracks_the_shell_state() -> None:
+    css = CONTRACT_CSS.read_text(encoding="utf-8")
+    source = THREAD.read_text(encoding="utf-8")
+
+    assert 'class="email-reader-grid"' in source
+    assert 'class="email-triage-pane email-treatment-drawer"' in source
+    assert source.index('class="email-reader-grid"') < source.index('class="email-modal-footer"')
+    assert ".email-modal-shell-full.is-treatment-open .email-reader-grid{grid-template-columns:minmax(0,1fr) minmax(360px,440px)!important" in css
+    assert "@media(max-width:900px)" in css
+    assert ".email-modal-shell-full.is-treatment-open .email-reader-grid{grid-template-columns:minmax(0,1fr)!important}" in css
 
 
 def test_email_classification_changes_keep_before_after_audit_contract() -> None:

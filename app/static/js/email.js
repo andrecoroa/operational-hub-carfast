@@ -170,20 +170,22 @@
   const bindTreatmentDrawer = (root) => {
     const drawer = root.querySelector("[data-email-treatment-drawer]");
     if (!drawer) return;
+    const shell = drawer.closest("[data-email-thread-id]");
+    if (!shell) return;
     let trigger = null;
     const setOpen = (open) => {
       drawer.classList.toggle("is-open", open);
       drawer.setAttribute("aria-hidden", String(!open));
-      root.classList.toggle("is-treatment-open", open);
-      root.querySelectorAll("[data-email-drawer-open]").forEach((button) => {
+      shell.classList.toggle("is-treatment-open", open);
+      shell.querySelectorAll("[data-email-drawer-open]").forEach((button) => {
         button.setAttribute("aria-expanded", String(open));
         button.classList.toggle("is-active", open);
       });
       if (open) drawer.querySelector("[data-email-drawer-close]")?.focus({preventScroll: true});
       else trigger?.focus({preventScroll: true});
     };
-    root.querySelectorAll("[data-email-drawer-open]").forEach((button) => button.addEventListener("click", () => { trigger = button; setOpen(!drawer.classList.contains("is-open")); }));
-    root.querySelectorAll("[data-email-open-composer]").forEach((button) => button.addEventListener("click", () => { trigger = button; setOpen(true); }));
+    shell.querySelectorAll("[data-email-drawer-open]").forEach((button) => button.addEventListener("click", () => { trigger = button; setOpen(!drawer.classList.contains("is-open")); }));
+    shell.querySelectorAll("[data-email-open-composer]").forEach((button) => button.addEventListener("click", () => { trigger = button; setOpen(true); }));
     drawer.querySelectorAll("[data-email-drawer-close]").forEach((button) => button.addEventListener("click", () => setOpen(false)));
     root.addEventListener("keydown", (event) => { if (event.key === "Escape" && drawer.classList.contains("is-open")) setOpen(false); });
     const sections = [...drawer.querySelectorAll(".email-drawer-section")];

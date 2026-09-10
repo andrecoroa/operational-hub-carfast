@@ -140,6 +140,7 @@ def save_service_classifications(
             VehicleDocumentRecordTag.vehicle_id == vehicle_id,
             target_condition,
             VehicleDocumentRecordTag.category.in_(SERVICE_CATEGORIES),
+            ~VehicleDocumentRecordTag.source_kind.like("invoice_service:%"),
         )
     )
     for category, values in normalized.items():

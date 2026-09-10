@@ -323,6 +323,25 @@
                         <section class="clean-doc-detail-card clean-doc-detail-card-wide clean-doc-line-classification-card">
                           {{ render_classification_editor(row, form_id, "4. Serviços da fatura") }}
                           <p class="clean-doc-help-text">Classifica apenas os serviços relevantes da fatura. As linhas faturadas ficam abaixo para consulta e análises futuras.</p>
+                          {% if row.invoice_service_events %}
+                            <div class="clean-doc-invoice-lines">
+                              <strong>Serviços importados ligados à fatura</strong>
+                              <table>
+                                <thead><tr><th>Tipo</th><th>Descrição</th><th>Eixo</th><th>Valor</th><th>Data</th><th>Km</th><th>Estado</th><th>Linhas</th></tr></thead>
+                                <tbody>
+                                  {% for service in row.invoice_service_events %}
+                                    <tr>
+                                      <td>{{ service.type }}</td><td>{{ service.description }}</td><td>{{ service.axle }}</td>
+                                      <td>{{ service.amount if service.amount is not none else '-' }} EUR</td><td>{{ service.date or '-' }}</td>
+                                      <td>{{ service.km if service.km is not none else '-' }}</td><td>{{ service.status }}</td>
+                                      <td>{{ service.source_line_ids|join(', ') or '-' }}</td>
+                                    </tr>
+                                  {% endfor %}
+                                </tbody>
+                              </table>
+                              <p class="clean-doc-help-text"><strong>Reconciliação:</strong> serviços ligados {{ row.invoice_service_total }} EUR · total da fatura {{ row.total_with_vat or '-' }}.</p>
+                            </div>
+                          {% endif %}
                         </section>
                       {% endif %}
                       <section class="clean-doc-detail-card clean-doc-detail-card-wide clean-doc-detail-lines-card">

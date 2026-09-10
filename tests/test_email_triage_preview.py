@@ -132,29 +132,20 @@ def test_completed_linked_task_returns_email_to_triage(db_session, tmp_path, mon
     assert db_session.scalar(select(EmailAuditEvent).where(EmailAuditEvent.action == "reopened_after_task_completion"))
 
 
-def test_preview_actions_refresh_without_closing_or_losing_selected_thread():
+def test_inbox_open_is_native_full_page_navigation_and_cannot_render_inline():
     script = (ROOT / "app/static/js/email.js").read_text(encoding="utf-8")
     inbox = (ROOT / "app/templates/clean_email_inbox.html").read_text(encoding="utf-8")
     thread = (ROOT / "app/templates/clean_email_thread.html").read_text(encoding="utf-8")
 
-    assert 'inlinePreviewRow = document.createElement("tr")' in script
-    assert "sourceRow.after(inlinePreviewRow)" in script
-    assert "await openPreview(shell.dataset.emailThreadId, null, true)" in script
-    assert 'row.dataset.emailPreview === String(threadId)' in script
-    assert 'dialog?.addEventListener("close"' in script
-    assert "const restorePreviewFocus" in script
-    assert "trigger.focus({preventScroll: true})" in script
-    assert "if (trigger) previewTrigger = trigger" in script
-    assert "!previewTrigger.isConnected" in script
-    assert 'if (event.key !== "Escape") return' in script
-    assert "closeActivePreview()" in script
-    assert 'dialog?.addEventListener("cancel"' in script
-    assert "event.preventDefault();\n    closeActivePreview();" in script
-    assert "if (!forceRefresh && inlinePreviewRow?.dataset.emailInlineThread === String(threadId))" in script
-    assert 'row.setAttribute("aria-expanded", String(selected))' in script
-    assert 'dialog[open]:not(#email-preview-dialog)' in script
-    assert "email.js?v=20260910-email-conversation-drawer" in inbox
-    assert "email.js?v=20260910-email-conversation-drawer" in thread
+    assert '<a class="button-link" href="{{ thread_url }}">Abrir</a>' in inbox
+    assert 'data-email-thread-url="{{ thread_url }}"' in inbox
+    assert 'id="email-preview-dialog"' not in inbox
+    assert 'inlinePreviewRow = document.createElement("tr")' not in script
+    assert "sourceRow.after(inlinePreviewRow)" not in script
+    assert "window.location.assign(`/v2-clean/email/${threadId}?return_context=" in script
+    assert "window.location.assign(element.dataset.emailThreadUrl)" in script
+    assert "email.js?v=20260910-email-full-page-navigation" in inbox
+    assert "email.js?v=20260910-email-full-page-navigation" in thread
 
 
 def test_inbox_facets_apply_remaining_filters_server_side(authenticated_client, db_session, tmp_path, monkeypatch):
@@ -1027,16 +1018,14 @@ def test_mobile_layout_is_single_column_without_body_overflow():
     assert ".email-modal-footer { position:relative;" in css
 
 
-def test_desktop_preview_is_inline_below_the_selected_row():
+def test_desktop_email_uses_full_page_reader_and_keeps_attachment_preview():
     css = (ROOT / "app/static/css/ui-contract-v1.css").read_text(encoding="utf-8")
     app_css = (ROOT / "app/static/css/app.css").read_text(encoding="utf-8")
     script = (ROOT / "app/static/js/email.js").read_text(encoding="utf-8")
 
-    assert ".email-inline-preview-row > td" in css
-    assert ".email-inline-preview-body" in css
-    assert 'inlinePreviewRow = document.createElement("tr")' in script
-    assert "sourceRow.after(inlinePreviewRow)" in script
-    assert "cell.colSpan = sourceRow.children.length || 7" in script
+    assert ".visual-email-thread-page .email-reader-grid{display:block" in css
+    assert 'inlinePreviewRow = document.createElement("tr")' not in script
+    assert "sourceRow.after(inlinePreviewRow)" not in script
     assert ".email-attachment-form footer { display:grid; grid-template-columns:repeat(2,minmax(0,1fr));" in app_css
     assert ".email-attachment-form footer > button { grid-column:1/-1; }" in app_css
 

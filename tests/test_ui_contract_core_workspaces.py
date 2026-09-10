@@ -10,16 +10,13 @@ ADMIN = (ROOT / "app/templates/clean_admin.html").read_text(encoding="utf-8")
 PARTNERS = (ROOT / "app/templates/clean_suppliers.html").read_text(encoding="utf-8")
 
 
-def test_email_uses_same_page_list_preview_contract() -> None:
+def test_email_uses_native_full_page_navigation_contract() -> None:
     assert "email-list-inline" in EMAIL
-    assert "email-inline-preview-row" in EMAIL_JS
-    assert "id=\"email-preview-dialog\"" in EMAIL
-    assert "sourceRow.after(inlinePreviewRow)" in EMAIL_JS
-    assert 'form.closest("#email-preview-dialog, .email-inline-preview-body")' in EMAIL_JS
-    assert "formPreviewRoot === dialog && !dialog.open" in EMAIL_JS
-    assert "closeActivePreview" in EMAIL_JS
-    assert "resetInlinePreview()" in EMAIL_JS
-    assert ".email-inline-preview-body" in CSS
+    assert 'href="{{ thread_url }}">Abrir</a>' in EMAIL
+    assert "id=\"email-preview-dialog\"" not in EMAIL
+    assert "sourceRow.after(inlinePreviewRow)" not in EMAIL_JS
+    assert 'inlinePreviewRow = document.createElement("tr")' not in EMAIL_JS
+    assert "window.location.assign(element.dataset.emailThreadUrl)" in EMAIL_JS
 
 
 def test_documents_keep_canonical_workbench_and_topbar() -> None:

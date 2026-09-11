@@ -184,3 +184,76 @@ def configure_disabled_microsoft365_transport(
             "connect_path": f"/v2-clean/integrations/microsoft/connect/{transport_id}",
         }
     )
+
+
+@microsoft365_router.post("/v2-clean/integrations/microsoft/activate-frota")
+def activate_frota_microsoft365_transport(request: Request):
+    """Activate only Frota from an already connected protected OAuth transport."""
+    user_id = _integration_manager(request)
+    if not user_id:
+        return RedirectResponse("/login", status_code=303)
+    with SessionLocal() as db:
+        source = db.scalar(
+            select(EmailChannelTransport)
+            .join(EmailChannel, EmailChannel.id == EmailChannelTransport.channel_id)
+            .where(
+                EmailChannelTransport.provider == "microsoft365",
+                EmailChannelTransport.connected_at.is_not(None),
+                EmailChannelTransport.revoked_at.is_(None),
+                EmailChannel.address == "email@carfast.pt",
+            )
+        )
+        if source is None or not all(
+            (
+                source.tenant_id,
+                source.client_id,
+                source.client_credential_reference,
+                source.token_reference,
+                source.delegated_user_principal_name,
+            )
+        ):
+            return JSONResponse({"error": "connected_source_not_found"}, status_code=409)
+        channel = db.scalar(
+            select(EmailChannel).where(EmailChannel.address == "frota@carfast.pt")
+        )
+        if channel is None:
+            return JSONResponse({"error": "frota_channel_not_found"}, status_code=404)
+        transport = db.scalar(
+            select(EmailChannelTransport).where(EmailChannelTransport.channel_id == channel.id)
+        )
+        if transport is None:
+            transport = EmailChannelTransport(channel_id=channel.id)
+            db.add(transport)
+            db.flush()
+        transport.provider = "microsoft365"
+        transport.enabled = True
+        transport.mailbox_address = "frota@carfast.pt"
+        transport.tenant_id = source.tenant_id
+        transport.client_id = source.client_id
+        transport.client_credential_reference = source.client_credential_reference
+        transport.token_reference = source.token_reference
+        transport.delegated_user_principal_name = source.delegated_user_principal_name
+        transport.connected_at = source.connected_at
+        transport.revoked_at = None
+        transport.last_error = None
+        channel.active = True
+        channel.from_address = "frota@carfast.pt"
+        channel.reply_to_address = "frota@carfast.pt"
+        record_audit(
+            db,
+            "microsoft365.transport.frota_activated",
+            "email_channel_transport",
+            transport.id,
+            user_id=user_id,
+            after_json={
+                "mailbox": "frota@carfast.pt",
+                "provider": "microsoft365",
+                "enabled": True,
+                "credential_reference": transport.client_credential_reference,
+                "token_reference": transport.token_reference,
+            },
+        )
+        db.commit()
+    return RedirectResponse(
+        "/v2-clean/admin/integrations?microsoft=frota_activated", status_code=303
+    )

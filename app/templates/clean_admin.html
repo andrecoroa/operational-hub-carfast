@@ -593,6 +593,14 @@ DEPOIS
     {% endif %}
 
     {% if admin_section == "integrations" %}
+      <section class="clean-panel clean-card-wide">
+        <p class="eyebrow">Microsoft 365 · piloto Green</p>
+        <h3>Caixa Frota</h3>
+        <p>Ativa o envio por <strong>frota@carfast.pt</strong> usando a autorização protegida já ligada a email@carfast.pt.</p>
+        <form method="post" action="/v2-clean/integrations/microsoft/activate-frota">
+          <button type="submit">Ativar Microsoft 365 para Frota</button>
+        </form>
+      </section>
       <section class="clean-admin-overview-grid clean-card-wide">
         <article class="clean-panel">
           <p class="eyebrow">Entrada de e-mail</p>

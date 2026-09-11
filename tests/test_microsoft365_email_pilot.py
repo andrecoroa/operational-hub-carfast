@@ -238,3 +238,18 @@ def test_graph_send_uses_shared_mailbox_endpoint_and_saves_sent_copy(monkeypatch
     assert captured["body"]["message"]["toRecipients"] == [
         {"emailAddress": {"address": "andrecoroa@daccordinvest.pt"}}
     ]
+
+
+def test_frota_activation_requires_an_existing_connected_source(
+    authenticated_client, db_session, monkeypatch
+):
+    monkeypatch.setattr(
+        microsoft_web,
+        "SessionLocal",
+        sessionmaker(bind=db_session.get_bind(), expire_on_commit=False),
+    )
+    response = authenticated_client.post(
+        "/v2-clean/integrations/microsoft/activate-frota"
+    )
+    assert response.status_code == 409
+    assert response.json() == {"error": "connected_source_not_found"}

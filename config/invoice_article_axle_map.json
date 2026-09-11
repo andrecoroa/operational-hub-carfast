@@ -1,0 +1,5 @@
+{
+  "schema": "carfast.invoice-article-axle-map.v1",
+  "description": "Mapa reservado a códigos confirmados. Não adicionar inferências genéricas.",
+  "mappings": []
+}

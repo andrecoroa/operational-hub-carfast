@@ -3,6 +3,7 @@ from __future__ import annotations
 import csv
 import hashlib
 import io
+import re
 from datetime import UTC, date, datetime
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
@@ -10,10 +11,10 @@ from tempfile import NamedTemporaryFile
 from typing import Any
 
 from openpyxl import load_workbook
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from app.models.documents import Document
+from app.models.documents import Document, VehicleDocumentRecordTag
 from app.models.invoice_service_history import (
     InvoiceServiceEvent,
     InvoiceServiceEventRevision,
@@ -25,6 +26,30 @@ from app.services.invoice_service_classifier import classify_invoice_service_tex
 from app.services.spreadsheets import normalize_header
 
 EVENT_STATUSES = {"auto_extracted", "pending_validation", "validated", "rejected", "blocked"}
+EVENT_SNAPSHOT_FIELDS = (
+    "vehicle_id",
+    "document_id",
+    "workshop_process_id",
+    "service_date",
+    "odometer_km",
+    "service_code",
+    "service_label",
+    "classification",
+    "axle",
+    "position",
+    "supplier_name",
+    "work_order_reference",
+    "work_order_confidence",
+    "amount",
+    "currency",
+    "status",
+    "evidence_text",
+    "evidence_json",
+    "active",
+    "validated_by_id",
+    "validated_at",
+    "last_batch_id",
+)
 STATUS_LABELS = {
     "auto_extracted": "Extraído automaticamente",
     "pending_validation": "Por validar",
@@ -48,6 +73,7 @@ ALIASES = {
     "amount": {"amount", "valor"},
     "status": {"status", "estado"},
     "evidence": {"evidence", "evidencia"},
+    "source_line_ids": {"source_line_ids", "linhas_origem", "source_lines"},
 }
 
 
@@ -155,6 +181,13 @@ def _event_values(row: dict[str, Any], document: Document) -> tuple[dict[str, An
         errors.append("Serviço/classificação em falta ou não reconhecido.")
     if status not in EVENT_STATUSES:
         errors.append("Estado inválido.")
+    source_line_ids = [
+        item.strip()
+        for item in re.split(r"[,;|]+", _text(row.get("source_line_ids")))
+        if item.strip()
+    ]
+    evidence_json = proposal.as_dict()
+    evidence_json["import_metadata"] = {"source_line_ids": source_line_ids}
     return {
         "vehicle_id": document.vehicle_id,
         "document_id": document.id,
@@ -172,9 +205,74 @@ def _event_values(row: dict[str, Any], document: Document) -> tuple[dict[str, An
         "currency": "EUR",
         "status": status,
         "evidence_text": _text(row.get("evidence")) or service_text or None,
-        "evidence_json": proposal.as_dict(),
+        "evidence_json": evidence_json,
         "active": status != "rejected",
     }, errors
+
+
+def _document_projection(event: InvoiceServiceEvent) -> tuple[str, str | None, str | None]:
+    code = event.service_code or ""
+    axle = event.axle if event.axle in {"front", "rear", "both"} else "undefined"
+    if code == "MAINT.PLAN":
+        return "maintenance", "revision", None
+    if code == "MAINT.OIL_INTERIM":
+        return "maintenance", "degradation", None
+    if code == "BRAKE.PAD":
+        return "pads", axle, None
+    if code == "BRAKE.DISC":
+        return "discs", axle, None
+    if code == "TYRE.REPAIR":
+        return "tyres", "puncture", None
+    if code.startswith("TYRE."):
+        return "tyres", axle, None
+    if code == "INSPECTION.PERIODIC":
+        return "ipo", "yes", None
+    return "other", None, event.service_label or code
+
+
+def _sync_document_projection(db: Session, event: InvoiceServiceEvent) -> None:
+    if not event.document_id or not event.vehicle_id:
+        raise InvoiceServiceImportError("Evento sem vínculo documental e de viatura.")
+    document = db.get(Document, event.document_id)
+    if not document or document.vehicle_id != event.vehicle_id:
+        raise InvoiceServiceImportError("Vínculo documental do evento é inválido.")
+    source_kind = f"invoice_service:{event.id}"
+    db.execute(
+        delete(VehicleDocumentRecordTag).where(
+            VehicleDocumentRecordTag.document_id == event.document_id,
+            VehicleDocumentRecordTag.source_kind == source_kind,
+        )
+    )
+    if not event.active or event.status in {"rejected", "blocked"}:
+        return
+    category, value, free_text = _document_projection(event)
+    db.add(
+        VehicleDocumentRecordTag(
+            vehicle_id=event.vehicle_id,
+            document_id=event.document_id,
+            category=category,
+            value=value,
+            free_text=free_text,
+            source_kind=source_kind,
+        )
+    )
+
+
+def _canonical_snapshot(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {key: _canonical_snapshot(item) for key, item in sorted(value.items())}
+    if isinstance(value, list):
+        return [_canonical_snapshot(item) for item in value]
+    if isinstance(value, Decimal):
+        return str(value)
+    return value
+
+
+def _snapshot_matches(current: dict[str, Any], expected: dict[str, Any]) -> bool:
+    return all(
+        _canonical_snapshot(current.get(key)) == _canonical_snapshot(value)
+        for key, value in expected.items()
+    )
 
 
 def preview_invoice_service_import(
@@ -211,6 +309,14 @@ def preview_invoice_service_import(
             errors.append("Documento fora do âmbito da viatura selecionada.")
         values, value_errors = _event_values(row, document) if document else ({}, [])
         errors.extend(value_errors)
+        if (
+            document
+            and source.startswith("invoice_service_remediation")
+            and not values.get("evidence_json", {})
+            .get("import_metadata", {})
+            .get("source_line_ids")
+        ):
+            errors.append("Linhas de origem em falta para remediação documental.")
         existing = (
             db.scalar(
                 select(InvoiceServiceEvent).where(
@@ -258,28 +364,6 @@ def preview_invoice_service_import(
 
 
 def _snapshot(event: InvoiceServiceEvent) -> dict[str, Any]:
-    fields = (
-        "vehicle_id",
-        "document_id",
-        "workshop_process_id",
-        "service_date",
-        "odometer_km",
-        "service_code",
-        "service_label",
-        "classification",
-        "axle",
-        "position",
-        "supplier_name",
-        "work_order_reference",
-        "work_order_confidence",
-        "amount",
-        "currency",
-        "status",
-        "evidence_text",
-        "evidence_json",
-        "active",
-        "last_batch_id",
-    )
     return {
         key: (
             str(value)
@@ -288,9 +372,29 @@ def _snapshot(event: InvoiceServiceEvent) -> dict[str, Any]:
             if isinstance(value, (date, datetime))
             else value
         )
-        for key in fields
-        if (value := getattr(event, key)) is not None
+        for key in EVENT_SNAPSHOT_FIELDS
+        for value in (getattr(event, key),)
     }
+
+
+def _restore_snapshot(event: InvoiceServiceEvent, snapshot: dict[str, Any]) -> None:
+    """Restore every field known by the stored snapshot, including explicit nulls.
+
+    Older revisions omitted null fields, so an absent key remains intentionally unknown.
+    New revisions contain the complete mutable state and are fully symmetric.
+    """
+
+    for key in EVENT_SNAPSHOT_FIELDS:
+        if key not in snapshot:
+            continue
+        value = snapshot[key]
+        if key == "service_date":
+            value = _date(value)
+        elif key in {"amount", "work_order_confidence"}:
+            value = _decimal(value)
+        elif key == "validated_at" and isinstance(value, str):
+            value = datetime.fromisoformat(value)
+        setattr(event, key, value)
 
 
 def _json_safe(value: Any) -> Any:
@@ -362,6 +466,7 @@ def apply_invoice_service_import(
             action = "update"
         event.last_batch_id = batch.id
         db.flush()
+        _sync_document_projection(db, event)
         db.add(
             InvoiceServiceEventRevision(
                 event_id=event.id,
@@ -419,9 +524,8 @@ def rollback_invoice_service_batch(
         if any(
             event is None
             or event.id not in rollback_by_event
-            or any(
-                _snapshot(event).get(key) != value
-                for key, value in (rollback_by_event[event.id].after_json or {}).items()
+            or not _snapshot_matches(
+                _snapshot(event), rollback_by_event[event.id].after_json or {}
             )
             for event in events
         ):
@@ -430,26 +534,31 @@ def rollback_invoice_service_batch(
             )
         return batch
 
+    if len({revision.event_id for revision in revisions}) != len(revisions):
+        raise InvoiceServiceImportError(
+            "Lote com revisões de aplicação duplicadas; rollback recusado."
+        )
+
+    # Fail closed before mutating any event. Callers should not have to rely on a
+    # transaction rollback to undo a partially processed batch.
     for revision, event in zip(revisions, events, strict=True):
         assert event is not None
         current = _snapshot(event)
         expected = revision.after_json or {}
-        if event.last_batch_id != batch.id or any(
-            current.get(key) != value for key, value in expected.items()
-        ):
+        if event.last_batch_id != batch.id or not _snapshot_matches(current, expected):
             raise InvoiceServiceImportError(
                 "Evento alterado após o lote; rollback recusado para preservar auditoria."
             )
+
+    for revision, event in zip(revisions, events, strict=True):
+        assert event is not None
+        current = _snapshot(event)
         if revision.before_json is None:
             event.active = False
             event.status = "rejected"
         else:
-            for key, value in revision.before_json.items():
-                if key == "service_date":
-                    value = _date(value)
-                elif key in {"amount", "work_order_confidence"}:
-                    value = _decimal(value)
-                setattr(event, key, value)
+            _restore_snapshot(event, revision.before_json)
+        _sync_document_projection(db, event)
         db.add(
             InvoiceServiceEventRevision(
                 event_id=event.id,
@@ -545,6 +654,7 @@ def decide_invoice_service_event(
         event.validated_by_id = actor_id
         event.validated_at = datetime.now(UTC)
     db.flush()
+    _sync_document_projection(db, event)
     db.add(
         InvoiceServiceEventRevision(
             event_id=event.id,
@@ -555,3 +665,72 @@ def decide_invoice_service_event(
             reason=reason.strip() or None,
         )
     )
+
+
+def validate_document_invoice_service_events(
+    db: Session,
+    *,
+    document_id: int,
+    vehicle_id: int,
+    decisions: list[dict[str, Any]],
+    actor_id: int | None,
+) -> None:
+    """Validate or reject every active imported proposal shown on an invoice.
+
+    The exact-set check prevents a stale browser form from silently omitting a
+    proposal added since the invoice was opened. All validation happens before
+    the first mutation so the command fails closed.
+    """
+
+    document = db.get(Document, document_id)
+    if not document or document.vehicle_id != vehicle_id:
+        raise InvoiceServiceImportError("Fatura ou associação de viatura inválida.")
+    events = list(
+        db.scalars(
+            select(InvoiceServiceEvent)
+            .where(
+                InvoiceServiceEvent.document_id == document_id,
+                InvoiceServiceEvent.vehicle_id == vehicle_id,
+                InvoiceServiceEvent.active.is_(True),
+            )
+            .order_by(InvoiceServiceEvent.id)
+        )
+    )
+    if not events:
+        return
+    if len({item.get("event_id") for item in decisions}) != len(decisions):
+        raise InvoiceServiceImportError("Decisões de serviços duplicadas ou inválidas.")
+    by_id = {item.get("event_id"): item for item in decisions}
+    if set(by_id) != {event.id for event in events}:
+        raise InvoiceServiceImportError("A lista de serviços mudou; reabre a fatura.")
+
+    for event in events:
+        item = by_id[event.id]
+        decision = str(item.get("decision") or "").strip()
+        reason = str(item.get("reason") or "").strip()
+        if decision not in {"accept", "reject"}:
+            raise InvoiceServiceImportError("Todos os serviços exigem uma decisão.")
+        if decision == "reject" and not reason:
+            raise InvoiceServiceImportError("A exclusão de um serviço exige motivo.")
+        if decision == "accept" and event.status == "blocked":
+            raise InvoiceServiceImportError("Um serviço bloqueado não pode ser publicado.")
+
+    for event in events:
+        item = by_id[event.id]
+        decision = str(item["decision"])
+        if decision == "accept" and event.status == "validated":
+            continue
+        decide_invoice_service_event(
+            db,
+            event,
+            status="validated" if decision == "accept" else "rejected",
+            service_code=event.service_code,
+            axle=event.axle,
+            position=event.position,
+            actor_id=actor_id,
+            reason=(
+                "validated_from_invoice"
+                if decision == "accept"
+                else str(item.get("reason") or "").strip()
+            ),
+        )

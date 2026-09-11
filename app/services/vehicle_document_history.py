@@ -22,6 +22,7 @@ from app.models.documents import (
     VehicleDocumentRecordTag,
 )
 from app.models.management_center import ClaimIncident, ClaimRentwayAR
+from app.models.invoice_service_history import InvoiceServiceEvent
 from app.models.vehicles import Vehicle, VehicleIdentifier, VehicleManualField
 from app.services.invoice_service_classifier import legacy_service_matrix
 from app.services.spreadsheets import (
@@ -1719,6 +1720,15 @@ def _invoice_line_items(metadata: dict[str, Any] | list | str | int | float | bo
     return rows
 
 
+def _event_source_line_ids(event: InvoiceServiceEvent) -> list[str]:
+    evidence = event.evidence_json if isinstance(event.evidence_json, dict) else {}
+    metadata = evidence.get("import_metadata")
+    if not isinstance(metadata, dict):
+        return []
+    values = metadata.get("source_line_ids")
+    return [str(value) for value in values] if isinstance(values, list) else []
+
+
 def _display_date(value: Any) -> str:
     if value in (None, ""):
         return "-"
@@ -1952,8 +1962,10 @@ def _build_archive_rows(
     document_tags: dict[int, list[VehicleDocumentRecordTag]],
     pending_records: list[VehicleDocumentRecord],
     extraction_metadata: dict[int, dict[str, Any]] | None = None,
+    invoice_service_events: dict[int, list[InvoiceServiceEvent]] | None = None,
 ) -> list[dict[str, Any]]:
     extraction_metadata = extraction_metadata or {}
+    invoice_service_events = invoice_service_events or {}
     rows: list[dict[str, Any]] = []
     for document in documents:
         if is_structured_import_source(document):
@@ -1980,6 +1992,8 @@ def _build_archive_rows(
         )
         service_matrix = _service_matrix_from_text_and_tags(service_text, tags)
         service_matrix_codes = _service_matrix_codes_from_tags(tags)
+        derived_events = invoice_service_events.get(document.id, [])
+        derived_total = sum((event.amount or 0 for event in derived_events), 0)
         rows.append(
             {
                 "kind": "document",
@@ -2015,6 +2029,21 @@ def _build_archive_rows(
                 "service_summary": _service_summary(service_matrix),
                 "custom_services": _custom_service_values(tags),
                 "manual_note": "",
+                "invoice_service_events": [
+                    {
+                        "id": event.id,
+                        "type": event.service_code,
+                        "description": event.service_label,
+                        "axle": event.axle or "-",
+                        "amount": event.amount,
+                        "date": _display_date(event.service_date),
+                        "km": event.odometer_km,
+                        "status": event.status,
+                        "source_line_ids": _event_source_line_ids(event),
+                    }
+                    for event in derived_events
+                ],
+                "invoice_service_total": derived_total,
             }
         )
     for record in pending_records:
@@ -2561,7 +2590,22 @@ def vehicle_document_module_context(
     ]
     structured_rows = _build_structured_rows(db, vehicle.id, record_tags)
     extraction_metadata = _document_extraction_metadata(db, [document.id for document in documents])
-    archive_rows = _build_archive_rows(documents, document_tags, pending_archive_records, extraction_metadata)
+    event_rows = db.scalars(
+        select(InvoiceServiceEvent).where(
+            InvoiceServiceEvent.vehicle_id == vehicle.id,
+            InvoiceServiceEvent.active.is_(True),
+        ).order_by(InvoiceServiceEvent.service_date, InvoiceServiceEvent.id)
+    ).all()
+    events_by_document: dict[int, list[InvoiceServiceEvent]] = {}
+    for event in event_rows:
+        events_by_document.setdefault(event.document_id, []).append(event)
+    archive_rows = _build_archive_rows(
+        documents,
+        document_tags,
+        pending_archive_records,
+        extraction_metadata,
+        events_by_document,
+    )
     import_rows = _build_import_rows(documents)
     invoice_document_ids = [
         row["id"]

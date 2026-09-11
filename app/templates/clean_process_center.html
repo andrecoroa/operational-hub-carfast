@@ -18,6 +18,47 @@
     {% else %}
     {% if process_created %}<section class="notice-inline" role="status"><strong>Processo {{ process_created }} criado.</strong> A tarefa de execução e o histórico foram associados atomicamente.</section>{% endif %}
     {% if process_error %}<section class="notice-inline warning" role="alert"><strong>Não foi possível concluir a ação.</strong> {% if process_error == 'manager_justification_required' %}A execução excecional do Gestor exige uma justificação com pelo menos 12 caracteres.{% elif process_error == 'invalid_classification' %}A categoria/subcategoria não pertence ao catálogo ativo.{% elif process_error == 'invalid_model' %}O modelo selecionado não está ativo.{% elif process_error == 'forbidden' %}O utilizador não tem capacidade operacional para esta ação.{% else %}Reveja os campos e tente novamente.{% endif %}</section>{% endif %}
+    <section class="clean-panel process-command-queue" id="process-inbox" aria-labelledby="process-inbox-title">
+      <header class="process-command-section-head"><div><p class="eyebrow">Entrada</p><h3 id="process-inbox-title">Notas, ideias e necessidades</h3><p>Registe primeiro e decida mais tarde se origina uma tarefa, um processo, um processo de Oficina ou nenhuma ação.</p></div><span>{{ process_inbox_records|length }} em aberto</span></header>
+      {% if can_create_process %}
+      <form method="post" action="/v2-clean/processes/inbox" class="process-create-form">
+        <label class="process-create-wide">Novo registo<input name="title" maxlength="200" placeholder="Escrever uma necessidade, ideia ou problema" required></label>
+        <label>Tipo<select name="record_type"><option value="need">Necessidade</option><option value="idea">Ideia</option><option value="problem">Problema</option><option value="task_candidate">Tarefa por criar</option></select></label>
+        <label>Prioridade<select name="priority"><option value="normal">Normal</option><option value="high">Alta</option><option value="urgent">Urgente</option><option value="low">Baixa</option></select></label>
+        <div class="process-create-actions"><button type="submit">Adicionar linha</button></div>
+      </form>
+      {% endif %}
+      {% if process_inbox_records %}
+      <div class="process-command-table" role="region" aria-label="Entrada de processos" tabindex="0">
+        <table><thead><tr><th>Registo</th><th>Tipo</th><th>Prioridade</th><th>Estado</th><th>Destino</th><th>Detalhes</th><th><span class="sr-only">Ação</span></th></tr></thead><tbody>
+          {% for record in process_inbox_records %}
+          <tr>
+            <td><form id="process-inbox-row-{{ record.id }}" method="post" action="/v2-clean/processes/inbox/{{ record.id }}"></form><input form="process-inbox-row-{{ record.id }}" name="title" value="{{ record.title }}" maxlength="200" required></td>
+            <td><select form="process-inbox-row-{{ record.id }}" name="record_type"><option value="need" {% if record.record_type == 'need' %}selected{% endif %}>Necessidade</option><option value="idea" {% if record.record_type == 'idea' %}selected{% endif %}>Ideia</option><option value="problem" {% if record.record_type == 'problem' %}selected{% endif %}>Problema</option><option value="task_candidate" {% if record.record_type == 'task_candidate' %}selected{% endif %}>Tarefa por criar</option></select></td>
+            <td><select form="process-inbox-row-{{ record.id }}" name="priority"><option value="normal" {% if record.priority == 'normal' %}selected{% endif %}>Normal</option><option value="high" {% if record.priority == 'high' %}selected{% endif %}>Alta</option><option value="urgent" {% if record.priority == 'urgent' %}selected{% endif %}>Urgente</option><option value="low" {% if record.priority == 'low' %}selected{% endif %}>Baixa</option></select></td>
+            <td><select form="process-inbox-row-{{ record.id }}" name="status"><option value="new" {% if record.status == 'new' %}selected{% endif %}>Nova</option><option value="reviewing" {% if record.status == 'reviewing' %}selected{% endif %}>Em análise</option><option value="planned" {% if record.status == 'planned' %}selected{% endif %}>Planeada</option><option value="converted">Convertida</option><option value="closed">Fechada</option></select></td>
+            <td><select form="process-inbox-row-{{ record.id }}" name="destination"><option value="undecided">Por decidir</option><option value="task">Tarefa</option><option value="process">Processo em lote</option><option value="workshop_process">Processo de Oficina</option><option value="no_action">Sem ação</option></select>{% if batch_model_versions %}<select form="process-inbox-row-{{ record.id }}" name="model_version_id" aria-label="Modelo para conversão em processo"><option value="">Modelo</option>{% for version in batch_model_versions %}<option value="{{ version.id }}">{{ batch_model_by_id[version.id].name }} v{{ version.version }}</option>{% endfor %}</select>{% endif %}</td>
+            <td><textarea form="process-inbox-row-{{ record.id }}" name="description" rows="2" placeholder="Acrescentar detalhes">{{ record.description or '' }}</textarea></td>
+            <td><button form="process-inbox-row-{{ record.id }}" type="submit">Guardar</button></td>
+          </tr>
+          {% endfor %}
+        </tbody></table>
+      </div>
+      {% else %}<div class="process-command-state"><strong>Entrada vazia</strong><p>Adicione a primeira linha sem ter de decidir já o seu destino.</p></div>{% endif %}
+    </section>
+    {% if can_create_process %}
+    <details class="clean-panel process-create-panel" id="new-batch-process">
+      <summary>Novo tratamento de dados em lote</summary>
+      {% if batch_model_versions %}
+      <form method="post" action="/v2-clean/processes/batches/start" class="process-create-form">
+        <label class="process-create-wide">Objetivo do caso<input name="title" maxlength="200" placeholder="Ex.: Regularização de pendentes de setembro" required></label>
+        <label>Processo-modelo<select name="model_version_id" required>{% for version in batch_model_versions %}<option value="{{ version.id }}">{{ batch_model_by_id[version.id].name }} · v{{ version.version }}</option>{% endfor %}</select></label>
+        <label class="process-create-wide">Descrição<textarea name="description" rows="2" placeholder="Contexto opcional do caso"></textarea></label>
+        <div class="process-create-actions"><button type="submit">Criar caso</button></div>
+      </form>
+      {% else %}<div class="process-command-state"><strong>Modelo ainda não publicado</strong><p>A versão está disponível em rascunho e requer publicação funcional explícita antes de poder criar casos.</p></div>{% endif %}
+    </details>
+    {% endif %}
     <section class="clean-process-kpi-row process-command-kpis" aria-label="Indicadores do centro de processos">
       <a href="#process-workbench"><svg class="ui-contract-icon" aria-hidden="true"><use href="/static/icons/lucide-v3.svg#inbox"></use></svg><span>Em acompanhamento</span><strong>{{ process_metrics.open }}</strong><em>processos ativos</em></a>
       <a href="#priority-critical"><svg class="ui-contract-icon" aria-hidden="true"><use href="/static/icons/lucide-v3.svg#triangle-alert"></use></svg><span>Prioridade imediata</span><strong>{{ process_metrics.critical }}</strong><em>processos críticos</em></a>

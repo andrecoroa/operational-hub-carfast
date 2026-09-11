@@ -37,7 +37,7 @@ def test_callback_route_is_exact_and_get_only():
 def test_transport_migration_is_the_single_additive_head():
     config = Config("alembic.ini")
     scripts = ScriptDirectory.from_config(config)
-    assert scripts.get_heads() == ["ffff34ae102b"]
+    assert scripts.get_heads() == ["100045ab67cd"]
     assert scripts.get_revision("fffc017b8d9e").down_revision == "fffbf06a7c8d"
 
 

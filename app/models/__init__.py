@@ -57,7 +57,17 @@ from app.models.evolution import (
     EvolutionRecordDocument,
     EvolutionRecordHistory,
 )
-from app.models.imports import ImportBatch, ImportError, ImportFile, ImportMapping, ImportRawRow
+from app.models.imports import (
+    ImportBatch,
+    ImportError,
+    ImportFile,
+    ImportMapping,
+    ImportRawRow,
+    ProcessBatch,
+    ProcessBatchRow,
+    ProcessBatchRowComment,
+    ProcessBatchTaskRow,
+)
 from app.models.incidents import Incident, IncidentEvent, IncidentEvidence
 from app.models.invoice_service_history import (
     InvoiceServiceEvent,
@@ -276,6 +286,10 @@ __all__ = [
     "ImportFile",
     "ImportMapping",
     "ImportRawRow",
+    "ProcessBatch",
+    "ProcessBatchRow",
+    "ProcessBatchRowComment",
+    "ProcessBatchTaskRow",
     "ManagementAction",
     "ManagementEvidence",
     "ManagementHistory",

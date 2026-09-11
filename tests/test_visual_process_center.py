@@ -21,10 +21,31 @@ def test_process_center_is_an_operational_workbench_not_a_legacy_catalog() -> No
         'tabindex="0"',
         "Tarefas de gestão",
         "Criar processo",
+        "Notas, ideias e necessidades",
+        "Processo de Oficina",
+        "/v2-clean/processes/inbox",
+        "Novo tratamento de dados em lote",
+        "/v2-clean/processes/batches/start",
     ):
         assert contract in source
     assert "Base limpa da nova experiência" not in source
     assert "sem puxar histórico antigo" not in source
+
+
+def test_batch_process_surfaces_keep_case_lot_task_row_hierarchy() -> None:
+    detail = (ROOT / "app" / "templates" / "clean_process_batch.html").read_text(encoding="utf-8")
+    mapping = (ROOT / "app" / "templates" / "clean_process_batch_mapping.html").read_text(encoding="utf-8")
+
+    for contract in (
+        "Adicionar lote",
+        "Carregar e mapear",
+        "Criar tarefa com linhas selecionadas",
+        "Guardar tratamento",
+        "Novo comentário",
+    ):
+        assert contract in detail
+    assert "Descrição {{ number }}" in mapping
+    assert "Validar e criar lote" in mapping
 
 
 def test_process_center_preserves_rbac_and_uses_local_table_overflow() -> None:

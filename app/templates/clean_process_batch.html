@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="app-shell clean-shell">
+  {% set active_menu = "clean_processes" %}{% include "_sidebar.html" %}
+  <main class="content clean-content{% if foundation_ui_enabled %} ui-foundation ui-page-shell process-command-page{% endif %}">
+    {% set visual_section = "Processos" %}{% set visual_page = "Tratamento em lote" %}{% include "_visual_topbar.html" %}
+    <header class="ui-page-header process-command-header"><div><p class="eyebrow">Caso {{ case_record.human_code or case_record.public_id }}</p><h2>{{ case_record.title }}</h2><p>Processo-modelo reutilizável · os lotes e linhas mantêm rastreabilidade própria.</p></div><div class="clean-header-actions"><a class="button-link secondary-link" href="/v2-clean/processes">Centro de Processos</a></div></header>
+    {% if error %}<section class="notice-inline warning" role="alert"><strong>Não foi possível concluir.</strong> {% if error == 'invalid_file' %}Carregue um ficheiro XLSX ou CSV.{% elif error == 'invalid_mapping' %}Defina um Título e não repita destinos no mapeamento.{% elif error == 'invalid_selection' %}Selecione linhas disponíveis do mesmo lote.{% elif error == 'stale_row' %}A linha foi alterada entretanto; atualize a página.{% else %}Reveja os dados e tente novamente.{% endif %}</section>{% endif %}
+    {% if created %}<section class="notice-inline" role="status"><strong>Operação concluída.</strong> {{ created }}</section>{% endif %}
+    <section class="clean-panel process-create-panel">
+      <h3>Adicionar lote</h3><p>O carregamento prepara as linhas; nenhuma tarefa é criada nesta etapa.</p>
+      <form method="post" action="/v2-clean/processes/batches/{{ process.id }}/upload" enctype="multipart/form-data" class="process-create-form">
+        <label class="process-create-wide">Excel ou CSV<input type="file" name="file" accept=".xlsx,.csv" required></label>
+        <div class="process-create-actions"><button type="submit">Carregar e mapear</button></div>
+      </form>
+    </section>
+    {% for batch in batches %}
+    {% set batch_rows = rows_by_batch.get(batch.id, []) %}
+    <section class="clean-panel process-command-queue" id="batch-{{ batch.id }}">
+      <header class="process-command-section-head"><div><p class="eyebrow">Lote {{ batch.id }}</p><h3>{{ batch.name }}</h3><p>{{ batch_rows|length }} linhas · {{ batch.status }}</p></div><span>{{ batch_rows|selectattr('status', 'equalto', 'ready')|list|length }} disponíveis</span></header>
+      <form id="batch-task-form-{{ batch.id }}" method="post" action="/v2-clean/processes/batches/{{ process.id }}/tasks"></form>
+      <div class="process-create-form">
+        <input form="batch-task-form-{{ batch.id }}" type="hidden" name="batch_id" value="{{ batch.id }}">
+        <label class="process-create-wide">Título da tarefa<input form="batch-task-form-{{ batch.id }}" name="title" maxlength="200" placeholder="Título curto para o grupo selecionado" required></label>
+        <label>Responsável<select form="batch-task-form-{{ batch.id }}" name="assigned_to_id"><option value="">Por atribuir</option>{% for user in users %}<option value="{{ user.id }}">{{ user.name or user.email }}</option>{% endfor %}</select></label>
+        <label>Prazo<input form="batch-task-form-{{ batch.id }}" type="date" name="due_on"></label>
+        <div class="process-command-table" role="region" aria-label="Linhas do lote {{ batch.id }}" tabindex="0">
+          <table><thead><tr><th>Selecionar</th><th>Linha</th><th>Título</th><th>Descrição</th><th>Tarefa</th><th>Estado</th><th>Tratamento</th></tr></thead><tbody>
+          {% for row in batch_rows %}
+            {% set link = link_by_row_id.get(row.id) %}{% set task = task_by_id.get(link.task_id) if link else none %}
+            <tr id="row-{{ row.id }}"><td>{% if not link and row.status in ['ready','pending'] %}<input form="batch-task-form-{{ batch.id }}" type="checkbox" name="row_ids" value="{{ row.id }}" aria-label="Selecionar linha {{ row.row_number }}">{% else %}—{% endif %}</td><td>{{ row.row_number }}</td><td><strong>{{ row.title }}</strong><small>{{ row.row_key or '' }}</small></td><td><span class="process-batch-description">{{ row.description or '—' }}</span></td><td>{% if task %}<a href="/task-board/{{ task.id }}">CF-TASK-{{ '%05d'|format(task.id) }}</a><small>{{ task.title }}</small>{% else %}Sem tarefa{% endif %}</td><td>{{ row.status }}</td><td><button type="button" data-batch-row-toggle="{{ row.id }}">Abrir</button></td></tr>
+            <tr id="row-treatment-{{ row.id }}" hidden><td colspan="7">
+              <form id="row-form-{{ row.id }}" method="post" action="/v2-clean/processes/batches/{{ process.id }}/rows/{{ row.id }}"></form>
+              <input form="row-form-{{ row.id }}" type="hidden" name="revision" value="{{ row.revision }}">
+              <div class="process-create-form"><label>Estado<select form="row-form-{{ row.id }}" name="status"><option value="ready" {% if row.status == 'ready' %}selected{% endif %}>Disponível</option><option value="in_progress" {% if row.status == 'in_progress' %}selected{% endif %}>Em tratamento</option><option value="completed" {% if row.status == 'completed' %}selected{% endif %}>Concluída</option><option value="excluded" {% if row.status == 'excluded' %}selected{% endif %}>Excluída</option><option value="error" {% if row.status == 'error' %}selected{% endif %}>Com erro</option></select></label><label class="process-create-wide">Notas de tratamento<textarea form="row-form-{{ row.id }}" name="treatment" rows="2">{{ (row.treatment_json or {}).get('notes', '') }}</textarea></label><label class="process-create-wide">Novo comentário<textarea form="row-form-{{ row.id }}" name="comment" rows="2"></textarea></label><div class="process-create-actions"><button form="row-form-{{ row.id }}" type="submit">Guardar tratamento</button></div></div>
+              {% for comment in comments_by_row_id.get(row.id, []) %}<p><strong>{{ comment.created_at }}</strong> · {{ comment.comment }}</p>{% endfor %}
+            </td></tr>
+          {% endfor %}
+          </tbody></table>
+        </div>
+        <div class="process-create-actions"><button form="batch-task-form-{{ batch.id }}" type="submit">Criar tarefa com linhas selecionadas</button></div>
+      </div>
+    </section>
+    {% else %}<section class="clean-panel process-command-state"><strong>Sem lotes</strong><p>Carregue o primeiro ficheiro para iniciar o tratamento.</p></section>{% endfor %}
+  </main>
+</div>
+<script>document.querySelectorAll('[data-batch-row-toggle]').forEach(function(button){button.addEventListener('click',function(){var row=document.getElementById('row-treatment-'+button.dataset.batchRowToggle);row.hidden=!row.hidden;button.textContent=row.hidden?'Abrir':'Fechar';});});</script>
+{% endblock %}

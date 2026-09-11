@@ -50,7 +50,17 @@ from app.models.documents import (
     VehicleDocumentRecord,
     VehicleDocumentRecordTag,
 )
-from app.models.imports import ImportBatch, ImportError, ImportFile, ImportMapping, ImportRawRow
+from app.models.imports import (
+    ImportBatch,
+    ImportError,
+    ImportFile,
+    ImportMapping,
+    ImportRawRow,
+    ProcessBatch,
+    ProcessBatchRow,
+    ProcessBatchRowComment,
+    ProcessBatchTaskRow,
+)
 from app.models.incidents import Incident, IncidentEvent, IncidentEvidence
 from app.models.invoice_service_history import InvoiceServiceEvent, InvoiceServiceImportBatch
 from app.models.integrations import EmailIntake, EmailIntakeAttachment
@@ -93,7 +103,14 @@ from app.models.tasks import (
     TaskRecurrenceTemplate,
     TaskSlaEvent,
 )
-from app.models.task_templates import TaskTemplate, TaskTemplateUsage, TaskTemplateVersion
+from app.models.task_templates import (
+    ProcessInstance,
+    ProcessModel,
+    ProcessModelVersion,
+    TaskTemplate,
+    TaskTemplateUsage,
+    TaskTemplateVersion,
+)
 from app.models.vehicle_history_audit import (
     VehicleHistoryAudit,
     VehicleHistoryAuditDocument,
@@ -161,6 +178,7 @@ from app.services.task_cases import (
     create_related_case,
 )
 from app.services.authorization import get_user_authorized_unit_codes, get_user_permission_codes
+from app.services.case_workflow_authorization import can_access_case
 from app.services.task_queues import (
     authorized_task_queue,
     canonical_task_queue,
@@ -251,6 +269,14 @@ from app.services.pending_document_importer import (
     reconcile_pending_invoices,
 )
 from app.services.photo_capture import required_photo_blockers
+from app.services.process_batches import (
+    add_batch,
+    add_row_comment,
+    create_batch_process,
+    create_task_for_rows,
+    mirror_task_comment_to_rows,
+    update_batch_row,
+)
 from app.services.portal_access import (
     portal_context,
     portal_csrf_token,
@@ -289,6 +315,7 @@ from app.services.task_bulk_importer import (
     TASK_BULK_FIELDS,
     TASK_BULK_IMPORT_TYPE,
     create_tasks_from_bulk_import,
+    iter_task_import_rows,
     preview_task_bulk_import,
     store_task_bulk_upload,
 )
@@ -4322,7 +4349,12 @@ def clean_process_center(
             )
         )
         process_type_by_id = {item.id: item for item in process_types}
+        batch_model_versions = _published_batch_model_versions(db) if not access_denied else []
+        batch_model_by_id = {
+            item.id: db.get(ProcessModel, item.model_id) for item in batch_model_versions
+        }
         recent_management: list[ManagementProcess] = []
+        process_inbox_records: list[QuickRecord] = []
         if not access_denied and not filter_error:
             statement = select(ManagementProcess).order_by(
                 ManagementProcess.closed_at.is_not(None),
@@ -4355,6 +4387,17 @@ def clean_process_center(
                     )
             if not filter_error:
                 recent_management = list(db.scalars(statement.limit(50)))
+            process_inbox_records = list(
+                db.scalars(
+                    select(QuickRecord)
+                    .where(
+                        QuickRecord.workspace == "processes",
+                        QuickRecord.closed_at.is_(None),
+                    )
+                    .order_by(QuickRecord.created_at.desc(), QuickRecord.id.desc())
+                    .limit(100)
+                )
+            )
 
         return_token = issue_return_context(
             settings.app_secret_key,
@@ -4416,7 +4459,10 @@ def clean_process_center(
             {
                 "area_cards": area_cards,
                 "recent_management": recent_management,
+                "process_inbox_records": process_inbox_records,
                 "process_type_by_id": process_type_by_id,
+                "batch_model_versions": batch_model_versions,
+                "batch_model_by_id": batch_model_by_id,
                 "process_types": process_types,
                 "process_categories": process_categories,
                 "process_subcategories": process_subcategories,
@@ -4442,6 +4488,441 @@ def clean_process_center(
                 "foundation_ui_enabled": settings.visual_foundation_enabled,
             },
         )
+
+
+@web_router.post("/v2-clean/processes/inbox", response_class=HTMLResponse)
+def clean_process_inbox_create(
+    request: Request,
+    title: str = Form(...),
+    record_type: str = Form("need"),
+    priority: str = Form("normal"),
+):
+    user_id = get_web_user_id(request)
+    if not user_id:
+        return RedirectResponse("/login", status_code=303)
+    with SessionLocal() as db:
+        user = db.get(User, user_id)
+        permissions = get_user_permission_codes(db, user) if user else set()
+        roles = task_role_codes(db, user_id)
+        if roles and roles.issubset({"admin", "user_admin", "functional_admin"}):
+            return RedirectResponse("/v2-clean/processes?error=forbidden", status_code=303)
+        if not permissions.intersection({"management_center.write", "tasks.management.create"}):
+            return RedirectResponse("/v2-clean/processes?error=forbidden", status_code=303)
+        clean_title = " ".join(title.split())[:200]
+        if not clean_title:
+            return RedirectResponse("/v2-clean/processes?error=invalid_inbox", status_code=303)
+        if record_type not in {"need", "idea", "problem", "task_candidate"}:
+            record_type = "need"
+        if priority not in {"low", "normal", "high", "urgent"}:
+            priority = "normal"
+        record = QuickRecord(
+            workspace="processes",
+            record_type=record_type,
+            title=clean_title,
+            status="new",
+            priority=priority,
+            source="manual",
+            created_by_id=user_id,
+        )
+        db.add(record)
+        db.flush()
+        record_audit(
+            db,
+            action="process_inbox.create",
+            entity_type="quick_record",
+            entity_id=record.id,
+            detail=f"Entrada de processos criada: {record.title}",
+            user_id=user_id,
+        )
+        db.commit()
+    return RedirectResponse("/v2-clean/processes#process-inbox", status_code=303)
+
+
+@web_router.post("/v2-clean/processes/inbox/{record_id}", response_class=HTMLResponse)
+def clean_process_inbox_update(
+    request: Request,
+    record_id: int,
+    title: str = Form(...),
+    record_type: str = Form("need"),
+    priority: str = Form("normal"),
+    status: str = Form("new"),
+    destination: str = Form("undecided"),
+    model_version_id: str = Form(""),
+    description: str = Form(""),
+):
+    user_id = get_web_user_id(request)
+    if not user_id:
+        return RedirectResponse("/login", status_code=303)
+    with SessionLocal() as db:
+        user = db.get(User, user_id)
+        permissions = get_user_permission_codes(db, user) if user else set()
+        roles = task_role_codes(db, user_id)
+        if roles and roles.issubset({"admin", "user_admin", "functional_admin"}):
+            return RedirectResponse("/v2-clean/processes?error=forbidden", status_code=303)
+        if not permissions.intersection({"management_center.write", "tasks.management.create"}):
+            return RedirectResponse("/v2-clean/processes?error=forbidden", status_code=303)
+        record = db.get(QuickRecord, record_id)
+        if not record or record.workspace != "processes":
+            return RedirectResponse("/v2-clean/processes?error=invalid_inbox", status_code=303)
+        record.title = " ".join(title.split())[:200] or record.title
+        record.record_type = record_type if record_type in {"need", "idea", "problem", "task_candidate"} else record.record_type
+        record.priority = priority if priority in {"low", "normal", "high", "urgent"} else record.priority
+        record.status = status if status in {"new", "reviewing", "planned", "converted", "closed"} else record.status
+        record.description = description.strip() or None
+        record.entity_type = destination if destination in {"task", "process", "workshop_process", "no_action"} else None
+        if destination == "task" and not record.converted_task_id:
+            task = Task(
+                title=record.title,
+                description=record.description,
+                task_type="process_task",
+                source="process_inbox",
+                status="new",
+                priority=record.priority or "normal",
+                created_by_id=user_id,
+                entity_type="quick_record",
+                entity_id=str(record.id),
+            )
+            db.add(task)
+            db.flush()
+            record.converted_task_id = task.id
+            record.status = "converted"
+            record.entity_id = str(task.id)
+        elif destination == "process" and not record.entity_id:
+            version = db.get(ProcessModelVersion, parse_optional_int(model_version_id))
+            unit_id = db.scalar(
+                select(UserOrganizationalUnit.organizational_unit_id)
+                .where(UserOrganizationalUnit.user_id == user_id)
+                .order_by(UserOrganizationalUnit.id)
+                .limit(1)
+            )
+            if not version or version not in _published_batch_model_versions(db) or not unit_id:
+                return RedirectResponse("/v2-clean/processes?error=invalid_model#process-inbox", status_code=303)
+            try:
+                _, process = create_batch_process(
+                    db,
+                    model_version=version,
+                    title=record.title,
+                    description=record.description,
+                    organizational_unit_id=unit_id,
+                    actor_id=user_id,
+                )
+            except ValueError:
+                db.rollback()
+                return RedirectResponse("/v2-clean/processes?error=invalid_process#process-inbox", status_code=303)
+            record.status = "converted"
+            record.entity_id = str(process.id)
+        elif destination == "workshop_process":
+            # Workshop remains a separate module; the inbox keeps a pending hand-off
+            # until the required vehicle context is chosen there.
+            record.status = "planned"
+        if record.status in {"converted", "closed"} or record.entity_type == "no_action":
+            record.closed_at = datetime.now(UTC)
+        db.commit()
+    return RedirectResponse("/v2-clean/processes#process-inbox", status_code=303)
+
+
+def _batch_process_access(db: Session, request: Request, *, write: bool = False) -> tuple[int, User] | None:
+    user_id = get_web_user_id(request)
+    user = db.get(User, user_id) if user_id else None
+    if not user:
+        return None
+    permissions = get_user_permission_codes(db, user)
+    required = {"management_center.write", "tasks.management.create"} if write else PROCESS_CENTER_PERMISSIONS
+    if not permissions.intersection(required):
+        return None
+    return user_id, user
+
+
+def _published_batch_model_versions(db: Session) -> list[ProcessModelVersion]:
+    versions = list(
+        db.scalars(
+            select(ProcessModelVersion)
+            .join(ProcessModel, ProcessModel.id == ProcessModelVersion.model_id)
+            .where(ProcessModelVersion.status == "published", ProcessModel.active.is_(True))
+            .order_by(ProcessModel.name, ProcessModelVersion.version.desc())
+        )
+    )
+    return [
+        version
+        for version in versions
+        if isinstance(version.definition_json, dict)
+        and version.definition_json.get("kind") == "batch_data_treatment"
+    ]
+
+
+@web_router.post("/v2-clean/processes/batches/start", response_class=HTMLResponse)
+def clean_process_batch_start(
+    request: Request,
+    title: str = Form(...),
+    model_version_id: int = Form(...),
+    description: str = Form(""),
+):
+    with SessionLocal() as db:
+        access = _batch_process_access(db, request, write=True)
+        if not access:
+            return RedirectResponse("/v2-clean/processes?error=forbidden", status_code=303)
+        user_id, _ = access
+        version = db.get(ProcessModelVersion, model_version_id)
+        if version not in _published_batch_model_versions(db):
+            return RedirectResponse("/v2-clean/processes?error=invalid_model", status_code=303)
+        unit_id = db.scalar(
+            select(UserOrganizationalUnit.organizational_unit_id)
+            .where(UserOrganizationalUnit.user_id == user_id)
+            .order_by(UserOrganizationalUnit.id)
+            .limit(1)
+        )
+        if not unit_id:
+            return RedirectResponse("/v2-clean/processes?error=forbidden", status_code=303)
+        try:
+            _, process = create_batch_process(
+                db,
+                model_version=version,
+                title=" ".join(title.split())[:200],
+                description=description.strip() or None,
+                organizational_unit_id=unit_id,
+                actor_id=user_id,
+            )
+            created_process_id = process.id
+            db.commit()
+        except ValueError:
+            db.rollback()
+            return RedirectResponse("/v2-clean/processes?error=invalid_process", status_code=303)
+    return RedirectResponse(
+        f"/v2-clean/processes/batches/{created_process_id}", status_code=303
+    )
+
+
+@web_router.get("/v2-clean/processes/batches/{process_id}", response_class=HTMLResponse)
+def clean_process_batch_detail(request: Request, process_id: int, error: str = "", created: str = ""):
+    with SessionLocal() as db:
+        access = _batch_process_access(db, request)
+        if not access:
+            return RedirectResponse("/v2-clean/processes?error=forbidden", status_code=303)
+        process = db.get(ProcessInstance, process_id)
+        if not process or process.process_kind != "batch_data_treatment":
+            return RedirectResponse("/v2-clean/processes?error=invalid_process", status_code=303)
+        case_record = db.get(TaskCase, process.case_id)
+        if not case_record or not can_access_case(db, access[1], case_record, "read"):
+            return RedirectResponse("/v2-clean/processes?error=forbidden", status_code=303)
+        batches = list(db.scalars(select(ProcessBatch).where(ProcessBatch.process_instance_id == process.id).order_by(ProcessBatch.id.desc())))
+        rows = list(db.scalars(select(ProcessBatchRow).where(ProcessBatchRow.batch_id.in_([item.id for item in batches])).order_by(ProcessBatchRow.batch_id.desc(), ProcessBatchRow.row_number))) if batches else []
+        links = list(db.scalars(select(ProcessBatchTaskRow).where(ProcessBatchTaskRow.batch_row_id.in_([row.id for row in rows])))) if rows else []
+        task_by_id = {task.id: task for task in db.scalars(select(Task).where(Task.id.in_({link.task_id for link in links})))} if links else {}
+        link_by_row_id = {link.batch_row_id: link for link in links}
+        comments = list(db.scalars(select(ProcessBatchRowComment).where(ProcessBatchRowComment.batch_row_id.in_([row.id for row in rows])).order_by(ProcessBatchRowComment.created_at.desc()))) if rows else []
+        comments_by_row_id: dict[int, list[ProcessBatchRowComment]] = defaultdict(list)
+        for comment in comments:
+            comments_by_row_id[comment.batch_row_id].append(comment)
+        users = list(db.scalars(select(User).where(User.active.is_(True)).order_by(User.name, User.email)))
+        return templates.TemplateResponse(
+            request,
+            "clean_process_batch.html",
+            {
+                "process": process,
+                "case_record": case_record,
+                "batches": batches,
+                "rows": rows,
+                "rows_by_batch": {batch.id: [row for row in rows if row.batch_id == batch.id] for batch in batches},
+                "link_by_row_id": link_by_row_id,
+                "task_by_id": task_by_id,
+                "comments_by_row_id": comments_by_row_id,
+                "users": users,
+                "error": error[:80],
+                "created": created[:80],
+                "foundation_ui_enabled": settings.visual_foundation_enabled,
+            },
+        )
+
+
+@web_router.post("/v2-clean/processes/batches/{process_id}/upload", response_class=HTMLResponse)
+def clean_process_batch_upload(request: Request, process_id: int, file: UploadFile = File(...)):
+    user_id = get_web_user_id(request)
+    if not user_id:
+        return RedirectResponse("/login", status_code=303)
+    denied = require_any_web_permission(request, "imports.run", "management_center.write")
+    if denied:
+        return denied
+    with SessionLocal() as db:
+        access = _batch_process_access(db, request, write=True)
+        process = db.get(ProcessInstance, process_id)
+        case_record = db.get(TaskCase, process.case_id) if process else None
+        if (
+            not access
+            or not process
+            or process.process_kind != "batch_data_treatment"
+            or not case_record
+            or not can_access_case(db, access[1], case_record, "execute")
+        ):
+            return RedirectResponse("/v2-clean/processes?error=forbidden", status_code=303)
+    if not file.filename or not file.filename.lower().endswith((".xlsx", ".csv")):
+        return RedirectResponse(f"/v2-clean/processes/batches/{process_id}?error=invalid_file", status_code=303)
+    suffix = Path(file.filename).suffix
+    with NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+        tmp.write(file.file.read())
+        tmp_path = Path(tmp.name)
+    try:
+        stored_path = store_task_bulk_upload(tmp_path, file.filename)
+    finally:
+        tmp_path.unlink(missing_ok=True)
+    first = next(iter(iter_task_import_rows(stored_path)), None)
+    if not first:
+        stored_path.unlink(missing_ok=True)
+        return RedirectResponse(f"/v2-clean/processes/batches/{process_id}?error=empty_file", status_code=303)
+    sheet_name, headers, _, _, _ = first
+    with SessionLocal() as db:
+        process = db.get(ProcessInstance, process_id)
+        import_batch = ImportBatch(
+            source_system="carfast_processes",
+            import_type="process_batch_source",
+            status="pending_mapping",
+            imported_by_id=user_id,
+            total_rows=0,
+            detail=f"Ficheiro de origem para processo #{process_id}",
+        )
+        db.add(import_batch)
+        db.flush()
+        import_file = ImportFile(
+            batch_id=import_batch.id,
+            original_name=file.filename,
+            file_name=stored_path.name,
+            storage_path=str(stored_path),
+            sheet_name=sheet_name,
+            columns_json=headers,
+        )
+        db.add(import_file)
+        db.commit()
+        request.session["process_batch_pending"] = {
+            "process_id": process_id,
+            "path": str(stored_path),
+            "original_name": file.filename,
+            "sheet_name": sheet_name,
+            "headers": headers,
+            "import_batch_id": import_batch.id,
+            "import_file_id": import_file.id,
+        }
+        return templates.TemplateResponse(
+            request,
+            "clean_process_batch_mapping.html",
+            {"process": process, "headers": headers, "original_name": file.filename, "foundation_ui_enabled": settings.visual_foundation_enabled},
+        )
+
+
+@web_router.post("/v2-clean/processes/batches/{process_id}/map", response_class=HTMLResponse)
+async def clean_process_batch_map(request: Request, process_id: int):
+    pending = request.session.get("process_batch_pending")
+    if not pending or pending.get("process_id") != process_id:
+        return RedirectResponse(f"/v2-clean/processes/batches/{process_id}?error=upload_expired", status_code=303)
+    form = await request.form()
+    headers = pending.get("headers") or []
+    allowed_targets = {"ignore", "row_key", "title", "responsible", "due_on", "priority", *{f"description_{index}" for index in range(1, 21)}}
+    mapping = {header: str(form.get(f"column_{index}") or "ignore") for index, header in enumerate(headers)}
+    mapping = {header: target for header, target in mapping.items() if target in allowed_targets and target != "ignore"}
+    if "title" not in mapping.values() or len(mapping.values()) != len(set(mapping.values())):
+        return RedirectResponse(f"/v2-clean/processes/batches/{process_id}?error=invalid_mapping", status_code=303)
+    parsed_rows = [raw for _, _, _, _, raw in iter_task_import_rows(pending["path"])]
+    with SessionLocal() as db:
+        access = _batch_process_access(db, request, write=True)
+        process = db.get(ProcessInstance, process_id)
+        if not access or not process:
+            return RedirectResponse("/v2-clean/processes?error=forbidden", status_code=303)
+        try:
+            batch = add_batch(
+                db,
+                process=process,
+                name=pending["original_name"],
+                mapping=mapping,
+                rows=parsed_rows,
+                actor_id=access[0],
+                import_file_id=pending.get("import_file_id"),
+            )
+            created_batch_id = batch.id
+            import_batch = db.get(ImportBatch, pending.get("import_batch_id"))
+            if import_batch:
+                for row_number, raw in enumerate(parsed_rows, start=2):
+                    db.add(
+                        ImportRawRow(
+                            batch_id=import_batch.id,
+                            row_number=row_number,
+                            external_reference=None,
+                            raw_json=raw,
+                            row_hash=hashlib.sha1(
+                                json.dumps(raw, ensure_ascii=False, default=str, sort_keys=True).encode("utf-8")
+                            ).hexdigest(),
+                        )
+                    )
+                import_batch.status = "completed"
+                import_batch.total_rows = len(parsed_rows)
+                import_batch.created_rows = len(parsed_rows)
+                import_batch.finished_at = datetime.now(UTC)
+            db.commit()
+        except ValueError:
+            db.rollback()
+            return RedirectResponse(f"/v2-clean/processes/batches/{process_id}?error=invalid_batch", status_code=303)
+    request.session.pop("process_batch_pending", None)
+    return RedirectResponse(
+        f"/v2-clean/processes/batches/{process_id}?created=batch-{created_batch_id}",
+        status_code=303,
+    )
+
+
+@web_router.post("/v2-clean/processes/batches/{process_id}/tasks", response_class=HTMLResponse)
+def clean_process_batch_create_task(
+    request: Request,
+    process_id: int,
+    batch_id: int = Form(...),
+    row_ids: list[int] = Form(default=[]),
+    title: str = Form(...),
+    assigned_to_id: str = Form(""),
+    due_on: str = Form(""),
+):
+    with SessionLocal() as db:
+        access = _batch_process_access(db, request, write=True)
+        if not access:
+            return RedirectResponse("/v2-clean/processes?error=forbidden", status_code=303)
+        try:
+            task = create_task_for_rows(
+                db,
+                batch_id=batch_id,
+                row_ids=row_ids,
+                title=title,
+                actor_id=access[0],
+                assigned_to_id=parse_optional_int(assigned_to_id),
+                due_on=parse_optional_date(due_on),
+            )
+            created_task_id = task.id
+            db.commit()
+        except ValueError:
+            db.rollback()
+            return RedirectResponse(f"/v2-clean/processes/batches/{process_id}?error=invalid_selection", status_code=303)
+    return RedirectResponse(
+        f"/v2-clean/processes/batches/{process_id}?created=task-{created_task_id}",
+        status_code=303,
+    )
+
+
+@web_router.post("/v2-clean/processes/batches/{process_id}/rows/{row_id}", response_class=HTMLResponse)
+def clean_process_batch_update_row(
+    request: Request,
+    process_id: int,
+    row_id: int,
+    revision: int = Form(...),
+    status: str = Form(...),
+    treatment: str = Form(""),
+    comment: str = Form(""),
+):
+    with SessionLocal() as db:
+        access = _batch_process_access(db, request, write=True)
+        if not access:
+            return RedirectResponse("/v2-clean/processes?error=forbidden", status_code=303)
+        try:
+            update_batch_row(db, row_id=row_id, expected_revision=revision, actor_id=access[0], status=status, treatment={"notes": treatment.strip()} if treatment.strip() else {})
+            if comment.strip():
+                add_row_comment(db, row_id=row_id, actor_id=access[0], comment=comment)
+            db.commit()
+        except ValueError:
+            db.rollback()
+            return RedirectResponse(f"/v2-clean/processes/batches/{process_id}?error=stale_row", status_code=303)
+    return RedirectResponse(f"/v2-clean/processes/batches/{process_id}#row-{row_id}", status_code=303)
 
 
 @web_router.post("/v2-clean/processes", response_class=HTMLResponse)
@@ -8479,6 +8960,9 @@ def clean_tasks_comment(
                 return_url, task_id=task_id, flag="forbidden"
             )
         db.add(TaskComment(task_id=task.id, user_id=user_id, comment=clean_comment))
+        mirror_task_comment_to_rows(
+            db, task_id=task.id, actor_id=user_id, comment=clean_comment
+        )
         mark_task_first_response(db, task, actor_user_id=user_id)
         create_task_notifications(
             db, task=task, event_type="task_commented",
@@ -37644,6 +38128,9 @@ def task_add_comment(
             )
 
         db.add(TaskComment(task_id=task.id, user_id=user_id, comment=clean_comment))
+        mirror_task_comment_to_rows(
+            db, task_id=task.id, actor_id=user_id, comment=clean_comment
+        )
         mark_task_first_response(db, task, actor_user_id=user_id)
         record_audit(
             db,

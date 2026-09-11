@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="app-shell clean-shell">
+  {% set active_menu = "clean_processes" %}{% include "_sidebar.html" %}
+  <main class="content clean-content{% if foundation_ui_enabled %} ui-foundation ui-page-shell process-command-page{% endif %}">
+    {% set visual_section = "Processos" %}{% set visual_page = "Mapear Excel" %}{% include "_visual_topbar.html" %}
+    <header class="ui-page-header process-command-header"><div><p class="eyebrow">{{ original_name }}</p><h2>Mapear campos do lote</h2><p>A numeração das descrições define a ordem em que aparecem na linha e na caixa de tratamento.</p></div></header>
+    <section class="clean-panel process-command-queue">
+      <form method="post" action="/v2-clean/processes/batches/{{ process.id }}/map">
+        <div class="process-command-table" role="region" aria-label="Mapeamento de colunas" tabindex="0"><table><thead><tr><th>Coluna do ficheiro</th><th>Destino</th></tr></thead><tbody>
+        {% for header in headers %}<tr><td><strong>{{ header }}</strong></td><td><select name="column_{{ loop.index0 }}"><option value="ignore">Ignorar</option><option value="row_key">Identificador da linha</option><option value="title">Título</option>{% for number in range(1, 21) %}<option value="description_{{ number }}">Descrição {{ number }}</option>{% endfor %}<option value="responsible">Responsável</option><option value="due_on">Prazo</option><option value="priority">Prioridade</option></select></td></tr>{% endfor %}
+        </tbody></table></div>
+        <div class="process-create-actions"><a class="button-link secondary-link" href="/v2-clean/processes/batches/{{ process.id }}">Cancelar</a><button type="submit">Validar e criar lote</button></div>
+      </form>
+    </section>
+  </main>
+</div>
+{% endblock %}

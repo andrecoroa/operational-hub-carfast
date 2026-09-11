@@ -24,6 +24,7 @@ from app.services.navigation import (
     derived_navigation_permissions,
 )
 from app.services.photo_capture import ensure_photo_action_defaults
+from app.services.process_batches import BATCH_PROCESS_DEFINITION
 from app.services.stock import ensure_stock_defaults
 from app.services.task_templates import USED_VEHICLE_SALE_DEFINITION, canonical_snapshot
 from app.services.workshop_configuration import ensure_workshop_configuration_defaults
@@ -460,6 +461,34 @@ def seed_process_model_library(db: Session) -> None:
     if version is None:
         snapshot, digest = canonical_snapshot(USED_VEHICLE_SALE_DEFINITION)
         db.add(ProcessModelVersion(model_id=model.id, version=1, status="draft", definition_json=snapshot, definition_digest=digest))
+
+    batch_code = BATCH_PROCESS_DEFINITION["code"]
+    batch_model = db.scalar(select(ProcessModel).where(ProcessModel.code == batch_code))
+    if batch_model is None:
+        batch_model = ProcessModel(
+            code=batch_code,
+            name=BATCH_PROCESS_DEFINITION["name"],
+            active=True,
+        )
+        db.add(batch_model)
+        db.flush()
+    batch_version = db.scalar(
+        select(ProcessModelVersion).where(
+            ProcessModelVersion.model_id == batch_model.id,
+            ProcessModelVersion.version == 1,
+        )
+    )
+    if batch_version is None:
+        snapshot, digest = canonical_snapshot(BATCH_PROCESS_DEFINITION)
+        db.add(
+            ProcessModelVersion(
+                model_id=batch_model.id,
+                version=1,
+                status="draft",
+                definition_json=snapshot,
+                definition_digest=digest,
+            )
+        )
 
 
 TASK_TEMPLATE_LIBRARY = (

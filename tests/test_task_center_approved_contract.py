@@ -31,10 +31,10 @@ NOTIFICATION_PAGE = (ROOT / "app/templates/clean_task_notifications.html").read_
 )
 
 
-def test_approved_task_center_has_five_contractual_keyboard_counters() -> None:
+def test_approved_task_center_has_six_contractual_keyboard_counters() -> None:
     assert 'class="task-center-approved-metrics"' in TEMPLATE
-    assert TEMPLATE.count('data-task-counter=') == 5
-    for label in ("Por tratar", "Novas", "Por assumir", "Atrasadas", "Em risco"):
+    assert TEMPLATE.count('data-task-counter=') == 6
+    for label in ("Por tratar", "Novas", "Por assumir", "Atrasadas", "Em risco", "Pedidos de suporte"):
         assert label in TEMPLATE
     assert '<button' in TEMPLATE
 
@@ -112,6 +112,12 @@ def test_primary_filters_use_operational_views_and_persisted_queues() -> None:
     assert 'class="task-filter-operational-row"' in TEMPLATE
     assert "form.querySelector('[data-task-scope]')" in TEMPLATE
     assert 'data-task-queue' in TEMPLATE
+    assert 'class="task-center-queue-chips"' in TEMPLATE
+    assert 'data-task-queue-option="{{ division.code }}"' in TEMPLATE
+    assert "Todas as filas" not in TEMPLATE
+    assert ".task-center-approved-navigation{display:flex" in CSS
+    assert ".task-center-queue-chips{display:flex" in CSS
+    assert ".task-center-approved-navigation{flex-wrap:wrap" in CSS
     assert 'name="category" value="all"' in TEMPLATE
     assert 'Categoria de foco' not in TEMPLATE
     assert "grid-template-columns:minmax(0,62fr) minmax(360px,38fr)" in CSS
@@ -182,7 +188,7 @@ def test_finishing_pass_prioritizes_subject_summary_and_primary_action() -> None
 def test_final_filters_and_actions_keep_the_approved_hierarchy() -> None:
     assert "Pesquisa<input" in TEMPLATE
     assert "Referência, assunto ou contexto" in TEMPLATE
-    assert "('flat','Lista'),('case','Por caso'),('category','Por categoria')" in TEMPLATE
+    assert "('flat','Lista'),('case','Por caso'),('category','Por categoria'),('team','Por equipa')" in TEMPLATE
     assert TEMPLATE.index('data-case-flow="related"') < TEMPLATE.index(
         'data-task-preview-action="decision"'
     )
@@ -451,6 +457,7 @@ def test_final_task_density_polish_preserves_legibility_and_responsiveness() -> 
     assert ".task-preview-context{height:24px;max-height:24px" in CSS
     assert ".task-center-detail-approved #task-state dl{display:grid" in CSS
     assert ".task-center-detail-actions a{" in CSS
+    assert ".task-center-approved-metrics{height:auto!important;flex-wrap:wrap;overflow-x:visible}" in CSS
 
 
 def test_queue_and_state_controls_explain_their_distinct_contracts() -> None:
@@ -658,6 +665,7 @@ def test_counter_values_reconcile_with_authorized_server_filters(
         "risk": authenticated_client.get("/v2-clean/tasks?workspace=mine&status=open&category=all&due=due_soon"),
         "late": authenticated_client.get("/v2-clean/tasks?workspace=mine&status=open&category=all&due=overdue"),
         "unassigned": unassigned,
+        "support": authenticated_client.get("/v2-clean/tasks?workspace=mine&status=support_requested&category=all"),
     }
     for counter, destination in destinations.items():
         page_count = int(
@@ -674,6 +682,8 @@ def test_counter_values_reconcile_with_authorized_server_filters(
             ).group(1)
         )
         assert page_count == result_count, counter
+
+
 
 
 def test_legacy_focus_cookie_is_ignored_and_invalid_category_falls_back_to_all(

@@ -4855,7 +4855,7 @@ def clean_tasks_center(
             return bool(classification_permissions.intersection(required))
 
         cases_enabled = settings.task_cases_enabled and "cases.read" in classification_permissions
-        active_grouping = grouping if grouping in {"flat", "category", "case"} else "flat"
+        active_grouping = grouping if grouping in {"flat", "category", "case", "team"} else "flat"
         if not cases_enabled:
             active_grouping = "flat"
         opportunistic_generate_recurring_tasks(db)
@@ -5569,6 +5569,12 @@ def clean_tasks_center(
             "risk": db.scalar(select(func.count()).select_from(Task).where(*scoped_open_task_filter, due_soon_condition)) or 0,
             "late": db.scalar(select(func.count()).select_from(Task).where(*scoped_open_task_filter, overdue_condition)) or 0,
             "active": db.scalar(select(func.count()).select_from(Task).where(*scoped_open_task_filter)) or 0,
+            "support": db.scalar(
+                select(func.count()).select_from(Task).where(
+                    *scoped_open_task_filter,
+                    Task.status == "support_requested",
+                )
+            ) or 0,
         }
         task_category_counts = {
             code: db.scalar(
@@ -5795,6 +5801,18 @@ def clean_tasks_center(
                 )
                 if (row.work_category_id, row.category) in visible_categories
             }
+        visible_team_ids = {task.team_id for task in tasks}
+        team_summaries = {}
+        if cases_enabled and active_grouping == "team" and visible_team_ids:
+            team_summaries = {
+                row.team_id: row
+                for row in db.execute(
+                    select(Task.team_id, *summary_columns)
+                    .where(*filters)
+                    .group_by(Task.team_id)
+                )
+                if row.team_id in visible_team_ids
+            }
         task_groups: list[dict[str, object]] = []
         if cases_enabled and active_grouping != "flat":
             grouped: dict[tuple[object, ...], list[Task]] = defaultdict(list)
@@ -5803,8 +5821,10 @@ def clean_tasks_center(
                     if not task.case_id:
                         continue
                     key = ("case", task.case_id)
-                else:
+                elif active_grouping == "category":
                     key = ("category", task.work_category_id, task.category)
+                else:
+                    key = ("team", task.team_id)
                 grouped[key].append(task)
             for key, child_tasks in grouped.items():
                 case_id = child_tasks[0].case_id if key[0] == "case" else None
@@ -5814,6 +5834,12 @@ def clean_tasks_center(
                 label = (
                     case_item.title
                     if case_item
+                    else (
+                        teams_by_id[child_tasks[0].team_id].name
+                        if child_tasks[0].team_id in teams_by_id
+                        else "Sem equipa"
+                    )
+                    if key[0] == "team"
                     else work_category_labels.get(
                         child_tasks[0].work_category_id,
                         child_tasks[0].category or "Por classificar",
@@ -5826,6 +5852,8 @@ def clean_tasks_center(
                         (child_tasks[0].work_category_id, child_tasks[0].category)
                     )
                     if key[0] == "category"
+                    else team_summaries.get(child_tasks[0].team_id)
+                    if key[0] == "team"
                     else None
                 )
                 task_groups.append({

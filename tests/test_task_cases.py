@@ -9,6 +9,7 @@ from sqlalchemy.sql import literal
 
 import app.web.router as task_router
 from app.models import AuditLog, Permission, Role, RolePermission, Task, TaskCase, TaskHistory, User
+from app.models.organization import Team
 from app.services.task_cases import (
     TaskCaseError,
     add_task_to_case,
@@ -286,6 +287,31 @@ def test_category_grouping_route_is_fail_safe(
     assert page.status_code == 200, page.text
     assert 'data-grouping="category"' in page.text
     assert "Categoria sem erro 500" in page.text
+
+
+def test_team_grouping_uses_visible_task_teams(
+    authenticated_client, db_session, monkeypatch
+) -> None:
+    _grant_cases(db_session)
+    monkeypatch.setattr(task_router.settings, "task_cases_enabled", True)
+    monkeypatch.setattr(task_router.settings, "visual_foundation_enabled", True)
+    team = Team(code="grouping-contract", name="Equipa do agrupamento", active=True)
+    db_session.add(team)
+    db_session.flush()
+    with_team = _task(db_session, "Tarefa agrupada na equipa")
+    with_team.team_id = team.id
+    _task(db_session, "Tarefa agrupada sem equipa")
+    db_session.commit()
+
+    page = authenticated_client.get(
+        "/v2-clean/tasks?grouping=team&workspace=mine&mine_kind=all"
+    )
+
+    assert page.status_code == 200, page.text
+    assert 'data-grouping="team"' in page.text
+    assert "Equipa do agrupamento" in page.text
+    assert "Sem equipa" in page.text
+    assert "Tarefa agrupada na equipa" in page.text
 
 
 def test_case_grouping_only_shows_persisted_cases_and_their_tasks(

@@ -277,6 +277,49 @@ def test_fallback_dedup_and_reply_all_remove_internal_aliases(db_session):
     ]
 
 
+def test_reply_never_targets_the_functional_mailbox(db_session):
+    thread, _ = ingest_inbound(db_session, _payload("internal-sender"))
+    message = db_session.scalar(
+        select(EmailMessage).where(EmailMessage.thread_id == thread.id)
+    )
+    message.sender = "multas@carfast.pt"
+    message.recipients_json = [{"Email": "cliente@example.org"}]
+    db_session.commit()
+
+    defaults = _reply_defaults(db_session, thread)
+
+    assert defaults["reply_to"] == "cliente@example.org"
+    assert defaults["reply_all_to"] == ["cliente@example.org"]
+
+
+def test_outbound_only_conversation_replies_to_external_recipient(db_session):
+    channel = db_session.scalar(select(EmailChannel).where(EmailChannel.code == "multas"))
+    thread = EmailThread(
+        channel_id=channel.id,
+        subject="Teste",
+        sender_email="multas@carfast.pt",
+        status="waiting_reply",
+    )
+    db_session.add(thread)
+    db_session.flush()
+    db_session.add(
+        EmailMessage(
+            thread_id=thread.id,
+            direction="outbound",
+            sender="multas@carfast.pt",
+            recipients_json=[{"Email": "cliente@example.org"}],
+            subject="Teste",
+            state="sent",
+        )
+    )
+    db_session.commit()
+
+    defaults = _reply_defaults(db_session, thread)
+
+    assert defaults["reply_to"] == "cliente@example.org"
+    assert defaults["reply_all_to"] == ["cliente@example.org"]
+
+
 def test_approval_is_invalidated_when_message_changes(
     authenticated_client, db_session, monkeypatch, tmp_path
 ):

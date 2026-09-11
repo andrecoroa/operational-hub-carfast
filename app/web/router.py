@@ -4485,6 +4485,10 @@ def clean_process_center(
                 "can_coordinate_team": not access_denied and "tasks.management.update" in permission_codes,
                 "can_coordinate_operational": not access_denied and "tasks.management.close" in permission_codes,
                 "manager_exception_mode": not access_denied and "manager" in role_codes,
+                # The legacy ManagementProcess workbench remains available in the
+                # database and dedicated compatibility routes, but it must not be
+                # projected into the new Process Center.
+                "show_legacy_management_processes": False,
                 "foundation_ui_enabled": settings.visual_foundation_enabled,
             },
         )

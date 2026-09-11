@@ -26,10 +26,18 @@ def test_process_center_is_an_operational_workbench_not_a_legacy_catalog() -> No
         "/v2-clean/processes/inbox",
         "Novo tratamento de dados em lote",
         "/v2-clean/processes/batches/start",
+        "show_legacy_management_processes",
     ):
         assert contract in source
     assert "Base limpa da nova experiência" not in source
     assert "sem puxar histórico antigo" not in source
+
+
+def test_process_center_hides_legacy_management_workbench_by_default() -> None:
+    source = TEMPLATE.read_text(encoding="utf-8")
+
+    assert '{% if show_legacy_management_processes %}' in source
+    assert 'can_create_process and show_legacy_management_processes' in source
 
 
 def test_batch_process_surfaces_keep_case_lot_task_row_hierarchy() -> None:

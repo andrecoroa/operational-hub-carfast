@@ -105,6 +105,9 @@ def test_process_center_only_projects_new_process_surfaces(client, db_session):
 
     assert response.status_code == 200
     assert "Notas, ideias e necessidades" in response.text
+    assert '<details class="clean-panel process-create-panel process-inbox-panel" id="process-inbox">' in response.text
+    assert '<details class="clean-panel process-create-panel process-inbox-panel" id="process-inbox" open>' not in response.text
+    assert 'aria-controls="process-inbox-content"' in response.text
     assert "Novo tratamento de dados em lote" in response.text
     assert "Fila de processos" not in response.text
     assert "Criar novo processo" not in response.text

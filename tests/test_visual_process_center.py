@@ -22,6 +22,8 @@ def test_process_center_is_an_operational_workbench_not_a_legacy_catalog() -> No
         "Tarefas de gestão",
         "Criar processo",
         "Notas, ideias e necessidades",
+        "process-inbox-panel",
+        'aria-controls="process-inbox-content"',
         "Processo de Oficina",
         "/v2-clean/processes/inbox",
         "Novo tratamento de dados em lote",

@@ -14,24 +14,46 @@ ADMIN_RESIDUAL_ROUTES = (
     ("/v2-clean/admin/workshop-models", "Modelos da Oficina"),
 )
 
+MASTER_DETAIL_ROUTES = ADMIN_RESIDUAL_ROUTES[:-1]
+MASTER_DETAIL_LINKS = (
+    "/v2-clean/admin/setup",
+    "/v2-clean/admin/organization",
+    "/v2-clean/admin/users",
+    "/v2-clean/admin/roles",
+    "/v2-clean/admin/work-classification?view=desk",
+    "/v2-clean/admin/work-classification?view=channels",
+    "/v2-clean/admin/workshop-models",
+    "/v2-clean/admin/integrations",
+    "/v2-clean/admin/security",
+)
 
-@pytest.mark.parametrize(("route", "heading"), ADMIN_RESIDUAL_ROUTES)
-def test_admin_residual_routes_share_canonical_composition(authenticated_client, route, heading):
+
+@pytest.mark.parametrize(("route", "_heading"), MASTER_DETAIL_ROUTES)
+def test_admin_routes_share_canonical_master_detail_composition(
+    authenticated_client, route, _heading
+):
     response = authenticated_client.get(route)
 
     assert response.status_code == 200
-    assert 'aria-label="Administração operacional"' in response.text
-    assert 'aria-label="Conteúdos residuais da Administração"' in response.text
-    assert f"<h1>{heading}</h1>" in response.text
-    for expected_route, _ in ADMIN_RESIDUAL_ROUTES:
+    assert 'aria-label="Domínios administrativos"' in response.text
+    assert 'aria-label="Configuração do domínio selecionado"' in response.text
+    assert 'aria-label="Administração operacional"' not in response.text
+    for expected_route in MASTER_DETAIL_LINKS:
         assert f'href="{expected_route}"' in response.text
-    assert 'href="/v2-clean/admin/setup"' in response.text
 
 
-def test_admin_residual_navigation_has_one_current_page(authenticated_client):
-    for route, _ in ADMIN_RESIDUAL_ROUTES:
-        response = authenticated_client.get(route)
-        assert f'href="{route}" aria-current="page" class="is-active"' in response.text
+def test_workshop_models_keeps_legacy_residual_navigation_until_shell_migration(
+    authenticated_client,
+):
+    response = authenticated_client.get("/v2-clean/admin/workshop-models")
+
+    assert response.status_code == 200
+    assert 'aria-label="Administração operacional"' in response.text
+    assert '<h1>Modelos da Oficina</h1>' in response.text
+    assert (
+        'href="/v2-clean/admin/workshop-models" aria-current="page" class="is-active"'
+        in response.text
+    )
 
 
 def test_admin_residual_routes_remain_fail_closed_for_anonymous_user(client):

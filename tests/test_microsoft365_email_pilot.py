@@ -251,3 +251,62 @@ def test_graph_send_uses_shared_mailbox_endpoint_and_saves_sent_copy(monkeypatch
     assert captured["body"]["message"]["toRecipients"] == [
         {"emailAddress": {"address": "andrecoroa@daccordinvest.pt"}}
     ]
+
+
+def test_graph_send_refreshes_once_after_unauthorized_response(monkeypatch):
+    token_calls = []
+
+    def fake_token(**kwargs):
+        token_calls.append(kwargs)
+        return "fresh-token" if kwargs.get("force_refresh") else "stale-token"
+
+    class _Response:
+        status = 202
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return None
+
+    requests = []
+
+    def fake_urlopen(request, timeout):
+        requests.append(request)
+        if len(requests) == 1:
+            raise microsoft_oauth.urllib.error.HTTPError(
+                request.full_url, 401, "Unauthorized", {}, None
+            )
+        return _Response()
+
+    monkeypatch.setattr(microsoft_oauth, "_delegated_access_token", fake_token)
+    monkeypatch.setattr(microsoft_oauth.urllib.request, "urlopen", fake_urlopen)
+    message = type(
+        "Message",
+        (),
+        {
+            "subject": "Teste CarFast 365",
+            "text_body": "Teste",
+            "html_body": None,
+            "recipients_json": [{"Email": "andrecoroa@daccordinvest.pt"}],
+            "cc_json": [],
+            "bcc_json": [],
+        },
+    )()
+
+    result = send_shared_mailbox_message(
+        message,
+        tenant_id="tenant",
+        client_id="client",
+        client_credential_reference="env://secret",
+        token_reference="db://token",
+        mailbox_address="frota@carfast.pt",
+        reply_to="frota@carfast.pt",
+    )
+
+    assert result == {"Provider": "microsoft365", "MessageID": None}
+    assert [request.headers["Authorization"] for request in requests] == [
+        "Bearer stale-token",
+        "Bearer fresh-token",
+    ]
+    assert token_calls[1]["force_refresh"] is True

@@ -167,6 +167,18 @@ def test_work_classification_registers_lisbon_datetime_filter():
     assert "lisbon_datetime" in clean_admin.templates.env.filters
 
 
+def test_work_classification_initial_tab_keeps_admin_table_default_filter():
+    template = open(
+        "app/templates/_clean_admin_work_classification.html", encoding="utf-8"
+    ).read()
+
+    guard = template.index("let initializingAdminView = true")
+    initial_click = template.index("requestedAdminTab?.click()")
+    release = template.index("initializingAdminView = false")
+    assert guard < initial_click < release
+    assert "if (!initializingAdminView) applyAreaSearch();" in template
+
+
 def test_work_scope_permissions_have_an_edit_action(authenticated_client, db_session):
     role = db_session.scalar(select(Role).where(Role.code == "operator"))
     queue = db_session.scalar(select(WorkQueue).where(WorkQueue.code == "tasks_support"))

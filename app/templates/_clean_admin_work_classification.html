@@ -357,6 +357,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const adminViews = document.querySelectorAll('[data-work-admin-view]');
   const areaSearch = document.getElementById('work-area-search');
   let activeAdminView = 'desk';
+  let initializingAdminView = true;
   const applyAreaSearch = () => {
     const value = (areaSearch?.value || '').trim().toLowerCase();
     adminViews.forEach((view) => {
@@ -372,11 +373,12 @@ document.addEventListener('DOMContentLoaded', () => {
     adminViews.forEach((view) => { view.hidden = view.dataset.workAdminView !== button.dataset.workAdminTab; });
     if (areaSearch) areaSearch.value = '';
     areaSearch?.closest('.clean-work-area-search')?.classList.toggle('is-hidden', activeAdminView === 'structure');
-    applyAreaSearch();
+    if (!initializingAdminView) applyAreaSearch();
   }));
   const requestedAdminView = new URLSearchParams(window.location.search).get('view');
   const requestedAdminTab = [...adminTabs].find((button) => button.dataset.workAdminTab === requestedAdminView);
   requestedAdminTab?.click();
+  initializingAdminView = false;
   areaSearch?.addEventListener('input', applyAreaSearch);
   const proposalStatus = document.querySelector('[data-proposal-admin-status]');
   const proposalModule = document.querySelector('[data-proposal-admin-module]');

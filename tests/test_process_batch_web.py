@@ -97,6 +97,20 @@ def test_process_inbox_converts_to_real_task(client, db_session):
     assert db_session.get(Task, record.converted_task_id).description == "Detalhe progressivo"
 
 
+def test_process_center_only_projects_new_process_surfaces(client, db_session):
+    user, _ = _operator(db_session)
+    _login(client, user)
+
+    response = client.get("/v2-clean/processes")
+
+    assert response.status_code == 200
+    assert "Notas, ideias e necessidades" in response.text
+    assert "Novo tratamento de dados em lote" in response.text
+    assert "Fila de processos" not in response.text
+    assert "Criar novo processo" not in response.text
+    assert "Indicadores do centro de processos" not in response.text
+
+
 def test_batch_web_flow_uploads_maps_and_keeps_rows_unassigned(
     client, db_session, tmp_path, monkeypatch
 ):

@@ -9,7 +9,7 @@
       <div><p class="eyebrow">Operação / Centro de Processos</p><h2>Centro de Processos</h2><p>Priorize, acompanhe e abra o contexto operacional sem perder os filtros de trabalho.</p></div>
       <div class="clean-header-actions process-command-actions">
         <a class="button-link secondary-link" href="/v2-clean/tasks?workspace=management">Tarefas de gestão</a>
-        {% if can_create_process %}<a class="button-link primary-link" href="#new-process">Criar processo</a>{% endif %}
+        {% if can_create_process and show_legacy_management_processes %}<a class="button-link primary-link" href="#new-process">Criar processo</a>{% endif %}
       </div>
     </header>
 
@@ -59,6 +59,7 @@
       {% else %}<div class="process-command-state"><strong>Modelo ainda não publicado</strong><p>A versão está disponível em rascunho e requer publicação funcional explícita antes de poder criar casos.</p></div>{% endif %}
     </details>
     {% endif %}
+    {% if show_legacy_management_processes %}
     <section class="clean-process-kpi-row process-command-kpis" aria-label="Indicadores do centro de processos">
       <a href="#process-workbench"><svg class="ui-contract-icon" aria-hidden="true"><use href="/static/icons/lucide-v3.svg#inbox"></use></svg><span>Em acompanhamento</span><strong>{{ process_metrics.open }}</strong><em>processos ativos</em></a>
       <a href="#priority-critical"><svg class="ui-contract-icon" aria-hidden="true"><use href="/static/icons/lucide-v3.svg#triangle-alert"></use></svg><span>Prioridade imediata</span><strong>{{ process_metrics.critical }}</strong><em>processos críticos</em></a>
@@ -133,6 +134,7 @@
         <a class="button-link secondary-link" href="/v2-clean/tasks?workspace=management">Ver tarefas associadas</a>
       </aside>
     </section>
+    {% endif %}
     {% endif %}
   </main>
 </div>

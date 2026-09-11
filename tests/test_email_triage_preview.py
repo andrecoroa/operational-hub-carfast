@@ -474,6 +474,7 @@ def test_outbound_off_rejects_send_before_any_durable_mutation(
 ):
     monkeypatch.setattr(settings, "email_storage_root", str(tmp_path))
     monkeypatch.setattr(settings, "email_outbound_enabled", False)
+    monkeypatch.setattr(settings, "microsoft365_email_enabled", False)
     _bind_email_session(monkeypatch, db_session)
     thread, _ = ingest_inbound(db_session, _payload("outbound-off-atomic"))
     db_session.commit()
@@ -487,7 +488,11 @@ def test_outbound_off_rejects_send_before_any_durable_mutation(
     )
     compose = authenticated_client.post(
         "/v2-clean/email/new",
-        data={"submit": "send", "channel_id": thread.channel_id},
+        data={
+            "submit": "send",
+            "channel_id": thread.channel_id,
+            "recipients": "recipient@example.com",
+        },
         follow_redirects=False,
     )
 

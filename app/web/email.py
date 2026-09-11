@@ -58,7 +58,7 @@ from app.services.email_postmark import (
     send_message,
     webhook_authorized,
 )
-from app.services.email_transport import send_channel_message
+from app.services.email_transport import outbound_enabled_for_channel, send_channel_message
 from app.services.microsoft365_oauth import move_shared_mailbox_message_to_junk
 from app.services.service_desk import (
     assignment_label,
@@ -1571,8 +1571,6 @@ def email_new_message(
         return RedirectResponse("/v2-clean/email?error=forbidden", status_code=303)
     if submit not in {"draft", "approval", "send"}:
         return RedirectResponse("/v2-clean/email?error=invalid_action", status_code=303)
-    if submit == "send" and not settings.email_outbound_enabled:
-        return RedirectResponse("/v2-clean/email?error=send_disabled", status_code=303)
     user_id, permissions = auth
     recipient_list = [
         item.strip()
@@ -1597,6 +1595,8 @@ def email_new_message(
             or not _can_use_channel(db, user_id, permissions, channel.id, "reply")
         ):
             return RedirectResponse("/v2-clean/email?error=forbidden", status_code=303)
+        if submit == "send" and not outbound_enabled_for_channel(db, channel.id):
+            return RedirectResponse("/v2-clean/email?error=send_disabled", status_code=303)
         supplier = db.get(StockSupplier, supplier_id) if supplier_id else None
         if supplier and not supplier.active:
             return RedirectResponse("/v2-clean/email?error=inactive_supplier", status_code=303)

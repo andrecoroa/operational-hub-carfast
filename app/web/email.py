@@ -4,6 +4,7 @@ import hashlib
 import json
 import re
 from datetime import UTC, datetime, timedelta
+from email.utils import parseaddr
 from html import escape
 from html.parser import HTMLParser
 from mimetypes import guess_type
@@ -641,7 +642,7 @@ def _is_internal_address(address: str, internal: set[str]) -> bool:
 
 
 def _reply_defaults(db, thread: EmailThread) -> dict[str, object]:
-    latest = db.scalar(
+    latest_inbound = db.scalar(
         select(EmailMessage)
         .where(
             EmailMessage.thread_id == thread.id,
@@ -649,15 +650,47 @@ def _reply_defaults(db, thread: EmailThread) -> dict[str, object]:
         )
         .order_by(EmailMessage.id.desc())
     )
-    sender = (latest.sender if latest else thread.sender_email or "").strip().lower()
+    latest = latest_inbound or db.scalar(
+        select(EmailMessage)
+        .where(EmailMessage.thread_id == thread.id)
+        .order_by(EmailMessage.id.desc())
+    )
     internal = _internal_email_addresses(db)
-    all_candidates = [sender]
-    if latest:
+
+    all_candidates: list[str] = []
+    if latest_inbound:
+        headers = latest_inbound.headers_json or {}
+        if isinstance(headers, dict):
+            reply_to_header = next(
+                (
+                    str(value)
+                    for key, value in headers.items()
+                    if str(key).strip().casefold() == "reply-to" and value
+                ),
+                "",
+            )
+            if reply_to_header:
+                all_candidates.append(parseaddr(reply_to_header)[1])
+        all_candidates.append(latest_inbound.sender or "")
+        all_candidates.extend(
+            str(item.get("Email") or "").strip().lower()
+            for item in [
+                *(latest_inbound.recipients_json or []),
+                *(latest_inbound.cc_json or []),
+            ]
+            if isinstance(item, dict)
+        )
+    elif latest:
+        # An outbound-only conversation may still be opened from Sent Items.
+        # Replying must target the external recipient, never the functional mailbox.
         all_candidates.extend(
             str(item.get("Email") or "").strip().lower()
             for item in [*(latest.recipients_json or []), *(latest.cc_json or [])]
             if isinstance(item, dict)
         )
+    else:
+        all_candidates.append(thread.sender_email or "")
+
     reply_all: list[str] = []
     seen: set[str] = set()
     for address in all_candidates:
@@ -670,6 +703,7 @@ def _reply_defaults(db, thread: EmailThread) -> dict[str, object]:
             continue
         seen.add(address)
         reply_all.append(address)
+    sender = reply_all[0] if reply_all else ""
     return {
         "reply_to": sender,
         "reply_all_to": reply_all[:1],

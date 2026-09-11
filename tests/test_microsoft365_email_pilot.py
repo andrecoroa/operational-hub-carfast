@@ -14,6 +14,7 @@ from app.core.config import Settings
 from app.main import app
 from app.models.email import EmailChannel, EmailChannelTransport
 from app.services import email_transport
+from app.services.users import create_user
 from app.services.microsoft365_oauth import (
     GRAPH_DELEGATED_SCOPES,
     authorization_url,
@@ -102,8 +103,123 @@ def test_authorization_url_uses_pkce_and_required_delegated_scopes():
     assert parsed.netloc == "login.microsoftonline.com"
     assert parsed.path == "/tenant/oauth2/v2.0/authorize"
     assert query["response_type"] == ["code"]
+    assert query["prompt"] == ["login"]
     assert query["code_challenge_method"] == ["S256"]
     assert query["code_challenge"] == [challenge]
+    assert set(query["scope"][0].split()) == set(GRAPH_DELEGATED_SCOPES)
+
+
+def _configured_microsoft365_transport(db_session) -> EmailChannelTransport:
+    channel = EmailChannel(
+        code="microsoft365_route_test",
+        name="Microsoft 365 route test",
+        address="route-test@carfast.local",
+        active=False,
+    )
+    db_session.add(channel)
+    db_session.flush()
+    transport = EmailChannelTransport(
+        id=1,
+        channel_id=channel.id,
+        provider="microsoft365",
+        enabled=False,
+        mailbox_address="frota@carfast.pt",
+        tenant_id="tenant-id",
+        client_id="client-id",
+        client_credential_reference="env://MICROSOFT365_CLIENT_SECRET",
+        token_reference="db://microsoft365/transport/1/tokens",
+    )
+    db_session.add(transport)
+    db_session.commit()
+    return transport
+
+
+def test_connect_route_requires_an_authenticated_session(client, monkeypatch):
+    monkeypatch.setattr(microsoft_web.settings, "microsoft365_oauth_setup_enabled", True)
+    response = client.get(
+        "/v2-clean/integrations/microsoft/connect/1", follow_redirects=False
+    )
+    assert response.status_code == 303
+    assert response.headers["location"].startswith("/login?next=")
+
+
+def test_connect_route_requires_integration_management_permission(
+    client, db_session, monkeypatch
+):
+    monkeypatch.setattr(
+        microsoft_web,
+        "SessionLocal",
+        sessionmaker(bind=db_session.get_bind(), expire_on_commit=False),
+    )
+    monkeypatch.setattr(microsoft_web.settings, "microsoft365_oauth_setup_enabled", True)
+    create_user(
+        db_session,
+        name="Viewer OAuth",
+        email="viewer.oauth@carfast.local",
+        password="Secret123!",
+        role_codes=["viewer"],
+        organizational_unit_codes=["carfast"],
+    )
+    db_session.commit()
+    response = client.post(
+        "/login",
+        data={"email": "viewer.oauth@carfast.local", "password": "Secret123!"},
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    notice = client.post(
+        "/change-notice",
+        data={"next_url": "/v2-clean"},
+        follow_redirects=False,
+    )
+    assert notice.status_code == 303
+    response = client.get(
+        "/v2-clean/integrations/microsoft/connect/1", follow_redirects=False
+    )
+    assert response.status_code == 303
+    assert response.headers["location"] == "/login"
+
+
+def test_connect_route_is_blocked_when_oauth_setup_flag_is_off(
+    authenticated_client, db_session, monkeypatch
+):
+    monkeypatch.setattr(
+        microsoft_web,
+        "SessionLocal",
+        sessionmaker(bind=db_session.get_bind(), expire_on_commit=False),
+    )
+    monkeypatch.setattr(microsoft_web.settings, "microsoft365_oauth_setup_enabled", False)
+    response = authenticated_client.get(
+        "/v2-clean/integrations/microsoft/connect/1", follow_redirects=False
+    )
+    assert response.status_code == 503
+    assert response.json() == {"error": "microsoft365_oauth_setup_disabled"}
+
+
+def test_connect_route_one_forces_fresh_microsoft_login_and_keeps_pkce(
+    authenticated_client, db_session, monkeypatch
+):
+    _configured_microsoft365_transport(db_session)
+    monkeypatch.setattr(
+        microsoft_web,
+        "SessionLocal",
+        sessionmaker(bind=db_session.get_bind(), expire_on_commit=False),
+    )
+    monkeypatch.setattr(microsoft_web.settings, "microsoft365_oauth_setup_enabled", True)
+
+    response = authenticated_client.get(
+        "/v2-clean/integrations/microsoft/connect/1", follow_redirects=False
+    )
+
+    assert response.status_code == 303
+    parsed = urlparse(response.headers["location"])
+    query = parse_qs(parsed.query)
+    assert parsed.netloc == "login.microsoftonline.com"
+    assert parsed.path == "/tenant-id/oauth2/v2.0/authorize"
+    assert query["prompt"] == ["login"]
+    assert query["state"][0]
+    assert query["code_challenge"][0]
+    assert query["code_challenge_method"] == ["S256"]
     assert set(query["scope"][0].split()) == set(GRAPH_DELEGATED_SCOPES)
 
 

@@ -30,6 +30,16 @@ def provider_for_channel(db: Session, channel_id: int) -> str:
     return config.provider
 
 
+def outbound_enabled_for_channel(db: Session, channel_id: int) -> bool:
+    """Keep the legacy master switch while allowing explicitly enabled M365 channels."""
+    if settings.email_outbound_enabled:
+        return True
+    return (
+        settings.microsoft365_email_enabled
+        and provider_for_channel(db, channel_id) == MICROSOFT365
+    )
+
+
 def send_channel_message(
     db: Session,
     channel: EmailChannel,

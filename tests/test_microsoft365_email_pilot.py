@@ -143,6 +143,19 @@ def test_transport_switch_is_scoped_to_enabled_mailbox_config():
     assert email_transport.provider_for_channel(_FakeDb(config), 1) == "microsoft365"
 
 
+def test_enabled_microsoft365_channel_can_bypass_legacy_master_switch(monkeypatch):
+    monkeypatch.setattr(email_transport.settings, "email_outbound_enabled", False)
+    monkeypatch.setattr(email_transport.settings, "microsoft365_email_enabled", True)
+    config = _Config(enabled=True, provider="microsoft365")
+    assert email_transport.outbound_enabled_for_channel(_FakeDb(config), 1) is True
+
+
+def test_postmark_remains_blocked_when_legacy_master_switch_is_off(monkeypatch):
+    monkeypatch.setattr(email_transport.settings, "email_outbound_enabled", False)
+    monkeypatch.setattr(email_transport.settings, "microsoft365_email_enabled", True)
+    assert email_transport.outbound_enabled_for_channel(_FakeDb(None), 1) is False
+
+
 def test_microsoft365_transport_uses_only_the_configured_mailbox(monkeypatch):
     monkeypatch.setattr(email_transport.settings, "microsoft365_email_enabled", True)
     config = _Config(

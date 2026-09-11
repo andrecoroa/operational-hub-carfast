@@ -117,10 +117,26 @@ def test_primary_filters_use_operational_views_and_persisted_queues() -> None:
     assert "Todas as filas" not in TEMPLATE
     assert ".task-center-approved-navigation{display:flex" in CSS
     assert ".task-center-queue-chips{display:flex" in CSS
-    assert ".task-center-approved-navigation{flex-wrap:wrap" in CSS
+    assert "order:2;flex-wrap:wrap" in CSS
     assert 'name="category" value="all"' in TEMPLATE
     assert 'Categoria de foco' not in TEMPLATE
     assert "grid-template-columns:minmax(0,62fr) minmax(360px,38fr)" in CSS
+
+
+def test_queue_chips_belong_to_tab_row_not_action_bar() -> None:
+    tab_row = TEMPLATE.split(
+        '<div class="task-center-approved-navigation">', 1
+    )[1].split('<div class="task-center-approved-toolbar-actions">', 1)[0]
+    action_bar = TEMPLATE.split(
+        '<div class="task-center-approved-toolbar-actions">', 1
+    )[1].split("</header>", 1)[0]
+
+    assert 'class="task-center-approved-tabs"' in tab_row
+    assert 'class="task-center-queue-chips"' in tab_row
+    assert 'class="task-center-queue-chips"' not in action_bar
+    assert "border-bottom:1px solid #dfe6ee" in CSS
+    assert ".task-center-approved-navigation{flex:1 0 100%;order:2" in CSS
+    assert ".task-center-approved-toolbar-actions{order:1}" in CSS
 
 
 def test_creation_offers_case_in_the_same_progressive_selector() -> None:

@@ -172,6 +172,7 @@ def authorization_url(
             "response_type": "code",
             "redirect_uri": redirect_uri,
             "response_mode": "query",
+            "prompt": "login",
             "scope": " ".join(GRAPH_DELEGATED_SCOPES),
             "state": state,
             "code_challenge": challenge,

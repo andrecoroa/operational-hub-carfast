@@ -139,6 +139,17 @@ def test_queue_chips_belong_to_tab_row_not_action_bar() -> None:
     assert ".task-center-approved-toolbar-actions{order:1}" in CSS
 
 
+def test_mobile_toolbar_contains_navigation_and_actions_at_373px() -> None:
+    mobile_css = CSS.split("@media(max-width:560px){", 1)[1].split(
+        "/* Email mock-up fidelity pass", 1
+    )[0]
+
+    assert ".task-center-approved-toolbar{display:grid;grid-template-columns:minmax(0,1fr)" in mobile_css
+    assert ".task-center-approved-navigation,.task-center-approved-toolbar-actions,.task-center-queue-chips{width:100%;max-width:100%;min-width:0" in mobile_css
+    assert ".task-center-approved-toolbar-actions{justify-content:flex-end;flex-wrap:wrap" in mobile_css
+    assert ".task-center-queue-chips{flex-wrap:wrap" in mobile_css
+
+
 def test_creation_offers_case_in_the_same_progressive_selector() -> None:
     assert "data-create-case" in TEMPLATE
     assert "createDialog.close();openCaseFlow('new')" in TEMPLATE

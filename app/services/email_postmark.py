@@ -15,7 +15,6 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.service_desk import EmailOriginCommand, ServiceDeskFacade
 from app.models.email import (
     EmailAttachment,
     EmailAuditEvent,
@@ -29,6 +28,7 @@ from app.models.email import (
 )
 from app.models.tasks import Task
 from app.models.work_hierarchy import WorkQueue
+from app.service_desk import EmailOriginCommand, ServiceDeskFacade
 from app.services.bootstrap import (
     POSTMARK_INBOUND_DOMAIN,
     POSTMARK_INBOUND_LOCAL_PART,
@@ -563,6 +563,141 @@ def _storage_root() -> Path:
     return root
 
 
+def normalize_inbound_attachments(payload: dict, provider: str = "postmark") -> list[dict]:
+    """Return provider-neutral attachment descriptors without decoding their content."""
+    raw_items = payload.get("Attachments") or payload.get("attachments") or []
+    normalized = []
+    for position, item in enumerate(raw_items):
+        if provider == "microsoft_graph":
+            encoded = str(item.get("contentBytes") or "")
+            source_id = str(item.get("id") or "").strip()
+            name = item.get("name")
+            content_type = item.get("contentType")
+            content_id = item.get("contentId")
+            declared_size = item.get("size")
+            is_inline = bool(item.get("isInline"))
+        else:
+            encoded = str(item.get("Content") or "")
+            source_id = ""
+            name = item.get("Name")
+            content_type = item.get("ContentType")
+            content_id = item.get("ContentID")
+            declared_size = None
+            is_inline = bool(content_id)
+        fingerprint = hashlib.sha256(
+            json.dumps(
+                [position, name, content_type, content_id, encoded],
+                ensure_ascii=True,
+                separators=(",", ":"),
+            ).encode()
+        ).hexdigest()
+        normalized.append(
+            {
+                "source_id": source_id or fingerprint,
+                "name": str(name or "attachment"),
+                "content_type": str(content_type or "application/octet-stream"),
+                "content_id": str(content_id or "") or None,
+                "content": encoded,
+                "declared_size": int(declared_size) if declared_size is not None else None,
+                "is_inline": is_inline,
+            }
+        )
+    return normalized
+
+
+def _decoded_base64_size(encoded: str) -> int:
+    compact = "".join(encoded.split())
+    if not compact:
+        return 0
+    padding = len(compact) - len(compact.rstrip("="))
+    return max(0, (len(compact) * 3) // 4 - padding)
+
+
+def reconcile_inbound_attachments(
+    db: Session,
+    *,
+    thread: EmailThread,
+    message: EmailMessage,
+    event: EmailWebhookEvent,
+    payload: dict,
+    provider: str = "postmark",
+) -> dict[str, int]:
+    """Idempotently materialize every source attachment or a visible blocked record."""
+    result = {"payload": 0, "stored": 0, "blocked": 0, "existing": 0}
+    for item in normalize_inbound_attachments(payload, provider):
+        result["payload"] += 1
+        existing = db.scalar(
+            select(EmailAttachment).where(
+                EmailAttachment.webhook_event_id == event.id,
+                EmailAttachment.source_attachment_id == item["source_id"],
+            )
+        )
+        if existing:
+            result["existing"] += 1
+            continue
+        safe_name = re.sub(r"[^A-Za-z0-9._-]", "_", Path(item["name"]).name)
+        estimated_size = item["declared_size"] or _decoded_base64_size(item["content"])
+        legacy = db.scalar(
+            select(EmailAttachment)
+            .where(
+                EmailAttachment.message_id == message.id,
+                EmailAttachment.webhook_event_id.is_(None),
+                EmailAttachment.file_name == safe_name,
+                EmailAttachment.content_id == item["content_id"],
+                EmailAttachment.size == estimated_size,
+            )
+            .order_by(EmailAttachment.id)
+        )
+        if legacy:
+            legacy.webhook_event_id = event.id
+            legacy.source_provider = provider
+            legacy.source_attachment_id = item["source_id"]
+            legacy.ingest_state = "stored" if legacy.storage_path else "blocked"
+            if legacy.ingest_state == "blocked" and not legacy.ingest_reason:
+                legacy.ingest_reason = "attachment_file_unavailable"
+            result["existing"] += 1
+            db.flush()
+            continue
+        attachment = EmailAttachment(
+            message_id=message.id,
+            file_name=safe_name,
+            content_type=item["content_type"],
+            content_id=item["content_id"],
+            size=estimated_size,
+            storage_path=None,
+            sha256=None,
+            webhook_event_id=event.id,
+            source_provider=provider,
+            source_attachment_id=item["source_id"],
+            ingest_state="blocked",
+            ingest_reason="attachment_size_limit_exceeded",
+        )
+        if estimated_size <= settings.email_max_attachment_bytes:
+            try:
+                content = base64.b64decode("".join(item["content"].split()), validate=True)
+            except (ValueError, TypeError):
+                attachment.ingest_reason = "attachment_content_invalid"
+            else:
+                if len(content) > settings.email_max_attachment_bytes:
+                    attachment.size = len(content)
+                else:
+                    attachment.size = len(content)
+                    attachment.sha256 = hashlib.sha256(content).hexdigest()
+                    folder = _storage_root() / str(thread.id) / str(message.id)
+                    folder.mkdir(parents=True, exist_ok=True)
+                    path = folder / safe_name
+                    if path.exists() and path.read_bytes() != content:
+                        path = folder / f"{item['source_id'][:12]}-{safe_name}"
+                    path.write_bytes(content)
+                    attachment.storage_path = str(path)
+                    attachment.ingest_state = "stored"
+                    attachment.ingest_reason = None
+        db.add(attachment)
+        result["stored" if attachment.ingest_state == "stored" else "blocked"] += 1
+    db.flush()
+    return result
+
+
 def _inbox_rule(db: Session, channel_id: int, subject: str) -> EmailInboxRule | None:
     normalized = subject.strip().casefold()
     rules = db.scalars(
@@ -599,7 +734,17 @@ def ingest_inbound(db: Session, payload: dict) -> tuple[EmailThread, bool]:
                 select(EmailMessage).where(EmailMessage.external_message_id == message_id)
             )
         if message:
-            return db.get(EmailThread, message.thread_id), False
+            thread = db.get(EmailThread, message.thread_id)
+            if delivery and thread:
+                reconcile_inbound_attachments(
+                    db,
+                    thread=thread,
+                    message=message,
+                    event=existing_event,
+                    payload=existing_event.payload_json,
+                )
+                db.commit()
+            return thread, False
         raise ValueError("Inbound event already exists without a linked email message.")
 
     channel = _channel_for_payload(db, payload)
@@ -816,27 +961,13 @@ def ingest_inbound(db: Session, payload: dict) -> tuple[EmailThread, bool]:
             alias=channel_alias,
         )
     )
-    for item in payload.get("Attachments") or []:
-        content = base64.b64decode(item.get("Content") or "")
-        if len(content) > settings.email_max_attachment_bytes:
-            continue
-        safe_name = re.sub(r"[^A-Za-z0-9._-]", "_", item.get("Name") or "attachment")
-        digest = hashlib.sha256(content).hexdigest()
-        folder = _storage_root() / str(thread.id) / str(message.id)
-        folder.mkdir(parents=True, exist_ok=True)
-        path = folder / safe_name
-        path.write_bytes(content)
-        db.add(
-            EmailAttachment(
-                message_id=message.id,
-                file_name=safe_name,
-                content_type=item.get("ContentType"),
-                content_id=item.get("ContentID"),
-                size=len(content),
-                storage_path=str(path),
-                sha256=digest,
-            )
-        )
+    reconcile_inbound_attachments(
+        db,
+        thread=thread,
+        message=message,
+        event=event,
+        payload=payload,
+    )
     thread.last_message_at = message.received_at
     auto_task_mode = rule.auto_task_mode if rule and rule.auto_task_mode else channel.auto_task_mode
     if created_thread and auto_task_mode in {"open", "complete"}:

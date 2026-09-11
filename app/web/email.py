@@ -20,7 +20,6 @@ from sqlalchemy import case, func, or_, select
 
 from app.core.config import settings
 from app.core.database import SessionLocal
-from app.service_desk import EmailOriginCommand, ServiceDeskFacade
 from app.models.admin import User, UserRole
 from app.models.email import (
     EmailAttachment,
@@ -35,12 +34,14 @@ from app.models.email import (
     EmailTemplate,
     EmailThread,
     EmailThreadLink,
+    EmailWebhookEvent,
 )
 from app.models.organization import Team, TeamMember
 from app.models.suppliers import SupplierTypeAssignment
 from app.models.tasks import Task
 from app.models.work_hierarchy import WorkCategory, WorkDepartment, WorkQueue, WorkSubcategory
 from app.partners.compat import StockSupplier
+from app.service_desk import EmailOriginCommand, ServiceDeskFacade
 from app.services.authorization import get_user_permission_codes
 from app.services.classification_proposals import (
     attach_selection_to_entity,
@@ -51,6 +52,7 @@ from app.services.email_postmark import (
     ensure_email_channels,
     ingest_inbound,
     ingest_outbound_event,
+    normalize_inbound_attachments,
     outbound_identity,
     reply_all_recipients,
     send_message,
@@ -308,6 +310,8 @@ def _attachment_media_type(attachment: EmailAttachment) -> str:
 
 
 def _attachment_can_preview(attachment: EmailAttachment) -> bool:
+    if attachment.ingest_state != "stored" or not attachment.storage_path:
+        return False
     media_type = _attachment_media_type(attachment)
     return (
         media_type == "application/pdf"
@@ -820,6 +824,88 @@ def _thread_view_data(db, thread: EmailThread) -> dict:
         (message for message in reversed(messages) if message.direction == "inbound"),
         None,
     )
+    attachment_ingest_alerts = []
+    attachments_by_event: dict[int, int] = {}
+    for attachment in attachments:
+        if attachment.webhook_event_id:
+            attachments_by_event[attachment.webhook_event_id] = (
+                attachments_by_event.get(attachment.webhook_event_id, 0) + 1
+            )
+    for delivery in deliveries:
+        if delivery.canonical_marker != "canonical":
+            continue
+        event = db.get(EmailWebhookEvent, delivery.webhook_event_id)
+        if not event:
+            continue
+        payload_count = len(normalize_inbound_attachments(event.payload_json or {}))
+        linked_count = attachments_by_event.get(event.id, 0)
+        if linked_count == 0:
+            linked_count = sum(1 for row in attachments if row.message_id == delivery.message_id)
+        if payload_count != linked_count:
+            attachment_ingest_alerts.append(
+                {
+                    "message_id": delivery.message_id,
+                    "payload_count": payload_count,
+                    "record_count": linked_count,
+                }
+            )
+    classification_audit = list(
+        db.scalars(
+            select(EmailAuditEvent)
+            .where(
+                EmailAuditEvent.thread_id == thread.id,
+                EmailAuditEvent.action.in_({"classification_validated", "triage_saved"}),
+            )
+            .order_by(EmailAuditEvent.id.desc())
+            .limit(8)
+        )
+    )
+    classification_audit_user_ids = {
+        event.user_id for event in classification_audit if event.user_id
+    }
+    classification_audit_users = (
+        {
+            user.id: user
+            for user in db.scalars(
+                select(User).where(User.id.in_(classification_audit_user_ids))
+            )
+        }
+        if classification_audit_user_ids
+        else {}
+    )
+
+    def _classification_audit_label(snapshot: dict | None) -> str:
+        snapshot = snapshot or {}
+        category = (
+            db.get(WorkCategory, snapshot.get("work_category_id"))
+            if snapshot.get("work_category_id")
+            else None
+        )
+        subcategory = (
+            db.get(WorkSubcategory, snapshot.get("work_subcategory_id"))
+            if snapshot.get("work_subcategory_id")
+            else None
+        )
+        if category and subcategory:
+            return f"{category.name} / {subcategory.name}"
+        if category:
+            return category.name
+        if snapshot.get("provisional_category_id"):
+            return f"Classificação provisória #{snapshot['provisional_category_id']}"
+        return "Por classificar"
+
+    classification_audit_rows = []
+    for event in classification_audit:
+        detail = event.details_json or {}
+        classification_audit_rows.append(
+            {
+                "event": event,
+                "author": classification_audit_users.get(event.user_id),
+                "changed": bool(detail.get("classification_changed")),
+                "before_label": _classification_audit_label(detail.get("before")),
+                "after_label": _classification_audit_label(detail.get("after")),
+            }
+        )
     return {
         "messages": messages,
         "message_refs": {
@@ -828,6 +914,7 @@ def _thread_view_data(db, thread: EmailThread) -> dict:
         },
         "attachments_by_message": grouped,
         "embedded_images_by_message": embedded,
+        "attachment_ingest_alerts": attachment_ingest_alerts,
         "deliveries_by_message": deliveries_by_message,
         "origins_by_message": deliveries_by_message,
         "received_originally_by_message": received_originally_by_message,
@@ -2425,6 +2512,8 @@ def email_attachment_file(request: Request, attachment_id: int, download: bool =
             db, user_id, permissions, thread.channel_id, thread=thread
         ):
             return HTMLResponse("Anexo não encontrado.", status_code=404)
+        if attachment.ingest_state != "stored" or not attachment.storage_path:
+            return HTMLResponse("Ficheiro bloqueado durante a receção.", status_code=409)
         path = Path(attachment.storage_path)
         if not path.is_file():
             return HTMLResponse("Ficheiro indisponível.", status_code=404)

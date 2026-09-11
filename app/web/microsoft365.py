@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import JSONResponse, RedirectResponse
-from sqlalchemy import select
+from sqlalchemy import or_, select
 
 from app.core.config import settings
 from app.core.database import SessionLocal
@@ -214,7 +214,13 @@ def activate_frota_microsoft365_transport(request: Request):
         ):
             return JSONResponse({"error": "connected_source_not_found"}, status_code=409)
         channel = db.scalar(
-            select(EmailChannel).where(EmailChannel.address == "frota@carfast.pt")
+            select(EmailChannel).where(
+                or_(
+                    EmailChannel.address == "frota@carfast.pt",
+                    EmailChannel.default_reply_address == "frota@carfast.pt",
+                    EmailChannel.from_address == "frota@carfast.pt",
+                )
+            )
         )
         if channel is None:
             channel = EmailChannel(

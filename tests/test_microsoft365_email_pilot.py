@@ -253,3 +253,56 @@ def test_frota_activation_requires_an_existing_connected_source(
     )
     assert response.status_code == 409
     assert response.json() == {"error": "connected_source_not_found"}
+
+
+def test_frota_activation_reuses_channel_found_by_reply_address(
+    authenticated_client, db_session, monkeypatch
+):
+    monkeypatch.setattr(
+        microsoft_web,
+        "SessionLocal",
+        sessionmaker(bind=db_session.get_bind(), expire_on_commit=False),
+    )
+    source_channel = EmailChannel(
+        code="microsoft365_email",
+        name="Email",
+        address="email@carfast.pt",
+        active=False,
+    )
+    frota_channel = EmailChannel(
+        code="frota",
+        name="Frota",
+        address="fleet-inbound@carfast.pt",
+        default_reply_address="frota@carfast.pt",
+        active=True,
+    )
+    db_session.add_all((source_channel, frota_channel))
+    db_session.flush()
+    db_session.add(
+        EmailChannelTransport(
+            channel_id=source_channel.id,
+            provider="microsoft365",
+            tenant_id="tenant",
+            client_id="client",
+            client_credential_reference="env://MICROSOFT365_CLIENT_SECRET",
+            token_reference="db://microsoft365/transport/source/tokens",
+            delegated_user_principal_name="rotinas@carfast.pt",
+            connected_at=microsoft_web.datetime.now(microsoft_web.UTC),
+        )
+    )
+    db_session.commit()
+
+    response = authenticated_client.post(
+        "/v2-clean/integrations/microsoft/activate-frota",
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    transport = db_session.scalar(
+        select(EmailChannelTransport).where(
+            EmailChannelTransport.channel_id == frota_channel.id
+        )
+    )
+    assert transport is not None
+    assert transport.enabled is True
+    assert transport.mailbox_address == "frota@carfast.pt"

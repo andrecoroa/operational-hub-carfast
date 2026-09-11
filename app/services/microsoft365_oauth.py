@@ -12,12 +12,14 @@ import urllib.request
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Protocol
+from pathlib import Path
 
 from cryptography.fernet import Fernet, InvalidToken, MultiFernet
 from sqlalchemy import select
 
 from app.core.database import SessionLocal
 from app.models.email import EmailSecretReference
+from app.models.email import EmailAttachment, EmailMessage
 from app.services.audit import record_audit
 
 GRAPH_DELEGATED_SCOPES = (
@@ -326,3 +328,88 @@ def move_shared_mailbox_message_to_junk(
                 raise RuntimeError(f"Microsoft Graph devolveu HTTP {response.status}.")
     except urllib.error.HTTPError as exc:
         raise RuntimeError(f"Microsoft Graph devolveu HTTP {exc.code}.") from exc
+
+
+def _graph_recipient(value: object) -> dict[str, dict[str, str]] | None:
+    address = value.get("Email") if isinstance(value, dict) else str(value or "")
+    address = str(address or "").strip()
+    if not address:
+        return None
+    return {"emailAddress": {"address": address}}
+
+
+def send_shared_mailbox_message(
+    message: EmailMessage,
+    *,
+    tenant_id: str,
+    client_id: str,
+    client_credential_reference: str,
+    token_reference: str,
+    mailbox_address: str,
+    reply_to: str,
+    attachments: list[EmailAttachment] | None = None,
+) -> dict[str, object]:
+    """Send through a configured shared mailbox using delegated Graph access."""
+    token = _delegated_access_token(
+        tenant_id=tenant_id,
+        client_id=client_id,
+        client_credential_reference=client_credential_reference,
+        token_reference=token_reference,
+    )
+
+    recipients = [
+        recipient
+        for value in (message.recipients_json or [])
+        if (recipient := _graph_recipient(value)) is not None
+    ]
+    if not recipients:
+        raise RuntimeError("A mensagem Microsoft 365 não tem destinatário.")
+
+    graph_message: dict[str, object] = {
+        "subject": message.subject,
+        "body": {
+            "contentType": "HTML" if message.html_body else "Text",
+            "content": message.html_body or message.text_body or "",
+        },
+        "toRecipients": recipients,
+        "replyTo": [{"emailAddress": {"address": reply_to}}],
+    }
+    for source, target in ((message.cc_json, "ccRecipients"), (message.bcc_json, "bccRecipients")):
+        values = [
+            recipient
+            for value in (source or [])
+            if (recipient := _graph_recipient(value)) is not None
+        ]
+        if values:
+            graph_message[target] = values
+
+    if attachments:
+        try:
+            graph_message["attachments"] = [
+                {
+                    "@odata.type": "#microsoft.graph.fileAttachment",
+                    "name": attachment.file_name,
+                    "contentType": attachment.content_type or "application/octet-stream",
+                    "contentBytes": base64.b64encode(
+                        Path(attachment.storage_path).read_bytes()
+                    ).decode("ascii"),
+                }
+                for attachment in attachments
+            ]
+        except OSError as exc:
+            raise RuntimeError("Um anexo da resposta já não está disponível.") from exc
+
+    mailbox = urllib.parse.quote(mailbox_address, safe="")
+    request = urllib.request.Request(
+        f"https://graph.microsoft.com/v1.0/users/{mailbox}/sendMail",
+        data=json.dumps({"message": graph_message, "saveToSentItems": True}).encode("utf-8"),
+        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=20) as response:
+            if response.status != 202:
+                raise RuntimeError(f"Microsoft Graph devolveu HTTP {response.status}.")
+    except urllib.error.HTTPError as exc:
+        raise RuntimeError(f"Microsoft Graph devolveu HTTP {exc.code}.") from exc
+    return {"Provider": "microsoft365", "MessageID": None}

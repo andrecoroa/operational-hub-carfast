@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from urllib.parse import parse_qs, urlparse
+import json
 
 from alembic.config import Config
 from alembic.script import ScriptDirectory
@@ -8,6 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import sessionmaker
 
 import app.web.microsoft365 as microsoft_web
+import app.services.microsoft365_oauth as microsoft_oauth
 from app.core.config import Settings
 from app.main import app
 from app.models.email import EmailChannel, EmailChannelTransport
@@ -18,6 +20,7 @@ from app.services.microsoft365_oauth import (
     begin_authorization,
     consume_authorization,
     create_pkce_pair,
+    send_shared_mailbox_message,
 )
 
 
@@ -122,9 +125,11 @@ class _FakeDb:
 
 
 class _Config:
-    def __init__(self, *, enabled: bool, provider: str):
+    def __init__(self, *, enabled: bool, provider: str, **values):
         self.enabled = enabled
         self.provider = provider
+        for key, value in values.items():
+            setattr(self, key, value)
 
 
 def test_transport_defaults_to_postmark_for_legacy_or_disabled_config():
@@ -136,3 +141,100 @@ def test_transport_defaults_to_postmark_for_legacy_or_disabled_config():
 def test_transport_switch_is_scoped_to_enabled_mailbox_config():
     config = _Config(enabled=True, provider="microsoft365")
     assert email_transport.provider_for_channel(_FakeDb(config), 1) == "microsoft365"
+
+
+def test_microsoft365_transport_uses_only_the_configured_mailbox(monkeypatch):
+    monkeypatch.setattr(email_transport.settings, "microsoft365_email_enabled", True)
+    config = _Config(
+        enabled=True,
+        provider="microsoft365",
+        mailbox_address="frota@carfast.pt",
+        tenant_id="tenant",
+        client_id="client",
+        client_credential_reference="env://MICROSOFT365_CLIENT_SECRET",
+        token_reference="db://microsoft365/transport/7/tokens",
+    )
+    message = type("Message", (), {})()
+    calls = []
+    result = email_transport.send_channel_message(
+        _FakeDb(config),
+        type("Channel", (), {"id": 7})(),
+        message,
+        '"Frota" <frota@carfast.pt>',
+        reply_to="frota@carfast.pt",
+        microsoft365_sender=lambda supplied, **kwargs: calls.append((supplied, kwargs)) or {"Provider": "microsoft365"},
+    )
+    assert result == {"Provider": "microsoft365"}
+    assert calls[0][1]["mailbox_address"] == "frota@carfast.pt"
+
+
+def test_microsoft365_transport_rejects_a_different_sender(monkeypatch):
+    monkeypatch.setattr(email_transport.settings, "microsoft365_email_enabled", True)
+    config = _Config(
+        enabled=True,
+        provider="microsoft365",
+        mailbox_address="frota@carfast.pt",
+        tenant_id="tenant",
+        client_id="client",
+        client_credential_reference="env://secret",
+        token_reference="db://tokens",
+    )
+    try:
+        email_transport.send_channel_message(
+            _FakeDb(config), type("Channel", (), {"id": 7})(), object(),
+            '"Central" <central@carfast.pt>', reply_to="central@carfast.pt",
+        )
+    except RuntimeError as exc:
+        assert "não corresponde" in str(exc)
+    else:
+        raise AssertionError("Expected mismatched Microsoft 365 sender to be rejected")
+
+
+def test_graph_send_uses_shared_mailbox_endpoint_and_saves_sent_copy(monkeypatch):
+    monkeypatch.setattr(microsoft_oauth, "_delegated_access_token", lambda **kwargs: "token")
+    captured = {}
+
+    class _Response:
+        status = 202
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return None
+
+    def fake_urlopen(request, timeout):
+        captured["url"] = request.full_url
+        captured["authorization"] = request.headers["Authorization"]
+        captured["body"] = json.loads(request.data)
+        return _Response()
+
+    monkeypatch.setattr(microsoft_oauth.urllib.request, "urlopen", fake_urlopen)
+    message = type(
+        "Message",
+        (),
+        {
+            "subject": "Teste CarFast 365",
+            "text_body": "Teste",
+            "html_body": None,
+            "recipients_json": [{"Email": "andrecoroa@daccordinvest.pt"}],
+            "cc_json": [],
+            "bcc_json": [],
+        },
+    )()
+    result = send_shared_mailbox_message(
+        message,
+        tenant_id="tenant",
+        client_id="client",
+        client_credential_reference="env://secret",
+        token_reference="db://token",
+        mailbox_address="frota@carfast.pt",
+        reply_to="frota@carfast.pt",
+    )
+    assert result["Provider"] == "microsoft365"
+    assert captured["url"].endswith("/users/frota%40carfast.pt/sendMail")
+    assert captured["authorization"] == "Bearer token"
+    assert captured["body"]["saveToSentItems"] is True
+    assert captured["body"]["message"]["toRecipients"] == [
+        {"emailAddress": {"address": "andrecoroa@daccordinvest.pt"}}
+    ]

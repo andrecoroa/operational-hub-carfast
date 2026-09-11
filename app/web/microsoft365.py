@@ -217,7 +217,20 @@ def activate_frota_microsoft365_transport(request: Request):
             select(EmailChannel).where(EmailChannel.address == "frota@carfast.pt")
         )
         if channel is None:
-            return JSONResponse({"error": "frota_channel_not_found"}, status_code=404)
+            channel = EmailChannel(
+                code="microsoft365_frota",
+                name="Frota",
+                address="frota@carfast.pt",
+                default_reply_address="frota@carfast.pt",
+                from_address="frota@carfast.pt",
+                from_name="CarFast Frota",
+                reply_to_address="frota@carfast.pt",
+                active=True,
+                approval_required=True,
+                assignment_mode="manual",
+            )
+            db.add(channel)
+            db.flush()
         transport = db.scalar(
             select(EmailChannelTransport).where(EmailChannelTransport.channel_id == channel.id)
         )

@@ -170,11 +170,15 @@
 .ui-contract-v1 .visual-service-desk .clean-task-table .button-link { min-height: 30px; padding: 5px 8px; white-space: nowrap; }
 
 /* Centro de Processos shares the same compact command-workspace contract. */
-.ui-contract-v1 .process-command-page { gap: 10px; }
+.ui-contract-v1 .process-command-page { height:auto; min-height:100vh; max-height:none; gap:10px; overflow:visible; }
 .ui-contract-v1 .process-command-header { min-height: 0; margin: 0; padding: 6px 0 8px; align-items: center; }
 .ui-contract-v1 .process-command-header .eyebrow { margin: 0 0 1px; font-size: 10px; }
-.ui-contract-v1 .process-command-header h2 { margin: 0; font-size: 22px; line-height: 28px; }
+.ui-contract-v1 .process-command-header h2 { margin:0; font-size:18px; line-height:22px; }
 .ui-contract-v1 .process-command-header p:not(.eyebrow) { margin: 1px 0 0; font-size: 12px; line-height: 16px; }
+.ui-contract-v1 .process-create-panel > summary strong,.ui-contract-v1 .process-create-panel > summary { font-size:14px; line-height:18px; }
+.ui-contract-v1 .process-batch-cases { padding:14px; }
+.ui-contract-v1 .process-batch-cases .process-command-section-head { margin-bottom:8px; }
+.ui-contract-v1 .process-batch-cases h3 { font-size:15px; line-height:19px; }
 .ui-contract-v1 .process-command-actions :is(.button-link,button) { min-height: var(--ui-control-compact); height: var(--ui-control-compact); padding: 5px 12px; }
 .ui-contract-v1 .process-command-kpis { min-height: 56px; margin: 0; gap: 8px; }
 .ui-contract-v1 .process-command-kpis > a { display: grid; min-height: 56px; padding: 7px 10px; grid-template-columns: 28px auto 1fr; column-gap: 8px; align-content: center; }

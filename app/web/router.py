@@ -49,6 +49,8 @@ from app.models.documents import (
     VehicleDocumentAuditField,
     VehicleDocumentRecord,
     VehicleDocumentRecordTag,
+    VehicleOfficialDocument,
+    VehicleOfficialDocumentFile,
 )
 from app.models.imports import (
     ImportBatch,
@@ -13275,6 +13277,62 @@ def clean_fleet_documents(
         if not vehicle:
             return RedirectResponse("/v2-clean/fleet", status_code=303)
         context = clean_vehicle_display_context(db, vehicle)
+        official_types = (
+            ("dua", "DUA", False, True),
+            ("dua_authenticated", "DUA autenticado", False, False),
+            ("green_card", "Carta Verde", True, False),
+            ("ipo", "IPO", True, False),
+        )
+        official_rows = db.execute(
+            select(VehicleOfficialDocument, VehicleOfficialDocumentFile, Document)
+            .outerjoin(
+                VehicleOfficialDocumentFile,
+                VehicleOfficialDocumentFile.official_document_id == VehicleOfficialDocument.id,
+            )
+            .outerjoin(Document, Document.id == VehicleOfficialDocumentFile.document_id)
+            .where(VehicleOfficialDocument.vehicle_id == vehicle.id)
+            .order_by(VehicleOfficialDocument.created_at.desc(), VehicleOfficialDocumentFile.page_role)
+        ).all()
+        official_history: dict[str, list[dict[str, Any]]] = defaultdict(list)
+        for bundle, bundle_file, document in official_rows:
+            entry = next(
+                (item for item in official_history[bundle.document_type] if item["id"] == bundle.id),
+                None,
+            )
+            if entry is None:
+                entry = {
+                    "id": bundle.id,
+                    "status": bundle.status,
+                    "valid_until": bundle.valid_until,
+                    "valid_until_display": bundle.valid_until.strftime("%d/%m/%Y") if bundle.valid_until else "Sem validade",
+                    "created_at": bundle.created_at,
+                    "files": [],
+                }
+                official_history[bundle.document_type].append(entry)
+            if document and bundle_file:
+                entry["files"].append(
+                    {
+                        "role": bundle_file.page_role,
+                        "role_label": {"front": "Frente", "back": "Verso", "single": "Documento"}.get(bundle_file.page_role, bundle_file.page_role),
+                        "title": document.original_name or document.title,
+                        "href": f"/v2-clean/documents/{document.id}/file?inline=1",
+                    }
+                )
+        official_documents = []
+        today = date.today()
+        for code, label, expires, two_sided in official_types:
+            history = official_history.get(code, [])
+            current = next((item for item in history if item["status"] == "current"), None)
+            if not current:
+                state, state_label = "missing", "Em falta"
+            elif expires and current["valid_until"] and current["valid_until"] < today:
+                state, state_label = "expired", "Expirado"
+            else:
+                state, state_label = "current", "Válido"
+            official_documents.append(
+                {"code": code, "label": label, "expires": expires, "two_sided": two_sided,
+                 "current": current, "history": history, "state": state, "state_label": state_label}
+            )
         try:
             module_ctx = vehicle_document_module_context(db, vehicle, materialize_sources=False)
         except Exception:
@@ -13604,10 +13662,103 @@ def clean_fleet_documents(
                 "open_item": open_item,
                 "return_to": safe_return_to,
                 "foundation_ui_enabled": settings.visual_foundation_enabled,
+                "official_documents": official_documents,
             },
         )
         db.commit()
         return response
+
+
+@web_router.post("/v2-clean/fleet/{vehicle_id}/official-documents")
+def clean_fleet_official_document_create(
+    request: Request,
+    vehicle_id: int,
+    document_type: str = Form(...),
+    valid_until: str = Form(""),
+    notes: str = Form(""),
+    front_file: UploadFile = File(...),
+    back_file: UploadFile | None = File(None),
+):
+    denied = clean_experience_denied(request)
+    if denied:
+        return denied
+    user_id = get_web_user_id(request)
+    if not user_id or not can_manage_carfast_fleet(request):
+        return RedirectResponse(f"/v2-clean/fleet/{vehicle_id}/documents?official_error=permission", status_code=303)
+    definitions = {
+        "dua": ("DUA", False, True),
+        "dua_authenticated": ("DUA autenticado", False, False),
+        "green_card": ("Carta Verde", True, False),
+        "ipo": ("IPO", True, False),
+    }
+    definition = definitions.get(document_type)
+    if not definition:
+        return RedirectResponse(f"/v2-clean/fleet/{vehicle_id}/documents?official_error=type", status_code=303)
+    label, expires, two_sided = definition
+    expiry = parse_optional_date(valid_until)
+    if expires and not expiry:
+        return RedirectResponse(f"/v2-clean/fleet/{vehicle_id}/documents?official_error=validity", status_code=303)
+    if not expires:
+        expiry = None
+    uploads = [("front" if two_sided else "single", front_file)]
+    if two_sided:
+        if not back_file or not back_file.filename:
+            return RedirectResponse(f"/v2-clean/fleet/{vehicle_id}/documents?official_error=back", status_code=303)
+        uploads.append(("back", back_file))
+    with SessionLocal() as db:
+        vehicle = db.get(Vehicle, vehicle_id)
+        if not vehicle:
+            return RedirectResponse("/v2-clean/fleet", status_code=303)
+        previous = db.scalar(
+            select(VehicleOfficialDocument)
+            .where(VehicleOfficialDocument.vehicle_id == vehicle.id,
+                   VehicleOfficialDocument.document_type == document_type,
+                   VehicleOfficialDocument.status == "current")
+            .order_by(VehicleOfficialDocument.created_at.desc())
+        )
+        bundle = VehicleOfficialDocument(
+            vehicle_id=vehicle.id, document_type=document_type, valid_until=expiry,
+            status="current", replaces_id=previous.id if previous else None,
+            notes=notes.strip() or None, created_by_id=user_id,
+        )
+        db.add(bundle)
+        db.flush()
+        folder_path = f"Frota/{sanitize_archive_component(vehicle.plate or str(vehicle.id), 'viatura')}/Documentos oficiais/{document_type}"
+        storage_dir = local_document_storage_folder(folder_path, plate=vehicle.plate, vin=vehicle.vin)
+        storage_dir.mkdir(parents=True, exist_ok=True)
+        for role, upload in uploads:
+            original_name = Path(upload.filename or f"{document_type}-{role}").name
+            content = upload.file.read()
+            if not content:
+                db.rollback()
+                return RedirectResponse(f"/v2-clean/fleet/{vehicle_id}/documents?official_error=empty", status_code=303)
+            digest = hashlib.sha256(content).hexdigest()
+            suffix = Path(original_name).suffix.lower() or ".bin"
+            file_name = f"{document_type}_{role}_{digest[:12]}{suffix}"
+            stored_path = storage_dir / file_name
+            if not stored_path.exists():
+                stored_path.write_bytes(content)
+            document = Document(
+                title=f"{label} — {role}", document_type=f"vehicle_{document_type}",
+                classification="fleet", source="v2_clean_manual", entry_channel="v2_clean",
+                original_name=original_name[:255], file_name=file_name, file_type=suffix.lstrip("."),
+                file_size=len(content), storage_provider="local", storage_path=str(stored_path),
+                storage_key=digest, file_hash=digest, folder_path=folder_path, status="received",
+                vehicle_id=vehicle.id, plate=vehicle.plate, document_date=date.today(), uploaded_by_id=user_id,
+                archived=False,
+            )
+            db.add(document)
+            db.flush()
+            db.add(VehicleOfficialDocumentFile(official_document_id=bundle.id, document_id=document.id, page_role=role))
+            db.add(DocumentEvent(document_id=document.id, action="vehicle.official_document.added", old_value=None,
+                                 new_value=f"{document_type}:{bundle.id}:{role}", user_id=user_id))
+        if previous:
+            previous.status = "replaced"
+        record_audit(db, action="vehicle.official_document.replace" if previous else "vehicle.official_document.create",
+                     entity_type="vehicle_official_document", entity_id=bundle.id,
+                     detail=f"{label} associado à viatura {vehicle.plate or vehicle.id}", user_id=user_id)
+        db.commit()
+    return RedirectResponse(f"/v2-clean/fleet/{vehicle_id}/documents?official_saved={document_type}", status_code=303)
 
 
 def _diagnostic_extraction_has_data(extraction: DiagnosticExtraction | None) -> bool:
@@ -25566,6 +25717,14 @@ def clean_fleet_detail(request: Request, vehicle_id: int, return_to: str = ""):
                 ).group_by(Document.classification)
             ).all()
         }
+        official_current_types = set(
+            db.scalars(
+                select(VehicleOfficialDocument.document_type).where(
+                    VehicleOfficialDocument.vehicle_id == vehicle.id,
+                    VehicleOfficialDocument.status == "current",
+                )
+            ).all()
+        )
     return templates.TemplateResponse(
         request,
         "clean_fleet_detail.html",
@@ -25581,6 +25740,12 @@ def clean_fleet_detail(request: Request, vehicle_id: int, return_to: str = ""):
             "maintenance_plan": maintenance_plans[0] if maintenance_plans else None,
             "return_to": safe_return_to,
             "foundation_ui_enabled": settings.visual_foundation_enabled,
+            "official_document_summary": [
+                ("dua", "DUA", "dua" in official_current_types),
+                ("dua_authenticated", "DUA autenticado", "dua_authenticated" in official_current_types),
+                ("green_card", "Carta Verde", "green_card" in official_current_types),
+                ("ipo", "IPO", "ipo" in official_current_types),
+            ],
         },
     )
 

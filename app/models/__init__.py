@@ -31,6 +31,8 @@ from app.models.documents import (
     VehicleDocumentPendingAction,
     VehicleDocumentRecord,
     VehicleDocumentRecordTag,
+    VehicleOfficialDocument,
+    VehicleOfficialDocumentFile,
 )
 from app.models.email import (
     EmailAttachment,

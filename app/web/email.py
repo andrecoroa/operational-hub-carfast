@@ -2212,6 +2212,8 @@ def email_triage(
     team_requires_claim: str = Form(""),
     due_at: str = Form(""),
     waiting_until: str = Form(""),
+    return_context: str = Form(""),
+    sequence: str = Form(""),
 ):
     auth = _auth(request, "email.triage", "email.manage", "admin.manage")
     if not auth:
@@ -2241,7 +2243,15 @@ def email_triage(
             return RedirectResponse("/v2-clean/email?error=not_found", status_code=303)
         hierarchy_selection = None
         proposal_selection = None
-        if work_queue_id.strip() or work_department_id.strip():
+        if any(
+            value.strip()
+            for value in (
+                work_queue_id,
+                work_department_id,
+                work_category_id,
+                work_subcategory_id,
+            )
+        ):
             official_category_id, category_proposal_id = parse_classification_choice(
                 work_category_id
             )
@@ -2475,8 +2485,17 @@ def email_triage(
             )
         )
         db.commit()
+    safe_return_context = (
+        return_context
+        if return_context.startswith("/v2-clean/email") and not return_context.startswith("//")
+        else "/v2-clean/email"
+    )
+    safe_sequence = ",".join(item for item in sequence.split(",")[:100] if item.isdigit())
+    suffix = f"&return_context={quote(safe_return_context, safe='')}"
+    if safe_sequence:
+        suffix += f"&sequence={safe_sequence}"
     return RedirectResponse(
-        f"/v2-clean/email/{thread_id}?saved={clean_action}", status_code=303
+        f"/v2-clean/email/{thread_id}?saved={clean_action}{suffix}", status_code=303
     )
 
 
@@ -2827,6 +2846,7 @@ def email_reply(
     request: Request,
     thread_id: int,
     body: str = Form(""),
+    body_html: str = Form(""),
     recipient_email: str = Form(""),
     reply_mode: str = Form("sender"),
     reply_source_message_id: int | None = Form(None),
@@ -2991,6 +3011,7 @@ def email_reply(
                 body.strip() or (template.body_template if template else ""),
                 template_context,
             )
+            rendered_html = _render_email_template(body_html.strip(), template_context)
         except ValueError:
             return RedirectResponse(
                 f"/v2-clean/email/{thread_id}?error=template_variables_missing",
@@ -3000,6 +3021,11 @@ def email_reply(
             return RedirectResponse(
                 f"/v2-clean/email/{thread_id}?error=missing_message", status_code=303
             )
+        clean_html = None
+        if rendered_html:
+            parser = _SafeEmailHTMLParser()
+            parser.feed(rendered_html)
+            clean_html = "".join(parser.parts).strip() or None
         state = {
             "approval": "pending_approval",
             "send": "approved",
@@ -3014,6 +3040,7 @@ def email_reply(
             bcc_json=_recipient_json(bcc_list),
             subject=clean_subject[:500],
             text_body=clean_body,
+            html_body=clean_html,
             compose_mode=mode,
             template_id=template.id if template else None,
             template_version=template.version if template else None,

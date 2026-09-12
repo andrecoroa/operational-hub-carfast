@@ -71,10 +71,12 @@
   };
   const bindTemplates = (root) => {
     root.querySelectorAll("[data-email-template]").forEach((select) => select.addEventListener("change", () => {
-      const textarea = select.closest("form")?.querySelector('textarea[name="body"]');
+      const textarea = select.closest("form")?.querySelector('[data-email-body-plain]');
+      const editor = select.closest("form")?.querySelector("[data-email-html-editor]");
       const subject = select.closest("form")?.querySelector('[data-email-compose-subject]');
       const option = select.selectedOptions[0];
       if (textarea && option?.dataset.body) textarea.value = option.dataset.body;
+      if (editor && option?.dataset.body) editor.textContent = option.dataset.body;
       if (subject && option?.dataset.subject) subject.value = option.dataset.subject;
     }));
     root.querySelectorAll("[data-email-template-search]").forEach((search) => {
@@ -129,16 +131,6 @@
     });
   };
   const bindBodyViews = (root) => {
-    const fitFrame = (frame) => {
-      try {
-        const height = frame.contentDocument?.documentElement?.scrollHeight;
-        if (height) frame.style.height = `${Math.max(280, height + 8)}px`;
-      } catch (_) { /* sandboxed bodies keep their own scroll as a safe fallback */ }
-    };
-    root.querySelectorAll(".email-body-frame").forEach((frame) => {
-      frame.addEventListener("load", () => fitFrame(frame));
-      fitFrame(frame);
-    });
     root.querySelectorAll("[data-email-body-view]").forEach((button) => button.addEventListener("click", () => {
       const messageId = button.dataset.emailMessageId;
       const frame = root.querySelector(`#email-body-${messageId}`);
@@ -147,6 +139,27 @@
       frame.src = `${frame.dataset.emailBodyBase}?view=${view}`;
       button.closest(".email-body-switch")?.querySelectorAll("[data-email-body-view]").forEach((item) => item.classList.toggle("active", item === button));
     }));
+  };
+  const bindHtmlEditors = (root) => {
+    root.querySelectorAll(".email-reply-form").forEach((form) => {
+      const editor = form.querySelector("[data-email-html-editor]");
+      const plain = form.querySelector("[data-email-body-plain]");
+      const html = form.querySelector("[data-email-body-html]");
+      if (!editor || !plain || !html) return;
+      const sync = () => {
+        plain.value = editor.innerText.trim();
+        html.value = editor.innerHTML.trim();
+      };
+      editor.addEventListener("input", sync);
+      form.addEventListener("submit", sync);
+      form.querySelectorAll("[data-email-format]").forEach((button) => button.addEventListener("click", () => {
+        editor.focus();
+        const command = button.dataset.emailFormat;
+        const value = command === "createLink" ? window.prompt("Endereço da ligação (https://)") : null;
+        if (command !== "createLink" || value) document.execCommand(command, false, value);
+        sync();
+      }));
+    });
   };
   const bindPanelSwitch = (root) => {
     const shell = root.querySelector("[data-email-thread-id]");
@@ -158,7 +171,10 @@
       composer.hidden = !visible;
       shell?.classList.toggle("is-composing", visible);
       if (visible) {
-        composer.querySelector('textarea[name="body"]')?.focus();
+        const treatment = root.querySelector("[data-email-treatment-drawer]");
+        treatment?.classList.add("is-open");
+        treatment?.setAttribute("aria-hidden", "false");
+        composer.querySelector("[data-email-html-editor]")?.focus();
         if (window.matchMedia("(max-width: 900px)").matches) {
           composer.scrollIntoView({block: "start"});
         }
@@ -199,6 +215,7 @@
     bindReplyModes(root);
     bindReplySenders(root);
     bindBodyViews(root);
+    bindHtmlEditors(root);
     bindPanelSwitch(root);
     bindTreatmentDrawer(root);
     bindLinkKinds(root);

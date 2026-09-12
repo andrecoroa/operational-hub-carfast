@@ -4,11 +4,11 @@
   {% set active_menu="email" %}{% include "_sidebar.html" %}
   <main class="content clean-content email-page email-thread-page{% if foundation_ui_enabled %} ui-foundation ui-page-shell visual-email-center visual-email-thread-page{% endif %}">
     {% set visual_section = "Comunicação" %}{% set visual_page = "Conversa de Email" %}{% include "_visual_topbar.html" %}
-    {% if request.query_params.get('error') == 'send_disabled' %}<div class="email-notice warning">Resposta aprovada, mas o envio externo ainda está desligado ou incompleto.</div>{% elif request.query_params.get('error') == 'invalid_recipient' %}<div class="email-notice warning">Indica um endereço válido em “Responder para”.</div>{% endif %}
+    {% if request.query_params.get('error') == 'send_disabled' %}<div class="email-notice warning">Resposta aprovada, mas o envio externo ainda está desligado ou incompleto.</div>{% elif request.query_params.get('error') == 'invalid_recipient' %}<div class="email-notice warning">Indica um endereço válido em “Responder para”.</div>{% elif request.query_params.get('error') == 'invalid_hierarchy' %}<div class="email-notice warning">A classificação não foi guardada. Confirma a relação entre fila, departamento, categoria e subcategoria.</div>{% elif request.query_params.get('error') == 'missing_classification' %}<div class="email-notice warning">A classificação está incompleta. Nenhuma alteração parcial foi guardada.</div>{% endif %}
     {% if request.query_params.get('saved') %}<div class="email-notice success">Alteração guardada.</div>{% endif %}
     {% if request.query_params.get('saved') == 'spam' %}<div class="email-notice success">Conversa movida para Spam.</div>{% elif request.query_params.get('error') == 'spam_unavailable' %}<div class="email-notice warning">Não foi possível mover esta conversa para Spam no Microsoft 365.</div>{% endif %}
     {% include "_email_thread_content.html" %}
   </main>
 </div>
-<script src="/static/js/email.js?v=20260910-email-full-page-navigation"></script>
+<script src="/static/js/email.js?v=20260912-email-horizontal-workspace"></script>
 {% endblock %}

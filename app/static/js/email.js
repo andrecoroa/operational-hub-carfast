@@ -201,6 +201,31 @@
       sections.forEach((other) => { if (other !== section) other.open = false; });
     }));
   };
+  const bindDraftActions = (root) => {
+    const addresses = (items) => (items || []).map((item) => typeof item === "string" ? item : item.Email).filter(Boolean).join(", ");
+    root.querySelectorAll("[data-email-edit-draft]").forEach((button) => button.addEventListener("click", () => {
+      const payloadNode = root.querySelector(`[data-email-draft-payload="${button.dataset.emailEditDraft}"]`);
+      const form = root.querySelector(".email-reply-form");
+      if (!payloadNode || !form) return;
+      const payload = JSON.parse(payloadNode.textContent || "{}");
+      root.querySelector("[data-email-open-composer]")?.click();
+      const setValue = (selector, value) => {
+        const field = form.querySelector(selector);
+        if (field) field.value = value;
+      };
+      setValue("[data-email-draft-message-id]", payload.id || "");
+      setValue('[name="recipients"]', addresses(payload.to));
+      setValue('[name="cc"]', addresses(payload.cc));
+      setValue('[name="bcc"]', addresses(payload.bcc));
+      setValue('[name="subject"]', payload.subject || "");
+      const editor = form.querySelector("[data-email-html-editor]");
+      if (!editor) return;
+      if (payload.html) editor.innerHTML = payload.html;
+      else editor.textContent = payload.body || "";
+      editor.dispatchEvent(new Event("input", {bubbles: true}));
+      editor.focus();
+    }));
+  };
   const bindLinkKinds = (root) => {
     root.querySelectorAll("[data-email-link-kind]").forEach((select) => {
       const hidden = select.form?.querySelector("[data-email-link-type]");
@@ -218,6 +243,7 @@
     bindHtmlEditors(root);
     bindPanelSwitch(root);
     bindTreatmentDrawer(root);
+    bindDraftActions(root);
     bindLinkKinds(root);
     root.querySelectorAll("[data-email-spam-form]").forEach((form) => form.addEventListener("submit", (event) => {
       if (!window.confirm("Mover esta conversa para Spam? Esta ação também a retira da caixa Microsoft 365.")) event.preventDefault();

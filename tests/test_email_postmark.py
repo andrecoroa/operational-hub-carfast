@@ -22,6 +22,7 @@ from app.models.email import (
     EmailWebhookEvent,
 )
 from app.models.organization import Team, TeamMember
+from app.models.work_hierarchy import WorkCategory, WorkDepartment, WorkQueue
 from app.services.bootstrap import (
     POSTMARK_INBOUND_DOMAIN,
     POSTMARK_INBOUND_LOCAL_PART,
@@ -419,6 +420,77 @@ def test_inbound_subject_rule_overrides_channel_defaults(db_session, tmp_path, m
     assert thread.document_type == "stock_invoice"
     assert 1 <= (thread.due_at.date() - thread.created_at.date()).days <= 2
     assert thread.task_id is None
+
+
+def test_fleet_inbound_rejects_unrelated_admin_hierarchy_and_accepts_valid_fleet_hierarchy(
+    db_session, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(settings, "email_storage_root", str(tmp_path))
+    ensure_email_channels(db_session)
+    channel = db_session.scalar(select(EmailChannel).where(EmailChannel.code == "test"))
+    channel.name = "Frota"
+    channel.requires_triage = False
+    admin_queue = WorkQueue(code="administracao", name="Administração", active=True)
+    fleet_queue = WorkQueue(code="frota", name="Frota", active=True)
+    db_session.add_all([admin_queue, fleet_queue])
+    db_session.flush()
+    admin_department = WorkDepartment(
+        queue_id=admin_queue.id, code="auditoria", name="Auditoria", active=True
+    )
+    fleet_department = WorkDepartment(
+        queue_id=fleet_queue.id, code="operacao-frota", name="Operação Frota", active=True
+    )
+    db_session.add_all([admin_department, fleet_department])
+    db_session.flush()
+    admin_category = WorkCategory(
+        department_id=admin_department.id, code="geral", name="Geral", active=True
+    )
+    fleet_category = WorkCategory(
+        department_id=fleet_department.id, code="pedidos", name="Pedidos", active=True
+    )
+    db_session.add_all([admin_category, fleet_category])
+    db_session.flush()
+    db_session.add_all([
+        EmailInboxRule(
+            channel_id=channel.id,
+            name="Frota com hierarquia administrativa inválida",
+            subject_match="hierarquia administrativa",
+            match_type="contains",
+            default_queue_id=admin_queue.id,
+            default_department_id=admin_department.id,
+            default_category_id=admin_category.id,
+            sort_order=1,
+        ),
+        EmailInboxRule(
+            channel_id=channel.id,
+            name="Frota com hierarquia válida",
+            subject_match="hierarquia frota",
+            match_type="contains",
+            default_queue_id=fleet_queue.id,
+            default_department_id=fleet_department.id,
+            default_category_id=fleet_category.id,
+            sort_order=2,
+        ),
+    ])
+    db_session.commit()
+
+    unrelated_payload = _payload("fleet-unrelated-hierarchy")
+    unrelated_payload["Subject"] = "Pedido com hierarquia administrativa"
+    unrelated, _ = ingest_inbound(db_session, unrelated_payload)
+
+    assert unrelated.work_queue_id is None
+    assert unrelated.work_department_id is None
+    assert unrelated.work_category_id is None
+    assert unrelated.classification_status == "unclassified"
+
+    valid_payload = _payload("fleet-valid-hierarchy")
+    valid_payload["Subject"] = "Pedido com hierarquia frota"
+    valid, _ = ingest_inbound(db_session, valid_payload)
+
+    assert valid.work_queue_id == fleet_queue.id
+    assert valid.work_department_id == fleet_department.id
+    assert valid.work_category_id == fleet_category.id
+    assert valid.classification_status == "classified"
 
 
 def test_inbound_exact_rule_does_not_match_partial_subject(db_session, tmp_path, monkeypatch):

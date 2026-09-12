@@ -1020,3 +1020,12 @@
 .ui-contract-v1 .visual-email-thread-page .email-attachment-actions{display:flex;gap:6px;align-items:center}.ui-contract-v1 .visual-email-thread-page .email-attachment-actions :is(button,.button-link){width:auto;min-height:34px;padding:6px 10px}
 body.email-treatment-drawer-open{overflow:auto}
 @media(max-width:900px){.ui-contract-v1 .visual-email-thread-page .email-modal-shell{height:calc(100dvh - 48px)!important}.ui-contract-v1 .visual-email-thread-page .email-modal-footer{grid-template-columns:repeat(2,minmax(0,1fr))}.ui-contract-v1 .visual-email-thread-page .email-create-task-form{grid-column:1/-1}.ui-contract-v1 .visual-email-thread-page .email-compose-recipient-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.ui-contract-v1 .visual-email-thread-page .email-treatment-drawer{max-height:65vh}.ui-contract-v1 .visual-email-thread-page .email-attachment-row{grid-template-columns:32px minmax(0,1fr)}.ui-contract-v1 .visual-email-thread-page .email-attachment-row>.email-badge,.ui-contract-v1 .visual-email-thread-page .email-attachment-actions{grid-column:2}}
+
+/* Email follow-up: drafts and resilient attachment previews. */
+.ui-contract-v1 .email-message-card.is-draft{border:2px dashed #8b5cf6;background:#faf7ff;box-shadow:none}
+.ui-contract-v1 .email-message-card.is-draft>header{background:#f3e8ff;border-bottom-color:#c4b5fd}
+.ui-contract-v1 .email-draft-badge{display:inline-flex;padding:4px 8px;border:1px solid #8b5cf6;border-radius:999px;background:#fff;color:#5b21b6;font-size:11px;font-weight:800;white-space:nowrap}
+.ui-contract-v1 .email-draft-actions{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid #ddd6fe;background:#faf5ff}.ui-contract-v1 .email-draft-actions button{background:#6d28d9}.ui-contract-v1 .email-draft-actions small{color:#5b21b6;font-weight:700}
+.ui-contract-v1 .email-pdf-preview{height:100%;min-height:58vh;background:#f8fafc}
+.ui-contract-v1 .email-pdf-preview iframe{display:block;width:100%;height:100%;min-height:58vh;border:0;background:#fff}
+.ui-contract-v1 .email-preview-fallback{margin:0;padding:8px 12px;border-top:1px solid #d8e0ea;background:#fff7ed;color:#7c2d12;font-size:12px}

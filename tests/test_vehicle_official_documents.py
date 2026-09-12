@@ -18,6 +18,8 @@ def test_official_document_cards_are_shown_on_vehicle_page(authenticated_client,
 
     detail = authenticated_client.get(f"/v2-clean/fleet/{vehicle.id}")
     assert detail.status_code == 200
+    assert "Documentos oficiais" in detail.text
+    assert "Arquivo e histórico" in detail.text
     assert "Gerir documentos oficiais" in detail.text
     assert detail.text.count("Em falta") >= 4
 

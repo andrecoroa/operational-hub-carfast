@@ -208,26 +208,32 @@
 
         <article class="clean-substep-panel" id="clean-substep-historico">
           <div class="table-heading flat-heading"><div><p class="eyebrow">Documentação e histórico</p><h3>Arquivo permanente da viatura</h3><p>Resumo por tipo documental. A tabela completa fica disponível para auditoria e pesquisa.</p></div></div>
-          <div class="clean-document-summary-grid vehicle-official-summary-grid">
-            {% for code, label, available in official_document_summary %}
-              <a class="{% if not available %}warn{% endif %}" href="/v2-clean/fleet/{{ vehicle.id }}/documents#documentos-oficiais">
-                <span>{{ label }}</span><strong>{{ 'Disponível' if available else 'Em falta' }}</strong>
-              </a>
-            {% endfor %}
-          </div>
-          <div class="clean-document-summary-grid">
-            {% for code, label in document_group_labels.items() %}
-              {% if code != 'other' %}
-                <a class="{% if code == 'missing' and document_summary.get(code, 0) %}warn{% endif %}" href="/v2-clean/fleet/{{ vehicle.id }}/documents?main_group={{ code }}">
-                  <span>{{ label }}</span>
-                  <strong>{{ document_summary.get(code, 0) }}</strong>
+          <div class="vehicle-document-summary-section">
+            <h4>Documentos oficiais</h4>
+            <div class="clean-document-summary-grid vehicle-official-summary-grid">
+              {% for code, label, available in official_document_summary %}
+                <a class="{% if not available %}warn{% endif %}" href="/v2-clean/fleet/{{ vehicle.id }}/documents#documentos-oficiais">
+                  <span>{{ label }}</span><strong>{{ 'Disponível' if available else 'Em falta' }}</strong>
                 </a>
-              {% endif %}
-            {% endfor %}
+              {% endfor %}
+            </div>
+          </div>
+          <div class="vehicle-document-summary-section is-secondary">
+            <h4>Arquivo e histórico</h4>
+            <div class="clean-document-summary-grid">
+              {% for code, label in document_group_labels.items() %}
+                {% if code != 'other' %}
+                  <a class="{% if code == 'missing' and document_summary.get(code, 0) %}warn{% endif %}" href="/v2-clean/fleet/{{ vehicle.id }}/documents?main_group={{ code }}">
+                    <span>{{ label }}</span>
+                    <strong>{{ document_summary.get(code, 0) }}</strong>
+                  </a>
+                {% endif %}
+              {% endfor %}
+            </div>
           </div>
           <div class="clean-fleet-doc-actions">
             <a class="button-link" href="/v2-clean/fleet/{{ vehicle.id }}/documents#documentos-oficiais">Gerir documentos oficiais</a>
-            <a class="button-link secondary-link" href="/v2-clean/fleet/{{ vehicle.id }}/documents/new">Adicionar documento</a>
+            <a class="button-link secondary-link" href="/v2-clean/fleet/{{ vehicle.id }}/documents/new">Adicionar outro documento</a>
             <a class="button-link secondary-link" href="/v2-clean/tasks?plate={{ ctx.identity.plate }}&workspace=workshop&entity_type=vehicle&entity_id={{ vehicle.id }}&return_url=/v2-clean/fleet/{{ vehicle.id }}">Ver tarefas</a>
           </div>
           <div class="clean-document-strip">

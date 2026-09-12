@@ -4354,6 +4354,26 @@ def clean_process_center(
         batch_model_by_id = {
             item.id: db.get(ProcessModel, item.model_id) for item in batch_model_versions
         }
+        batch_cases: list[dict[str, object]] = []
+        if not access_denied:
+            candidates = list(
+                db.execute(
+                    select(ProcessInstance, TaskCase)
+                    .join(TaskCase, TaskCase.id == ProcessInstance.case_id)
+                    .where(
+                        ProcessInstance.process_kind == "batch_data_treatment",
+                        ProcessInstance.deleted_at.is_(None),
+                        TaskCase.deleted_at.is_(None),
+                    )
+                    .order_by(ProcessInstance.created_at.desc(), ProcessInstance.id.desc())
+                    .limit(100)
+                )
+            )
+            batch_cases = [
+                {"process": process, "case": case_record}
+                for process, case_record in candidates
+                if can_access_case(db, current_user, case_record, "read")
+            ][:50]
         recent_management: list[ManagementProcess] = []
         process_inbox_records: list[QuickRecord] = []
         if not access_denied and not filter_error:
@@ -4464,6 +4484,7 @@ def clean_process_center(
                 "process_type_by_id": process_type_by_id,
                 "batch_model_versions": batch_model_versions,
                 "batch_model_by_id": batch_model_by_id,
+                "batch_cases": batch_cases,
                 "process_types": process_types,
                 "process_categories": process_categories,
                 "process_subcategories": process_subcategories,

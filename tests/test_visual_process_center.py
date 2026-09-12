@@ -4,6 +4,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 TEMPLATE = ROOT / "app" / "templates" / "clean_process_center.html"
 CSS = ROOT / "app" / "static" / "css" / "visual-v2.css"
+UI_CONTRACT = ROOT / "app" / "static" / "css" / "ui-contract-v1.css"
 MATRIX = ROOT / "docs" / "evidence" / "visual-route-matrix" / "ROUTE_CONTENT_MATRIX.md"
 
 
@@ -68,6 +69,18 @@ def test_process_center_preserves_rbac_and_uses_local_table_overflow() -> None:
     assert ".process-command-layout{display:grid" in css
     assert "@media(max-width:1024px)" in css
     assert "@media(max-width:640px)" in css
+
+
+def test_process_center_lists_batch_cases_and_keeps_the_page_scrollable() -> None:
+    source = TEMPLATE.read_text(encoding="utf-8")
+    contract = UI_CONTRACT.read_text(encoding="utf-8")
+
+    assert "Casos de tratamento em lote" in source
+    assert "/v2-clean/processes/batches/{{ item.process.id }}" in source
+    assert ".ui-contract-v1 .process-command-page { height:auto;" in contract
+    assert "max-height:none" in contract
+    assert "overflow:visible" in contract
+    assert ".ui-contract-v1 .process-command-header h2 { margin:0; font-size:18px;" in contract
 
 
 def test_route_content_matrix_covers_every_canonical_surface_once() -> None:

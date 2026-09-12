@@ -110,6 +110,8 @@ def test_process_center_only_projects_new_process_surfaces(client, db_session):
     assert '<details class="clean-panel process-create-panel process-inbox-panel" id="process-inbox" open>' not in response.text
     assert 'aria-controls="process-inbox-content"' in response.text
     assert "Novo tratamento de dados em lote" in response.text
+    assert "Casos de tratamento em lote" in response.text
+    assert "Ainda não existem casos em lote" in response.text
     assert "Fila de processos" not in response.text
     assert "Criar novo processo" not in response.text
     assert "Indicadores do centro de processos" not in response.text
@@ -128,6 +130,9 @@ def test_batch_web_flow_uploads_maps_and_keeps_rows_unassigned(
     assert started.status_code == 303
     detail_url = started.headers["location"]
     assert client.get(detail_url).status_code == 200
+    center = client.get("/v2-clean/processes")
+    assert "Cobranças setembro" in center.text
+    assert f'href="{detail_url}"' in center.text
 
     stored = tmp_path / "lote.csv"
 

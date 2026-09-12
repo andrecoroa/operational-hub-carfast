@@ -12,6 +12,7 @@ from app.models.email import (
     EmailAttachment,
     EmailAuditEvent,
     EmailChannel,
+    EmailChannelTransport,
     EmailChannelUser,
     EmailExecutorEligibility,
     EmailInboxRule,
@@ -857,6 +858,59 @@ def test_email_approval_keeps_the_recipient_selected_on_the_reply(
     db_session.refresh(message)
     assert message.state == "sent"
     assert message.external_message_id == "pm-sender-sent"
+
+
+def test_email_approval_allows_enabled_microsoft365_channel_when_legacy_switch_is_off(
+    authenticated_client, db_session, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(settings, "email_storage_root", str(tmp_path))
+    monkeypatch.setattr(settings, "email_outbound_enabled", False)
+    monkeypatch.setattr(settings, "microsoft365_email_enabled", True)
+    monkeypatch.setattr(
+        email_web,
+        "SessionLocal",
+        sessionmaker(bind=db_session.get_bind(), autoflush=False, autocommit=False),
+    )
+    thread, _ = ingest_inbound(db_session, _payload("m365-approval-gate"))
+    channel = db_session.get(EmailChannel, thread.channel_id)
+    db_session.add(
+        EmailChannelTransport(
+            channel_id=channel.id,
+            provider="microsoft365",
+            enabled=True,
+            mailbox_address=channel.from_address,
+            tenant_id="tenant",
+            client_id="client",
+            client_credential_reference="env://CLIENT_SECRET",
+            token_reference="db://token",
+        )
+    )
+    db_session.commit()
+    authenticated_client.post(
+        f"/v2-clean/email/{thread.id}/reply",
+        data={"body": "Resposta M365 a aprovar.", "submit": "approval"},
+    )
+    message = db_session.scalar(
+        select(EmailMessage)
+        .where(EmailMessage.thread_id == thread.id, EmailMessage.direction == "outbound")
+        .order_by(EmailMessage.id.desc())
+    )
+    sent = []
+
+    def fake_send_channel_message(*args, **kwargs):
+        sent.append(args[2].id)
+        return {"MessageID": None}
+
+    monkeypatch.setattr(email_web, "send_channel_message", fake_send_channel_message)
+    response = authenticated_client.post(
+        f"/v2-clean/email/{thread.id}/messages/{message.id}/approve",
+        follow_redirects=False,
+    )
+
+    assert response.headers["location"].endswith("saved=sent")
+    assert sent == [message.id]
+    db_session.refresh(message)
+    assert message.state == "sent"
 
 
 def test_mailboxes_bootstrap_with_explicit_central_and_hub_identities(db_session):

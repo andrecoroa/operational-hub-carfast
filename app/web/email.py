@@ -1992,7 +1992,7 @@ def email_thread(request: Request, thread_id: int):
                 and _can_use_channel(
                     db, user_id, permissions, thread.channel_id, "reply", thread=thread
                 ),
-                "outbound_enabled": settings.email_outbound_enabled,
+                "outbound_enabled": outbound_enabled_for_channel(db, channel.id),
                 "embedded": False,
                 "foundation_ui_enabled": settings.visual_foundation_enabled,
                 "return_context": return_context,
@@ -2153,7 +2153,7 @@ def email_thread_preview(request: Request, thread_id: int):
                 and _can_use_channel(
                     db, user_id, permissions, thread.channel_id, "reply", thread=thread
                 ),
-                "outbound_enabled": settings.email_outbound_enabled,
+                "outbound_enabled": outbound_enabled_for_channel(db, thread.channel_id),
                 "embedded": True,
             },
         )
@@ -2847,10 +2847,6 @@ def email_reply(
         return RedirectResponse(
             f"/v2-clean/email/{thread_id}?error=invalid_action", status_code=303
         )
-    if submit == "send" and not settings.email_outbound_enabled:
-        return RedirectResponse(
-            f"/v2-clean/email/{thread_id}?error=send_disabled", status_code=303
-        )
     user_id, permissions = auth
     with SessionLocal() as db:
         thread = db.get(EmailThread, thread_id)
@@ -2873,6 +2869,10 @@ def email_reply(
         ):
             return RedirectResponse(
                 f"/v2-clean/email/{thread_id}?error=forbidden", status_code=303
+            )
+        if submit == "send" and not outbound_enabled_for_channel(db, sender_channel.id):
+            return RedirectResponse(
+                f"/v2-clean/email/{thread_id}?error=send_disabled", status_code=303
             )
         if submit == "send" and not _can_use_channel(
             db, user_id, permissions, sender_channel.id, "send_direct"
@@ -3245,7 +3245,7 @@ def email_approve(request: Request, thread_id: int, message_id: int):
                 f"/v2-clean/email/{thread_id}?error=approval_invalidated",
                 status_code=303,
             )
-        if not settings.email_outbound_enabled:
+        if not outbound_enabled_for_channel(db, sender_channel.id):
             return RedirectResponse(
                 f"/v2-clean/email/{thread_id}?error=send_disabled", status_code=303
             )

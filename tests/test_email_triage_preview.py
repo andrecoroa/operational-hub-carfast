@@ -145,7 +145,7 @@ def test_inbox_open_is_native_full_page_navigation_and_cannot_render_inline():
     assert "window.location.assign(`/v2-clean/email/${threadId}?return_context=" in script
     assert "window.location.assign(element.dataset.emailThreadUrl)" in script
     assert "email.js?v=20260910-email-full-page-navigation" in inbox
-    assert "email.js?v=20260910-email-full-page-navigation" in thread
+    assert "email.js?v=20260912-email-horizontal-workspace" in thread
 
 
 def test_inbox_facets_apply_remaining_filters_server_side(authenticated_client, db_session, tmp_path, monkeypatch):
@@ -594,6 +594,44 @@ def test_ineligible_executor_is_rejected_by_server(
     assert thread.assigned_to_id is None
 
 
+def test_partial_hierarchy_is_rejected_without_mutating_triage(
+    authenticated_client, db_session, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(settings, "email_storage_root", str(tmp_path))
+    _bind_email_session(monkeypatch, db_session)
+    thread, _ = ingest_inbound(db_session, _payload("partial-email-hierarchy"))
+    queue = WorkQueue(code="partial-email", name="Fila parcial", active=True)
+    db_session.add(queue)
+    db_session.flush()
+    department = WorkDepartment(
+        queue_id=queue.id, code="partial-email-dept", name="Departamento parcial", active=True
+    )
+    db_session.add(department)
+    db_session.flush()
+    category = WorkCategory(
+        department_id=department.id,
+        code="partial-email-category",
+        name="Categoria parcial",
+        active=True,
+    )
+    db_session.add(category)
+    db_session.commit()
+
+    response = authenticated_client.post(
+        f"/v2-clean/email/{thread.id}/triage",
+        data={"work_category_id": str(category.id), "triage_notes": "não guardar"},
+        follow_redirects=False,
+    )
+    db_session.expire_all()
+    stored = db_session.get(EmailThread, thread.id)
+
+    assert "error=invalid_hierarchy" in response.headers["location"]
+    assert stored.work_queue_id is None
+    assert stored.work_department_id is None
+    assert stored.work_category_id is None
+    assert stored.triage_notes is None
+
+
 def test_reply_all_mode_and_mailbox_policy_controls_are_present():
     template = (ROOT / "app/templates/_email_thread_content.html").read_text(
         encoding="utf-8"
@@ -619,6 +657,7 @@ def test_reply_attachment_is_stored_with_draft(
         f"/v2-clean/email/{thread.id}/reply",
         data={
             "body": "Segue o documento pedido.",
+            "body_html": "<p>Segue o <strong>documento</strong>.</p><script>bad()</script>",
             "recipients": "cliente@example.com",
             "submit": "draft",
         },
@@ -638,6 +677,7 @@ def test_reply_attachment_is_stored_with_draft(
 
     assert response.status_code == 303
     assert outbound.state == "draft"
+    assert outbound.html_body == "<p>Segue o <strong>documento</strong>.</p>"
     assert attachment.file_name == "resposta.txt"
     assert Path(attachment.storage_path).read_bytes() == b"conteudo"
 
@@ -901,6 +941,8 @@ def test_validate_classification_is_explicit_and_audited(
             "work_queue_id": str(queue.id),
             "work_department_id": str(department.id),
             "work_category_id": str(category.id),
+            "return_context": "/v2-clean/email?view=mine&status=open",
+            "sequence": f"{thread.id},999999",
         },
         follow_redirects=False,
     )
@@ -916,6 +958,8 @@ def test_validate_classification_is_explicit_and_audited(
     )
 
     assert "saved=validate" in response.headers["location"]
+    assert "return_context=%2Fv2-clean%2Femail%3Fview%3Dmine%26status%3Dopen" in response.headers["location"]
+    assert f"sequence={thread.id},999999" in response.headers["location"]
     assert stored.classification_status == "classified"
     assert stored.status == "in_progress"
     assert audit is not None

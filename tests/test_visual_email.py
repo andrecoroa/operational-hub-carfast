@@ -96,7 +96,7 @@ def test_email_thread_uses_full_width_reader_drawer_navigation_and_spam() -> Non
     for text in ("Voltar à caixa", "Anterior", "Próximo", "Confirmar classificação", "Guardar gestão", "Ligações", "Marcar email como tratado", "Aguardar conclusão da tarefa", "Abrir tarefa", "Spam"):
         assert text in source
     assert "email-treatment-drawer" in source
-    assert ".email-treatment-drawer{position:fixed" in css
+    assert ".visual-email-thread-page .email-treatment-drawer{position:relative" in css
     assert 'window.confirm("Mover esta conversa para Spam?' in script
     assert 'destinationId": "junkemail"' in (ROOT / "app/services/microsoft365_oauth.py").read_text(encoding="utf-8")
     assert '@email_router.post("/v2-clean/email/{thread_id}/spam")' in router
@@ -128,7 +128,7 @@ def test_email_inline_preview_prioritizes_message_reading_space() -> None:
     assert ".email-inline-preview-body .email-body-frame{box-sizing:border-box" in css
     assert "height:clamp(280px,42vh,520px)" in css
     assert "Anexos para tratamento" in source
-    assert "Tratar anexo" in source
+    assert "Abrir" in source and "Descarregar" in source
     assert "Imagens incorporadas no email · não contam como anexos" in source
 
 
@@ -192,15 +192,18 @@ def test_email_full_page_reader_scroll_and_action_hierarchy_contract() -> None:
     source = THREAD.read_text(encoding="utf-8")
     script = JS.read_text(encoding="utf-8")
 
-    assert ".ui-contract-v1.visual-email-thread-page{height:auto!important;min-height:100dvh" in css
-    assert ".ui-contract-v1.visual-email-thread-page .email-modal-shell{height:auto!important" in css
-    assert "max-height:none!important;overflow:visible!important" in css
-    assert ".ui-contract-v1.visual-email-thread-page .email-modal-footer{position:relative!important" in css
+    assert ".ui-contract-v1 .visual-email-thread-page{height:100dvh!important;min-height:0!important;overflow:hidden!important" in css
+    assert ".ui-contract-v1 .visual-email-thread-page .email-modal-shell{display:flex!important" in css
+    assert ".ui-contract-v1 .visual-email-thread-page .email-modal-header{position:sticky" in css
+    assert ".ui-contract-v1 .visual-email-thread-page .email-modal-footer{position:sticky!important" in css
+    assert ".ui-contract-v1 .visual-email-thread-page .email-treatment-drawer{position:relative" in css
+    assert "max-height:min(58vh,680px)" in css
     assert "@media(max-width:1100px)" in css
     assert "@media(max-width:600px)" in css
     assert 'class="email-reply-primary"' in source
     assert 'class="email-create-task-action"' in source
     assert "email-treatment-open" in source
     assert "email-spam-action" in source
-    assert "frame.contentDocument?.documentElement?.scrollHeight" in script
-    assert "frame.style.height" in script
+    assert "frame.style.height" not in script
+    assert "email-html-editor" in source
+    assert "bindHtmlEditors" in script

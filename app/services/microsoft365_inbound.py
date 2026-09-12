@@ -75,10 +75,11 @@ def _attachments(
 ) -> list[dict[str, Any]]:
     mailbox_id = urllib.parse.quote(mailbox, safe="")
     graph_id = urllib.parse.quote(message_id, safe="")
-    url = (
-        f"{GRAPH_ROOT}/users/{mailbox_id}/messages/{graph_id}/attachments"
-        "?$select=id,name,contentType,size,isInline,contentId,contentBytes"
-    )
+    # Graph exposes this collection as the base ``attachment`` type. Selecting
+    # fileAttachment-only properties such as contentId/contentBytes makes the
+    # API reject the entire request with HTTP 400. A plain collection request
+    # returns those properties for fileAttachment rows.
+    url = f"{GRAPH_ROOT}/users/{mailbox_id}/messages/{graph_id}/attachments"
     rows: list[dict[str, Any]] = []
     while url:
         page = _graph_get(url, token_kwargs)

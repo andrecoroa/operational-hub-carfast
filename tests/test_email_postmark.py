@@ -206,6 +206,27 @@ def test_graph_attachment_normalization_preserves_provider_metadata():
     ]
 
 
+def test_graph_attachment_source_id_is_bounded_and_deterministic():
+    source_id = "A" * 180
+    payload = {
+        "attachments": [
+            {
+                "id": source_id,
+                "name": "proof.txt",
+                "contentType": "text/plain",
+                "contentBytes": "YQ==",
+            }
+        ]
+    }
+
+    first = normalize_inbound_attachments(payload, "microsoft_graph")[0]
+    second = normalize_inbound_attachments(payload, "microsoft_graph")[0]
+
+    assert first["source_id"] == second["source_id"]
+    assert first["source_id"].startswith("sha256:")
+    assert len(first["source_id"]) <= 128
+
+
 def test_same_logical_email_via_two_postmark_deliveries_is_merged_and_auditable(
     authenticated_client, db_session, tmp_path, monkeypatch
 ):

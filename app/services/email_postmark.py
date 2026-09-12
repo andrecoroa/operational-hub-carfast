@@ -614,6 +614,8 @@ def normalize_inbound_attachments(payload: dict, provider: str = "postmark") -> 
                 separators=(",", ":"),
             ).encode()
         ).hexdigest()
+        if len(source_id) > 128:
+            source_id = "sha256:" + hashlib.sha256(source_id.encode()).hexdigest()
         normalized.append(
             {
                 "source_id": source_id or fingerprint,

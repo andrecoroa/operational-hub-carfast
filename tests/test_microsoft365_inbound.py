@@ -68,6 +68,32 @@ def test_graph_payload_is_provider_marked_and_preserves_rfc_message_id():
     assert {row["Name"].casefold() for row in payload["Headers"]} == {"message-id"}
 
 
+def test_graph_attachment_collection_avoids_derived_property_select(monkeypatch):
+    requested = []
+
+    def fake_get(url, token_kwargs):
+        requested.append(url)
+        return {
+            "value": [
+                {
+                    "@odata.type": "#microsoft.graph.fileAttachment",
+                    "id": "attachment-id",
+                    "contentBytes": "YQ==",
+                }
+            ]
+        }
+
+    monkeypatch.setattr(inbound, "_graph_get", fake_get)
+    rows = inbound._attachments("frota@example.test", "message-id", {})
+
+    assert len(rows) == 1
+    assert requested == [
+        "https://graph.microsoft.com/v1.0/users/frota%40example.test/"
+        "messages/message-id/attachments"
+    ]
+    assert "$select" not in requested[0]
+
+
 def test_delta_sync_persists_message_checkpoint_and_is_idempotent(db_session, monkeypatch):
     transport = _transport(db_session)
     pages = [

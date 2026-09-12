@@ -44,6 +44,7 @@ from app.services.service_desk import (
     pause_task_sla,
     resume_task_sla,
 )
+from app.services.process_batches import mirror_task_comment_to_rows
 from app.services.task_queues import (
     TASK_QUEUE_TASK_TYPES,
     authorized_task_queue,
@@ -845,6 +846,9 @@ def create_task_comment(
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="comment_required")
     comment = TaskComment(task_id=task_id, user_id=current_user.id, comment=clean_comment)
     db.add(comment)
+    mirror_task_comment_to_rows(
+        db, task_id=task_id, actor_id=current_user.id, comment=clean_comment
+    )
     mark_task_first_response(db, task, actor_user_id=current_user.id)
     record_audit(
         db,

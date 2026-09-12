@@ -51,8 +51,9 @@ def _operator(db):
             db.add(RolePermission(role_id=role.id, permission_id=permission.id))
     model = db.scalar(select(ProcessModel).where(ProcessModel.code == "batch-data-treatment"))
     version = db.scalar(select(ProcessModelVersion).where(ProcessModelVersion.model_id == model.id))
-    version.status = "published"
-    version.published_at = datetime.now(UTC)
+    if version.status != "published":
+        version.status = "published"
+        version.published_at = datetime.now(UTC)
     db.commit()
     return user, version
 
@@ -158,7 +159,21 @@ def test_batch_web_flow_uploads_maps_and_keeps_rows_unassigned(
         },
         follow_redirects=False,
     )
-    assert mapped.status_code == 303
+    assert mapped.status_code == 200
+    assert "Pré-visualizar e corrigir linhas" in mapped.text
+    assert "Adicionar coluna" in mapped.text
+    assert db_session.scalar(select(ProcessBatch)) is None
+    confirmed = client.post(
+        f"{detail_url}/confirm",
+        data={
+            "row_title": ["Confirmar pagamento corrigido", "Validar fatura"],
+            "row_description": ["AA-21-XZ\n\nPedir comprovativo", "38-ZP-10\n\nConferir valor"],
+            "custom_column_name": ["Centro de custo"],
+            "custom_0": ["Norte", "Sul"],
+        },
+        follow_redirects=False,
+    )
+    assert confirmed.status_code == 303
     batch = db_session.scalar(select(ProcessBatch))
     rows = list(
         db_session.scalars(
@@ -167,7 +182,9 @@ def test_batch_web_flow_uploads_maps_and_keeps_rows_unassigned(
             .order_by(ProcessBatchRow.row_number)
         )
     )
-    assert [row.title for row in rows] == ["Confirmar pagamento", "Validar fatura"]
+    assert [row.title for row in rows] == ["Confirmar pagamento corrigido", "Validar fatura"]
     assert rows[0].description == "AA-21-XZ\n\nPedir comprovativo"
+    assert rows[0].source_json["Centro de custo"] == "Norte"
+    assert rows[1].treatment_json["custom_fields"] == {"Centro de custo": "Sul"}
     assert all(row.status == "ready" for row in rows)
     assert db_session.scalar(select(Task).where(Task.entity_type == "process_batch")) is None

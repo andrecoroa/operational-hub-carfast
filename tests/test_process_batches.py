@@ -87,6 +87,38 @@ def test_numbered_descriptions_follow_mapping_order_and_skip_blanks():
     assert compose_description(source, mapping) == "AA-21-XZ\n\nPedir comprovativo"
 
 
+def test_batch_keeps_flexible_mapped_fields_and_allows_row_correction(db_session: Session):
+    actor, _, process = batch_foundation(db_session)
+    batch = add_batch(
+        db_session,
+        process=process,
+        name="campos.xlsx",
+        mapping={"acao": "title", "responsavel": "responsible", "prazo": "due_on"},
+        rows=[{"acao": "Original", "responsavel": "Ana", "prazo": "2026-09-30"}],
+        actor_id=actor.id,
+    )
+    db_session.flush()
+    row = db_session.scalar(select(ProcessBatchRow).where(ProcessBatchRow.batch_id == batch.id))
+    assert row.treatment_json["mapped_fields"] == {
+        "responsible": "Ana",
+        "due_on": "2026-09-30",
+    }
+    update_batch_row(
+        db_session,
+        row_id=row.id,
+        expected_revision=row.revision,
+        actor_id=actor.id,
+        status="ready",
+        title="Título corrigido",
+        description="Descrição corrigida",
+        treatment={"notes": "Revisto"},
+    )
+    assert row.title == "Título corrigido"
+    assert row.description == "Descrição corrigida"
+    assert row.treatment_json["mapped_fields"]["responsible"] == "Ana"
+    assert row.treatment_json["notes"] == "Revisto"
+
+
 def test_batch_process_keeps_rows_unassigned_until_selected(db_session: Session):
     actor, case, process = batch_foundation(db_session)
     batch = add_batch(

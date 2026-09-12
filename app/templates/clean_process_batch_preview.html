@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="app-shell clean-shell">
+  {% set active_menu = "clean_processes" %}{% include "_sidebar.html" %}
+  <main class="content clean-content{% if foundation_ui_enabled %} ui-foundation ui-page-shell process-command-page{% endif %}">
+    {% set visual_section = "Processos" %}{% set visual_page = "Pré-visualizar lote" %}{% include "_visual_topbar.html" %}
+    <header class="ui-page-header process-command-header"><div><p class="eyebrow">{{ original_name }}</p><h2>Pré-visualizar e corrigir linhas</h2><p>Confirme títulos e descrições, acrescente colunas se necessário e só depois crie o lote. Nenhuma tarefa é criada nesta etapa.</p></div></header>
+    <section class="clean-panel process-command-queue">
+      <form method="post" action="/v2-clean/processes/batches/{{ process.id }}/confirm" id="batch-preview-form">
+        <div class="process-create-actions batch-preview-column-actions">
+          <button type="button" class="button-link secondary-link" id="add-custom-column">Adicionar coluna</button>
+          <span id="custom-column-help">Pode acrescentar até 10 colunas que não existiam no ficheiro.</span>
+        </div>
+        <div class="process-command-table" role="region" aria-label="Pré-visualização do lote" tabindex="0">
+          <table id="batch-preview-table"><thead><tr><th>Linha</th><th>Título</th><th>Descrição</th></tr></thead><tbody>
+          {% for row in preview_rows %}
+            <tr data-preview-row><td>{{ row.row_number }}</td><td><input name="row_title" value="{{ row.title }}" maxlength="200" required></td><td><textarea name="row_description" rows="3">{{ row.description }}</textarea></td></tr>
+          {% endfor %}
+          </tbody></table>
+        </div>
+        <div class="process-create-actions"><a class="button-link secondary-link" href="/v2-clean/processes/batches/{{ process.id }}">Cancelar</a><button type="submit">Confirmar e criar lote</button></div>
+      </form>
+    </section>
+  </main>
+</div>
+<script>
+(function(){
+  var button=document.getElementById('add-custom-column');
+  var table=document.getElementById('batch-preview-table');
+  var count=0;
+  button.addEventListener('click',function(){
+    if(count>=10){return;}
+    var index=count++;
+    var th=document.createElement('th');
+    var name=document.createElement('input');
+    name.name='custom_column_name';
+    name.placeholder='Nome da coluna';
+    name.maxLength=80;
+    name.required=true;
+    th.appendChild(name);
+    table.tHead.rows[0].appendChild(th);
+    table.querySelectorAll('[data-preview-row]').forEach(function(row){
+      var td=document.createElement('td');
+      var input=document.createElement('input');
+      input.name='custom_'+index;
+      input.placeholder='Valor';
+      td.appendChild(input);
+      row.appendChild(td);
+    });
+    if(count>=10){button.disabled=true;}
+    name.focus();
+  });
+})();
+</script>
+{% endblock %}

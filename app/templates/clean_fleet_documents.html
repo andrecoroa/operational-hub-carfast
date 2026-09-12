@@ -736,6 +736,30 @@
       </article>
     </section>
 
+    <section class="clean-card-wide vehicle-official-documents" id="documentos-oficiais">
+      <div class="table-heading flat-heading"><div><p class="eyebrow">Documentos da viatura</p><h3>Documentação oficial</h3><p>Os ficheiros pertencem à viatura. As tarefas apenas acompanham a recolha, sem criar cópias.</p></div></div>
+      <div class="vehicle-official-document-grid">
+        {% for item in official_documents %}
+          <article class="vehicle-official-document-card is-{{ item.state }}">
+            <header><div><strong>{{ item.label }}</strong><span class="clean-doc-status-pill">{{ item.state_label }}</span></div><small>{% if item.current %}Atualizado em {{ item.current.created_at.strftime('%d/%m/%Y') }}{% else %}Sem documento atual{% endif %}</small></header>
+            {% if item.current %}
+              <p>{% if item.expires %}<b>Validade:</b> {{ item.current.valid_until_display }}{% else %}Sem data de expiração{% endif %}</p>
+              <div class="vehicle-official-document-actions">{% for file in item.current.files %}<a class="button-link secondary-link" href="{{ file.href }}" target="_blank">Ver {{ file.role_label }}</a>{% endfor %}<button type="button" class="button-link" data-official-open="official-form-{{ item.code }}">Substituir</button></div>
+            {% else %}<button type="button" class="button-link" data-official-open="official-form-{{ item.code }}">Adicionar</button>{% endif %}
+            <details class="vehicle-official-history"><summary>Histórico ({{ item.history|length }})</summary>{% for version in item.history %}<div><span>{{ version.created_at.strftime('%d/%m/%Y %H:%M') }} · {{ 'Atual' if version.status == 'current' else 'Substituído' }}</span>{% for file in version.files %}<a href="{{ file.href }}" target="_blank">{{ file.role_label }}</a>{% endfor %}</div>{% else %}<p>Sem versões anteriores.</p>{% endfor %}</details>
+            <form id="official-form-{{ item.code }}" class="vehicle-official-upload" method="post" action="/v2-clean/fleet/{{ vehicle.id }}/official-documents" enctype="multipart/form-data" hidden>
+              <input type="hidden" name="document_type" value="{{ item.code }}">
+              <label>{{ 'Frente' if item.two_sided else 'Ficheiro' }}<input type="file" name="front_file" accept="application/pdf,image/*" capture="environment" required></label>
+              {% if item.two_sided %}<label>Verso<input type="file" name="back_file" accept="application/pdf,image/*" capture="environment" required></label>{% endif %}
+              {% if item.expires %}<label>Validade<input type="date" name="valid_until" required></label>{% endif %}
+              <label>Observação<input type="text" name="notes" maxlength="500" placeholder="Opcional"></label>
+              <div><button type="submit">Guardar</button><button type="button" class="secondary" data-official-close>Cancelar</button></div>
+            </form>
+          </article>
+        {% endfor %}
+      </div>
+    </section>
+
     <section class="clean-doc-group-strip">
       {% for code, label in main_groups %}
         <a class="clean-doc-group-card {% if main_group == code %}active{% endif %}" href="{% if code == 'diagnostics' %}/v2-clean/fleet/{{ vehicle.id }}/diagnostics{% else %}/v2-clean/fleet/{{ vehicle.id }}/documents?main_group={{ code }}{% if q %}&q={{ q|urlencode }}{% endif %}{% if status %}&status={{ status|urlencode }}{% endif %}{% endif %}">
@@ -1309,5 +1333,12 @@
       });
     });
   }
+</script>
+<script>
+  document.querySelectorAll('[data-official-open]').forEach((button) => button.addEventListener('click', () => {
+    const form = document.getElementById(button.dataset.officialOpen);
+    if (form) { form.hidden = false; form.querySelector('input[type=file]')?.focus(); }
+  }));
+  document.querySelectorAll('[data-official-close]').forEach((button) => button.addEventListener('click', () => { button.closest('form').hidden = true; }));
 </script>
 {% endblock %}

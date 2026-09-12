@@ -20,6 +20,7 @@ from app.models.email import (
     EmailAuditEvent,
     EmailChannel,
     EmailChannelAlias,
+    EmailChannelTransport,
     EmailInboxRule,
     EmailMessage,
     EmailMessageDelivery,
@@ -89,7 +90,15 @@ def outbound_identity(
 def _event_key(payload: dict) -> str:
     message_id = payload.get("MessageID") or payload.get("MessageId")
     if message_id:
-        return f"message:{message_id}"
+        provider = str(payload.get("SourceProvider") or "postmark").strip().casefold()
+        candidate = (
+            f"microsoft_graph:message:{message_id}"
+            if provider == "microsoft_graph"
+            else f"message:{message_id}"
+        )
+        if len(candidate) <= 128:
+            return candidate
+        return f"{provider}:sha256:" + hashlib.sha256(candidate.encode()).hexdigest()
     canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str)
     return "sha256:" + hashlib.sha256(canonical.encode()).hexdigest()
 
@@ -408,6 +417,20 @@ def _message_ids(value: str | None) -> list[str]:
 
 def _channel_for_payload(db: Session, payload: dict) -> EmailChannel:
     ensure_email_channels(db)
+    if str(payload.get("SourceProvider") or "").strip().casefold() == "microsoft_graph":
+        mailbox = _address(payload.get("OriginalRecipient") or payload.get("To"))
+        channel = db.scalar(
+            select(EmailChannel)
+            .join(EmailChannelTransport, EmailChannelTransport.channel_id == EmailChannel.id)
+            .where(
+                EmailChannel.active.is_(True),
+                EmailChannelTransport.provider == "microsoft365",
+                EmailChannelTransport.enabled.is_(True),
+                func.lower(EmailChannelTransport.mailbox_address) == mailbox,
+            )
+        )
+        if channel:
+            return channel
     recipients = payload.get("ToFull") or []
     # Postmark exposes plus-addressing first as the top-level MailboxHash and
     # also on ToFull recipients.  Keep that precedence deterministic: a
@@ -719,6 +742,9 @@ def _inbox_rule(db: Session, channel_id: int, subject: str) -> EmailInboxRule | 
 
 
 def ingest_inbound(db: Session, payload: dict) -> tuple[EmailThread, bool]:
+    source_provider = str(payload.get("SourceProvider") or "postmark").strip().casefold()
+    if source_provider not in {"postmark", "microsoft_graph"}:
+        raise ValueError("Unsupported inbound email provider.")
     key = _event_key(payload)
     existing_event = db.scalar(select(EmailWebhookEvent).where(EmailWebhookEvent.event_key == key))
     if existing_event:
@@ -742,6 +768,7 @@ def ingest_inbound(db: Session, payload: dict) -> tuple[EmailThread, bool]:
                     message=message,
                     event=existing_event,
                     payload=existing_event.payload_json,
+                    provider=source_provider,
                 )
                 db.commit()
             return thread, False
@@ -967,6 +994,7 @@ def ingest_inbound(db: Session, payload: dict) -> tuple[EmailThread, bool]:
         message=message,
         event=event,
         payload=payload,
+        provider=source_provider,
     )
     thread.last_message_at = message.received_at
     auto_task_mode = rule.auto_task_mode if rule and rule.auto_task_mode else channel.auto_task_mode
@@ -1036,6 +1064,7 @@ def ingest_inbound(db: Session, payload: dict) -> tuple[EmailThread, bool]:
                 "logical_message_key": logical_key,
                 "original_recipient": thread.original_recipient_address,
                 "technical_recipient": thread.technical_recipient_address,
+                "source_provider": source_provider,
             },
         )
     )

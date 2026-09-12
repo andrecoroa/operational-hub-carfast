@@ -28638,10 +28638,14 @@ body:has(.email-preview-dialog[open]) { overflow: hidden; }
 
 .clean-work-admin-nav {
   display: flex;
+  flex-wrap: wrap;
   gap: 4px;
   margin: 0 0 16px;
-  overflow-x: auto;
-  border-bottom: 1px solid #d7e0ea;
+  min-height: 48px;
+  padding: 6px;
+  overflow: visible;
+  border: 1px solid #d7e0ea;
+  background: #f5f8fb;
 }
 
 .clean-work-admin-nav button,
@@ -28656,19 +28660,23 @@ body:has(.email-preview-dialog[open]) { overflow: hidden; }
 
 .clean-work-admin-nav button {
   padding: 12px 18px 11px;
-  border-bottom: 3px solid transparent;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  background: #fff;
 }
 
 .clean-work-admin-nav button:hover,
 .clean-work-admin-nav button.is-active {
   color: #a63224;
-  border-bottom-color: #bd4331;
+  border-color: #bd4331;
   background: #fff7f4;
 }
 
 .clean-work-admin-view {
+  max-width: 100%;
   min-width: 0;
   padding: 16px;
+  overflow-x: hidden;
   border: 1px solid #d7e0ea;
   background: #fff;
 }
@@ -28711,9 +28719,10 @@ body:has(.email-preview-dialog[open]) { overflow: hidden; }
 
 .clean-work-level-tabs {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   margin: 0 0 14px;
-  overflow-x: auto;
+  overflow: visible;
   border-bottom: 1px solid #d7e0ea;
 }
 
@@ -28769,7 +28778,10 @@ body:has(.email-preview-dialog[open]) { overflow: hidden; }
 }
 
 .clean-work-structure-wrap {
+  width: 100%;
+  max-width: 100%;
   max-height: min(62vh, 670px);
+  overflow: auto;
   border: 1px solid #d7e0ea;
 }
 
@@ -29002,6 +29014,9 @@ body:has(.email-preview-dialog[open]) { overflow: hidden; }
   .clean-work-new-button {
     width: 100%;
   }
+  .clean-work-admin-nav button {
+    flex: 1 1 150px;
+  }
 }
 
 @media (max-width: 640px) {
@@ -29021,6 +29036,10 @@ body:has(.email-preview-dialog[open]) { overflow: hidden; }
   .clean-work-editor,
   .clean-work-editor.is-wide {
     width: 100vw;
+  }
+  .clean-work-admin-nav button,
+  .clean-work-level-tabs button {
+    flex: 1 1 calc(50% - 8px);
   }
 }
 

@@ -808,6 +808,14 @@ def ingest_inbound(db: Session, payload: dict) -> tuple[EmailThread, bool]:
             alias=channel_alias,
         )
         db.add(delivery)
+        reconcile_inbound_attachments(
+            db,
+            thread=thread,
+            message=message,
+            event=event,
+            payload=payload,
+            provider=source_provider,
+        )
         if delivery.original_recipient and not thread.original_recipient_address:
             thread.original_recipient_address = delivery.original_recipient
         if delivery.technical_recipient and not thread.technical_recipient_address:

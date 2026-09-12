@@ -1,15 +1,19 @@
+import base64
 from datetime import UTC, datetime
 
 from sqlalchemy import func, select
 
 import app.services.microsoft365_inbound as inbound
 from app.models.email import (
+    EmailAttachment,
     EmailAuditEvent,
     EmailChannel,
     EmailChannelTransport,
     EmailMessage,
+    EmailMessageDelivery,
     EmailSyncCheckpoint,
 )
+from app.services.email_postmark import ingest_inbound, reply_all_recipients
 
 
 def _transport(db_session):
@@ -93,3 +97,75 @@ def test_delta_sync_persists_message_checkpoint_and_is_idempotent(db_session, mo
         select(EmailAuditEvent).where(EmailAuditEvent.action == "microsoft_graph_synced")
     )
     assert audit.details_json["folder"] == "inbox"
+
+
+def test_graph_attachment_and_postmark_copy_merge_without_duplicate(
+    db_session, monkeypatch, tmp_path
+):
+    transport = _transport(db_session)
+    channel = db_session.get(EmailChannel, transport.channel_id)
+    channel.address = transport.mailbox_address
+    channel.default_reply_address = transport.mailbox_address
+    channel.from_address = transport.mailbox_address
+    channel.reply_to_address = transport.mailbox_address
+    db_session.commit()
+    monkeypatch.setattr(
+        "app.services.email_postmark.settings.email_storage_root", str(tmp_path)
+    )
+
+    graph = _message()
+    graph["id"] = "graph-attachment-message"
+    graph["hasAttachments"] = True
+    encoded = base64.b64encode(b"graph attachment").decode("ascii")
+    graph_payload = inbound.graph_message_payload(
+        graph,
+        mailbox=transport.mailbox_address,
+        attachments=[
+            {
+                "@odata.type": "#microsoft.graph.fileAttachment",
+                "id": "graph-attachment-1",
+                "name": "proof.txt",
+                "contentType": "text/plain",
+                "size": len(b"graph attachment"),
+                "isInline": False,
+                "contentBytes": encoded,
+            }
+        ],
+    )
+    thread, created = ingest_inbound(db_session, graph_payload)
+    assert created is True
+
+    postmark_payload = {
+        "MessageID": "postmark-copy-message",
+        "From": "sender@example.test",
+        "FromName": "Sender",
+        "To": transport.mailbox_address,
+        "ToFull": [{"Email": transport.mailbox_address}],
+        "CcFull": [],
+        "Subject": graph["subject"],
+        "TextBody": "same logical email",
+        "HtmlBody": None,
+        "Headers": [
+            {"Name": "Message-ID", "Value": graph["internetMessageId"]},
+        ],
+        "Attachments": [],
+    }
+    duplicate_thread, duplicate_created = ingest_inbound(db_session, postmark_payload)
+
+    assert duplicate_created is False
+    assert duplicate_thread.id == thread.id
+    assert db_session.scalar(select(func.count()).select_from(EmailMessage)) == 1
+    assert db_session.scalar(select(func.count()).select_from(EmailMessageDelivery)) == 2
+    attachment = db_session.scalar(select(EmailAttachment))
+    assert attachment.source_provider == "microsoft_graph"
+    assert attachment.ingest_state == "stored"
+    assert attachment.storage_path
+
+    message = db_session.scalar(select(EmailMessage))
+    assert message.direction == "inbound"
+    to_rows, cc_rows = reply_all_recipients(
+        db_session, message, transport.mailbox_address
+    )
+    assert to_rows == [{"Email": "sender@example.test"}]
+    assert cc_rows == []
+    assert channel.reply_to_address == transport.mailbox_address

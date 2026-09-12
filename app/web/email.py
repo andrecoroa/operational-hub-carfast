@@ -15,7 +15,7 @@ from urllib.parse import quote, urlparse
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, File, Form, Header, Request, UploadFile
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import case, func, or_, select
 
@@ -158,12 +158,18 @@ EMAIL_WORK_VIEW_LABELS = {
 }
 EMAIL_CLOSED_STATUSES = {"resolved", "archived"}
 EMAIL_SIGNAL_LABELS = {
-    "to_treat": "Por tratar",
-    "new": "Novos",
+    "to_treat": "Em aberto",
+    "new": "Novas / por triar",
     "unassigned": "Por atribuir",
     "overdue": "Atrasados",
     "risk": "Em risco",
 }
+
+
+def _lisbon_day_bounds(value: datetime) -> tuple[datetime, datetime]:
+    local_value = value.astimezone(ZoneInfo("Europe/Lisbon"))
+    local_start = local_value.replace(hour=0, minute=0, second=0, microsecond=0)
+    return local_start.astimezone(UTC), (local_start + timedelta(days=1)).astimezone(UTC)
 
 EMAIL_ADDRESS_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 EMAIL_LINK_KINDS = {
@@ -798,6 +804,17 @@ def _thread_view_data(db, thread: EmailThread) -> dict:
             .order_by(EmailMessage.created_at, EmailMessage.id)
         )
     )
+    message_author_ids = {
+        message.created_by_id for message in messages if message.created_by_id
+    }
+    message_authors = (
+        {
+            user.id: user
+            for user in db.scalars(select(User).where(User.id.in_(message_author_ids)))
+        }
+        if message_author_ids
+        else {}
+    )
     message_ids = [message.id for message in messages]
     attachments = list(
         db.scalars(
@@ -942,6 +959,7 @@ def _thread_view_data(db, thread: EmailThread) -> dict:
         )
     return {
         "messages": messages,
+        "message_authors": message_authors,
         "message_refs": {
             message.id: message_reference(thread, position)
             for position, message in enumerate(messages, 1)
@@ -1165,14 +1183,10 @@ def email_inbox(
                 EmailThread.status.not_in({"resolved", "archived"}),
             )
         elif due == "today":
-            tomorrow = now + timedelta(days=1)
+            local_day_start, local_day_end = _lisbon_day_bounds(now)
             query = query.where(
-                EmailThread.resolution_due_at >= now.replace(
-                    hour=0, minute=0, second=0, microsecond=0
-                ),
-                EmailThread.resolution_due_at < tomorrow.replace(
-                    hour=0, minute=0, second=0, microsecond=0
-                ),
+                EmailThread.resolution_due_at >= local_day_start,
+                EmailThread.resolution_due_at < local_day_end,
             )
         elif due == "no_sla":
             query = query.where(EmailThread.resolution_due_at.is_(None))
@@ -1321,8 +1335,8 @@ def email_inbox(
             elif effective_responsible.isdigit(): statement = statement.where(EmailThread.assigned_to_id == int(effective_responsible))
             if effective_due == "overdue": statement = statement.where(EmailThread.resolution_due_at < now, EmailThread.status.not_in({"resolved", "archived"}))
             elif effective_due == "today":
-                tomorrow = now + timedelta(days=1)
-                statement = statement.where(EmailThread.resolution_due_at >= now.replace(hour=0, minute=0, second=0, microsecond=0), EmailThread.resolution_due_at < tomorrow.replace(hour=0, minute=0, second=0, microsecond=0))
+                local_day_start, local_day_end = _lisbon_day_bounds(now)
+                statement = statement.where(EmailThread.resolution_due_at >= local_day_start, EmailThread.resolution_due_at < local_day_end)
             elif effective_due == "no_sla": statement = statement.where(EmailThread.resolution_due_at.is_(None))
             if clean_query:
                 pattern = f"%{clean_query}%"
@@ -1349,6 +1363,34 @@ def email_inbox(
             indicator_base = indicator_base.where(EmailThread.assigned_to_id == user_id)
         if channel:
             indicator_base = indicator_base.where(EmailChannel.code == channel)
+        if responsible == "mine":
+            indicator_base = indicator_base.where(EmailThread.assigned_to_id == user_id)
+        elif responsible == "unassigned":
+            indicator_base = indicator_base.where(
+                EmailThread.assigned_to_id.is_(None),
+                EmailThread.executor_team_id.is_(None),
+            )
+        elif responsible.startswith("team:") and responsible[5:].isdigit():
+            indicator_base = indicator_base.where(
+                EmailThread.executor_team_id == int(responsible[5:])
+            )
+        elif responsible.isdigit():
+            indicator_base = indicator_base.where(
+                EmailThread.assigned_to_id == int(responsible)
+            )
+        if due == "overdue":
+            indicator_base = indicator_base.where(
+                EmailThread.resolution_due_at < now,
+                EmailThread.status.not_in(EMAIL_CLOSED_STATUSES),
+            )
+        elif due == "today":
+            local_day_start, local_day_end = _lisbon_day_bounds(now)
+            indicator_base = indicator_base.where(
+                EmailThread.resolution_due_at >= local_day_start,
+                EmailThread.resolution_due_at < local_day_end,
+            )
+        elif due == "no_sla":
+            indicator_base = indicator_base.where(EmailThread.resolution_due_at.is_(None))
         if clean_query:
             indicator_base = indicator_base.where(or_(*search_terms))
         indicator_rows = indicator_base.subquery()
@@ -2533,6 +2575,7 @@ def email_attachment_preview(request: Request, attachment_id: int):
                 "thread": thread,
                 "reference": reference,
                 "can_preview": _attachment_can_preview(attachment),
+                "is_pdf": _attachment_media_type(attachment) == "application/pdf",
                 "can_alter": bool(
                     permissions.intersection(
                         {"email.triage", "email.manage", "admin.manage"}
@@ -2549,6 +2592,97 @@ def email_attachment_preview(request: Request, attachment_id: int):
                 **_classification_context(),
             },
         )
+
+
+@email_router.get("/v2-clean/email/attachments/{attachment_id}/pdf-preview")
+def email_attachment_pdf_preview(request: Request, attachment_id: int):
+    auth = _auth(request, "email.read", "email.triage", "email.manage", "admin.manage")
+    if not auth:
+        return HTMLResponse("Sem acesso.", status_code=403)
+    user_id, permissions = auth
+    with SessionLocal() as db:
+        attachment = db.get(EmailAttachment, attachment_id)
+        message = db.get(EmailMessage, attachment.message_id) if attachment else None
+        thread = db.get(EmailThread, message.thread_id) if message else None
+        if (
+            not thread
+            or not attachment
+            or _attachment_media_type(attachment) != "application/pdf"
+            or not _can_use_channel(db, user_id, permissions, thread.channel_id, thread=thread)
+        ):
+            return HTMLResponse("PDF não encontrado.", status_code=404)
+        path = Path(attachment.storage_path or "")
+        if attachment.ingest_state != "stored" or not path.is_file():
+            return HTMLResponse(
+                "<h2>Pré-visualização indisponível</h2><p>O ficheiro PDF não está disponível. "
+                "Use Abrir ficheiro ou Descarregar.</p>",
+                status_code=409,
+            )
+        try:
+            import fitz
+
+            with fitz.open(path) as document:
+                page_count = document.page_count
+                if page_count < 1:
+                    raise ValueError("empty_pdf")
+        except Exception:
+            return HTMLResponse(
+                "<h2>Não foi possível mostrar este PDF</h2><p>Use Abrir ficheiro ou "
+                "Descarregar para continuar.</p>",
+                status_code=422,
+            )
+        visible_page_count = min(page_count, 50)
+        pages = "".join(
+            f'<figure><img src="/v2-clean/email/attachments/{attachment.id}/pdf-page/{page}" '
+            f'alt="Página {page} de {page_count}"><figcaption>Página {page} de {page_count}</figcaption></figure>'
+            for page in range(1, visible_page_count + 1)
+        )
+        if page_count > visible_page_count:
+            pages += (
+                f"<p role='status'>Mostradas as primeiras {visible_page_count} de {page_count} páginas. "
+                "Use Abrir ficheiro ou Descarregar para consultar o documento completo.</p>"
+            )
+        return HTMLResponse(
+            "<!doctype html><html><head><meta charset='utf-8'><style>"
+            "body{margin:0;padding:18px;background:#e5e7eb;color:#172033;font:13px Arial,sans-serif}"
+            "figure{max-width:980px;margin:0 auto 18px}img{display:block;width:100%;height:auto;background:#fff;box-shadow:0 2px 12px #0002}"
+            "figcaption{padding:6px;text-align:center}</style></head><body>"
+            f"{pages}</body></html>",
+            headers={"Content-Security-Policy": "default-src 'self'; img-src 'self'; style-src 'unsafe-inline'"},
+        )
+
+
+@email_router.get("/v2-clean/email/attachments/{attachment_id}/pdf-page/{page_number}")
+def email_attachment_pdf_page(request: Request, attachment_id: int, page_number: int):
+    auth = _auth(request, "email.read", "email.triage", "email.manage", "admin.manage")
+    if not auth:
+        return HTMLResponse("Sem acesso.", status_code=403)
+    user_id, permissions = auth
+    with SessionLocal() as db:
+        attachment = db.get(EmailAttachment, attachment_id)
+        message = db.get(EmailMessage, attachment.message_id) if attachment else None
+        thread = db.get(EmailThread, message.thread_id) if message else None
+        if (
+            not thread
+            or not attachment
+            or _attachment_media_type(attachment) != "application/pdf"
+            or not _can_use_channel(db, user_id, permissions, thread.channel_id, thread=thread)
+        ):
+            return HTMLResponse("PDF não encontrado.", status_code=404)
+        path = Path(attachment.storage_path or "")
+        if attachment.ingest_state != "stored" or not path.is_file():
+            return HTMLResponse("Ficheiro indisponível.", status_code=404)
+        try:
+            import fitz
+
+            with fitz.open(path) as document:
+                if page_number < 1 or page_number > document.page_count:
+                    return HTMLResponse("Página não encontrada.", status_code=404)
+                pixmap = document.load_page(page_number - 1).get_pixmap(matrix=fitz.Matrix(1.5, 1.5), alpha=False)
+                content = pixmap.tobytes("png")
+        except Exception:
+            return HTMLResponse("Não foi possível renderizar esta página.", status_code=422)
+        return Response(content=content, media_type="image/png")
 
 
 @email_router.get("/v2-clean/email/attachments/{attachment_id}/file")
@@ -2850,6 +2984,7 @@ def email_reply(
     recipient_email: str = Form(""),
     reply_mode: str = Form("sender"),
     reply_source_message_id: int | None = Form(None),
+    draft_message_id: int | None = Form(None),
     recipients: str = Form(""),
     cc: str = Form(""),
     bcc: str = Form(""),
@@ -3030,24 +3165,35 @@ def email_reply(
             "approval": "pending_approval",
             "send": "approved",
         }.get(submit, "draft")
-        message = EmailMessage(
-            thread_id=thread.id,
-            direction="outbound",
-            state=state,
-            sender=requested_sender,
-            recipients_json=_recipient_json(to_list),
-            cc_json=_recipient_json(cc_list),
-            bcc_json=_recipient_json(bcc_list),
-            subject=clean_subject[:500],
-            text_body=clean_body,
-            html_body=clean_html,
-            compose_mode=mode,
-            template_id=template.id if template else None,
-            template_version=template.version if template else None,
-            template_snapshot_json=email_template_snapshot(
-                template, rendered_subject=clean_subject, rendered_body=clean_body
-            ),
-            created_by_id=user_id,
+        message = db.get(EmailMessage, draft_message_id) if draft_message_id else None
+        if message and (
+            message.thread_id != thread.id
+            or message.direction != "outbound"
+            or message.state != "draft"
+        ):
+            return RedirectResponse(
+                f"/v2-clean/email/{thread_id}?error=invalid_draft", status_code=303
+            )
+        if not message:
+            message = EmailMessage(thread_id=thread.id, direction="outbound", created_by_id=user_id)
+        else:
+            message.content_revision += 1
+            message.approved_by_id = None
+            message.approved_at = None
+            message.approved_revision = None
+        message.state = state
+        message.sender = requested_sender
+        message.recipients_json = _recipient_json(to_list)
+        message.cc_json = _recipient_json(cc_list)
+        message.bcc_json = _recipient_json(bcc_list)
+        message.subject = clean_subject[:500]
+        message.text_body = clean_body
+        message.html_body = clean_html
+        message.compose_mode = mode
+        message.template_id = template.id if template else None
+        message.template_version = template.version if template else None
+        message.template_snapshot_json = email_template_snapshot(
+            template, rendered_subject=clean_subject, rendered_body=clean_body
         )
         message.approval_fingerprint = _message_fingerprint(message)
         db.add(message)
@@ -3064,7 +3210,10 @@ def email_reply(
                 f"/v2-clean/email/{thread_id}?error=attachment_too_large",
                 status_code=303,
             )
-        thread.status = "waiting_approval" if state == "pending_approval" else "in_progress"
+        if state == "pending_approval":
+            thread.status = "waiting_approval"
+        elif submit == "send":
+            thread.status = "in_progress"
         if submit == "send":
             prior_messages = db.scalars(
                 select(EmailMessage)

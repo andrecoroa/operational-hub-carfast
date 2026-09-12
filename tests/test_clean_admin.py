@@ -160,6 +160,7 @@ def test_work_classification_uses_compact_hierarchy_table_and_editors(authentica
     assert 'data-work-edit-parent' in response.text
     assert "Código estável (não editável)" in response.text
     assert "Administração da hierarquia" in response.text
+    assert 'class="clean-work-admin-nav"' in response.text
     assert 'data-admin-filter-columns="Categoria,Função,Utilizador/equipa"' in response.text
 
 

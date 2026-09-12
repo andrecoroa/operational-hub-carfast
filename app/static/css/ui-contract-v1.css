@@ -432,7 +432,7 @@
 .ui-contract-v1 .clean-admin-master a { min-height:32px; padding:7px 9px; border-radius:6px; color:var(--ui-color-text); text-decoration:none; font-size:12px; font-weight:700; white-space:nowrap; }
 .ui-contract-v1 .clean-admin-master a:is(:hover,.active) { background:var(--ui-color-surface-muted); color:var(--ui-color-primary); }
 .ui-contract-v1 .clean-admin-master small { color:var(--ui-color-text-muted); line-height:1.35; }
-.ui-contract-v1 .clean-admin-detail { display:grid; min-width:0; min-height:0; height:100%; max-height:none; padding-bottom:16px; overflow-x:hidden; overflow-y:auto; scrollbar-gutter:stable; gap:12px; align-content:start; }
+.ui-contract-v1 .clean-admin-detail { display:grid; min-width:0; min-height:0; height:100%; max-height:none; padding-bottom:16px; overflow:auto; scrollbar-gutter:stable; gap:12px; align-content:start; }
 .ui-contract-v1 .clean-admin-detail > .clean-card-wide { width:100%; min-width:0; }
 .ui-contract-v1 .clean-admin-overview-strip { grid-template-columns:repeat(3,minmax(0,1fr)); }
 

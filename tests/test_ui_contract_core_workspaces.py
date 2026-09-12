@@ -34,8 +34,7 @@ def test_admin_uses_master_detail_system_context() -> None:
     assert ".clean-admin-master-detail { display:grid;" in CSS
     assert "height:100%; max-height:none; overflow:hidden" in CSS
     assert ".clean-admin-detail { display:grid;" in CSS
-    assert "overflow-x:hidden; overflow-y:auto" in CSS
-    assert "padding-bottom:16px; overflow-x:hidden; overflow-y:auto; scrollbar-gutter:stable" in CSS
+    assert "padding-bottom:16px; overflow:auto; scrollbar-gutter:stable" in CSS
 
 
 def test_dashboard_and_partner_density_are_shared_not_route_local() -> None:

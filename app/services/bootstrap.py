@@ -478,17 +478,23 @@ def seed_process_model_library(db: Session) -> None:
             ProcessModelVersion.version == 1,
         )
     )
+    snapshot, digest = canonical_snapshot(BATCH_PROCESS_DEFINITION)
     if batch_version is None:
-        snapshot, digest = canonical_snapshot(BATCH_PROCESS_DEFINITION)
         db.add(
             ProcessModelVersion(
                 model_id=batch_model.id,
                 version=1,
-                status="draft",
+                status="published",
                 definition_json=snapshot,
                 definition_digest=digest,
+                published_at=datetime.now(timezone.utc),
             )
         )
+    elif batch_version.status != "published":
+        batch_version.status = "published"
+        batch_version.definition_json = snapshot
+        batch_version.definition_digest = digest
+        batch_version.published_at = datetime.now(timezone.utc)
 
 
 TASK_TEMPLATE_LIBRARY = (

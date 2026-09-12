@@ -272,6 +272,7 @@ from app.services.photo_capture import required_photo_blockers
 from app.services.process_batches import (
     add_batch,
     add_row_comment,
+    compose_description,
     create_batch_process,
     create_task_for_rows,
     mirror_task_comment_to_rows,
@@ -4824,6 +4825,51 @@ async def clean_process_batch_map(request: Request, process_id: int):
     if "title" not in mapping.values() or len(mapping.values()) != len(set(mapping.values())):
         return RedirectResponse(f"/v2-clean/processes/batches/{process_id}?error=invalid_mapping", status_code=303)
     parsed_rows = [raw for _, _, _, _, raw in iter_task_import_rows(pending["path"])]
+    pending["mapping"] = mapping
+    request.session["process_batch_pending"] = pending
+    title_column = next(column for column, target in mapping.items() if target == "title")
+    preview_rows = [
+        {
+            "row_number": index,
+            "title": str(raw.get(title_column) or "").strip()[:200],
+            "description": compose_description(raw, mapping) or "",
+            "source": raw,
+        }
+        for index, raw in enumerate(parsed_rows, start=2)
+    ]
+    with SessionLocal() as db:
+        access = _batch_process_access(db, request, write=True)
+        process = db.get(ProcessInstance, process_id)
+        if not access or not process:
+            return RedirectResponse("/v2-clean/processes?error=forbidden", status_code=303)
+        return templates.TemplateResponse(
+            request,
+            "clean_process_batch_preview.html",
+            {
+                "process": process,
+                "original_name": pending["original_name"],
+                "preview_rows": preview_rows,
+                "foundation_ui_enabled": settings.visual_foundation_enabled,
+            },
+        )
+
+
+@web_router.post("/v2-clean/processes/batches/{process_id}/confirm", response_class=HTMLResponse)
+async def clean_process_batch_confirm(request: Request, process_id: int):
+    pending = request.session.get("process_batch_pending")
+    if not pending or pending.get("process_id") != process_id or not pending.get("mapping"):
+        return RedirectResponse(f"/v2-clean/processes/batches/{process_id}?error=upload_expired", status_code=303)
+    form = await request.form()
+    parsed_rows = [raw for _, _, _, _, raw in iter_task_import_rows(pending["path"])]
+    titles = [str(value).strip() for value in form.getlist("row_title")]
+    descriptions = [str(value).strip() for value in form.getlist("row_description")]
+    if len(titles) != len(parsed_rows) or len(descriptions) != len(parsed_rows) or any(not title for title in titles):
+        return RedirectResponse(f"/v2-clean/processes/batches/{process_id}?error=invalid_batch", status_code=303)
+    custom_columns: list[tuple[int, str]] = []
+    for column_index, value in enumerate(form.getlist("custom_column_name")):
+        name = " ".join(str(value).split())[:80]
+        if name and name.casefold() not in {item[1].casefold() for item in custom_columns}:
+            custom_columns.append((column_index, name))
     with SessionLocal() as db:
         access = _batch_process_access(db, request, write=True)
         process = db.get(ProcessInstance, process_id)
@@ -4834,12 +4880,35 @@ async def clean_process_batch_map(request: Request, process_id: int):
                 db,
                 process=process,
                 name=pending["original_name"],
-                mapping=mapping,
+                mapping=pending["mapping"],
                 rows=parsed_rows,
                 actor_id=access[0],
                 import_file_id=pending.get("import_file_id"),
             )
             created_batch_id = batch.id
+            db.flush()
+            batch_rows = list(
+                db.scalars(
+                    select(ProcessBatchRow)
+                    .where(ProcessBatchRow.batch_id == batch.id)
+                    .order_by(ProcessBatchRow.row_number)
+                )
+            )
+            for row_index, batch_row in enumerate(batch_rows):
+                batch_row.title = titles[row_index][:200]
+                batch_row.description = descriptions[row_index] or None
+                custom_fields: dict[str, str] = {}
+                for column_index, name in custom_columns:
+                    values = form.getlist(f"custom_{column_index}")
+                    value = str(values[row_index]).strip() if row_index < len(values) else ""
+                    if value:
+                        custom_fields[name] = value
+                if custom_fields:
+                    batch_row.source_json = {**(batch_row.source_json or {}), **custom_fields}
+                    batch_row.treatment_json = {
+                        **(batch_row.treatment_json or {}),
+                        "custom_fields": custom_fields,
+                    }
             import_batch = db.get(ImportBatch, pending.get("import_batch_id"))
             if import_batch:
                 for row_number, raw in enumerate(parsed_rows, start=2):
@@ -4878,6 +4947,7 @@ def clean_process_batch_create_task(
     title: str = Form(...),
     assigned_to_id: str = Form(""),
     due_on: str = Form(""),
+    priority: str = Form("normal"),
 ):
     with SessionLocal() as db:
         access = _batch_process_access(db, request, write=True)
@@ -4892,6 +4962,7 @@ def clean_process_batch_create_task(
                 actor_id=access[0],
                 assigned_to_id=parse_optional_int(assigned_to_id),
                 due_on=parse_optional_date(due_on),
+                priority=priority if priority in {"low", "normal", "high", "urgent"} else "normal",
             )
             created_task_id = task.id
             db.commit()
@@ -4913,13 +4984,15 @@ def clean_process_batch_update_row(
     status: str = Form(...),
     treatment: str = Form(""),
     comment: str = Form(""),
+    title: str = Form(...),
+    description: str = Form(""),
 ):
     with SessionLocal() as db:
         access = _batch_process_access(db, request, write=True)
         if not access:
             return RedirectResponse("/v2-clean/processes?error=forbidden", status_code=303)
         try:
-            update_batch_row(db, row_id=row_id, expected_revision=revision, actor_id=access[0], status=status, treatment={"notes": treatment.strip()} if treatment.strip() else {})
+            update_batch_row(db, row_id=row_id, expected_revision=revision, actor_id=access[0], status=status, treatment={"notes": treatment.strip()}, title=title, description=description)
             if comment.strip():
                 add_row_comment(db, row_id=row_id, actor_id=access[0], comment=comment)
             db.commit()

@@ -136,13 +136,20 @@ def add_batch(
         title = str(source.get(title_column) or "").strip() if title_column else ""
         description = compose_description(source, mapping)
         status = "ready" if title else "error"
+        mapped_fields: dict[str, str] = {}
+        for source_column, target in mapping.items():
+            if target not in {"responsible", "due_on", "priority"}:
+                continue
+            value = str(source.get(source_column) or "").strip()
+            if value:
+                mapped_fields[target] = value
         db.add(
             ProcessBatchRow(
                 batch_id=batch.id,
                 row_number=row_number,
                 row_key=(str(source.get(key_column) or "").strip() or None) if key_column else None,
                 source_json=source,
-                treatment_json={},
+                treatment_json={"mapped_fields": mapped_fields} if mapped_fields else {},
                 title=title[:200] or f"Linha {row_number}",
                 description=description,
                 status=status,
@@ -240,6 +247,8 @@ def update_batch_row(
     actor_id: int,
     status: str,
     treatment: dict[str, Any] | None = None,
+    title: str | None = None,
+    description: str | None = None,
 ) -> ProcessBatchRow:
     row = db.scalar(select(ProcessBatchRow).where(ProcessBatchRow.id == row_id).with_for_update())
     if not row or row.revision != expected_revision:
@@ -250,7 +259,14 @@ def update_batch_row(
     if status not in {"ready", "in_progress", "completed", "excluded", "error"}:
         raise WorkflowError("Invalid batch row status")
     row.status = status
-    row.treatment_json = treatment or row.treatment_json or {}
+    if title is not None:
+        clean_title = " ".join(title.split())[:200]
+        if not clean_title:
+            raise WorkflowError("Batch row title is required")
+        row.title = clean_title
+    if description is not None:
+        row.description = description.strip() or None
+    row.treatment_json = {**(row.treatment_json or {}), **(treatment or {})}
     row.revision += 1
     db.flush()
     link = db.scalar(select(ProcessBatchTaskRow).where(ProcessBatchTaskRow.batch_row_id == row.id))

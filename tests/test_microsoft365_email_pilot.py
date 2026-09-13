@@ -208,6 +208,9 @@ def test_authorization_url_uses_pkce_and_required_delegated_scopes():
     assert query["code_challenge_method"] == ["S256"]
     assert query["code_challenge"] == [challenge]
     assert set(query["scope"][0].split()) == set(GRAPH_DELEGATED_SCOPES)
+    assert {"MailboxSettings.Read", "MailboxSettings.ReadWrite"} <= set(
+        query["scope"][0].split()
+    )
 
 
 def _configured_microsoft365_transport(db_session) -> EmailChannelTransport:

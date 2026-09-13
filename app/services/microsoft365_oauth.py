@@ -29,6 +29,8 @@ GRAPH_DELEGATED_SCOPES = (
     "User.Read",
     "Mail.ReadWrite.Shared",
     "Mail.Send.Shared",
+    "MailboxSettings.Read",
+    "MailboxSettings.ReadWrite",
 )
 OAUTH_ATTEMPT_TTL = timedelta(minutes=10)
 

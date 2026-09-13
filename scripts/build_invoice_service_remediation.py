@@ -46,6 +46,42 @@ def sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def build_import_row(
+    document: dict[str, str], service: dict[str, Any], document_link: str
+) -> dict[str, Any]:
+    """Build a row that can be consumed directly by the guarded importer."""
+
+    return {
+        "stable_key": service["stable_key"],
+        "vehicle_id": int(document["vehicle_id_associated"]),
+        "plate": document.get("vehicle_plate_associated") or document.get("plate_extracted") or "",
+        "vin": document.get("vehicle_vin_associated") or document.get("vin_extracted") or document.get("vin_source") or "",
+        "document_id": int(document["document_id"]),
+        "document_number": document.get("document_number_extracted") or document.get("document_number_record") or "",
+        "service_date": document.get("document_date_extracted") or document.get("document_date_record") or "",
+        "odometer_km": document.get("km_source") or "",
+        "category": service["service_code"].split(".", 1)[0],
+        "service_code": service["service_code"],
+        "subcategory": service["subcategory"],
+        "axle": service["axle"],
+        "axle_source": service["axle_source"],
+        "axle_evidence": service["axle_evidence"],
+        "source_line_ids": service["source_line_ids"],
+        "service_text": service["service_text"],
+        "parts": service["parts"],
+        "labor": service["labor"],
+        "amount": decimal(service["amount"]),
+        "status": "pending_validation",
+        "confidence": decimal(service["confidence"]),
+        "evidence": service["confidence_reason"],
+        "document_projection": service.get("document_projection", ""),
+        "invoice_link": document_link,
+        "approve": "",
+        "correct": "",
+        "exclude": "",
+    }
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Build a read-only invoice-service remediation dry-run.")
     parser.add_argument("--source-dir", type=Path, required=True)
@@ -133,36 +169,11 @@ def main() -> None:
             f"?classified=1&main_group=invoices&open_item=document%3A{document_id}"
         )
         for service in result["services"]:
-            generated.append(
-                {
-                    "stable_key": service["stable_key"],
-                    "vehicle_id": int(document["vehicle_id_associated"]),
-                    "plate": document.get("vehicle_plate_associated") or document.get("plate_extracted") or "",
-                    "vin": document.get("vehicle_vin_associated") or document.get("vin_extracted") or document.get("vin_source") or "",
-                    "document_id": int(document_id),
-                    "document_number": document.get("document_number_extracted") or document.get("document_number_record") or "",
-                    "document_date": document.get("document_date_extracted") or document.get("document_date_record") or "",
-                    "odometer_km": document.get("km_source") or "",
-                    "category": service["service_code"].split(".", 1)[0],
-                    "service_code": service["service_code"],
-                    "subcategory": service["subcategory"],
-                    "axle": service["axle"],
-                    "axle_source": service["axle_source"],
-                    "axle_evidence": service["axle_evidence"],
-                    "source_line_ids": service["source_line_ids"],
-                    "source_descriptions": service["service_text"],
-                    "parts": service["parts"],
-                    "labor": service["labor"],
-                    "service_amount": decimal(service["amount"]),
-                    "confidence": decimal(service["confidence"]),
-                    "confidence_reason": service["confidence_reason"],
-                    "document_projection": result["document_projection"],
-                    "invoice_link": document_link,
-                    "approve": "",
-                    "correct": "",
-                    "exclude": "",
-                }
-            )
+            generated.append(build_import_row(
+                document,
+                {**service, "document_projection": result["document_projection"]},
+                document_link,
+            ))
         for line in result["unassigned_lines"]:
             if line["role"] != "ancillary" and decimal(line["amount"]) != 0:
                 missing_rows.append(
@@ -185,7 +196,24 @@ def main() -> None:
                 "service_total": decimal(reconciliation["service_total"]),
                 "excluded_or_unassigned_total": decimal(reconciliation["excluded_or_unassigned_total"]),
                 "invoice_minus_source_lines": decimal(reconciliation["invoice_minus_source_lines"]),
+                "expected_total_from_lines": decimal(
+                    reconciliation["expected_total_from_lines"]
+                ),
+                "invoice_minus_expected_lines": decimal(
+                    reconciliation["invoice_minus_expected_lines"]
+                ),
+                "net_subtotal": reconciliation["net_subtotal"] or "",
+                "gross_before_discount": reconciliation["gross_before_discount"] or "",
+                "discount": reconciliation["discount"] or "",
+                "taxes": reconciliation["taxes"] or "",
+                "eco_charge": reconciliation["eco_charge"] or "",
+                "other_charges": reconciliation["other_charges"] or "",
+                "reported_misc_total": reconciliation["reported_misc_total"] or "",
+                "explicit_charges_total": reconciliation["explicit_charges_total"],
+                "reconciliation_method": reconciliation["method"],
                 "allocation_check": decimal(reconciliation["service_plus_excluded_minus_source_lines"]),
+                "reconciliation_status": reconciliation["status"],
+                "classification_blockers": "|".join(result["classification_blockers"]),
                 "document_projection": result["document_projection"],
             }
         )
@@ -202,7 +230,7 @@ def main() -> None:
             "present": any(row["document_id"] == document_id for row in generated),
             "service_count": sum(row["document_id"] == document_id for row in generated),
             "codes": sorted({row["service_code"] for row in generated if row["document_id"] == document_id}),
-            "allocated_amount": str(sum((row["service_amount"] for row in generated if row["document_id"] == document_id), Decimal("0"))),
+            "allocated_amount": str(sum((row["amount"] for row in generated if row["document_id"] == document_id), Decimal("0"))),
         }
         for document_id in sorted(ACCEPTANCE_DOCUMENTS)
     }
@@ -240,7 +268,10 @@ def main() -> None:
                     "duplicate_stable_keys": duplicate_keys,
                     "unassigned_relevant_lines": len(missing_rows),
                     "document_projections": dict(projections),
-                    "service_amount_total": str(sum((row["service_amount"] for row in generated), Decimal("0"))),
+                    "reconciliation_statuses": dict(
+                        Counter(row["reconciliation_status"] for row in reconciliations)
+                    ),
+                    "service_amount_total": str(sum((row["amount"] for row in generated), Decimal("0"))),
                     "invoice_total": str(sum((row["invoice_total"] for row in reconciliations), Decimal("0"))),
                     "source_line_total": str(sum((row["source_line_total"] for row in reconciliations), Decimal("0"))),
                     "article_map_candidates_repeated": sum(
@@ -249,7 +280,7 @@ def main() -> None:
                     "article_map_conflicts": sum(row["status"] == "conflict" for row in article_candidates),
                 },
                 "acceptance_documents": acceptance,
-                "services": [{**row, "service_amount": str(row["service_amount"]), "confidence": str(row["confidence"])} for row in generated],
+                "services": [{**row, "amount": str(row["amount"]), "confidence": str(row["confidence"])} for row in generated],
                 "reconciliations": [{**row, **{key: str(value) for key, value in row.items() if isinstance(value, Decimal)}} for row in reconciliations],
                 "frequencies": frequency_rows,
                 "missing_lines": [{**row, "amount": str(row["amount"])} for row in missing_rows],

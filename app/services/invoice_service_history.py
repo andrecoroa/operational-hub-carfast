@@ -243,7 +243,10 @@ def _sync_document_projection(db: Session, event: InvoiceServiceEvent) -> None:
             VehicleDocumentRecordTag.source_kind == source_kind,
         )
     )
-    if not event.active or event.status in {"rejected", "blocked"}:
+    # Imported proposals remain review evidence until a human explicitly accepts
+    # them. Projecting pending/automatic events would make the document appear
+    # classified before the validation decision has been recorded.
+    if not event.active or event.status != "validated":
         return
     category, value, free_text = _document_projection(event)
     db.add(

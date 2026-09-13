@@ -184,6 +184,79 @@ def test_document_projection_requires_all_relevant_lines_classified():
     assert result["unassigned_lines"][0]["source_line_id"] == "10:2"
 
 
+def test_document_projection_requires_invoice_total_reconciliation():
+    result = build_document_service_proposals(
+        document("100,00"),
+        [line(1, "Calços travão FRT", "80,00")],
+    )
+    assert result["document_projection"] == "services_review_required"
+    assert result["reconciliation"]["status"] == "divergent"
+    assert result["classification_blockers"] == ["unexplained_invoice_total_mismatch"]
+
+
+def test_document_projection_can_classify_only_when_reconciled():
+    result = build_document_service_proposals(
+        document("80,00"),
+        [line(1, "Calços travão FRT", "80,00")],
+    )
+    assert result["document_projection"] == "services_classified"
+    assert result["reconciliation"]["status"] == "reconciled"
+    assert result["classification_blockers"] == []
+
+
+def test_reconciliation_accepts_only_explicit_tax_and_charges():
+    result = build_document_service_proposals(
+        {
+            **document("125,46"),
+            "raw_extraction_json": {
+                "subtotal_without_vat": "102,00",
+                "vat_amount": "23,46",
+                "ecolub_total": "2,00",
+                "discount_without_vat": "5,00",
+                "gross_without_vat": "107,00",
+            },
+        },
+        [line(1, "Calços travão FRT", "100,00")],
+    )
+    reconciliation = result["reconciliation"]
+    assert reconciliation["status"] == "reconciled"
+    assert reconciliation["method"] == "source_lines_plus_explicit_tax_and_charges"
+    assert reconciliation["taxes"] == "23.46"
+    assert reconciliation["explicit_charges_total"] == "2.00"
+    assert reconciliation["discount"] == "5.00"
+    assert reconciliation["subtotal_minus_gross_less_discount"] == "0.00"
+
+
+def test_reconciled_document_total_does_not_hide_incomplete_source_lines():
+    result = build_document_service_proposals(
+        {
+            **document("123,00"),
+            "raw_extraction_json": {
+                "subtotal_without_vat": "100,00",
+                "vat_amount": "23,00",
+            },
+        },
+        [line(1, "Calços travão FRT", "80,00")],
+    )
+    assert result["reconciliation"]["status"] == "lines_incomplete"
+    assert result["document_projection"] == "services_review_required"
+    assert "source_lines_incomplete" in result["classification_blockers"]
+
+
+def test_reported_misc_total_is_audited_but_not_assumed_to_be_a_charge():
+    result = build_document_service_proposals(
+        {
+            **document("110,00"),
+            "raw_extraction_json": {"misc_total": "10,00"},
+        },
+        [line(1, "Calços travão FRT", "100,00")],
+    )
+    reconciliation = result["reconciliation"]
+    assert reconciliation["reported_misc_total"] == "10.00"
+    assert reconciliation["explicit_charges_total"] == "0.00"
+    assert reconciliation["status"] == "divergent"
+
+
 def test_acceptance_document_688_splits_maintenance_diagnostic_and_brakes():
     result = build_document_service_proposals(
         {"run_id": "acceptance", "document_id": "688", "total_extracted": "469,04"},

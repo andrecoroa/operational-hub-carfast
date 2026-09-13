@@ -130,7 +130,7 @@ def test_logical_rollback_preserves_event_and_evidence(db_session):
     assert len(list(db_session.scalars(select(InvoiceServiceEventRevision)))) == 2
 
 
-def test_apply_projects_service_to_document_and_both_views(db_session):
+def test_pending_import_waits_for_human_validation_before_document_projection(db_session):
     vehicle, document = _document(db_session, "projection")
     content = (
         "document_id;stable_key;data_servico;km;servico;service_code;eixo;valor;estado;source_line_ids\n"
@@ -142,6 +142,17 @@ def test_apply_projects_service_to_document_and_both_views(db_session):
     batch = apply_invoice_service_import(db_session, preview, actor_id=None)
     db_session.commit()
 
+    assert db_session.scalar(select(VehicleDocumentRecordTag)) is None
+    event = db_session.scalar(select(InvoiceServiceEvent))
+    validate_document_invoice_service_events(
+        db_session,
+        document_id=document.id,
+        vehicle_id=vehicle.id,
+        decisions=[{"event_id": event.id, "decision": "accept", "reason": ""}],
+        actor_id=None,
+    )
+    db_session.commit()
+
     tag = db_session.scalar(select(VehicleDocumentRecordTag))
     assert (tag.document_id, tag.vehicle_id, tag.category, tag.value) == (
         document.id,
@@ -149,7 +160,6 @@ def test_apply_projects_service_to_document_and_both_views(db_session):
         "pads",
         "front",
     )
-    event = db_session.scalar(select(InvoiceServiceEvent))
     assert event.evidence_json["import_metadata"]["source_line_ids"] == [
         f"{document.id}:1",
         f"{document.id}:2",
@@ -160,10 +170,11 @@ def test_apply_projects_service_to_document_and_both_views(db_session):
     assert row["invoice_service_events"][0]["type"] == "BRAKE.PAD"
     assert row["invoice_service_total"] == event.amount
 
-    rollback_invoice_service_batch(db_session, batch.id, actor_id=None)
-    db_session.commit()
-    assert list(db_session.scalars(select(VehicleDocumentRecordTag))) == []
-    assert event.active is False
+    with pytest.raises(InvoiceServiceImportError, match="alterado após o lote"):
+        rollback_invoice_service_batch(db_session, batch.id, actor_id=None)
+    db_session.rollback()
+    assert db_session.scalar(select(VehicleDocumentRecordTag)) is not None
+    assert event.active is True
 
 
 def test_event_decision_keeps_document_projection_in_sync(db_session):

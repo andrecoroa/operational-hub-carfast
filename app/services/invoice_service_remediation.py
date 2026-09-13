@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+import json
 import re
 import unicodedata
 from typing import Any, Iterable
@@ -25,6 +26,144 @@ def _money(value: Any) -> Decimal:
         return Decimal(text).quantize(TWO_PLACES, rounding=ROUND_HALF_UP)
     except InvalidOperation:
         return Decimal("0")
+
+
+def _optional_money(value: Any) -> Decimal | None:
+    if value in (None, ""):
+        return None
+    text = str(value).strip().replace(" ", "").replace(",", ".")
+    if not text:
+        return None
+    try:
+        return Decimal(text).quantize(TWO_PLACES, rounding=ROUND_HALF_UP)
+    except InvalidOperation:
+        return None
+
+
+def _financial_payload(document: dict[str, Any]) -> dict[str, Any]:
+    payload = document.get("raw_extraction_json")
+    if isinstance(payload, dict):
+        return payload
+    if not payload:
+        return {}
+    try:
+        parsed = json.loads(str(payload))
+    except (TypeError, ValueError):
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
+
+
+def _first_money(payload: dict[str, Any], *keys: str) -> Decimal | None:
+    for key in keys:
+        value = _optional_money(payload.get(key))
+        if value is not None:
+            return value
+    return None
+
+
+def reconcile_document_amounts(
+    document: dict[str, Any],
+    *,
+    source_line_total: Decimal,
+    service_total: Decimal,
+    excluded_total: Decimal,
+) -> dict[str, Any]:
+    """Reconcile only explicit structured amounts; never infer tax or charges."""
+
+    payload = _financial_payload(document)
+    invoice_total = _money(
+        document.get("total_extracted")
+        or document.get("total_source")
+        or payload.get("total_with_vat")
+    )
+    net_subtotal = _first_money(payload, "subtotal_without_vat", "taxable_base")
+    gross_before_discount = _first_money(payload, "gross_without_vat")
+    discount = _first_money(payload, "discount_without_vat")
+    taxes = _first_money(payload, "vat_amount", "taxes_total")
+    eco_charge = _first_money(payload, "ecolub_total", "ecovalor_total", "reee_total")
+    other_charges = _first_money(payload, "other_charges_total", "charges_total")
+    reported_misc_total = _first_money(payload, "misc_total")
+    explicit_charges = sum(
+        (value for value in (eco_charge, other_charges) if value is not None),
+        Decimal("0"),
+    ).quantize(TWO_PLACES)
+    explicit_taxes = taxes or Decimal("0")
+    expected_from_lines = (source_line_total + explicit_charges + explicit_taxes).quantize(
+        TWO_PLACES
+    )
+    line_difference = (invoice_total - expected_from_lines).quantize(TWO_PLACES)
+    subtotal_difference = (
+        (net_subtotal - source_line_total - explicit_charges).quantize(TWO_PLACES)
+        if net_subtotal is not None
+        else None
+    )
+    invoice_from_subtotal_difference = (
+        (invoice_total - net_subtotal - explicit_taxes).quantize(TWO_PLACES)
+        if net_subtotal is not None
+        else None
+    )
+    discount_difference = (
+        (net_subtotal - (gross_before_discount - discount)).quantize(TWO_PLACES)
+        if net_subtotal is not None
+        and gross_before_discount is not None
+        and discount is not None
+        else None
+    )
+
+    if invoice_total == source_line_total:
+        status, method = "reconciled", "invoice_equals_source_lines"
+    elif (taxes is not None or explicit_charges) and line_difference == 0:
+        status, method = "reconciled", "source_lines_plus_explicit_tax_and_charges"
+    elif (
+        net_subtotal is not None
+        and taxes is not None
+        and invoice_from_subtotal_difference == 0
+        and subtotal_difference != 0
+    ):
+        status, method = "lines_incomplete", "subtotal_plus_explicit_tax"
+    else:
+        status, method = "divergent", "unexplained"
+
+    return {
+        "status": status,
+        "method": method,
+        "invoice_total": str(invoice_total),
+        "source_line_total": str(source_line_total),
+        "service_total": str(service_total),
+        "excluded_or_unassigned_total": str(excluded_total),
+        "net_subtotal": str(net_subtotal) if net_subtotal is not None else None,
+        "gross_before_discount": (
+            str(gross_before_discount) if gross_before_discount is not None else None
+        ),
+        "discount": str(discount) if discount is not None else None,
+        "taxes": str(taxes) if taxes is not None else None,
+        "eco_charge": str(eco_charge) if eco_charge is not None else None,
+        "other_charges": str(other_charges) if other_charges is not None else None,
+        "reported_misc_total": (
+            str(reported_misc_total) if reported_misc_total is not None else None
+        ),
+        "explicit_charges_total": str(explicit_charges),
+        "expected_total_from_lines": str(expected_from_lines),
+        "invoice_minus_source_lines": str(
+            (invoice_total - source_line_total).quantize(TWO_PLACES)
+        ),
+        "invoice_minus_expected_lines": str(line_difference),
+        "subtotal_minus_lines_and_charges": (
+            str(subtotal_difference) if subtotal_difference is not None else None
+        ),
+        "invoice_minus_subtotal_and_tax": (
+            str(invoice_from_subtotal_difference)
+            if invoice_from_subtotal_difference is not None
+            else None
+        ),
+        "subtotal_minus_gross_less_discount": (
+            str(discount_difference) if discount_difference is not None else None
+        ),
+        "discount_treatment": "audit_only_lines_and_subtotal_are_net",
+        "service_plus_excluded_minus_source_lines": str(
+            (service_total + excluded_total - source_line_total).quantize(TWO_PLACES)
+        ),
+    }
 
 
 def _contains(text: str, *terms: str) -> bool:
@@ -375,24 +514,34 @@ def build_document_service_proposals(
     source_total = sum((line.amount for line in lines), Decimal("0")).quantize(TWO_PLACES)
     service_total = sum((_money(item["amount"]) for item in proposals), Decimal("0")).quantize(TWO_PLACES)
     excluded_total = sum((line.amount for line in unassigned_lines), Decimal("0")).quantize(TWO_PLACES)
-    invoice_total = _money(document.get("total_extracted") or document.get("total_source"))
-    residual = (invoice_total - source_total).quantize(TWO_PLACES)
     relevant_unassigned = [line for line in unassigned_lines if line.role != "ancillary" and line.amount != 0]
-    projection = "services_classified" if proposals and not relevant_unassigned else "services_review_required"
+    reconciliation = reconcile_document_amounts(
+        document,
+        source_line_total=source_total,
+        service_total=service_total,
+        excluded_total=excluded_total,
+    )
+    reconciled = reconciliation["status"] == "reconciled"
+    projection = (
+        "services_classified"
+        if proposals and not relevant_unassigned and reconciled
+        else "services_review_required"
+    )
+    blockers = []
+    if relevant_unassigned:
+        blockers.append("relevant_lines_unassigned")
+    if reconciliation["status"] == "lines_incomplete":
+        blockers.append("source_lines_incomplete")
+    elif not reconciled:
+        blockers.append("unexplained_invoice_total_mismatch")
+    if not proposals:
+        blockers.append("no_service_proposal")
     return {
         "schema": REMEDIATION_SCHEMA,
         "document_id": int(document["document_id"]),
         "document_projection": projection,
+        "classification_blockers": blockers,
         "services": proposals,
         "unassigned_lines": [line.as_dict() for line in unassigned_lines],
-        "reconciliation": {
-            "invoice_total": str(invoice_total),
-            "source_line_total": str(source_total),
-            "service_total": str(service_total),
-            "excluded_or_unassigned_total": str(excluded_total),
-            "invoice_minus_source_lines": str(residual),
-            "service_plus_excluded_minus_source_lines": str(
-                (service_total + excluded_total - source_total).quantize(TWO_PLACES)
-            ),
-        },
+        "reconciliation": reconciliation,
     }

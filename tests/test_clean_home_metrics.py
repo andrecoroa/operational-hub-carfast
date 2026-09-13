@@ -11,7 +11,8 @@ def test_clean_home_uses_live_operational_metrics():
     home_source = source[start:end]
 
     assert 'WorkshopPhasedProcessAlert.status == "open"' in home_source
-    assert "task_visibility_filter" in home_source
+    assert "user_accessible_task_type_codes" in home_source
+    assert "Task.task_type.in_(tuple(accessible_task_types))" in home_source
     assert "Task.closed_at.is_(None)" in home_source
     assert 'VehicleHistoryAudit.status != "closed"' in home_source
     assert '"tasks": area_cards[0]["open"]' not in home_source

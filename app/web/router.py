@@ -4813,6 +4813,33 @@ def clean_process_batch_start(
     )
 
 
+def _format_process_batch_description(value: str | None) -> str:
+    parts = [part.strip() for part in re.split(r"[\r\n]+", value or "") if part.strip()]
+    rendered: list[str] = []
+    detail_number = 0
+    for index, part in enumerate(parts):
+        date_match = re.fullmatch(r"(\d{4})-(\d{2})-(\d{2})T00:00:00", part)
+        if date_match:
+            rendered.append(
+                f"Data: {date_match.group(3)}/{date_match.group(2)}/{date_match.group(1)}"
+            )
+            continue
+        if index == len(parts) - 1 and re.fullmatch(r"[-+]?\d+(?:[.,]\d{1,2})", part):
+            amount = Decimal(part.replace(",", "."))
+            formatted = (
+                f"{amount:,.2f}".replace(",", "_").replace(".", ",").replace("_", ".")
+            )
+            rendered.append(f"Montante: {formatted} €")
+            continue
+        if re.fullmatch(r"\d+", part):
+            rendered.append(f"Referência: {part}")
+            continue
+        detail_number += 1
+        label = "Detalhe" if detail_number == 1 else f"Detalhe {detail_number}"
+        rendered.append(f"{label}: {part}")
+    return " · ".join(rendered)
+
+
 @web_router.get("/v2-clean/processes/batches/{process_id}", response_class=HTMLResponse)
 def clean_process_batch_detail(request: Request, process_id: int, error: str = "", created: str = ""):
     with SessionLocal() as db:
@@ -4851,6 +4878,9 @@ def clean_process_batch_detail(request: Request, process_id: int, error: str = "
             else 0
         )
         status_labels = {
+            "active": "Ativo",
+            "new": "Nova",
+            "in_execution": "Em curso",
             "pending": "Pendente",
             "ready": "Disponível",
             "in_progress": "Em tratamento",
@@ -4862,13 +4892,6 @@ def clean_process_batch_detail(request: Request, process_id: int, error: str = "
             "closed": "Concluído",
             "cancelled": "Cancelado",
         }
-
-        def display_description(value: str | None) -> str:
-            return re.sub(
-                r"\b(\d{4})-(\d{2})-(\d{2})T00:00:00\b",
-                r"\3/\2/\1",
-                value or "",
-            )
 
         users = list(db.scalars(select(User).where(User.active.is_(True)).order_by(User.name, User.email)))
         return templates.TemplateResponse(
@@ -4887,7 +4910,7 @@ def clean_process_batch_detail(request: Request, process_id: int, error: str = "
                 "task_count": len({link.task_id for link in links}),
                 "status_labels": status_labels,
                 "display_description_by_row_id": {
-                    row.id: display_description(row.description) for row in rows
+                    row.id: _format_process_batch_description(row.description) for row in rows
                 },
                 "users": users,
                 "error": error[:80],

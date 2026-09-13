@@ -364,7 +364,7 @@
 
 .ui-contract-v1 .clean-admin-directory,
 .ui-contract-v1 .clean-admin-residual-nav { margin: 0; }
-.ui-contract-v1 .clean-admin-content { height:100vh; max-height:100vh; overflow:hidden; grid-template-rows:52px auto minmax(0,1fr); }
+.ui-contract-v1 .clean-admin-content { min-height:100vh; height:auto; max-height:none; overflow:visible; grid-template-rows:52px auto auto; }
 .ui-contract-v1 .admin-model-workbench { padding: 0; overflow: hidden; }
 .ui-contract-v1 .admin-model-workbench > .table-heading { min-height: 52px; padding: 8px 12px; }
 .ui-contract-v1 .admin-model-columns { display: grid; grid-template-columns: minmax(190px,.7fr) minmax(190px,.7fr) minmax(320px,1.4fr); min-height: 440px; gap: 0; }
@@ -426,13 +426,13 @@
 .ui-contract-v1 .email-secondary-filters > summary { display:flex; min-height:32px; padding:6px 10px; align-items:center; border:1px solid var(--ui-color-border); border-radius:6px; cursor:pointer; list-style:none; white-space:nowrap; }
 .ui-contract-v1 .email-secondary-filters > div { position:absolute; z-index:30; top:36px; right:0; display:grid; width:280px; gap:8px; padding:10px; border:1px solid var(--ui-color-border); border-radius:8px; background:var(--ui-color-surface); box-shadow:0 10px 28px rgba(15,23,42,.16); }
 .ui-contract-v1 .clean-admin-header { padding:8px 12px; }
-.ui-contract-v1 .clean-admin-master-detail { display:grid; grid-template-columns:210px minmax(0,1fr); gap:12px; min-width:0; min-height:0; height:100%; max-height:none; overflow:hidden; align-items:start; }
+.ui-contract-v1 .clean-admin-master-detail { display:grid; grid-template-columns:210px minmax(0,1fr); gap:12px; min-width:0; min-height:0; height:auto; max-height:none; overflow:visible; align-items:start; }
 .ui-contract-v1 .clean-admin-master { position:sticky; top:8px; display:grid; gap:8px; padding:10px; border:1px solid var(--ui-color-border); border-radius:8px; background:var(--ui-color-surface); }
 .ui-contract-v1 .clean-admin-master nav { display:grid; gap:2px; }
 .ui-contract-v1 .clean-admin-master a { min-height:32px; padding:7px 9px; border-radius:6px; color:var(--ui-color-text); text-decoration:none; font-size:12px; font-weight:700; white-space:nowrap; }
 .ui-contract-v1 .clean-admin-master a:is(:hover,.active) { background:var(--ui-color-surface-muted); color:var(--ui-color-primary); }
 .ui-contract-v1 .clean-admin-master small { color:var(--ui-color-text-muted); line-height:1.35; }
-.ui-contract-v1 .clean-admin-detail { display:grid; min-width:0; min-height:0; height:100%; max-height:none; padding-bottom:16px; overflow:auto; scrollbar-gutter:stable; gap:12px; align-content:start; }
+.ui-contract-v1 .clean-admin-detail { display:grid; min-width:0; min-height:0; height:auto; max-height:none; padding-bottom:16px; overflow:visible; gap:12px; align-content:start; }
 .ui-contract-v1 .clean-admin-detail > .clean-card-wide { width:100%; min-width:0; }
 .ui-contract-v1 .clean-admin-overview-strip { grid-template-columns:repeat(3,minmax(0,1fr)); }
 
@@ -450,6 +450,10 @@
   .ui-contract-v1 .ui-context-preview { display: none; }
   .ui-contract-v1 .admin-model-columns { grid-template-columns: repeat(2,minmax(0,1fr)); }
   .ui-contract-v1 .admin-model-detail { grid-column: 1 / -1; }
+  .ui-contract-v1 .clean-admin-master-detail { grid-template-columns:minmax(0,1fr); }
+  .ui-contract-v1 .clean-admin-master { position:static; }
+  .ui-contract-v1 .clean-admin-master nav { display:flex; flex-wrap:wrap; gap:4px; }
+  .ui-contract-v1 .clean-admin-master nav > a { flex:1 1 150px; }
 }
 @media (max-width: 640px) {
   .ui-contract-v1 { --visual-sidebar-width: 0px; }
@@ -470,6 +474,10 @@
   .ui-contract-v1 .admin-model-columns,
   .ui-contract-v1 .clean-admin-role-workspace { grid-template-columns: minmax(0,1fr); }
   .ui-contract-v1 .admin-model-detail { grid-column: auto; }
+  .ui-contract-v1 .clean-admin-master { padding:8px; }
+  .ui-contract-v1 .clean-admin-master nav { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .ui-contract-v1 .clean-admin-master nav > a { min-width:0; white-space:normal; }
+  .ui-contract-v1 .clean-admin-master > small { display:none; }
 }
 /* Task cases/grouped proposal: feature-gated by the server-rendered controls. */
 .task-grouping-modes{display:flex;align-items:center;gap:8px;margin:0 0 10px}.task-grouping-modes button[aria-pressed="true"]{background:var(--primary,#176b44);color:#fff}.task-grouping-modes small{margin-left:auto;color:var(--muted,#667085)}

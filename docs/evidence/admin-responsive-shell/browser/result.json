@@ -1,0 +1,494 @@
+[
+  {
+    "name": "overview",
+    "width": 1440,
+    "height": 900,
+    "viewportWidth": 1440,
+    "documentWidth": 1440,
+    "masterDetail": {
+      "left": 232,
+      "right": 1416,
+      "width": 1184,
+      "height": 1143,
+      "clientHeight": 1143,
+      "scrollHeight": 1143,
+      "overflowX": "visible",
+      "overflowY": "visible"
+    },
+    "master": {
+      "left": 232,
+      "right": 442,
+      "width": 210,
+      "height": 433,
+      "clientHeight": 431,
+      "scrollHeight": 431,
+      "overflowX": "visible",
+      "overflowY": "visible"
+    },
+    "detail": {
+      "left": 454,
+      "right": 1416,
+      "width": 962,
+      "height": 1143,
+      "clientHeight": 1143,
+      "scrollHeight": 1143,
+      "overflowX": "visible",
+      "overflowY": "visible"
+    },
+    "activeView": null
+  },
+  {
+    "name": "roles",
+    "width": 1440,
+    "height": 900,
+    "viewportWidth": 1440,
+    "documentWidth": 1440,
+    "masterDetail": {
+      "left": 232,
+      "right": 1416,
+      "width": 1184,
+      "height": 12649,
+      "clientHeight": 12649,
+      "scrollHeight": 12649,
+      "overflowX": "visible",
+      "overflowY": "visible"
+    },
+    "master": {
+      "left": 232,
+      "right": 442,
+      "width": 210,
+      "height": 433,
+      "clientHeight": 431,
+      "scrollHeight": 431,
+      "overflowX": "visible",
+      "overflowY": "visible"
+    },
+    "detail": {
+      "left": 454,
+      "right": 1416,
+      "width": 962,
+      "height": 12649,
+      "clientHeight": 12649,
+      "scrollHeight": 12649,
+      "overflowX": "visible",
+      "overflowY": "visible"
+    },
+    "activeView": null
+  },
+  {
+    "name": "channels",
+    "width": 1440,
+    "height": 900,
+    "viewportWidth": 1440,
+    "documentWidth": 1440,
+    "masterDetail": {
+      "left": 232,
+      "right": 1416,
+      "width": 1184,
+      "height": 4741,
+      "clientHeight": 4741,
+      "scrollHeight": 4741,
+      "overflowX": "visible",
+      "overflowY": "visible"
+    },
+    "master": {
+      "left": 232,
+      "right": 442,
+      "width": 210,
+      "height": 433,
+      "clientHeight": 431,
+      "scrollHeight": 431,
+      "overflowX": "visible",
+      "overflowY": "visible"
+    },
+    "detail": {
+      "left": 454,
+      "right": 1416,
+      "width": 962,
+      "height": 4741,
+      "clientHeight": 4741,
+      "scrollHeight": 4741,
+      "overflowX": "visible",
+      "overflowY": "visible"
+    },
+    "activeView": {
+      "left": 454,
+      "right": 1416,
+      "width": 962,
+      "height": 4349,
+      "clientHeight": 4347,
+      "scrollHeight": 4347,
+      "overflowX": "visible",
+      "overflowY": "visible"
+    }
+  },
+  {
+    "name": "overview",
+    "width": 1024,
+    "height": 768,
+    "viewportWidth": 1024,
+    "documentWidth": 1024,
+    "masterDetail": {
+      "left": 80,
+      "right": 1000,
+      "width": 920,
+      "height": 1480,
+      "clientHeight": 1480,
+      "scrollHeight": 1480,
+      "overflowX": "visible",
+      "overflowY": "visible"
+    },
+    "master": {
+      "left": 80,
+      "right": 1000,
+      "width": 920,
+      "height": 152,
+      "clientHeight": 150,
+      "scrollHeight": 150,
+      "overflowX": "visible",
+      "overflowY": "visible"
+    },
+    "detail": {
+      "left": 80,
+      "right": 1000,
+      "width": 920,
+      "height": 1317,
+      "clientHeight": 1317,
+      "scrollHeight": 1317,
+      "overflowX": "visible",
+      "overflowY": "visible"
+    },
+    "activeView": null
+  },
+  {
+    "name": "roles",
+    "width": 1024,
+    "height": 768,
+    "viewportWidth": 1024,
+    "documentWidth": 1024,
+    "masterDetail": {
+      "left": 80,
+      "right": 1000,
+      "width": 920,
+      "height": 13053,
+      "clientHeight": 13053,
+      "scrollHeight": 13053,
+      "overflowX": "visible",
+      "overflowY": "visible"
+    },
+    "master": {
+      "left": 80,
+      "right": 1000,
+      "width": 920,
+      "height": 152,
+      "clientHeight": 150,
+      "scrollHeight": 150,
+      "overflowX": "visible",
+      "overflowY": "visible"
+    },
+    "detail": {
+      "left": 80,
+      "right": 1000,
+      "width": 920,
+      "height": 12889,
+      "clientHeight": 12889,
+      "scrollHeight": 12889,
+      "overflowX": "visible",
+      "overflowY": "visible"
+    },
+    "activeView": null
+  },
+  {
+    "name": "channels",
+    "width": 1024,
+    "height": 768,
+    "viewportWidth": 1024,
+    "documentWidth": 1024,
+    "masterDetail": {
+      "left": 80,
+      "right": 1000,
+      "width": 920,
+      "height": 4965,
+      "clientHeight": 4965,
+      "scrollHeight": 4965,
+      "overflowX": "visible",
+      "overflowY": "visible"
+    },
+    "master": {
+      "left": 80,
+      "right": 1000,
+      "width": 920,
+      "height": 152,
+      "clientHeight": 150,
+      "scrollHeight": 150,
+      "overflowX": "visible",
+      "overflowY": "visible"
+    },
+    "detail": {
+      "left": 80,
+      "right": 1000,
+      "width": 920,
+      "height": 4801,
+      "clientHeight": 4801,
+      "scrollHeight": 4801,
+      "overflowX": "visible",
+      "overflowY": "visible"
+    },
+    "activeView": {
+      "left": 80,
+      "right": 1000,
+      "width": 920,
+      "height": 4409,
+      "clientHeight": 4407,
+      "scrollHeight": 4407,
+      "overflowX": "visible",
+      "overflowY": "visible"
+    }
+  },
+  {
+    "name": "overview",
+    "width": 678,
+    "height": 812,
+    "viewportWidth": 678,
+    "documentWidth": 678,
+    "masterDetail": {
+      "left": 16,
+      "right": 662,
+      "width": 646,
+      "height": 1711,
+      "clientHeight": 1711,
+      "scrollHeight": 1711,
+      "overflowX": "visible",
+      "overflowY": "visible"
+    },
+    "master": {
+      "left": 16,
+      "right": 662,
+      "width": 646,
+      "height": 190,
+      "clientHeight": 188,
+      "scrollHeight": 188,
+      "overflowX": "visible",
+      "overflowY": "visible"
+    },
+    "detail": {
+      "left": 16,
+      "right": 662,
+      "width": 646,
+      "height": 1509,
+      "clientHeight": 1509,
+      "scrollHeight": 1509,
+      "overflowX": "visible",
+      "overflowY": "visible"
+    },
+    "activeView": null
+  },
+  {
+    "name": "roles",
+    "width": 678,
+    "height": 812,
+    "viewportWidth": 678,
+    "documentWidth": 678,
+    "masterDetail": {
+      "left": 16,
+      "right": 662,
+      "width": 646,
+      "height": 13674,
+      "clientHeight": 13674,
+      "scrollHeight": 13674,
+      "overflowX": "visible",
+      "overflowY": "visible"
+    },
+    "master": {
+      "left": 16,
+      "right": 662,
+      "width": 646,
+      "height": 190,
+      "clientHeight": 188,
+      "scrollHeight": 188,
+      "overflowX": "visible",
+      "overflowY": "visible"
+    },
+    "detail": {
+      "left": 16,
+      "right": 662,
+      "width": 646,
+      "height": 13472,
+      "clientHeight": 13472,
+      "scrollHeight": 13472,
+      "overflowX": "visible",
+      "overflowY": "visible"
+    },
+    "activeView": null
+  },
+  {
+    "name": "channels",
+    "width": 678,
+    "height": 812,
+    "viewportWidth": 678,
+    "documentWidth": 678,
+    "masterDetail": {
+      "left": 16,
+      "right": 662,
+      "width": 646,
+      "height": 5549,
+      "clientHeight": 5549,
+      "scrollHeight": 5549,
+      "overflowX": "visible",
+      "overflowY": "visible"
+    },
+    "master": {
+      "left": 16,
+      "right": 662,
+      "width": 646,
+      "height": 190,
+      "clientHeight": 188,
+      "scrollHeight": 188,
+      "overflowX": "visible",
+      "overflowY": "visible"
+    },
+    "detail": {
+      "left": 16,
+      "right": 662,
+      "width": 646,
+      "height": 5348,
+      "clientHeight": 5348,
+      "scrollHeight": 5348,
+      "overflowX": "visible",
+      "overflowY": "visible"
+    },
+    "activeView": {
+      "left": 16,
+      "right": 662,
+      "width": 646,
+      "height": 4910,
+      "clientHeight": 4908,
+      "scrollHeight": 4908,
+      "overflowX": "visible",
+      "overflowY": "visible"
+    }
+  },
+  {
+    "name": "overview",
+    "width": 390,
+    "height": 844,
+    "viewportWidth": 390,
+    "documentWidth": 390,
+    "masterDetail": {
+      "left": 16,
+      "right": 374,
+      "width": 358,
+      "height": 2282,
+      "clientHeight": 2282,
+      "scrollHeight": 2282,
+      "overflowX": "visible",
+      "overflowY": "visible"
+    },
+    "master": {
+      "left": 16,
+      "right": 374,
+      "width": 358,
+      "height": 238,
+      "clientHeight": 236,
+      "scrollHeight": 236,
+      "overflowX": "visible",
+      "overflowY": "visible"
+    },
+    "detail": {
+      "left": 16,
+      "right": 374,
+      "width": 358,
+      "height": 2032,
+      "clientHeight": 2032,
+      "scrollHeight": 2032,
+      "overflowX": "visible",
+      "overflowY": "visible"
+    },
+    "activeView": null
+  },
+  {
+    "name": "roles",
+    "width": 390,
+    "height": 844,
+    "viewportWidth": 390,
+    "documentWidth": 390,
+    "masterDetail": {
+      "left": 16,
+      "right": 374,
+      "width": 358,
+      "height": 12636,
+      "clientHeight": 12636,
+      "scrollHeight": 12636,
+      "overflowX": "visible",
+      "overflowY": "visible"
+    },
+    "master": {
+      "left": 16,
+      "right": 374,
+      "width": 358,
+      "height": 238,
+      "clientHeight": 236,
+      "scrollHeight": 236,
+      "overflowX": "visible",
+      "overflowY": "visible"
+    },
+    "detail": {
+      "left": 16,
+      "right": 374,
+      "width": 358,
+      "height": 12386,
+      "clientHeight": 12386,
+      "scrollHeight": 12386,
+      "overflowX": "visible",
+      "overflowY": "visible"
+    },
+    "activeView": null
+  },
+  {
+    "name": "channels",
+    "width": 390,
+    "height": 844,
+    "viewportWidth": 390,
+    "documentWidth": 390,
+    "masterDetail": {
+      "left": 16,
+      "right": 374,
+      "width": 358,
+      "height": 6567,
+      "clientHeight": 6567,
+      "scrollHeight": 6567,
+      "overflowX": "visible",
+      "overflowY": "visible"
+    },
+    "master": {
+      "left": 16,
+      "right": 374,
+      "width": 358,
+      "height": 238,
+      "clientHeight": 236,
+      "scrollHeight": 236,
+      "overflowX": "visible",
+      "overflowY": "visible"
+    },
+    "detail": {
+      "left": 16,
+      "right": 374,
+      "width": 358,
+      "height": 6317,
+      "clientHeight": 6317,
+      "scrollHeight": 6317,
+      "overflowX": "visible",
+      "overflowY": "visible"
+    },
+    "activeView": {
+      "left": 16,
+      "right": 374,
+      "width": 358,
+      "height": 5770,
+      "clientHeight": 5768,
+      "scrollHeight": 5768,
+      "overflowX": "visible",
+      "overflowY": "visible"
+    }
+  }
+]

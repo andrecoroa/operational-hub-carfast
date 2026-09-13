@@ -28676,7 +28676,7 @@ body:has(.email-preview-dialog[open]) { overflow: hidden; }
   max-width: 100%;
   min-width: 0;
   padding: 16px;
-  overflow-x: hidden;
+  overflow: visible;
   border: 1px solid #d7e0ea;
   background: #fff;
 }

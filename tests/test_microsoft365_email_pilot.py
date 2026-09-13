@@ -23,6 +23,7 @@ from app.services.microsoft365_oauth import (
     create_pkce_pair,
     send_shared_mailbox_message,
 )
+from app.web.microsoft365 import MICROSOFT365_MULTIBOX_CHANNELS
 
 
 def test_callback_route_is_exact_and_get_only():
@@ -38,7 +39,7 @@ def test_callback_route_is_exact_and_get_only():
 def test_transport_migration_is_the_single_additive_head():
     config = Config("alembic.ini")
     scripts = ScriptDirectory.from_config(config)
-    assert scripts.get_heads() == ["100045ab67cd"]
+    assert scripts.get_heads() == ["ffff45bf213c"]
     assert scripts.get_revision("fffc017b8d9e").down_revision == "fffbf06a7c8d"
 
 
@@ -85,6 +86,106 @@ def test_admin_can_configure_fixed_mailbox_without_enabling_transport(
     assert transport.client_credential_reference == "env://MICROSOFT365_CLIENT_SECRET"
     assert transport.token_reference.startswith("db://microsoft365/transport/")
     assert transport.initial_sync_days == 5
+
+
+def test_admin_can_prepare_approved_multibox_set_without_enabling_any_transport(
+    authenticated_client, db_session, monkeypatch
+):
+    monkeypatch.setattr(
+        microsoft_web,
+        "SessionLocal",
+        sessionmaker(bind=db_session.get_bind(), expire_on_commit=False),
+    )
+    response = authenticated_client.post(
+        "/v2-clean/integrations/microsoft/configure-disabled-set",
+        data={
+            "tenant_id": "tenant-id",
+            "client_id": "client-id",
+            "delegated_user_principal_name": "ROTINAS@CARFAST.PT",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "configured_disabled"
+    assert {item["mailbox"] for item in payload["mailboxes"]} == set(
+        MICROSOFT365_MULTIBOX_CHANNELS
+    )
+    assert all(item["enabled"] is False for item in payload["mailboxes"])
+
+    transports = db_session.scalars(
+        select(EmailChannelTransport).where(
+            EmailChannelTransport.mailbox_address.in_(MICROSOFT365_MULTIBOX_CHANNELS)
+        )
+    ).all()
+    assert len(transports) == len(MICROSOFT365_MULTIBOX_CHANNELS) == 9
+    assert all(transport.provider == "microsoft365" for transport in transports)
+    assert all(transport.enabled is False for transport in transports)
+    assert all(transport.initial_sync_days == 5 for transport in transports)
+    assert all(
+        transport.delegated_user_principal_name == "rotinas@carfast.pt"
+        for transport in transports
+    )
+
+
+def test_multibox_prepare_preserves_existing_channel_active_state(
+    authenticated_client, db_session, monkeypatch
+):
+    existing = EmailChannel(
+        code="frota",
+        name="Frota",
+        address="frota@carfast.pt",
+        active=True,
+    )
+    db_session.add(existing)
+    db_session.commit()
+    monkeypatch.setattr(
+        microsoft_web,
+        "SessionLocal",
+        sessionmaker(bind=db_session.get_bind(), expire_on_commit=False),
+    )
+
+    response = authenticated_client.post(
+        "/v2-clean/integrations/microsoft/configure-disabled",
+        data={
+            "mailbox_address": "frota@carfast.pt",
+            "tenant_id": "tenant-id",
+            "client_id": "client-id",
+            "delegated_user_principal_name": "rotinas@carfast.pt",
+        },
+    )
+
+    assert response.status_code == 200
+    db_session.refresh(existing)
+    assert existing.active is True
+    transport = db_session.scalar(
+        select(EmailChannelTransport).where(
+            EmailChannelTransport.channel_id == existing.id
+        )
+    )
+    assert transport is not None
+    assert transport.enabled is False
+
+
+def test_unapproved_microsoft365_mailbox_is_rejected(
+    authenticated_client, monkeypatch, db_session
+):
+    monkeypatch.setattr(
+        microsoft_web,
+        "SessionLocal",
+        sessionmaker(bind=db_session.get_bind(), expire_on_commit=False),
+    )
+    response = authenticated_client.post(
+        "/v2-clean/integrations/microsoft/configure-disabled",
+        data={
+            "mailbox_address": "unknown@carfast.pt",
+            "tenant_id": "tenant-id",
+            "client_id": "client-id",
+            "delegated_user_principal_name": "rotinas@carfast.pt",
+        },
+    )
+    assert response.status_code == 400
+    assert response.json() == {"error": "mailbox_not_allowed"}
 
 
 def test_authorization_url_uses_pkce_and_required_delegated_scopes():

@@ -54,12 +54,16 @@ from app.services.email_postmark import (
     ingest_inbound,
     ingest_outbound_event,
     normalize_inbound_attachments,
-    outbound_identity,
     reply_all_recipients,
     send_message,
     webhook_authorized,
 )
-from app.services.email_transport import outbound_enabled_for_channel, send_channel_message
+from app.services.email_transport import (
+    OutboundIdentityError,
+    outbound_enabled_for_channel,
+    resolve_outbound_identity,
+    send_channel_message,
+)
 from app.services.microsoft365_oauth import move_shared_mailbox_message_to_junk
 from app.services.service_desk import (
     assignment_label,
@@ -581,22 +585,16 @@ def _sender_channel(db, message: EmailMessage) -> EmailChannel | None:
 def _channel_sender_address(
     db, thread: EmailThread, channel: EmailChannel
 ) -> str | None:
-    value = (channel.from_address or "").strip().lower()
-    return value if EMAIL_ADDRESS_PATTERN.fullmatch(value) else None
-
-
-def _channel_reply_to_address(channel: EmailChannel) -> str | None:
     try:
-        _, reply_to = outbound_identity(
-            channel.from_name, channel.from_address, channel.reply_to_address
-        )
-    except ValueError:
+        return resolve_outbound_identity(db, channel, thread).sender_address
+    except OutboundIdentityError:
         return None
-    return reply_to
 
 
-def _channel_sender_options(db, channel: EmailChannel) -> list[str]:
-    values = [_channel_sender_address(db, None, channel)]
+def _channel_sender_options(
+    db, thread: EmailThread, channel: EmailChannel
+) -> list[str]:
+    values = [_channel_sender_address(db, thread, channel)]
     return list(dict.fromkeys(item.casefold() for item in values if item))
 
 
@@ -1699,10 +1697,10 @@ def email_new_message(
         ):
             return RedirectResponse("/v2-clean/email?error=forbidden", status_code=303)
         try:
-            sender_address, reply_to_address = outbound_identity(
-                channel.from_name, channel.from_address, channel.reply_to_address
-            )
-        except ValueError:
+            identity = resolve_outbound_identity(db, channel, None)
+            sender_address = identity.transport_sender
+            reply_to_address = identity.reply_to_address
+        except OutboundIdentityError:
             return RedirectResponse(
                 "/v2-clean/email?error=sender_not_configured", status_code=303
             )
@@ -1988,7 +1986,7 @@ def email_thread(request: Request, thread_id: int):
             "email_templates": _ranked_email_templates(db, thread),
             "reply_defaults": _reply_defaults(db, thread),
             "reply_sender_address": _channel_sender_address(db, thread, channel),
-            "reply_sender_options": _channel_sender_options(db, channel),
+            "reply_sender_options": _channel_sender_options(db, thread, channel),
             "can_change_sender": _can_use_channel(
                 db, user_id, permissions, thread.channel_id, "change_sender", thread=thread
             ),
@@ -2152,7 +2150,7 @@ def email_thread_preview(request: Request, thread_id: int):
             "email_templates": _ranked_email_templates(db, thread),
             "reply_defaults": _reply_defaults(db, thread),
             "reply_sender_address": _channel_sender_address(db, thread, channel),
-            "reply_sender_options": _channel_sender_options(db, channel),
+            "reply_sender_options": _channel_sender_options(db, thread, channel),
             "can_change_sender": _can_use_channel(
                 db, user_id, permissions, thread.channel_id, "change_sender", thread=thread
             ),
@@ -3090,33 +3088,17 @@ def email_reply(
             return RedirectResponse(
                 f"/v2-clean/email/{thread_id}?error=invalid_recipient", status_code=303
             )
-        policy_sender = _channel_sender_address(db, thread, sender_channel)
         try:
-            transport_sender, reply_to_address = outbound_identity(
-                sender_channel.from_name,
-                sender_channel.from_address,
-                sender_channel.reply_to_address,
-            )
-        except ValueError:
-            transport_sender, reply_to_address = None, None
-        requested_sender = sender_address.strip().lower() or policy_sender
-        configured_senders = {
-            item
-            for item in (policy_sender,)
-            if item
-        }
-        configured_senders = {item.casefold() for item in configured_senders}
-        if (
-            not requested_sender
-            or requested_sender not in configured_senders
-            or not reply_to_address
-        ):
+            identity = resolve_outbound_identity(db, sender_channel, thread)
+        except OutboundIdentityError:
             return RedirectResponse(
                 f"/v2-clean/email/{thread_id}?error=sender_not_configured", status_code=303
             )
-        if requested_sender != policy_sender and not _can_use_channel(
-            db, user_id, permissions, thread.channel_id, "change_sender", thread=thread
-        ):
+        policy_sender = identity.sender_address
+        transport_sender = identity.transport_sender
+        reply_to_address = identity.reply_to_address
+        requested_sender = sender_address.strip().casefold() or policy_sender
+        if requested_sender != policy_sender:
             return RedirectResponse(
                 f"/v2-clean/email/{thread_id}?error=forbidden", status_code=303
             )
@@ -3447,14 +3429,11 @@ def email_approve(request: Request, thread_id: int, message_id: int):
             )
         )
         try:
-            transport_sender, reply_to_address = outbound_identity(
-                sender_channel.from_name,
-                sender_channel.from_address,
-                sender_channel.reply_to_address,
-            )
-        except ValueError:
-            transport_sender, reply_to_address = None, None
-        if not transport_sender or not reply_to_address:
+            identity = resolve_outbound_identity(db, sender_channel, thread)
+        except OutboundIdentityError:
+            identity = None
+        message_sender = parseaddr(message.sender or "")[1].strip().casefold()
+        if not identity or message_sender != identity.sender_address:
             return RedirectResponse(
                 f"/v2-clean/email/{thread_id}?error=sender_not_configured",
                 status_code=303,
@@ -3464,8 +3443,8 @@ def email_approve(request: Request, thread_id: int, message_id: int):
                 db,
                 sender_channel,
                 message,
-                transport_sender,
-                reply_to=reply_to_address,
+                identity.transport_sender,
+                reply_to=identity.reply_to_address,
                 postmark_sender=send_message,
                 parent_message_id=parent_message_id,
                 references=references,

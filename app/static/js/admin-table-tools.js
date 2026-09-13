@@ -5,9 +5,32 @@
     .trim()
     .toLowerCase();
 
+  const enhanceScrollRegion = (table, index, headers) => {
+    const container = table.closest(".clean-table-scroll, .table-wrap") || table;
+    if (container === table || container.dataset.adminTableRegionReady === "true") {
+      return { container, hint: null };
+    }
+    container.dataset.adminTableRegionReady = "true";
+    container.classList.add("clean-admin-table-region");
+    container.tabIndex = 0;
+    container.setAttribute("role", "region");
+    const heading = table.closest("section")?.querySelector("h2, h3, h4")?.textContent.trim();
+    const fallback = headers.slice(0, 2).map((header) => header.textContent.trim()).filter(Boolean).join(" e ");
+    container.setAttribute("aria-label", `Tabela: ${heading || fallback || index + 1}`);
+
+    const hint = document.createElement("p");
+    hint.className = "clean-admin-table-scroll-hint";
+    hint.id = `admin-table-scroll-hint-${index}`;
+    hint.textContent = "Deslize horizontalmente para consultar todas as colunas.";
+    container.setAttribute("aria-describedby", hint.id);
+    container.before(hint);
+    return { container, hint };
+  };
+
   const enhanceTable = (table, index) => {
     if (table.dataset.adminTableReady === "true") return;
     const headers = [...table.querySelectorAll("thead th")];
+    const { container, hint } = enhanceScrollRegion(table, index, headers);
     const rows = [...table.querySelectorAll("tbody tr")].filter((row) => row.children.length > 1);
     if (!headers.length || !rows.length) return;
 
@@ -106,8 +129,8 @@
       });
     });
 
-    const container = table.closest(".clean-table-scroll, .table-wrap") || table;
     container.before(toolbar);
+    if (hint) toolbar.after(hint);
     toolbar.dataset.tableIndex = String(index);
     apply();
   };

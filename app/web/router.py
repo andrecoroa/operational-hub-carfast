@@ -4213,8 +4213,9 @@ def clean_experience_home(request: Request):
         return denied
     with SessionLocal() as db:
         user_id = get_web_user_id(request)
+        user = db.get(User, user_id) if user_id else None
         area_cards = clean_process_area_cards(db)
-        task_visibility = task_visibility_filter(db, user_id=user_id, task_model=Task)
+        accessible_task_types = user_accessible_task_type_codes(db, user) if user else set()
         quick_metrics = {
             "vehicles": count_rows(db, Vehicle),
             "workshop_alerts": db.scalar(
@@ -4227,7 +4228,7 @@ def clean_experience_home(request: Request):
                 select(func.count())
                 .select_from(Task)
                 .where(
-                    task_visibility,
+                    Task.task_type.in_(tuple(accessible_task_types)),
                     Task.closed_at.is_(None),
                     ~Task.status.in_(TASK_ARCHIVE_STATUSES | TASK_PLANNED_STATUSES),
                 )

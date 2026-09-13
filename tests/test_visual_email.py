@@ -155,7 +155,7 @@ def test_email_operational_indicators_match_task_center_language_and_density() -
 
     for code, label in (
         ("to_treat", "Por tratar"),
-        ("new", "Novos"),
+        ("new", "Novas / por triar"),
         ("unassigned", "Por atribuir"),
         ("overdue", "Atrasados"),
         ("risk", "Em risco"),

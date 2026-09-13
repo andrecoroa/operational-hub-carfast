@@ -7713,6 +7713,71 @@ def clean_task_support_targets(request: Request, task_id: int):
         )
 
 
+def _resolve_task_vehicle(
+    db: Session,
+    *,
+    plate: str | None,
+    contract_number: str | None,
+) -> Vehicle | None:
+    """Resolve task context conservatively, never guessing between vehicles."""
+    candidates: list[Vehicle] = []
+    normalized_plate = normalize_identifier(plate)
+    if normalized_plate:
+        vehicle = db.scalar(select(Vehicle).where(Vehicle.plate == normalized_plate))
+        if vehicle:
+            candidates.append(vehicle)
+
+    clean_contract = (contract_number or "").strip()
+    if clean_contract:
+        contract_vehicle_ids = set(
+            db.scalars(
+                select(VehicleFinancialPlan.vehicle_id).where(
+                    func.lower(func.trim(VehicleFinancialPlan.contract_number))
+                    == clean_contract.lower(),
+                    VehicleFinancialPlan.active.is_(True),
+                )
+            ).all()
+        )
+        if len(contract_vehicle_ids) == 1:
+            contract_vehicle = db.get(Vehicle, contract_vehicle_ids.pop())
+            if contract_vehicle:
+                candidates.append(contract_vehicle)
+
+    candidate_ids = {vehicle.id for vehicle in candidates}
+    return candidates[0] if len(candidate_ids) == 1 else None
+
+
+def _apply_task_vehicle_context(db: Session, task: Task) -> Vehicle | None:
+    """Associate a task to a uniquely identified vehicle without replacing other links."""
+    vehicle = _resolve_task_vehicle(
+        db,
+        plate=task.plate,
+        contract_number=task.contract_number,
+    )
+    if not vehicle or (task.entity_type and task.entity_type != "vehicle"):
+        return None
+    task.entity_type = "vehicle"
+    task.entity_id = str(vehicle.id)
+    task.plate = normalize_identifier(vehicle.plate) or task.plate
+    return vehicle
+
+
+def _sync_pending_task_documents(db: Session, task: Task) -> None:
+    """Keep untreated task uploads supplied with the task's matching context."""
+    documents = db.scalars(
+        select(Document).where(
+            Document.task_id == task.id,
+            Document.source == "task",
+            Document.entry_channel == "task_upload",
+            Document.status == "received",
+        )
+    ).all()
+    for document in documents:
+        document.plate = task.plate
+        document.reservation_number = task.reservation_number
+        document.contract_number = task.contract_number
+
+
 @web_router.post("/v2-clean/tasks", response_class=HTMLResponse)
 def clean_tasks_create(
     request: Request,
@@ -7981,6 +8046,7 @@ def clean_tasks_create(
         )
         db.add(task)
         db.flush()
+        _apply_task_vehicle_context(db, task)
         if proposal_selection and (
             proposal_selection.category or proposal_selection.subcategory
         ):
@@ -8055,7 +8121,9 @@ def clean_tasks_create(
                 storage_path=str(stored_path),
                 status="received",
                 task_id=task.id,
-                plate=normalized_plate,
+                plate=task.plate,
+                reservation_number=task.reservation_number,
+                contract_number=task.contract_number,
                 uploaded_by_id=user_id,
             )
             db.add(linked_document)
@@ -8454,6 +8522,8 @@ def clean_tasks_update(
                     new_value=str(new_value) if new_value is not None else None,
                 )
             )
+        _apply_task_vehicle_context(db, task)
+        _sync_pending_task_documents(db, task)
         if hierarchy_selection:
             detach_entity_proposals(db, entity=task, actor_user_id=user_id)
             if proposal_selection and (
@@ -8582,6 +8652,8 @@ def clean_tasks_update_context(
                     new_value=str(new_value) if new_value is not None else None,
                 )
             )
+        _apply_task_vehicle_context(db, task)
+        _sync_pending_task_documents(db, task)
         record_audit(
             db,
             action="task.context.update",
@@ -9829,6 +9901,8 @@ def clean_tasks_upload_attachments(
                 status="received",
                 task_id=task.id,
                 plate=task.plate,
+                reservation_number=task.reservation_number,
+                contract_number=task.contract_number,
                 uploaded_by_id=user_id,
             )
             db.add(document)
@@ -17191,11 +17265,13 @@ def clean_documentation_treatment(
     if group:
         if clean_family == "invoices":
             conditions.append(
-                or_(
-                    Document.supplier_name == group,
-                    Document.source_sender == group,
-                    Document.source == group,
+                func.coalesce(
+                    func.nullif(func.trim(Document.supplier_name), ""),
+                    func.nullif(func.trim(Document.source_sender), ""),
+                    func.nullif(func.trim(Document.source), ""),
+                    literal("Fornecedor por identificar"),
                 )
+                == group
             )
         elif clean_family == "diagnostics":
             conditions.append(
@@ -17208,6 +17284,33 @@ def clean_documentation_treatment(
                     Document.classification == group,
                     Document.source == group,
                 )
+            )
+        elif clean_family == "rentway":
+            conditions.append(
+                func.coalesce(
+                    func.nullif(func.trim(Document.source_subject), ""),
+                    func.nullif(func.trim(Document.source), ""),
+                    literal("Rentway"),
+                )
+                == group
+            )
+        elif clean_family == "fleet":
+            conditions.append(
+                func.coalesce(
+                    func.nullif(func.trim(Document.document_type), ""),
+                    func.nullif(func.trim(Document.classification), ""),
+                    literal("Documento de frota"),
+                )
+                == group
+            )
+        else:
+            conditions.append(
+                func.coalesce(
+                    func.nullif(func.trim(Document.document_type), ""),
+                    func.nullif(func.trim(Document.classification), ""),
+                    literal("Por classificar"),
+                )
+                == group
             )
     saved_service_exists = select(VehicleDocumentRecordTag.id).where(
         VehicleDocumentRecordTag.document_id == Document.id

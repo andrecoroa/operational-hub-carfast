@@ -4834,6 +4834,42 @@ def clean_process_batch_detail(request: Request, process_id: int, error: str = "
         comments_by_row_id: dict[int, list[ProcessBatchRowComment]] = defaultdict(list)
         for comment in comments:
             comments_by_row_id[comment.batch_row_id].append(comment)
+        row_counts = {
+            "total": len(rows),
+            "available": sum(
+                1
+                for row in rows
+                if row.id not in link_by_row_id and row.status in {"ready", "pending"}
+            ),
+            "in_progress": sum(1 for row in rows if row.status == "in_progress"),
+            "completed": sum(1 for row in rows if row.status == "completed"),
+            "error": sum(1 for row in rows if row.status == "error"),
+        }
+        row_counts["progress"] = (
+            round((row_counts["completed"] / row_counts["total"]) * 100)
+            if row_counts["total"]
+            else 0
+        )
+        status_labels = {
+            "pending": "Pendente",
+            "ready": "Disponível",
+            "in_progress": "Em tratamento",
+            "completed": "Concluída",
+            "excluded": "Excluída",
+            "error": "Com erro",
+            "open": "Aberto",
+            "waiting": "A aguardar",
+            "closed": "Concluído",
+            "cancelled": "Cancelado",
+        }
+
+        def display_description(value: str | None) -> str:
+            return re.sub(
+                r"\b(\d{4})-(\d{2})-(\d{2})T00:00:00\b",
+                r"\3/\2/\1",
+                value or "",
+            )
+
         users = list(db.scalars(select(User).where(User.active.is_(True)).order_by(User.name, User.email)))
         return templates.TemplateResponse(
             request,
@@ -4847,6 +4883,12 @@ def clean_process_batch_detail(request: Request, process_id: int, error: str = "
                 "link_by_row_id": link_by_row_id,
                 "task_by_id": task_by_id,
                 "comments_by_row_id": comments_by_row_id,
+                "row_counts": row_counts,
+                "task_count": len({link.task_id for link in links}),
+                "status_labels": status_labels,
+                "display_description_by_row_id": {
+                    row.id: display_description(row.description) for row in rows
+                },
                 "users": users,
                 "error": error[:80],
                 "created": created[:80],

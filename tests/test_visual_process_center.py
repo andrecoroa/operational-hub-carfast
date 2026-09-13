@@ -59,6 +59,30 @@ def test_batch_process_surfaces_keep_case_lot_task_row_hierarchy() -> None:
     assert "Validar e criar lote" in mapping
 
 
+def test_batch_detail_uses_responsive_case_workspace_and_drawers() -> None:
+    detail = (ROOT / "app" / "templates" / "clean_process_batch.html").read_text(
+        encoding="utf-8"
+    )
+    css = CSS.read_text(encoding="utf-8")
+
+    for contract in (
+        "process-case-kpis",
+        "process-case-tabs",
+        "Lotes importados",
+        "Tarefas associadas",
+        "Sem linhas disponíveis.",
+        "process-task-composer",
+        "process-drawer",
+        "process-line-search",
+        "status_labels.get(row.status",
+        "display_description_by_row_id",
+    ):
+        assert contract in detail
+    assert "row-treatment-" not in detail
+    assert "@media(max-width:760px)" in css
+    assert ".process-lines-table tr{display:grid" in css
+
+
 def test_process_center_preserves_rbac_and_uses_local_table_overflow() -> None:
     source = TEMPLATE.read_text(encoding="utf-8")
     css = CSS.read_text(encoding="utf-8")

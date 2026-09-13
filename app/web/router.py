@@ -5914,7 +5914,25 @@ def clean_tasks_center(
         total_tasks = db.scalar(
             select(func.count()).select_from(Task).where(*filters)
         ) or 0
-        total_pages = max(1, (total_tasks + page_size - 1) // page_size)
+        category_page_ids: list[int | None] = []
+        pagination_total = total_tasks
+        if cases_enabled and active_grouping == "category":
+            # Paginate canonical category groups, never the tasks inside them.
+            # This keeps a category whole and prevents it from reappearing on
+            # the next page. NULL is one explicit "Por classificar" group.
+            all_category_ids = list(
+                db.scalars(
+                    select(Task.work_category_id)
+                    .where(*filters)
+                    .group_by(Task.work_category_id)
+                    .order_by(
+                        Task.work_category_id.is_(None),
+                        Task.work_category_id,
+                    )
+                ).all()
+            )
+            pagination_total = len(all_category_ids)
+        total_pages = max(1, (pagination_total + page_size - 1) // page_size)
         active_page = min(max(page, 1), total_pages)
         valid_sorts = {
             "priority",
@@ -5951,13 +5969,35 @@ def clean_tasks_center(
             "created_asc": (Task.created_at.asc(), Task.id.asc()),
             "updated_desc": (Task.updated_at.desc(), Task.id.desc()),
         }
-        tasks = db.scalars(
+        task_page_query = (
             select(Task)
             .where(*filters)
             .order_by(*sort_expressions[active_sort])
-            .offset((active_page - 1) * page_size)
-            .limit(page_size)
-        ).all()
+        )
+        if cases_enabled and active_grouping == "category":
+            category_page_ids = all_category_ids[
+                (active_page - 1) * page_size : active_page * page_size
+            ]
+            concrete_category_ids = [
+                category_id for category_id in category_page_ids if category_id is not None
+            ]
+            category_page_filter = (
+                or_(
+                    Task.work_category_id.in_(tuple(concrete_category_ids)),
+                    Task.work_category_id.is_(None),
+                )
+                if None in category_page_ids and concrete_category_ids
+                else Task.work_category_id.is_(None)
+                if None in category_page_ids
+                else Task.work_category_id.in_(tuple(concrete_category_ids))
+            )
+            tasks = db.scalars(task_page_query.where(category_page_filter)).all()
+        else:
+            tasks = db.scalars(
+                task_page_query
+                .offset((active_page - 1) * page_size)
+                .limit(page_size)
+            ).all()
         task_ids = [task.id for task in tasks]
         tasks_by_id = {task.id: task for task in tasks}
         task_update_allowed_by_id = {
@@ -6503,19 +6543,17 @@ def clean_tasks_center(
                 if summary.risk
                 else "active"
             )
-        visible_categories = {
-            (task.work_category_id, task.category) for task in tasks
-        }
+        visible_categories = {task.work_category_id for task in tasks}
         category_summaries = {}
         if cases_enabled and active_grouping == "category" and visible_categories:
             category_summaries = {
-                (row.work_category_id, row.category): row
+                row.work_category_id: row
                 for row in db.execute(
-                    select(Task.work_category_id, Task.category, *summary_columns)
+                    select(Task.work_category_id, *summary_columns)
                     .where(*filters)
-                    .group_by(Task.work_category_id, Task.category)
+                    .group_by(Task.work_category_id)
                 )
-                if (row.work_category_id, row.category) in visible_categories
+                if row.work_category_id in visible_categories
             }
         visible_team_ids = {task.team_id for task in tasks}
         team_summaries = {}
@@ -6538,7 +6576,7 @@ def clean_tasks_center(
                         continue
                     key = ("case", task.case_id)
                 elif active_grouping == "category":
-                    key = ("category", task.work_category_id, task.category)
+                    key = ("category", task.work_category_id)
                 else:
                     key = ("team", task.team_id)
                 grouped[key].append(task)
@@ -6558,14 +6596,14 @@ def clean_tasks_center(
                     if key[0] == "team"
                     else work_category_labels.get(
                         child_tasks[0].work_category_id,
-                        child_tasks[0].category or "Por classificar",
+                        "Por classificar",
                     )
                 )
                 summary = (
                     case_summaries.get(case_id)
                     if case_id
                     else category_summaries.get(
-                        (child_tasks[0].work_category_id, child_tasks[0].category)
+                        child_tasks[0].work_category_id
                     )
                     if key[0] == "category"
                     else team_summaries.get(child_tasks[0].team_id)

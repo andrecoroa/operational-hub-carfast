@@ -196,6 +196,21 @@ def main() -> None:
                 "service_total": decimal(reconciliation["service_total"]),
                 "excluded_or_unassigned_total": decimal(reconciliation["excluded_or_unassigned_total"]),
                 "invoice_minus_source_lines": decimal(reconciliation["invoice_minus_source_lines"]),
+                "expected_total_from_lines": decimal(
+                    reconciliation["expected_total_from_lines"]
+                ),
+                "invoice_minus_expected_lines": decimal(
+                    reconciliation["invoice_minus_expected_lines"]
+                ),
+                "net_subtotal": reconciliation["net_subtotal"] or "",
+                "gross_before_discount": reconciliation["gross_before_discount"] or "",
+                "discount": reconciliation["discount"] or "",
+                "taxes": reconciliation["taxes"] or "",
+                "eco_charge": reconciliation["eco_charge"] or "",
+                "other_charges": reconciliation["other_charges"] or "",
+                "reported_misc_total": reconciliation["reported_misc_total"] or "",
+                "explicit_charges_total": reconciliation["explicit_charges_total"],
+                "reconciliation_method": reconciliation["method"],
                 "allocation_check": decimal(reconciliation["service_plus_excluded_minus_source_lines"]),
                 "reconciliation_status": reconciliation["status"],
                 "classification_blockers": "|".join(result["classification_blockers"]),

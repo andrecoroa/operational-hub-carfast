@@ -1083,6 +1083,45 @@ def test_treatment_groups_invoices_by_supplier_and_keeps_preview_links(
     assert 'action="/v2-clean/documentation/treatment/bulk"' in response.text
 
 
+def test_treatment_other_group_filters_the_document_list(
+    authenticated_client,
+    db_session,
+):
+    selected = Document(
+        title="Anexo de tarefa selecionado",
+        document_type="task_attachment",
+        classification="task_attachment",
+        source="task",
+        original_name="anexo.pdf",
+        file_name="anexo.pdf",
+        storage_provider="local",
+        storage_path="tasks/anexo.pdf",
+        status="received",
+    )
+    excluded = Document(
+        title="Outro documento fora da caixa",
+        document_type="miscellaneous",
+        classification="other",
+        source="manual",
+        original_name="outro.pdf",
+        file_name="outro.pdf",
+        storage_provider="local",
+        storage_path="other/outro.pdf",
+        status="received",
+    )
+    db_session.add_all([selected, excluded])
+    db_session.commit()
+
+    response = authenticated_client.get(
+        "/v2-clean/documentation/treatment?family=other&group=task_attachment"
+    )
+
+    assert response.status_code == 200
+    assert "Anexo de tarefa selecionado" in response.text
+    assert "Outro documento fora da caixa" not in response.text
+    assert "group=task_attachment" in response.text
+
+
 def test_treatment_file_preview_uses_durable_storage_for_central_sources(
     authenticated_client,
     db_session,

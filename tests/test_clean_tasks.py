@@ -16,6 +16,7 @@ from app.models import (
     Team,
     User,
     Vehicle,
+    VehicleFinancialPlan,
     VehicleDocumentRecord,
     WorkCategory,
     WorkDepartment,
@@ -652,6 +653,93 @@ def test_clean_task_creation_accepts_document_attachments(
             TaskDocument.document_id == document.id,
         )
     ) is not None
+
+
+def test_task_context_associates_vehicle_and_supplies_attachments_for_treatment(
+    authenticated_client,
+    db_session,
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setattr("app.web.router.document_archive_root", lambda: tmp_path)
+    vehicle = Vehicle(plate="BA-33-MD", brand="Teste", model="Contexto")
+    db_session.add(vehicle)
+    db_session.flush()
+    db_session.add(
+        VehicleFinancialPlan(
+            vehicle_id=vehicle.id,
+            finance_entity="Banco Teste",
+            contract_number="CTR-BA33",
+            raw_json={},
+            active=True,
+        )
+    )
+    db_session.commit()
+
+    response = authenticated_client.post(
+        "/v2-clean/tasks",
+        data={
+            "title": "Documentação BA-33-MD",
+            "classification_version": "2",
+            "workspace": "operational",
+            "category": "Operação",
+            "subcategory": "Pedido",
+            "plate": "ba 33 md",
+            "reservation_number": "RES-33",
+            "contract_number": "CTR-BA33",
+        },
+        files={"attachments": ("dua.pdf", b"%PDF-test", "application/pdf")},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    task = db_session.scalar(select(Task).where(Task.title == "Documentação BA-33-MD"))
+    document = db_session.scalar(select(Document).where(Document.task_id == task.id))
+    assert task.entity_type == "vehicle"
+    assert task.entity_id == str(vehicle.id)
+    assert task.plate == "BA-33-MD"
+    assert document.vehicle_id is None
+    assert document.plate == "BA-33-MD"
+    assert document.reservation_number == "RES-33"
+    assert document.contract_number == "CTR-BA33"
+    assert document.status == "received"
+
+
+def test_task_contract_association_requires_one_unique_vehicle(db_session):
+    from app.web.router import _resolve_task_vehicle
+
+    first = Vehicle(plate="AA-10-AA")
+    second = Vehicle(plate="BB-20-BB")
+    db_session.add_all([first, second])
+    db_session.flush()
+    db_session.add_all(
+        [
+            VehicleFinancialPlan(
+                vehicle_id=first.id,
+                finance_entity="Banco A",
+                contract_number="CONTRATO-DUP",
+                raw_json={},
+                active=True,
+            ),
+            VehicleFinancialPlan(
+                vehicle_id=second.id,
+                finance_entity="Banco B",
+                contract_number="CONTRATO-DUP",
+                raw_json={},
+                active=True,
+            ),
+        ]
+    )
+    db_session.commit()
+
+    assert (
+        _resolve_task_vehicle(
+            db_session,
+            plate=None,
+            contract_number="CONTRATO-DUP",
+        )
+        is None
+    )
 
 
 def test_clean_task_center_supports_explicit_sorting(authenticated_client, db_session):

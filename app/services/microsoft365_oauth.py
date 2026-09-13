@@ -352,6 +352,7 @@ def send_shared_mailbox_message(
     client_credential_reference: str,
     token_reference: str,
     mailbox_address: str,
+    sender_address: str,
     reply_to: str,
     attachments: list[EmailAttachment] | None = None,
 ) -> dict[str, object]:
@@ -381,6 +382,10 @@ def send_shared_mailbox_message(
             "content": message.html_body or message.text_body or "",
         },
         "toRecipients": recipients,
+        # Graph submits through the configured mailbox, while ``from`` may be
+        # an Exchange-authorized alias of that same mailbox. Exchange remains
+        # authoritative and rejects aliases that are not enabled tenant-side.
+        "from": {"emailAddress": {"address": sender_address}},
         "replyTo": [{"emailAddress": {"address": reply_to}}],
     }
     for source, target in ((message.cc_json, "ccRecipients"), (message.bcc_json, "bccRecipients")):

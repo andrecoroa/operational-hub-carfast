@@ -462,6 +462,7 @@ def test_graph_send_uses_shared_mailbox_endpoint_and_saves_sent_copy(monkeypatch
         client_credential_reference="env://secret",
         token_reference="db://token",
         mailbox_address="frota@carfast.pt",
+        sender_address="frota@carfast.pt",
         reply_to="frota@carfast.pt",
     )
     assert result["Provider"] == "microsoft365"
@@ -471,6 +472,9 @@ def test_graph_send_uses_shared_mailbox_endpoint_and_saves_sent_copy(monkeypatch
     assert captured["body"]["message"]["toRecipients"] == [
         {"emailAddress": {"address": "andrecoroa@daccordinvest.pt"}}
     ]
+    assert captured["body"]["message"]["from"] == {
+        "emailAddress": {"address": "frota@carfast.pt"}
+    }
 
 
 def test_graph_send_refreshes_once_after_unauthorized_response(monkeypatch):
@@ -521,6 +525,7 @@ def test_graph_send_refreshes_once_after_unauthorized_response(monkeypatch):
         client_credential_reference="env://secret",
         token_reference="db://token",
         mailbox_address="frota@carfast.pt",
+        sender_address="frota@carfast.pt",
         reply_to="frota@carfast.pt",
     )
 

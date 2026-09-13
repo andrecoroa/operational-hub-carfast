@@ -861,8 +861,10 @@ def ingest_inbound(db: Session, payload: dict) -> tuple[EmailThread, bool]:
             payload=payload,
             provider=source_provider,
         )
-        if delivery.original_recipient and not thread.original_recipient_address:
-            thread.original_recipient_address = delivery.original_recipient
+        if not thread.original_recipient_address:
+            thread.original_recipient_address = (
+                channel_alias.address if channel_alias else delivery.original_recipient
+            )
         if delivery.technical_recipient and not thread.technical_recipient_address:
             thread.technical_recipient_address = delivery.technical_recipient
         event.processed = True
@@ -924,8 +926,8 @@ def ingest_inbound(db: Session, payload: dict) -> tuple[EmailThread, bool]:
         now = datetime.now(UTC)
         hierarchy = _resolved_inbound_hierarchy(db, channel, rule)
         original_recipient = (
-            str(payload.get("OriginalRecipient") or "").strip()
-            or (channel_alias.address if channel_alias else None)
+            (channel_alias.address if channel_alias else None)
+            or str(payload.get("OriginalRecipient") or "").strip()
         )
         technical_recipient = (
             channel_alias.inbound_forward_address if channel_alias else None

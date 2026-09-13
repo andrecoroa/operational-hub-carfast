@@ -4039,15 +4039,70 @@ def clean_experience_denied(request: Request) -> RedirectResponse | None:
     return None
 
 
-def clean_process_area_cards(db: Session) -> list[dict[str, object]]:
+def clean_process_area_cards(
+    db: Session, *, accessible_task_types: set[str] | None = None
+) -> list[dict[str, object]]:
+    allowed_task_types = accessible_task_types or {
+        code for codes in TASK_WORKSPACE_TASK_TYPES.values() for code in codes
+    }
+    task_area_types = {
+        "operational": set(TASK_WORKSPACE_TASK_TYPES["operational"])
+        | set(TASK_WORKSPACE_TASK_TYPES["workshop"]),
+        "management": set(TASK_WORKSPACE_TASK_TYPES["audit"])
+        | set(TASK_WORKSPACE_TASK_TYPES["management"]),
+        "administration": set(TASK_WORKSPACE_TASK_TYPES["administration"]),
+    }
+
+    def task_counts(area: str) -> tuple[int, int]:
+        task_types = task_area_types[area].intersection(allowed_task_types)
+        if not task_types:
+            return 0, 0
+        active = (
+            Task.task_type.in_(tuple(task_types)),
+            Task.closed_at.is_(None),
+            ~Task.status.in_(TASK_ARCHIVE_STATUSES | TASK_PLANNED_STATUSES),
+        )
+        open_count = db.scalar(select(func.count()).select_from(Task).where(*active)) or 0
+        critical_count = (
+            db.scalar(
+                select(func.count())
+                .select_from(Task)
+                .where(*active, Task.priority.in_({"high", "urgent"}))
+            )
+            or 0
+        )
+        return open_count, critical_count
+
+    operational_open, operational_critical = task_counts("operational")
+    management_open, management_critical = task_counts("management")
+    administration_open, administration_critical = task_counts("administration")
+    fleet_open = (
+        db.scalar(
+            select(func.count())
+            .select_from(VehicleHistoryAudit)
+            .where(VehicleHistoryAudit.status != "closed")
+        )
+        or 0
+    )
+    fleet_critical = (
+        db.scalar(
+            select(func.count())
+            .select_from(VehicleHistoryAudit)
+            .where(
+                VehicleHistoryAudit.status != "closed",
+                VehicleHistoryAudit.priority.in_({"high", "urgent", "critical"}),
+            )
+        )
+        or 0
+    )
     return [
         {
             "code": "operational",
             "short": "OP",
             "label": "Operacional",
             "description": "Coordenação diária, tarefas guiadas e ocorrências rápidas.",
-            "open": 0,
-            "critical": 0,
+            "open": operational_open,
+            "critical": operational_critical,
             "models": ["Transferência crítica", "Verificação operacional"],
             "href": "/v2-clean/tasks?workspace=operational",
             "action": "Abrir tarefas",
@@ -4058,8 +4113,8 @@ def clean_process_area_cards(db: Session) -> list[dict[str, object]]:
             "short": "FR",
             "label": "Frota",
             "description": "Ciclo técnico, documentação e decisões comerciais da viatura.",
-            "open": 0,
-            "critical": 0,
+            "open": fleet_open,
+            "critical": fleet_critical,
             "models": ["Auditoria técnica da viatura", "Preparação para venda", "Regularização documental da viatura"],
             "href": "/v2-clean/fleet",
             "action": "Abrir frota",
@@ -4070,8 +4125,8 @@ def clean_process_area_cards(db: Session) -> list[dict[str, object]]:
             "short": "GE",
             "label": "Gestão",
             "description": "Sinistros, fornecedores, discussões e validações de gestão.",
-            "open": 0,
-            "critical": 0,
+            "open": management_open,
+            "critical": management_critical,
             "models": ["Sinistro acompanhado", "Reclamação fornecedor", "Discussão Stellantis"],
             "href": "/v2-clean/tasks?workspace=audit",
             "action": "Abrir auditoria",
@@ -4082,8 +4137,8 @@ def clean_process_area_cards(db: Session) -> list[dict[str, object]]:
             "short": "AD",
             "label": "Administração",
             "description": "Procedimentos, protocolos e organização interna.",
-            "open": 0,
-            "critical": 0,
+            "open": administration_open,
+            "critical": administration_critical,
             "models": ["Alteração de procedimento", "Revisão de protocolo", "Descritivo de função"],
             "href": "/v2-clean/admin/overview",
             "action": "Abrir administração",
@@ -4214,14 +4269,30 @@ def clean_experience_home(request: Request):
     with SessionLocal() as db:
         user_id = get_web_user_id(request)
         user = db.get(User, user_id) if user_id else None
-        area_cards = clean_process_area_cards(db)
         accessible_task_types = user_accessible_task_type_codes(db, user) if user else set()
+        area_cards = clean_process_area_cards(
+            db, accessible_task_types=set(accessible_task_types)
+        )
+        active_workshop_process = and_(
+            or_(
+                WorkshopPhasedProcess.origin == "v2_clean",
+                WorkshopPhasedProcess.origin.is_(None),
+            ),
+            WorkshopPhasedProcess.status.notin_(("closed", "cancelled")),
+        )
         quick_metrics = {
             "vehicles": count_rows(db, Vehicle),
             "workshop_alerts": db.scalar(
                 select(func.count())
                 .select_from(WorkshopPhasedProcessAlert)
-                .where(WorkshopPhasedProcessAlert.status == "open")
+                .join(
+                    WorkshopPhasedProcess,
+                    WorkshopPhasedProcess.id == WorkshopPhasedProcessAlert.process_id,
+                )
+                .where(
+                    WorkshopPhasedProcessAlert.status == "open",
+                    active_workshop_process,
+                )
             )
             or 0,
             "tasks": db.scalar(

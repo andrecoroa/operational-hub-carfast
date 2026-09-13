@@ -30,11 +30,12 @@ def test_admin_uses_master_detail_system_context() -> None:
     assert "ui-admin-master-detail" in ADMIN
     assert "admin-model-columns" in ADMIN
     assert "clean-admin-role-workspace" in ADMIN
-    assert "grid-template-rows:52px auto minmax(0,1fr)" in CSS
+    assert "min-height:100vh; height:auto; max-height:none; overflow:visible" in CSS
+    assert "grid-template-rows:52px auto auto" in CSS
     assert ".clean-admin-master-detail { display:grid;" in CSS
-    assert "height:100%; max-height:none; overflow:hidden" in CSS
+    assert "height:auto; max-height:none; overflow:visible" in CSS
     assert ".clean-admin-detail { display:grid;" in CSS
-    assert "padding-bottom:16px; overflow:auto; scrollbar-gutter:stable" in CSS
+    assert "padding-bottom:16px; overflow:visible" in CSS
 
 
 def test_dashboard_and_partner_density_are_shared_not_route_local() -> None:
@@ -49,3 +50,6 @@ def test_responsive_preview_and_master_detail_collapse() -> None:
     assert ".ui-context-preview[open]" not in CSS
     assert ".admin-model-columns { grid-template-columns: repeat(2,minmax(0,1fr)); }" in CSS
     assert ".clean-admin-role-workspace { grid-template-columns: minmax(0,1fr); }" in CSS
+    assert ".clean-admin-master-detail { grid-template-columns:minmax(0,1fr); }" in CSS
+    assert ".clean-admin-master nav { display:flex; flex-wrap:wrap; gap:4px; }" in CSS
+    assert ".clean-admin-master nav { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); }" in CSS

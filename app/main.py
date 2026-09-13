@@ -72,6 +72,7 @@ PERMISSION_ALLOWED_PATHS = {
 LEGACY_EXPERIENCE_PERMISSION = "experience.legacy.access"
 EXPERIENCE_NEUTRAL_PREFIXES = (
     *PERMISSION_ALLOWED_PREFIXES,
+    "/alerts",
     "/choose-experience",
     "/switch-experience",
     "/evolution/quick",
@@ -79,7 +80,6 @@ EXPERIENCE_NEUTRAL_PREFIXES = (
 
 WEB_PERMISSION_RULES = (
     (("/",), {"GET": {"dashboard.read"}}),
-    (("/alerts",), {"GET": {"dashboard.read"}}),
     (
         ("/evolution/quick",),
         {

@@ -4212,12 +4212,33 @@ def clean_experience_home(request: Request):
     if denied:
         return denied
     with SessionLocal() as db:
+        user_id = get_web_user_id(request)
         area_cards = clean_process_area_cards(db)
+        task_visibility = task_visibility_filter(db, user_id=user_id, task_model=Task)
         quick_metrics = {
             "vehicles": count_rows(db, Vehicle),
-            "workshop_alerts": area_cards[0]["critical"],
-            "tasks": area_cards[0]["open"],
-            "audits": area_cards[1]["open"],
+            "workshop_alerts": db.scalar(
+                select(func.count())
+                .select_from(WorkshopPhasedProcessAlert)
+                .where(WorkshopPhasedProcessAlert.status == "open")
+            )
+            or 0,
+            "tasks": db.scalar(
+                select(func.count())
+                .select_from(Task)
+                .where(
+                    task_visibility,
+                    Task.closed_at.is_(None),
+                    ~Task.status.in_(TASK_ARCHIVE_STATUSES | TASK_PLANNED_STATUSES),
+                )
+            )
+            or 0,
+            "audits": db.scalar(
+                select(func.count())
+                .select_from(VehicleHistoryAudit)
+                .where(VehicleHistoryAudit.status != "closed")
+            )
+            or 0,
         }
         return templates.TemplateResponse(
             request,
@@ -27889,11 +27910,7 @@ def alerts_page(request: Request):
     if not user_id:
         return RedirectResponse("/login", status_code=303)
 
-    with SessionLocal() as db:
-        user = db.get(User, user_id)
-        if not user:
-            return RedirectResponse("/login", status_code=303)
-        return templates.TemplateResponse(request, "alerts.html", {"user": user})
+    return RedirectResponse("/v2-clean/tasks/notifications", status_code=303)
 
 
 @web_router.get("/admin", response_class=HTMLResponse)

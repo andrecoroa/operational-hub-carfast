@@ -170,6 +170,7 @@ from app.services.task_recurrence import (
     opportunistic_generate_recurring_tasks,
     utc_datetime_to_local,
 )
+from app.services.task_attachment_treatment import treat_task_attachment
 from app.services.management_center import (
     ACTION_STATUS_LABELS,
     AR_IMPORT_TYPE,
@@ -4192,12 +4193,13 @@ def clean_tasks_center(
             ):
                 help_requests_by_task[help_request.task_id].append(help_request)
             linked_documents = db.execute(
-                select(TaskDocument.task_id, Document)
+                select(TaskDocument.task_id, TaskDocument.category, Document)
                 .join(Document, Document.id == TaskDocument.document_id)
                 .where(TaskDocument.task_id.in_(task_ids))
                 .order_by(Document.created_at.desc())
             ).all()
-            for linked_task_id, linked_document in linked_documents:
+            for linked_task_id, link_category, linked_document in linked_documents:
+                linked_document.task_link_category = link_category
                 documents_by_task[linked_task_id].append(linked_document)
             email_by_task = {
                 item.task_id: item
@@ -4225,6 +4227,12 @@ def clean_tasks_center(
                     task_relations_by_task[task.id].append("Criador")
         recent_documents = db.scalars(
             select(Document).order_by(Document.created_at.desc()).limit(80)
+        ).all()
+        task_attachment_vehicles = db.scalars(
+            select(Vehicle)
+            .where(or_(Vehicle.plate.is_not(None), Vehicle.vin.is_not(None)))
+            .order_by(Vehicle.plate, Vehicle.vin)
+            .limit(5000)
         ).all()
         open_filter = [
             Task.task_type.in_(tuple(readable_task_type_codes)),
@@ -4334,6 +4342,8 @@ def clean_tasks_center(
                 "task_relations_by_task": task_relations_by_task,
                 "mine_counts": mine_counts,
                 "recent_documents": recent_documents,
+                "task_attachment_vehicles": task_attachment_vehicles,
+                "task_attachment_document_types": DOCUMENT_TYPES,
                 "readable_workspaces": readable_workspaces,
                 "writable_workspaces": writable_workspaces,
                 "creatable_workspaces": creatable_workspaces,
@@ -5235,6 +5245,48 @@ def clean_tasks_link_document(
             db.add(TaskDocument(task_id=task.id, document_id=document.id, category="attachment"))
             db.commit()
     return clean_task_action_redirect(return_url, task_id=task_id, flag="document_linked")
+
+
+@web_router.post(
+    "/v2-clean/tasks/{task_id}/attachments/{document_id}/treat",
+    response_class=HTMLResponse,
+)
+def clean_tasks_treat_attachment(
+    request: Request,
+    task_id: int,
+    document_id: int,
+    vehicle_id: str = Form(""),
+    document_type: str = Form(""),
+    return_url: str = Form(""),
+):
+    user_id = get_web_user_id(request)
+    parsed_vehicle_id = parse_int_from_text(vehicle_id)
+    if not user_id or not parsed_vehicle_id:
+        return clean_task_action_redirect(return_url, task_id=task_id, flag="attachment_treatment_error")
+    with SessionLocal() as db:
+        task = db.get(Task, task_id)
+        user = db.get(User, user_id)
+        if (
+            not task
+            or not user_can_access_task_workspace(
+                db, user, workspace_for_task_type(task.task_type), action="update"
+            )
+        ):
+            return RedirectResponse("/v2-clean/tasks?error=forbidden", status_code=303)
+        try:
+            treat_task_attachment(
+                db,
+                task_id=task_id,
+                document_id=document_id,
+                vehicle_id=parsed_vehicle_id,
+                document_type=document_type,
+                user_id=user_id,
+            )
+        except ValueError:
+            db.rollback()
+            return clean_task_action_redirect(return_url, task_id=task_id, flag="attachment_treatment_error")
+        db.commit()
+    return clean_task_action_redirect(return_url, task_id=task_id, flag="attachment_treated")
 
 
 @web_router.get("/v2-clean/admin", response_class=HTMLResponse)

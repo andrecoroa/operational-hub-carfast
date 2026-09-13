@@ -184,6 +184,26 @@ def test_document_projection_requires_all_relevant_lines_classified():
     assert result["unassigned_lines"][0]["source_line_id"] == "10:2"
 
 
+def test_document_projection_requires_invoice_total_reconciliation():
+    result = build_document_service_proposals(
+        document("100,00"),
+        [line(1, "Calços travão FRT", "80,00")],
+    )
+    assert result["document_projection"] == "services_review_required"
+    assert result["reconciliation"]["status"] == "divergent"
+    assert result["classification_blockers"] == ["invoice_total_mismatch"]
+
+
+def test_document_projection_can_classify_only_when_reconciled():
+    result = build_document_service_proposals(
+        document("80,00"),
+        [line(1, "Calços travão FRT", "80,00")],
+    )
+    assert result["document_projection"] == "services_classified"
+    assert result["reconciliation"]["status"] == "reconciled"
+    assert result["classification_blockers"] == []
+
+
 def test_acceptance_document_688_splits_maintenance_diagnostic_and_brakes():
     result = build_document_service_proposals(
         {"run_id": "acceptance", "document_id": "688", "total_extracted": "469,04"},

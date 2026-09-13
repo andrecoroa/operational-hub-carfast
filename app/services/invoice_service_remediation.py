@@ -378,11 +378,24 @@ def build_document_service_proposals(
     invoice_total = _money(document.get("total_extracted") or document.get("total_source"))
     residual = (invoice_total - source_total).quantize(TWO_PLACES)
     relevant_unassigned = [line for line in unassigned_lines if line.role != "ancillary" and line.amount != 0]
-    projection = "services_classified" if proposals and not relevant_unassigned else "services_review_required"
+    reconciled = residual == 0
+    projection = (
+        "services_classified"
+        if proposals and not relevant_unassigned and reconciled
+        else "services_review_required"
+    )
+    blockers = []
+    if relevant_unassigned:
+        blockers.append("relevant_lines_unassigned")
+    if not reconciled:
+        blockers.append("invoice_total_mismatch")
+    if not proposals:
+        blockers.append("no_service_proposal")
     return {
         "schema": REMEDIATION_SCHEMA,
         "document_id": int(document["document_id"]),
         "document_projection": projection,
+        "classification_blockers": blockers,
         "services": proposals,
         "unassigned_lines": [line.as_dict() for line in unassigned_lines],
         "reconciliation": {
@@ -391,6 +404,7 @@ def build_document_service_proposals(
             "service_total": str(service_total),
             "excluded_or_unassigned_total": str(excluded_total),
             "invoice_minus_source_lines": str(residual),
+            "status": "reconciled" if reconciled else "divergent",
             "service_plus_excluded_minus_source_lines": str(
                 (service_total + excluded_total - source_total).quantize(TWO_PLACES)
             ),

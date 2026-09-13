@@ -25371,6 +25371,29 @@ body.clean-task-preview-open {
   white-space: nowrap;
 }
 
+.clean-admin-table-region {
+  position: relative;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  scrollbar-gutter: stable;
+}
+
+.clean-admin-table-region:focus-visible {
+  outline: 3px solid #87b7f4;
+  outline-offset: 2px;
+}
+
+.clean-admin-table-scroll-hint {
+  display: none;
+  margin: -4px 0 8px;
+  color: #52677c;
+  font-size: 11px;
+  font-weight: 700;
+}
+
 th.clean-admin-sortable {
   cursor: pointer;
   padding-right: 22px;
@@ -28780,8 +28803,8 @@ body:has(.email-preview-dialog[open]) { overflow: hidden; }
 .clean-work-structure-wrap {
   width: 100%;
   max-width: 100%;
-  max-height: min(62vh, 670px);
-  overflow: auto;
+  max-height: none;
+  overflow-x: auto;
   border: 1px solid #d7e0ea;
 }
 
@@ -29016,6 +29039,49 @@ body:has(.email-preview-dialog[open]) { overflow: hidden; }
   }
   .clean-work-admin-nav button {
     flex: 1 1 150px;
+  }
+}
+
+@media (max-width: 1024px) {
+  .clean-admin-table-scroll-hint {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .clean-admin-table-scroll-hint::before {
+    content: "↔";
+    color: #1f63d7;
+    font-size: 15px;
+  }
+  .clean-admin-table-region {
+    background:
+      linear-gradient(to right, #fff 30%, rgba(255,255,255,0)) left center / 24px 100% no-repeat,
+      linear-gradient(to left, #fff 30%, rgba(255,255,255,0)) right center / 24px 100% no-repeat;
+  }
+  .clean-admin-table-region table {
+    min-width: max(760px, 100%);
+  }
+  .clean-admin-table-region .clean-work-compact-table,
+  .clean-admin-table-region .clean-work-structure-table,
+  .clean-admin-table-region .email-access-matrix {
+    min-width: max(900px, 100%);
+  }
+  .clean-admin-table-region table :is(th, td):first-child {
+    position: sticky;
+    left: 0;
+    z-index: 3;
+    background: #fff;
+    box-shadow: 1px 0 0 #d7e0ea, 8px 0 12px -12px rgba(15, 42, 95, .8);
+  }
+  .clean-admin-table-region table thead th:first-child {
+    z-index: 5;
+    background: #f2f5f8;
+  }
+  .clean-admin-table-region table tbody tr:nth-child(even) > :first-child {
+    background: #f8fafc;
+  }
+  .clean-admin-table-region .email-access-matrix :is(th, td):first-child {
+    min-width: 180px;
   }
 }
 

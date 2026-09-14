@@ -1,5 +1,8 @@
 from urllib.parse import quote, urlsplit
 
+import asyncio
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.responses import PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
@@ -18,6 +21,7 @@ from app.services.microsoft365_oauth import (
     EnvironmentAndDatabaseSecretReferenceStore,
     configure_secret_reference_store,
 )
+from app.services.microsoft365_scheduler import run_microsoft365_sync_loop
 from app.web.email import email_router
 from app.web.microsoft365 import microsoft365_router
 from app.web.portal import portal_router
@@ -397,11 +401,29 @@ def has_explicit_legacy_context(request: Request) -> bool:
 
 
 def create_app() -> FastAPI:
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        interval = settings.microsoft365_sync_interval_seconds
+        stop = None
+        task = None
+        if settings.microsoft365_email_enabled and interval > 0:
+            stop = asyncio.Event()
+            task = asyncio.create_task(
+                run_microsoft365_sync_loop(stop, interval_seconds=interval)
+            )
+        try:
+            yield
+        finally:
+            if stop is not None and task is not None:
+                stop.set()
+                await task
+
     app = FastAPI(
         title=settings.app_name,
         version="0.1.0",
         docs_url="/docs" if settings.enable_docs else None,
         redoc_url="/redoc" if settings.enable_docs else None,
+        lifespan=lifespan,
     )
 
     @app.middleware("http")

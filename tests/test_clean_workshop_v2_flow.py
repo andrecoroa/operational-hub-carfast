@@ -714,6 +714,11 @@ def test_clean_workshop_entry_validation_and_diagnostic_flow(client, db_session)
     assert "Guardar fase" in entry_page.text
     assert 'value="not_applicable"' in entry_page.text
     assert "data-history-preview-open" not in entry_page.text
+    assert f'/v2-clean/workshop/{process_id}/print/final-report' in entry_page.text
+    assert "Imprimir processo" in entry_page.text
+    assert 'href="#danos">Fotografias da entrada</a>' in entry_page.text
+    assert 'id="clean-workshop-wait-dialog"' in entry_page.text
+    assert 'name="waiting_reason"' in entry_page.text
 
     created_problem = client.post(
         f"/v2-clean/workshop/{process_id}/records",
@@ -780,6 +785,50 @@ def test_clean_workshop_entry_validation_and_diagnostic_flow(client, db_session)
     assert "clean-history-preview-modal" in validation_page.text
     assert "clean-history-preview-body" in validation_page.text
     assert "Guardar fase" in validation_page.text
+    assert f'/v2-clean/workshop/{process_id}/print/final-report' in validation_page.text
+    assert "Imprimir processo" in validation_page.text
+    assert (
+        f'/v2-clean/workshop/diagnostico?process_id={process_id}#relatorios'
+        in validation_page.text
+    )
+    assert "PDFs de diagnóstico" in validation_page.text
+    assert 'href="#workshop-documents">Documentos e fotografias</a>' in validation_page.text
+
+    workbench_return_url = f"/v2-clean/workshop/validacao?process_id={process_id}"
+    waiting = client.post(
+        f"/v2-clean/workshop/{process_id}/operational-situation",
+        data={
+            "action": "wait",
+            "waiting_reason": "A aguardar aprovação",
+            "return_url": workbench_return_url,
+        },
+        follow_redirects=False,
+    )
+    assert waiting.status_code == 303
+    assert waiting.headers["location"] == (
+        f"{workbench_return_url}&operational_updated=wait"
+    )
+    db_session.refresh(process)
+    assert process.metadata_json["operational_situation"] == "waiting"
+    assert process.metadata_json["operational_waiting_reason"] == "A aguardar aprovação"
+    waiting_page = client.get(waiting.headers["location"])
+    assert waiting_page.status_code == 200
+    assert "Processo em espera" in waiting_page.text
+    assert "A aguardar aprovação" in waiting_page.text
+    assert "Retomar processo" in waiting_page.text
+
+    resumed = client.post(
+        f"/v2-clean/workshop/{process_id}/operational-situation",
+        data={"action": "resume", "return_url": workbench_return_url},
+        follow_redirects=False,
+    )
+    assert resumed.status_code == 303
+    assert resumed.headers["location"] == (
+        f"{workbench_return_url}&operational_updated=resume"
+    )
+    db_session.refresh(process)
+    assert process.metadata_json["operational_situation"] == "in_progress"
+    assert "operational_waiting_reason" not in process.metadata_json
 
     saved_validation = client.post(
         "/v2-clean/workshop/validacao/save",
@@ -1473,3 +1522,16 @@ def test_workshop_operational_situation_requires_write_permission_before_mutatio
             AuditLog.action == "workshop.operational_situation.updated",
         )
     ) is not None
+
+    rejected_external_return = authenticated_client.post(
+        f"/v2-clean/workshop/{process.id}/operational-situation",
+        data={
+            **payload,
+            "action": "resume",
+            "return_url": "https://malicious.example/escape",
+        },
+        follow_redirects=False,
+    )
+    assert rejected_external_return.status_code == 303
+    assert rejected_external_return.headers["location"].startswith("/v2-clean/workshop?")
+    assert "malicious.example" not in rejected_external_return.headers["location"]

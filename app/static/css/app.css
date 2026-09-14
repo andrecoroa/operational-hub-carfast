@@ -29903,3 +29903,85 @@ body:has(.email-preview-dialog[open]) { overflow: hidden; }
     grid-template-columns: 1fr;
   }
 }
+
+.clean-process-waiting-banner {
+  align-items: center;
+  background: #fff9ec;
+  border-color: #e9cf95;
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 16px 18px;
+}
+.clean-process-waiting-banner h3 {
+  color: #7a4b0d;
+  font-size: 16px;
+  margin: 0 0 4px;
+}
+.clean-process-waiting-banner p {
+  color: #745b37;
+  margin: 0;
+}
+.clean-process-waiting-banner form,
+.clean-context-action-row .clean-inline-action {
+  margin: 0;
+}
+.clean-workshop-wait-dialog {
+  width: min(520px, calc(100vw - 32px));
+  border: 1px solid #d8e0eb;
+  border-radius: 12px;
+  background: #fff;
+  color: #172033;
+  padding: 0;
+  box-shadow: 0 24px 64px rgb(15 42 95 / 24%);
+}
+.clean-workshop-wait-dialog::backdrop {
+  background: rgb(15 23 42 / 58%);
+}
+.clean-workshop-wait-dialog form {
+  display: grid;
+  gap: 14px;
+  padding: 18px;
+}
+.clean-workshop-wait-dialog-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+}
+.clean-workshop-wait-dialog-heading h3 {
+  margin: 2px 0 0;
+}
+.clean-workshop-wait-dialog label {
+  display: grid;
+  gap: 6px;
+  font-weight: 800;
+}
+.clean-workshop-wait-dialog select {
+  min-height: 42px;
+  border: 1px solid #ccd5e2;
+  border-radius: 8px;
+  background: #fff;
+  color: #172033;
+  padding: 8px 10px;
+}
+.clean-workshop-wait-dialog > form > p {
+  color: #667085;
+  margin: 0;
+}
+.clean-workshop-wait-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+@media (max-width: 640px) {
+  .clean-process-waiting-banner {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .clean-workshop-wait-dialog-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+}

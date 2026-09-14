@@ -131,7 +131,11 @@ class EmailChannelTransport(TimestampMixin, Base):
 
     __tablename__ = "email_channel_transports"
     __table_args__ = (
-        UniqueConstraint("channel_id", name="uq_email_channel_transport_channel"),
+        UniqueConstraint(
+            "channel_id",
+            "mailbox_address",
+            name="uq_email_channel_transport_mailbox",
+        ),
         CheckConstraint(
             "provider IN ('postmark', 'microsoft365')",
             name="ck_email_channel_transports_provider",
@@ -144,7 +148,7 @@ class EmailChannelTransport(TimestampMixin, Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     channel_id: Mapped[int] = mapped_column(
-        ForeignKey("email_channels.id", ondelete="CASCADE"), unique=True, index=True
+        ForeignKey("email_channels.id", ondelete="CASCADE"), index=True
     )
     provider: Mapped[str] = mapped_column(String(30), default="postmark", index=True)
     enabled: Mapped[bool] = mapped_column(Boolean, default=False, index=True)

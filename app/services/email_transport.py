@@ -89,7 +89,7 @@ def resolve_outbound_identity(
     except ValueError as exc:
         raise OutboundIdentityError("sender_not_configured", str(exc)) from exc
 
-    config = channel_transport(db, channel.id)
+    config = channel_transport(db, channel.id, sender_address=sender_address)
     if config and config.enabled and config.provider == MICROSOFT365:
         required = (
             config.mailbox_address,
@@ -117,16 +117,34 @@ def resolve_outbound_identity(
     )
 
 
-def channel_transport(db: Session, channel_id: int) -> EmailChannelTransport | None:
-    return db.scalar(
-        select(EmailChannelTransport).where(
-            EmailChannelTransport.channel_id == channel_id
+def channel_transport(
+    db: Session, channel_id: int, *, sender_address: str | None = None
+) -> EmailChannelTransport | None:
+    normalized_sender = str(sender_address or "").strip().casefold()
+    query = select(EmailChannelTransport).where(
+        EmailChannelTransport.channel_id == channel_id
+    )
+    if normalized_sender:
+        exact = db.scalar(
+            query.where(
+                func.lower(EmailChannelTransport.mailbox_address) == normalized_sender
+            )
         )
+        if exact:
+            return exact
+    return db.scalar(
+        query.order_by(EmailChannelTransport.enabled.desc(), EmailChannelTransport.id)
     )
 
 
 def provider_for_channel(db: Session, channel_id: int) -> str:
-    config = channel_transport(db, channel_id)
+    config = db.scalar(
+        select(EmailChannelTransport).where(
+            EmailChannelTransport.channel_id == channel_id,
+            EmailChannelTransport.provider == MICROSOFT365,
+            EmailChannelTransport.enabled.is_(True),
+        ).order_by(EmailChannelTransport.id)
+    )
     if not config or not config.enabled:
         return POSTMARK
     return config.provider
@@ -155,7 +173,8 @@ def send_channel_message(
     postmark_sender: Callable[..., dict[str, Any]] = send_postmark_message,
     microsoft365_sender: Callable[..., dict[str, Any]] = send_shared_mailbox_message,
 ) -> dict[str, Any]:
-    config = channel_transport(db, channel.id)
+    sender_address = sender.rsplit("<", 1)[-1].rstrip(">").strip().casefold()
+    config = channel_transport(db, channel.id, sender_address=sender_address)
     provider = POSTMARK if not config or not config.enabled else config.provider
     if provider == POSTMARK:
         return postmark_sender(
@@ -179,7 +198,6 @@ def send_channel_message(
         if not all(required):
             raise RuntimeError("A configuração protegida Microsoft 365 desta caixa está incompleta.")
         configured_mailbox = str(config.mailbox_address).strip().casefold()
-        sender_address = sender.rsplit("<", 1)[-1].rstrip(">").strip().casefold()
         if configured_mailbox != sender_address:
             if getattr(channel, "reply_policy", "mailbox") != "original":
                 raise RuntimeError(

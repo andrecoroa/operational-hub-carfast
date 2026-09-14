@@ -200,6 +200,63 @@ def test_microsoft365_original_alias_is_explicit_sender(db_session, monkeypatch)
     assert calls[0]["reply_to"] == "alias@example.test"
 
 
+def test_microsoft365_original_sender_selects_matching_physical_transport(
+    db_session, monkeypatch
+):
+    from app.services import email_transport
+
+    monkeypatch.setattr(email_transport.settings, "microsoft365_email_enabled", True)
+    channel = _identity_channel(db_session, "multi-m365")
+    channel.reply_policy = "original"
+    aliases = [
+        EmailChannelAlias(channel_id=channel.id, address=address, active=True)
+        for address in ("backoffice@example.test", "contratos@example.test")
+    ]
+    transports = [
+        EmailChannelTransport(
+            channel_id=channel.id,
+            provider="microsoft365",
+            enabled=True,
+            mailbox_address=address,
+            tenant_id="tenant",
+            client_id="client",
+            client_credential_reference="env://secret",
+            token_reference=f"db://{address}",
+        )
+        for address in ("backoffice@example.test", "contratos@example.test")
+    ]
+    db_session.add_all([*aliases, *transports])
+    db_session.flush()
+    thread = EmailThread(
+        channel_id=channel.id,
+        subject="Contrato",
+        original_recipient_address="contratos@example.test",
+    )
+    identity = resolve_outbound_identity(db_session, channel, thread)
+    calls = []
+    message = EmailMessage(
+        thread_id=thread.id,
+        direction="outbound",
+        state="approved",
+        sender=identity.sender_address,
+        recipients_json=[{"Email": "external@example.test"}],
+        subject="Resposta",
+    )
+
+    send_channel_message(
+        db_session,
+        channel,
+        message,
+        identity.transport_sender,
+        reply_to=identity.reply_to_address,
+        microsoft365_sender=lambda supplied, **kwargs: calls.append(kwargs)
+        or {"Provider": "microsoft365"},
+    )
+
+    assert calls[0]["mailbox_address"] == "contratos@example.test"
+    assert calls[0]["sender_address"] == "contratos@example.test"
+
+
 def test_reply_route_persists_original_alias_and_blocks_arbitrary_sender(
     authenticated_client, db_session, monkeypatch
 ):

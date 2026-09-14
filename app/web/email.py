@@ -3763,6 +3763,8 @@ def email_mark_spam(
                 EmailChannelTransport.channel_id == thread.channel_id,
                 EmailChannelTransport.provider == "microsoft365",
                 EmailChannelTransport.enabled.is_(True),
+                func.lower(EmailChannelTransport.mailbox_address)
+                == func.lower(thread.original_recipient_address),
             )
         )
         message = db.scalar(

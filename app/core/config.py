@@ -27,6 +27,7 @@ class Settings(BaseSettings):
     postmark_inbound_basic_user: str | None = None
     postmark_inbound_basic_password: str | None = None
     microsoft365_email_enabled: bool = False
+    microsoft365_sync_interval_seconds: int = 0
     microsoft365_oauth_setup_enabled: bool = False
     microsoft365_token_encryption_key: str | None = None
     microsoft365_redirect_uri: str = (

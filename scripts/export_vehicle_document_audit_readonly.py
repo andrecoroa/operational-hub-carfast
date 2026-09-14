@@ -10,7 +10,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import select, text
+from sqlalchemy import or_, select, text
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -68,7 +68,9 @@ def _latest_extractions(db, diagnostic_ids: set[int]) -> dict[int, DiagnosticExt
 
 def build_vehicle_document_audit(db, *, verify_local_files: bool = False) -> tuple[dict, list[dict]]:
     documents = db.scalars(
-        select(Document).where(Document.document_type.not_in(INVOICE_TYPES))
+        select(Document).where(
+            or_(Document.document_type.is_(None), Document.document_type.not_in(INVOICE_TYPES))
+        )
     ).all()
     states = {
         row.document_id: row

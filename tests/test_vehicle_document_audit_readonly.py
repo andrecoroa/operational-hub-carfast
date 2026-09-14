@@ -57,8 +57,18 @@ def test_export_excludes_invoices(db_session):
         status="received",
     )
     db_session.add(invoice)
+    untyped = Document(
+        original_name="unknown.pdf",
+        file_name="unknown.pdf",
+        storage_provider="local",
+        storage_path="/missing/unknown.pdf",
+        document_type=None,
+        status="received",
+    )
+    db_session.add(untyped)
     db_session.flush()
 
     _summary, rows = build_vehicle_document_audit(db_session)
 
     assert all(row["document_id"] != invoice.id for row in rows)
+    assert any(row["document_id"] == untyped.id for row in rows)

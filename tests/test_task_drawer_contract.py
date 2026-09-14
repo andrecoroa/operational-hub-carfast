@@ -25,6 +25,16 @@ def test_task_drawer_contract_keeps_preview_and_edit_as_distinct_modes() -> None
     assert "openTaskWorkbenchOnDemand(requested || restoredTask)" in CENTER
 
 
+def test_creation_and_drawer_edit_keep_independent_reference_fields() -> None:
+    creation = (ROOT / "app/templates/_task_center_create.html").read_text(
+        encoding="utf-8"
+    )
+    for name in ("plate", "contract_number", "reservation_number"):
+        assert f'name="{name}"' in creation
+        assert f'name="{name}"' in DRAWER
+    assert "Campos independentes da relação técnica genérica." in DRAWER
+
+
 def test_task_drawer_actions_reuse_authorized_task_endpoints() -> None:
     for endpoint in (
         "/comments",
@@ -70,3 +80,46 @@ def test_authorized_drawer_response_is_a_fragment(authenticated_client, db_sessi
     assert 'data-task-drawer-mode="preview"' in response.text
     assert 'data-task-drawer-mode="edit"' in response.text
     assert "<html" not in response.text.lower()
+
+
+def test_reference_fields_persist_and_return_in_drawer(
+    authenticated_client, db_session
+) -> None:
+    user = db_session.scalar(select(User).where(User.email == "admin.tests@carfast.local"))
+    task = Task(
+        title="Persistir referências no drawer",
+        task_type="operational_task",
+        status="new",
+        priority="normal",
+        created_by_id=user.id,
+        assigned_to_id=user.id,
+    )
+    db_session.add(task)
+    db_session.commit()
+
+    response = authenticated_client.post(
+        f"/v2-clean/tasks/{task.id}/update",
+        data={
+            "title": task.title,
+            "description": "Referências preenchidas.",
+            "priority": "normal",
+            "plate": "AA-12-BB",
+            "contract_number": "CONT-2026-42",
+            "reservation_number": "RES-9001",
+            "return_url": "/v2-clean/tasks",
+        },
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    db_session.refresh(task)
+    assert task.plate == "AA-12-BB"
+    assert task.contract_number == "CONT-2026-42"
+    assert task.reservation_number == "RES-9001"
+
+    drawer = authenticated_client.get(
+        f"/v2-clean/tasks/{task.id}/detail?panel=drawer"
+    )
+    assert drawer.status_code == 200
+    assert 'name="plate" maxlength="40" value="AA-12-BB"' in drawer.text
+    assert 'name="contract_number" maxlength="120" value="CONT-2026-42"' in drawer.text
+    assert 'name="reservation_number" maxlength="120" value="RES-9001"' in drawer.text

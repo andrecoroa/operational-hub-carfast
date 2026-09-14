@@ -13,26 +13,25 @@ APPROVED = (ROOT / "app/templates/_task_center_approved.html").read_text(encodin
 CSS = (ROOT / "app/static/css/ui-contract-v1.css").read_text(encoding="utf-8")
 
 
-def test_task_drawer_contract_keeps_preview_and_edit_as_distinct_modes() -> None:
+def test_task_drawer_keeps_preview_lateral_and_opens_edit_on_full_page() -> None:
     assert 'data-task-drawer-mode="preview"' in DRAWER
-    assert 'data-task-drawer-mode="edit" hidden' in DRAWER
-    assert "data-task-drawer-edit" in DRAWER
-    assert "data-task-drawer-cancel" in DRAWER
-    assert "Guardar alterações" in DRAWER
-    assert "showEdit" in CENTER
-    assert "showPreview" in CENTER
+    assert 'data-task-drawer-mode="edit"' not in DRAWER
+    assert "data-task-full-page-edit" in DRAWER
+    assert "/detail{% if return_context %}?return_context=" in DRAWER
+    assert "#task-edit" in DRAWER
+    assert "showEdit" not in CENTER
     assert "restoredTask = location.hash.match" in CENTER
     assert "openTaskWorkbenchOnDemand(requested || restoredTask)" in CENTER
 
 
-def test_creation_and_drawer_edit_keep_independent_reference_fields() -> None:
+def test_creation_and_full_page_edit_keep_independent_reference_fields() -> None:
     creation = (ROOT / "app/templates/_task_center_create.html").read_text(
         encoding="utf-8"
     )
+    detail = (ROOT / "app/templates/clean_task_detail.html").read_text(encoding="utf-8")
     for name in ("plate", "contract_number", "reservation_number"):
         assert f'name="{name}"' in creation
-        assert f'name="{name}"' in DRAWER
-    assert "Campos independentes da relação técnica genérica." in DRAWER
+        assert f'name="{name}"' in detail
 
 
 def test_task_drawer_actions_reuse_authorized_task_endpoints() -> None:
@@ -40,7 +39,6 @@ def test_task_drawer_actions_reuse_authorized_task_endpoints() -> None:
         "/comments",
         "/transition",
         "/help",
-        "/update",
         "/close",
     ):
         assert endpoint in DRAWER
@@ -55,6 +53,7 @@ def test_task_drawer_actions_reuse_authorized_task_endpoints() -> None:
 def test_task_drawer_is_lateral_on_desktop_and_full_width_on_mobile() -> None:
     assert ".task-drawer-mount{position:relative;width:min(620px,44vw)" in CSS
     assert "@media(max-width:700px){.task-drawer-mount{width:100vw}" in CSS
+    assert ".task-drawer-backdrop{background:transparent}" in CSS
 
 
 def test_authorized_drawer_response_is_a_fragment(authenticated_client, db_session) -> None:
@@ -78,7 +77,8 @@ def test_authorized_drawer_response_is_a_fragment(authenticated_client, db_sessi
     assert response.status_code == 200
     assert "Tarefa no painel lateral" in response.text
     assert 'data-task-drawer-mode="preview"' in response.text
-    assert 'data-task-drawer-mode="edit"' in response.text
+    assert 'data-task-drawer-mode="edit"' not in response.text
+    assert 'data-task-full-page-edit' in response.text
     assert "<html" not in response.text.lower()
 
 
@@ -120,6 +120,6 @@ def test_reference_fields_persist_and_return_in_drawer(
         f"/v2-clean/tasks/{task.id}/detail?panel=drawer"
     )
     assert drawer.status_code == 200
-    assert 'name="plate" maxlength="40" value="AA-12-BB"' in drawer.text
-    assert 'name="contract_number" maxlength="120" value="CONT-2026-42"' in drawer.text
-    assert 'name="reservation_number" maxlength="120" value="RES-9001"' in drawer.text
+    assert "Matrícula · AA-12-BB" in drawer.text
+    assert "Contrato · CONT-2026-42" in drawer.text
+    assert "Reserva · RES-9001" in drawer.text

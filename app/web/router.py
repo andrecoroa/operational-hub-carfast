@@ -2413,6 +2413,7 @@ PRIORITY_LABELS = dict(PRIORITIES)
 PRIORITY_DISPLAY_LABELS = {**PRIORITY_LABELS, "low": "Baixa"}
 
 TASK_ARCHIVE_STATUSES = {"closed", "cancelled", "no_action_needed"}
+TASK_ACTIVE_EXCLUDED_STATUSES = TASK_ARCHIVE_STATUSES | {"resolved"}
 
 
 def task_origin_label(task: Task) -> str:
@@ -5828,9 +5829,9 @@ def clean_tasks_center(
                 )
             )
         if active_status == "open":
-            filters.extend([Task.closed_at.is_(None), ~Task.status.in_(TASK_ARCHIVE_STATUSES)])
+            filters.extend([Task.closed_at.is_(None), ~Task.status.in_(TASK_ACTIVE_EXCLUDED_STATUSES)])
         elif active_status == "closed":
-            filters.append(or_(Task.closed_at.is_not(None), Task.status.in_(TASK_ARCHIVE_STATUSES)))
+            filters.append(or_(Task.closed_at.is_not(None), Task.status.in_(TASK_ACTIVE_EXCLUDED_STATUSES)))
         elif active_status != "all":
             filters.append(Task.status == active_status)
         if active_kind == "problem":
@@ -6270,13 +6271,13 @@ def clean_tasks_center(
         open_task_filter = [
             *open_filter,
             Task.closed_at.is_(None),
-            ~Task.status.in_(TASK_ARCHIVE_STATUSES),
+            ~Task.status.in_(TASK_ACTIVE_EXCLUDED_STATUSES),
         ]
         scoped_open_task_filter = list(open_task_filter)
         if active_relation_filter is not None:
             scoped_open_task_filter.append(active_relation_filter)
         if active_assignment:
-            scoped_open_task_filter.append(Task.assigned_to_id.is_(None))
+            scoped_open_task_filter.append(Task.assignment_state == "team_unclaimed")
         unassigned_counter_filter = [*open_task_filter, claimable_relation_filter]
         if active_mine_kind == "team" and active_relation_filter is not None:
             unassigned_counter_filter.append(active_relation_filter)
@@ -6344,7 +6345,7 @@ def clean_tasks_center(
         }
         task_counter_metrics = {
             "new": db.scalar(select(func.count()).select_from(Task).where(*scoped_open_task_filter, Task.status == "new")) or 0,
-            "unassigned": db.scalar(select(func.count()).select_from(Task).where(*unassigned_counter_filter, Task.assigned_to_id.is_(None))) or 0,
+            "unassigned": db.scalar(select(func.count()).select_from(Task).where(*unassigned_counter_filter, Task.assignment_state == "team_unclaimed")) or 0,
             "risk": db.scalar(select(func.count()).select_from(Task).where(*scoped_open_task_filter, due_soon_condition)) or 0,
             "late": db.scalar(select(func.count()).select_from(Task).where(*scoped_open_task_filter, overdue_condition)) or 0,
             "active": db.scalar(select(func.count()).select_from(Task).where(*scoped_open_task_filter)) or 0,
@@ -6475,15 +6476,19 @@ def clean_tasks_center(
         }
         task_sla_by_id = {task.id: sla_snapshot(task) for task in tasks}
         task_sla_labels_by_id = {
-            task_id: {
-                "overdue": "SLA ultrapassado",
-                "warning": "SLA em risco",
-                "paused": "SLA pausado",
-                "within": "SLA dentro do prazo",
-                "completed": "SLA cumprido",
-                "not_configured": "SLA não configurado",
-            }[snapshot.overall]
-            for task_id, snapshot in task_sla_by_id.items()
+            task.id: (
+                "SLA calculado ultrapassado"
+                if task.due_on is None and task_sla_by_id[task.id].overall == "overdue"
+                else {
+                    "overdue": "SLA ultrapassado",
+                    "warning": "SLA em risco",
+                    "paused": "SLA pausado",
+                    "within": "SLA dentro do prazo",
+                    "completed": "SLA cumprido",
+                    "not_configured": "SLA não configurado",
+                }[task_sla_by_id[task.id].overall]
+            )
+            for task in tasks
         }
         task_assignment_labels = {
             task.id: assignment_label(
@@ -6501,7 +6506,7 @@ def clean_tasks_center(
             )
         } if cases_enabled and visible_case_ids else {}
         active_case_child = and_(
-            Task.closed_at.is_(None), ~Task.status.in_(TASK_ARCHIVE_STATUSES)
+            Task.closed_at.is_(None), ~Task.status.in_(TASK_ACTIVE_EXCLUDED_STATUSES)
         )
         summary_columns = (
             func.count(Task.id).label("count"),

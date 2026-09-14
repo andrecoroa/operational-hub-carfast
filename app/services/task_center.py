@@ -149,7 +149,12 @@ def task_claimable_relation_filter(db, *, user_id: int, task_model=Task):
             task_model.work_category_id.in_(eligible_category_ids),
         ),
     )
-    return and_(task_model.assigned_to_id.is_(None), team_or_category, assume_scope)
+    return and_(
+        task_model.assignment_state == "team_unclaimed",
+        task_model.assigned_to_id.is_(None),
+        team_or_category,
+        assume_scope,
+    )
 
 
 def task_visibility_filter(db, *, user_id: int, task_model=Task):

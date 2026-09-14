@@ -537,7 +537,8 @@ def test_approved_selection_preserves_return_context() -> None:
     assert 'carfast.taskScroll:' in TEMPLATE
     assert "const restoreIds=" in TEMPLATE
     assert "grouped&&!groupButton" in TEMPLATE
-    assert "get('open_task')" not in TEMPLATE
+    assert "rawSearch.get('open_task')" in TEMPLATE
+    assert "window.pendingTaskWorkbenchId" in TEMPLATE
     assert "if(key==='open_task')return" in TEMPLATE
     assert "['updated','case_updated'].includes(key)" in TEMPLATE
 

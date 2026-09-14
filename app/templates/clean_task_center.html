@@ -679,6 +679,11 @@
     }
   };
   window.openTaskWorkbench = (taskId) => openTaskWorkbenchOnDemand(taskId);
+  if (window.pendingTaskWorkbenchId) {
+    const pendingTaskWorkbenchId = window.pendingTaskWorkbenchId;
+    window.pendingTaskWorkbenchId = null;
+    openTaskWorkbenchOnDemand(pendingTaskWorkbenchId);
+  }
   document.querySelectorAll("[data-task-open]").forEach((row) => {
     const taskId = row.dataset.taskOpen.replace("task-preview-", "");
     row.addEventListener("click", (event) => { if (!event.target.closest("a,button,input,select,textarea")) openTaskWorkbenchOnDemand(taskId); });
@@ -696,9 +701,6 @@
     if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
     else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
   });
-  const requested = new URLSearchParams(location.search).get("open_task");
-  const restoredTask = location.hash.match(/^#task-(\d+)$/)?.[1];
-  if (requested || restoredTask) openTaskWorkbenchOnDemand(requested || restoredTask);
   drawerShell?.querySelector('[data-task-drawer-close]')?.addEventListener('click', closeDrawer);
 })();
 </script>

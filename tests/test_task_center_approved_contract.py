@@ -290,14 +290,12 @@ def test_preview_renders_only_persisted_non_empty_context_without_plate_heuristi
     assert "find_vehicle_by_plate" not in ROUTER[ROUTER.index("task_context_items_by_id") : ROUTER.index("task_claim_allowed_by_id")]
 
 
-def test_inline_preview_toggles_single_selection_and_restores_keyboard_focus() -> None:
+def test_row_selection_opens_the_authorized_drawer_and_keeps_keyboard_support() -> None:
     assert "const toggleSelection=(row,groupButton=null)" in TEMPLATE
-    assert "selectedRow===row&&!preview.classList.contains('is-empty')" in TEMPLATE
+    assert "window.openTaskWorkbench(row.dataset.taskId,row)" in TEMPLATE
     assert "selectedTrigger=groupButton||row" in TEMPLATE
-    assert "selectedRow=null;selectedTrigger=null" in TEMPLATE
     assert "trigger?.isConnected)trigger.focus()" in TEMPLATE
-    assert "event.key!=='Escape'" in TEMPLATE
-    assert "document.querySelector('dialog[open]')" in TEMPLATE
+    assert 'event.key === "Escape" && drawerShell && !drawerShell.hidden' in TEMPLATE
     assert "row.addEventListener('click',()=>toggleSelection(row))" in TEMPLATE
     assert "if(row)toggleSelection(row,button)" in TEMPLATE
     assert "groupButtons.find(button=>button.dataset.groupTask===id)" in TEMPLATE
@@ -880,7 +878,8 @@ def test_list_detail_visibility_uses_one_canonical_resolver() -> None:
     assert "user_can_view_task(db, user_id=user_id, task=task)" in ROUTER
     assert '@web_router.get("/v2-clean/tasks/{task_id}/open")' in ROUTER
     assert 'issue_return_context(' in ROUTER
-    assert 'f"/v2-clean/tasks/{task_id}/detail?return_context={quote(return_token)}"' in ROUTER
+    assert 'f"/v2-clean/tasks/{task_id}/detail?return_context={quote(return_token)}{panel_query}"' in ROUTER
+    assert 'panel_query = "&panel=drawer" if panel == "drawer" else ""' in ROUTER
     assert "task_return_url" in ROUTER
     assert 'href="{{ task_return_url }}"' in (ROOT / "app/templates/task_detail.html").read_text(encoding="utf-8")
 

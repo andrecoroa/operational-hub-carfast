@@ -8883,6 +8883,7 @@ def clean_task_open(
     request: Request,
     task_id: int,
     return_url: str = "",
+    panel: str = "",
 ):
     """Open a task through the same row-level resolver used by the clean list."""
     user_id = get_web_user_id(request)
@@ -8913,8 +8914,9 @@ def clean_task_open(
         query=parsed.query,
         anchor=f"task-{task_id}",
     )
+    panel_query = "&panel=drawer" if panel == "drawer" else ""
     return RedirectResponse(
-        f"/v2-clean/tasks/{task_id}/detail?return_context={quote(return_token)}",
+        f"/v2-clean/tasks/{task_id}/detail?return_context={quote(return_token)}{panel_query}",
         status_code=303,
     )
 
@@ -37676,6 +37678,7 @@ def task_detail(
     feedback_saved: str | None = None,
     error: str | None = None,
     return_context: str = "",
+    panel: str = "",
 ):
     if not get_web_user_id(request):
         return RedirectResponse("/login", status_code=303)
@@ -37987,7 +37990,13 @@ def task_detail(
         )
         return templates.TemplateResponse(
             request,
-            "clean_task_detail.html" if is_clean_detail else "task_detail.html",
+            (
+                "_clean_task_drawer.html"
+                if is_clean_detail and panel == "drawer"
+                else "clean_task_detail.html"
+                if is_clean_detail
+                else "task_detail.html"
+            ),
             {
                 "task": task,
                 "task_workspace": task_workspace,
@@ -38003,6 +38012,11 @@ def task_detail(
                 "task_decision_targets": task_decision_targets,
                 "can_request_decision": can_request_decision,
                 "can_resolve_pending_decision": can_resolve_pending_decision,
+                "can_create_task_case": bool(
+                    settings.task_cases_enabled
+                    and can_update_task
+                    and "cases.create" in detail_permissions
+                ),
                 "history": history,
                 "linked_vehicle": linked_vehicle,
                 "task_case": task_case,

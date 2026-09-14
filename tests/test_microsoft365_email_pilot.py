@@ -39,8 +39,9 @@ def test_callback_route_is_exact_and_get_only():
 def test_transport_migration_is_the_single_additive_head():
     config = Config("alembic.ini")
     scripts = ScriptDirectory.from_config(config)
-    assert scripts.get_heads() == ["ffff45bf213c"]
+    assert scripts.get_heads() == ["100056bc78de"]
     assert scripts.get_revision("fffc017b8d9e").down_revision == "fffbf06a7c8d"
+    assert scripts.get_revision("100056bc78de").down_revision == "ffff45bf213c"
 
 
 def test_microsoft365_is_disabled_by_default_and_redirect_is_green():
@@ -118,7 +119,7 @@ def test_admin_can_prepare_approved_multibox_set_without_enabling_any_transport(
             EmailChannelTransport.mailbox_address.in_(MICROSOFT365_MULTIBOX_CHANNELS)
         )
     ).all()
-    assert len(transports) == len(MICROSOFT365_MULTIBOX_CHANNELS) == 9
+    assert len(transports) == len(MICROSOFT365_MULTIBOX_CHANNELS) == 13
     assert all(transport.provider == "microsoft365" for transport in transports)
     assert all(transport.enabled is False for transport in transports)
     assert all(transport.initial_sync_days == 5 for transport in transports)
@@ -126,6 +127,13 @@ def test_admin_can_prepare_approved_multibox_set_without_enabling_any_transport(
         transport.delegated_user_principal_name == "rotinas@carfast.pt"
         for transport in transports
     )
+    by_mailbox = {item.mailbox_address: item for item in transports}
+    assert by_mailbox["backoffice@carfast.pt"].channel_id == by_mailbox[
+        "contratos@carfast.pt"
+    ].channel_id
+    assert by_mailbox["backoffice@carfast.pt"].id != by_mailbox[
+        "contratos@carfast.pt"
+    ].id
 
 
 def test_multibox_prepare_preserves_existing_channel_active_state(
@@ -165,6 +173,40 @@ def test_multibox_prepare_preserves_existing_channel_active_state(
     )
     assert transport is not None
     assert transport.enabled is False
+
+
+def test_functional_transport_does_not_invent_channel_sender_identity(
+    authenticated_client, db_session, monkeypatch
+):
+    channel = db_session.scalar(
+        select(EmailChannel).where(EmailChannel.code == "administrativo")
+    )
+    channel.address = None
+    channel.default_reply_address = None
+    channel.from_address = None
+    channel.reply_to_address = None
+    db_session.commit()
+    monkeypatch.setattr(
+        microsoft_web,
+        "SessionLocal",
+        sessionmaker(bind=db_session.get_bind(), expire_on_commit=False),
+    )
+
+    response = authenticated_client.post(
+        "/v2-clean/integrations/microsoft/configure-disabled",
+        data={
+            "mailbox_address": "backoffice@carfast.pt",
+            "tenant_id": "tenant-id",
+            "client_id": "client-id",
+            "delegated_user_principal_name": "rotinas@carfast.pt",
+        },
+    )
+
+    assert response.status_code == 200
+    db_session.refresh(channel)
+    assert channel.address is None
+    assert channel.from_address is None
+    assert channel.reply_to_address is None
 
 
 def test_unapproved_microsoft365_mailbox_is_rejected(

@@ -36,6 +36,10 @@ MICROSOFT365_MULTIBOX_CHANNELS = {
     "vvp@carfast.pt": ("vvp", "VVP"),
     "reports@carfast.pt": ("reports", "Reports"),
     "suporte@carfast.pt": ("suporte", "Suporte"),
+    "backoffice@carfast.pt": ("administrativo", "Administrativo"),
+    "contratos@carfast.pt": ("administrativo", "Administrativo"),
+    "reservas.allianz@carfast.pt": ("seguradoras", "Seguradoras"),
+    "anyrent@carfast.pt": ("outros", "Outros"),
 }
 
 # Preserve the original single-mailbox pilot contract while the controlled
@@ -43,6 +47,8 @@ MICROSOFT365_MULTIBOX_CHANNELS = {
 MICROSOFT365_LEGACY_PILOT_CHANNELS = {
     "email@carfast.pt": ("microsoft365_email", "Email CarFast"),
 }
+
+MICROSOFT365_FUNCTIONAL_CHANNELS = {"administrativo", "seguradoras", "outros"}
 
 
 def _configure_disabled_transport(
@@ -77,7 +83,7 @@ def _configure_disabled_transport(
         )
         db.add(channel)
         db.flush()
-    else:
+    elif code not in MICROSOFT365_FUNCTIONAL_CHANNELS:
         # Complete only missing identities. Existing administrator choices and
         # the channel's operational active state are deliberately preserved.
         if not channel.address:
@@ -92,7 +98,10 @@ def _configure_disabled_transport(
             channel.reply_to_address = mailbox
 
     transport = db.scalar(
-        select(EmailChannelTransport).where(EmailChannelTransport.channel_id == channel.id)
+        select(EmailChannelTransport).where(
+            EmailChannelTransport.channel_id == channel.id,
+            EmailChannelTransport.mailbox_address == mailbox,
+        )
     )
     if transport is None:
         transport = EmailChannelTransport(channel_id=channel.id)

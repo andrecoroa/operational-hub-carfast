@@ -186,6 +186,44 @@ def test_manual_sync_can_select_transport_by_configured_alias(db_session, monkey
     assert calls == [transport.id]
 
 
+def test_manual_sync_selects_each_physical_mailbox_in_one_functional_channel(
+    db_session, monkeypatch
+):
+    channel = db_session.scalar(
+        select(EmailChannel).where(EmailChannel.code == "administrativo")
+    )
+    transports = [
+        EmailChannelTransport(
+            channel_id=channel.id,
+            provider="microsoft365",
+            enabled=True,
+            mailbox_address=mailbox,
+            tenant_id="tenant",
+            client_id="client",
+            client_credential_reference="env://secret",
+            token_reference=f"db://{mailbox}",
+        )
+        for mailbox in ("backoffice@example.test", "contratos@example.test")
+    ]
+    db_session.add_all(transports)
+    db_session.commit()
+    calls = []
+    monkeypatch.setattr(
+        inbound,
+        "sync_transport_inbox",
+        lambda db, selected: calls.append(selected.mailbox_address)
+        or {"seen": 0, "created": 0},
+    )
+
+    result = inbound.sync_enabled_inboxes(
+        db_session,
+        mailboxes=["backoffice@example.test", "contratos@example.test"],
+    )
+
+    assert set(result) == {item.id for item in transports}
+    assert calls == ["backoffice@example.test", "contratos@example.test"]
+
+
 def test_graph_original_recipient_routes_to_configured_alias_channel(db_session):
     transport = _transport(db_session)
     alias = EmailChannelAlias(

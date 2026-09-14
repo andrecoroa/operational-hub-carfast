@@ -24,6 +24,10 @@
 
     {% if created or request.query_params.get("task_created") %}
       <div class="clean-alert-success">Tarefa criada com sucesso.</div>
+    {% elif request.query_params.get("attachment_treatment_error") %}
+      <div class="doc-arch-notice danger">Não foi possível tratar o anexo. Confirma a viatura e a tipologia.</div>
+    {% elif request.query_params.get("attachment_treated") %}
+      <div class="doc-arch-notice success">Documento tratado com o ficheiro original, associação e auditoria preservadas.</div>
     {% elif updated or request.query_params.get("commented") or request.query_params.get("participant_added") or request.query_params.get("document_linked") %}
       <div class="clean-alert-success">Tarefa atualizada.</div>
     {% elif closed %}
@@ -482,7 +486,33 @@
           </section>
           <section {% if not documents_by_task.get(task.id) %}hidden{% endif %}>
             <h3>Documentos</h3>
-            {% for document in documents_by_task.get(task.id, []) %}<a href="/v2-clean/documents/{{ document.id }}?return_to={{ (request.url.path ~ '?' ~ request.url.query)|urlencode }}">{{ document.title or document.original_name }}</a>{% else %}<p>Sem documentos associados.</p>{% endfor %}
+            {% for document in documents_by_task.get(task.id, []) %}
+              <div class="clean-task-document-row">
+                <a href="/v2-clean/documents/{{ document.id }}?return_to={{ (request.url.path ~ '?' ~ request.url.query)|urlencode }}">{{ document.title or document.original_name }}</a>
+                {% if document.task_link_category == "attachment" %}<details>
+                  <summary>Tratar documento</summary>
+                  <form method="post" action="/v2-clean/tasks/{{ task.id }}/attachments/{{ document.id }}/treat" class="clean-task-side-form">
+                    <input type="hidden" name="return_url" value="{{ request.url.path }}?{{ request.url.query }}">
+                    <label>Viatura
+                      <select name="vehicle_id" required>
+                        <option value="">Escolher viatura</option>
+                        {% for vehicle in task_attachment_vehicles %}
+                          <option value="{{ vehicle.id }}" {% if document.vehicle_id == vehicle.id %}selected{% endif %}>{{ vehicle.plate or "Sem matrícula" }}{% if vehicle.vin %} · {{ vehicle.vin }}{% endif %}</option>
+                        {% endfor %}
+                      </select>
+                    </label>
+                    <label>Tipologia
+                      <select name="document_type" required>
+                        <option value="">Escolher tipologia</option>
+                        {% for code, label in task_attachment_document_types %}<option value="{{ code }}" {% if document.document_type == code %}selected{% endif %}>{{ label }}</option>{% endfor %}
+                      </select>
+                    </label>
+                    <p class="muted">O ficheiro atual será reutilizado; não será criada uma cópia.</p>
+                    <button>Confirmar tratamento</button>
+                  </form>
+                </details>{% endif %}
+              </div>
+            {% else %}<p>Sem documentos associados.</p>{% endfor %}
           </section>
           {% if can_write %}
           <section>

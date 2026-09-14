@@ -8,40 +8,51 @@
   {% else %}
     <a class="button-link secondary-link" href="#workshop-documents">Documentos e fotografias</a>
   {% endif %}
-  {% if workshop_admin.can_update_operational and not workshop_admin.is_cancelled and not workshop_admin.is_closed %}
-    {% if workshop_admin.operational_situation == "waiting" %}
-      <form class="clean-inline-action" method="post" action="/v2-clean/workshop/{{ workshop_process.id }}/operational-situation">
-        <input type="hidden" name="action" value="resume">
+  <details class="clean-context-more-actions">
+    <summary>Mais ações</summary>
+    <div>
+      {% if not workshop_admin.is_cancelled and not workshop_admin.is_closed %}
+        <a class="button-link secondary-link" href="/v2-clean/tasks?workspace=workshop&record_type=task&entity_type=workshop_phased_process&entity_id={{ workshop_process.id }}&phase={{ active_step }}&plate={{ workshop_process.plate_snapshot or '' }}&category=Oficina&return_url={{ workshop_action_return_url|urlencode }}">Criar tarefa</a>
+      {% endif %}
+      {% if workshop_admin.can_update_operational and not workshop_admin.is_cancelled and not workshop_admin.is_closed %}
+        {% if workshop_admin.operational_situation == "waiting" %}
+          <form class="clean-inline-action" method="post" action="/v2-clean/workshop/{{ workshop_process.id }}/operational-situation">
+            <input type="hidden" name="action" value="resume">
+            <input type="hidden" name="return_url" value="{{ workshop_action_return_url }}">
+            <button class="button-link secondary-link" type="submit">Retomar processo</button>
+          </form>
+        {% else %}
+          <button class="button-link secondary-link" type="button" onclick="document.getElementById('clean-workshop-wait-dialog').showModal()">Colocar em espera</button>
+        {% endif %}
+      {% endif %}
+      <a class="button-link secondary-link" href="{{ vehicle_detail_href }}">Ficha da viatura</a>
+    </div>
+  </details>
+  {% if workshop_admin.can_update_operational and not workshop_admin.is_cancelled and not workshop_admin.is_closed and workshop_admin.operational_situation != "waiting" %}
+    <dialog class="clean-workshop-wait-dialog" id="clean-workshop-wait-dialog">
+      <form method="post" action="/v2-clean/workshop/{{ workshop_process.id }}/operational-situation">
+        <div class="clean-workshop-wait-dialog-heading">
+          <div><p class="eyebrow">Situação operacional</p><h3>Colocar processo em espera</h3></div>
+          <button class="secondary" type="button" onclick="this.closest('dialog').close()">Fechar</button>
+        </div>
+        <input type="hidden" name="action" value="wait">
         <input type="hidden" name="return_url" value="{{ workshop_action_return_url }}">
-        <button class="button-link secondary-link" type="submit">Retomar processo</button>
+        <label>Motivo
+          <select name="waiting_reason" required>
+            <option value="">Selecionar motivo</option>
+            <option>A aguardar peças</option>
+            <option>A aguardar orçamento</option>
+            <option>A aguardar aprovação</option>
+            <option>A aguardar oficina externa</option>
+            <option>Outro</option>
+          </select>
+        </label>
+        <p>O motivo fica visível no processo e registado no histórico de auditoria.</p>
+        <div class="clean-workshop-wait-dialog-actions">
+          <button class="secondary" type="button" onclick="this.closest('dialog').close()">Cancelar</button>
+          <button type="submit">Confirmar espera</button>
+        </div>
       </form>
-    {% else %}
-      <button class="button-link secondary-link" type="button" onclick="document.getElementById('clean-workshop-wait-dialog').showModal()">Colocar em espera</button>
-      <dialog class="clean-workshop-wait-dialog" id="clean-workshop-wait-dialog">
-        <form method="post" action="/v2-clean/workshop/{{ workshop_process.id }}/operational-situation">
-          <div class="clean-workshop-wait-dialog-heading">
-            <div><p class="eyebrow">Situação operacional</p><h3>Colocar processo em espera</h3></div>
-            <button class="secondary" type="button" onclick="this.closest('dialog').close()">Fechar</button>
-          </div>
-          <input type="hidden" name="action" value="wait">
-          <input type="hidden" name="return_url" value="{{ workshop_action_return_url }}">
-          <label>Motivo
-            <select name="waiting_reason" required>
-              <option value="">Selecionar motivo</option>
-              <option>A aguardar peças</option>
-              <option>A aguardar orçamento</option>
-              <option>A aguardar aprovação</option>
-              <option>A aguardar oficina externa</option>
-              <option>Outro</option>
-            </select>
-          </label>
-          <p>O motivo fica visível no processo e registado no histórico de auditoria.</p>
-          <div class="clean-workshop-wait-dialog-actions">
-            <button class="secondary" type="button" onclick="this.closest('dialog').close()">Cancelar</button>
-            <button type="submit">Confirmar espera</button>
-          </div>
-        </form>
-      </dialog>
-    {% endif %}
+    </dialog>
   {% endif %}
 {% endif %}

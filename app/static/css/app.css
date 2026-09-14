@@ -28952,7 +28952,9 @@ body:has(.email-preview-dialog[open]) { overflow: hidden; }
 }
 
 .clean-workshop-summary-grid > section,
-.clean-workshop-closure-layout > section {
+.clean-workshop-summary-grid > details,
+.clean-workshop-closure-layout > section,
+.clean-workshop-closure-layout > details {
   min-width: 0;
   padding: 16px;
   border: 1px solid #d8e1eb;
@@ -29748,6 +29750,53 @@ body:has(.email-preview-dialog[open]) { overflow: hidden; }
   .print-service-history tr { break-inside: avoid; }
 }
 
+.clean-workshop-focus-section {
+  border-radius: 10px;
+}
+
+.clean-workshop-focus-section > summary {
+  align-items: center;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  list-style: none;
+}
+
+.clean-workshop-focus-section > summary::-webkit-details-marker {
+  display: none;
+}
+
+.clean-workshop-focus-section > summary::after {
+  color: #667085;
+  content: "+";
+  font-size: 20px;
+  font-weight: 800;
+}
+
+.clean-workshop-focus-section[open] > summary::after {
+  content: "−";
+}
+
+.clean-workshop-focus-section > summary strong {
+  color: #172033;
+  font-size: 14px;
+}
+
+.clean-workshop-focus-section > summary span {
+  color: #667085;
+  font-size: 11px;
+  margin-left: auto;
+}
+
+.clean-workshop-focus-body {
+  border-top: 1px solid #e2e8f0;
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+  padding-top: 14px;
+}
+
 /* Workshop: four visible stages over the existing seven-phase workflow. */
 .clean-workshop-stage-shell {
   display: grid;
@@ -29767,6 +29816,15 @@ body:has(.email-preview-dialog[open]) { overflow: hidden; }
   font-weight: 950;
   text-transform: uppercase;
   letter-spacing: .04em;
+}
+.clean-workshop-stage-heading > div {
+  display: grid;
+  gap: 2px;
+}
+.clean-workshop-view-toggle {
+  min-height: 34px;
+  padding: 6px 10px;
+  white-space: nowrap;
 }
 .clean-stepper-four {
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -29879,6 +29937,102 @@ body:has(.email-preview-dialog[open]) { overflow: hidden; }
   background: #165dff;
   color: #fff;
 }
+.clean-workshop-phase-picker {
+  border: 1px solid #d9e2ef;
+  border-radius: 8px;
+  background: #f8fbff;
+}
+.clean-workshop-phase-picker > summary {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  list-style: none;
+  padding: 10px 12px;
+}
+.clean-workshop-phase-picker > summary::-webkit-details-marker { display: none; }
+.clean-workshop-phase-picker > summary span,
+.clean-workshop-phase-picker > summary em {
+  color: #667085;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 850;
+}
+.clean-workshop-phase-picker > summary strong {
+  color: #0f2a5f;
+  font-size: 13px;
+}
+.clean-workshop-phase-picker .clean-workshop-phase-nav {
+  border: 0;
+  border-top: 1px solid #d9e2ef;
+  border-radius: 0;
+}
+
+.clean-context-more-actions {
+  position: relative;
+}
+.clean-context-more-actions > summary {
+  min-height: 36px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #fff;
+  color: #334155;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  list-style: none;
+  padding: 7px 11px;
+  font-size: 12px;
+  font-weight: 850;
+}
+.clean-context-more-actions > summary::-webkit-details-marker { display: none; }
+.clean-context-more-actions > summary::after { content: "⌄"; margin-left: 8px; }
+.clean-context-more-actions[open] > summary::after { content: "⌃"; }
+.clean-context-more-actions > div {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 20;
+  display: grid;
+  gap: 7px;
+  min-width: 210px;
+  border: 1px solid #d8e0eb;
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 14px 36px rgb(15 42 95 / 18%);
+  padding: 10px;
+}
+.clean-context-more-actions > div > * { width: 100%; justify-content: center; }
+
+.workshop-simple-view .clean-header-hero-main > p,
+.workshop-simple-view .clean-header-meta,
+.workshop-simple-view .clean-header-hero-side,
+.workshop-simple-view .visual-workshop-tabs,
+.workshop-simple-view .clean-workshop-history-launch {
+  display: none;
+}
+.workshop-simple-view .clean-header-hero-row {
+  min-height: 0;
+}
+.workshop-simple-view .clean-header-hero-main h2 {
+  margin-bottom: 0;
+}
+.workshop-simple-view .clean-context-action-copy span {
+  display: none;
+}
+.workshop-simple-view .clean-vehicle-quick-facts > span:nth-child(n+4) {
+  display: none;
+}
+.workshop-simple-view .clean-vehicle-header-footer:has(.clean-vehicle-alerts.is-empty) {
+  display: none;
+}
+.workshop-simple-view .clean-stepper-four a {
+  min-height: 54px;
+}
+.workshop-simple-view .clean-stepper-four a small {
+  display: none;
+}
 
 @media (max-width: 1180px) {
   .clean-stepper-four { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -29901,6 +30055,17 @@ body:has(.email-preview-dialog[open]) { overflow: hidden; }
   .clean-workshop-phase-nav > div {
     display: grid;
     grid-template-columns: 1fr;
+  }
+  .clean-context-more-actions {
+    width: 100%;
+  }
+  .clean-context-more-actions > summary {
+    justify-content: center;
+    width: 100%;
+  }
+  .clean-context-more-actions > div {
+    position: static;
+    margin-top: 6px;
   }
 }
 

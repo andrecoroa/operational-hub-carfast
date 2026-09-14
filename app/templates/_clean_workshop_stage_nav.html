@@ -1,0 +1,36 @@
+<section class="clean-workshop-stage-shell clean-card-wide" aria-label="Etapas do processo">
+  <div class="clean-workshop-stage-heading">
+    <span>Fluxo simplificado</span>
+    <strong>4 etapas visíveis · fases e dados preservados</strong>
+  </div>
+  <nav class="clean-stepper clean-stepper-four {{ workshop_stage_nav_class|default('') }}" aria-label="Etapas principais da Oficina">
+    {% for stage in workshop_stages %}
+      <a
+        class="{% if stage.active %}active{% endif %}{% if stage.current %} current{% endif %}{% if stage.complete %} complete{% endif %}"
+        href="{{ stage.href }}"
+        data-workshop-stage-key="{{ stage.key }}"
+        {% if stage.active %}aria-current="step"{% endif %}
+      >
+        <b>{% if stage.complete and not stage.active %}✓{% else %}{{ stage.number }}{% endif %}</b>
+        <span><strong>{{ stage.label }}</strong><small>{{ stage.subtitle }}</small></span>
+      </a>
+    {% endfor %}
+  </nav>
+  {% for stage in workshop_stages %}
+    {% if stage.active and stage.members|length > 1 %}
+      <nav class="clean-workshop-phase-nav" aria-label="Passos de {{ stage.label }}">
+        <span>Passos desta etapa</span>
+        <div>
+          {% for phase_step in stage.members %}
+            <a
+              class="{% if phase_step.active %}active{% endif %}{% if phase_step.current %} current{% endif %}{% if phase_step.complete %} complete{% endif %}"
+              href="{{ phase_step.href }}"
+              data-workshop-phase-key="{{ phase_step.key }}"
+              {% if phase_step.active %}aria-current="page"{% endif %}
+            >{% if phase_step.complete and not phase_step.active %}✓ {% endif %}{{ phase_step.label }}</a>
+          {% endfor %}
+        </div>
+      </nav>
+    {% endif %}
+  {% endfor %}
+</section>

@@ -2,7 +2,7 @@ from pathlib import Path
 import json
 import re
 from html import unescape
-from datetime import date, time, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 
 from app.models.tasks import Task, TaskComment, TaskEmailOrigin
 from app.models.admin import User
@@ -300,7 +300,8 @@ def test_row_selection_opens_the_authorized_drawer_and_keeps_keyboard_support() 
     assert "if(row)toggleSelection(row,button)" in TEMPLATE
     assert "groupButtons.find(button=>button.dataset.groupTask===id)" in TEMPLATE
     assert "if(!row||(grouped&&!groupButton))continue" in TEMPLATE
-    assert "select(row,groupButton||null);break" in TEMPLATE
+    assert "toggleSelection(row,groupButton||null);break" in TEMPLATE
+    assert "select(row,groupButton||null);break" not in TEMPLATE
     assert ".task-center-approved-workspace{display:block" in CSS
 
 
@@ -998,3 +999,54 @@ def test_guardrails_keep_owner_executor_support_and_sla_concepts_distinct() -> N
     assert "task_sla_labels_by_id" in ROUTER
     assert "data-preview-sla" in TEMPLATE
     assert 'data-sla="{{ task_sla_labels_by_id.get' in TEMPLATE
+
+
+def test_active_work_excludes_resolved_tasks_and_closed_view_keeps_them(
+    authenticated_client, db_session, monkeypatch
+) -> None:
+    monkeypatch.setattr(task_router.settings, "visual_foundation_enabled", True)
+    actor = db_session.scalar(select(User).where(User.email == "admin.tests@carfast.local"))
+    resolved = Task(
+        title="Fixture sanitizada resolvida",
+        task_type="operational_task",
+        status="resolved",
+        priority="normal",
+        assigned_to_id=actor.id,
+        assignment_state="assigned_user",
+        resolved_at=datetime.now(UTC),
+    )
+    db_session.add(resolved)
+    db_session.commit()
+
+    active = authenticated_client.get("/v2-clean/tasks?task_scope_view=mine&status=open")
+    closed = authenticated_client.get("/v2-clean/tasks?task_scope_view=mine&status=closed")
+
+    assert resolved.title not in active.text
+    assert resolved.title in closed.text
+
+
+def test_missing_task_deadline_explains_independent_overdue_sla(
+    authenticated_client, db_session, monkeypatch
+) -> None:
+    monkeypatch.setattr(task_router.settings, "visual_foundation_enabled", True)
+    actor = db_session.scalar(select(User).where(User.email == "admin.tests@carfast.local"))
+    task = Task(
+        title="Fixture sanitizada SLA independente",
+        task_type="operational_task",
+        status="new",
+        priority="normal",
+        assigned_to_id=actor.id,
+        assignment_state="assigned_user",
+        due_on=None,
+        resolution_due_at=datetime.now(UTC) - timedelta(hours=1),
+    )
+    db_session.add(task)
+    db_session.commit()
+
+    page = authenticated_client.get("/v2-clean/tasks?task_scope_view=mine&status=open")
+
+    row = re.search(
+        rf'<tr[^>]+data-title="{re.escape(task.title)}"[^>]+>', page.text
+    ).group(0)
+    assert 'data-due="Sem prazo"' in row
+    assert 'data-sla="SLA calculado ultrapassado"' in row

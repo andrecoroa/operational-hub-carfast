@@ -653,29 +653,12 @@
   };
   const initialiseDrawer = (taskId) => {
     const drawer = drawerMount?.querySelector('[data-task-drawer]'); if (!drawer) return;
-    const previewMode = drawer.querySelector('[data-task-drawer-mode="preview"]');
-    const editMode = drawer.querySelector('[data-task-drawer-mode="edit"]');
-    const showPreview = () => { if (!previewMode) return; previewMode.hidden = false; if (editMode) editMode.hidden = true; drawer.querySelector('[data-task-drawer-edit]')?.focus(); };
-    const showEdit = (focus = '') => { if (!editMode) return; previewMode.hidden = true; editMode.hidden = false; const target = focus ? editMode.querySelector(`[data-task-edit-section="${focus}"] select`) : editMode.querySelector('[name="title"]'); target?.focus(); };
     drawer.querySelectorAll('[data-task-drawer-close]').forEach(button => button.addEventListener('click', closeDrawer));
-    drawer.querySelector('[data-task-drawer-edit]')?.addEventListener('click', () => showEdit());
-    drawer.querySelectorAll('[data-task-drawer-edit-focus]').forEach(button => button.addEventListener('click', () => showEdit(button.dataset.taskDrawerEditFocus)));
-    drawer.querySelector('[data-task-drawer-cancel]')?.addEventListener('click', showPreview);
     drawer.querySelectorAll('[data-task-drawer-case]').forEach(button => button.addEventListener('click', () => drawerForward('[data-case-flow="related"]')));
     drawer.querySelectorAll('[data-task-drawer-decision]').forEach(button => button.addEventListener('click', () => drawerForward('[data-task-preview-action="decision"]')));
     drawer.querySelectorAll('[data-task-drawer-support]').forEach(button => button.addEventListener('click', () => drawerForward('[data-task-preview-action="support"]')));
     drawer.querySelector('[data-task-copy-link]')?.addEventListener('click', async (event) => { await navigator.clipboard.writeText(`${location.origin}/v2-clean/tasks/${taskId}/open`); event.currentTarget.textContent = 'Ligação copiada'; });
     drawer.querySelector('[data-task-drawer-history]')?.addEventListener('click', () => { const panel = drawer.querySelector('[data-task-drawer-history-panel]'); if (panel) { panel.open = true; panel.scrollIntoView({behavior:'smooth', block:'start'}); } });
-    const assignmentTargets = [...drawer.querySelectorAll('[data-assignment-exclusive]')];
-    assignmentTargets.forEach(select => select.addEventListener('change', () => { if (select.value) assignmentTargets.forEach(other => { if (other !== select) other.value = ''; }); }));
-    drawer.querySelectorAll('[data-work-hierarchy]').forEach(root => {
-      const queue=root.querySelector('[data-work-level="queue"]'),department=root.querySelector('[data-work-level="department"]'),category=root.querySelector('[data-work-level="category"]'),subcategory=root.querySelector('[data-work-level="subcategory"]'),other=root.querySelector('[data-work-other]'),otherInput=other?.querySelector('input');
-      if(!queue||!department||!category||!subcategory)return;
-      const filter=(select,parent)=>{[...select.options].forEach((option,index)=>{if(index){option.hidden=option.dataset.parent!==parent;option.disabled=option.hidden}});if(select.selectedOptions[0]?.disabled)select.value=''};
-      const syncOther=()=>{const required=[department,category,subcategory].some(select=>select.selectedOptions[0]?.dataset.requiresDescription==='true');if(other)other.hidden=!required;if(otherInput)otherInput.required=required};
-      const sync=()=>{filter(department,queue.value);filter(category,department.value);filter(subcategory,category.value);syncOther()};
-      queue.addEventListener('change',()=>{department.value='';category.value='';subcategory.value='';sync()});department.addEventListener('change',()=>{category.value='';subcategory.value='';sync()});category.addEventListener('change',()=>{subcategory.value='';sync()});subcategory.addEventListener('change',syncOther);sync();
-    });
   };
   const openTaskWorkbenchOnDemand = async (taskId) => {
     if (!drawerShell || !drawerMount) {

@@ -362,7 +362,8 @@ def test_claim_view_requires_eligible_team_unassigned_task_and_assume_scope(
         )
     eligible = _new_task(db_session, title="Elegível por assumir")
     eligible.assigned_to_id = None
-    eligible.team_id = None
+    eligible.team_id = team.id
+    eligible.assignment_state = "team_unclaimed"
     eligible.work_category_id = category.id
     already_assigned = _new_task(db_session, title="Já atribuída")
     already_assigned.work_category_id = category.id
@@ -451,6 +452,7 @@ def test_team_scope_is_preserved_and_limited_to_the_users_team(
     team_task = _new_task(db_session, title=f"Visível na equipa {grouping}")
     team_task.team_id = team.id
     team_task.assigned_to_id = None
+    team_task.assignment_state = "team_unclaimed"
     personal_task = _new_task(db_session, title=f"Fora da equipa {grouping}")
     db_session.commit()
 

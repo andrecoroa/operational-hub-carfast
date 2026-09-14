@@ -158,6 +158,11 @@ def graph_message_payload(
         to_recipients.insert(0, {"Email": original_recipient, "Name": ""})
     return {
         "SourceProvider": "microsoft_graph",
+        # Keep the mailbox endpoint separate from the envelope/original
+        # recipient.  Historical messages may have been redirected from an
+        # address that is no longer configured in the App; the endpoint is a
+        # safe routing fallback without changing the preserved recipient.
+        "TransportMailbox": _address(mailbox),
         "MessageID": str(item["id"]),
         "OriginalMessageID": str(item.get("conversationId") or ""),
         "OriginalRecipient": original_recipient,

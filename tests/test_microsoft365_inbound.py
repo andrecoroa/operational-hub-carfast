@@ -65,6 +65,7 @@ def test_graph_payload_is_provider_marked_and_preserves_rfc_message_id():
         _message(), mailbox="frota-graph@carfast.local", attachments=[]
     )
     assert payload["SourceProvider"] == "microsoft_graph"
+    assert payload["TransportMailbox"] == "frota-graph@carfast.local"
     assert payload["OriginalRecipient"] == "frota-graph@carfast.local"
     assert {row["Name"].casefold() for row in payload["Headers"]} == {"message-id"}
 
@@ -252,6 +253,35 @@ def test_graph_original_recipient_routes_to_configured_alias_channel(db_session)
         {"Email": "claims@carfast.local", "Name": ""},
         {"Email": "frota-graph@carfast.local", "Name": "Frota"}
     ]
+
+
+def test_graph_unconfigured_original_recipient_falls_back_to_transport_mailbox_channel(
+    db_session,
+):
+    transport = _transport(db_session)
+    db_session.add(
+        EmailChannelAlias(
+            channel_id=transport.channel_id,
+            address=transport.mailbox_address,
+            active=True,
+        )
+    )
+    db_session.commit()
+    message = _message()
+    message["internetMessageHeaders"] = [
+        {"name": "Delivered-To", "value": "retired-routing@example.test"}
+    ]
+
+    thread, created = ingest_inbound(
+        db_session,
+        inbound.graph_message_payload(
+            message, mailbox=transport.mailbox_address, attachments=[]
+        ),
+    )
+
+    assert created is True
+    assert thread.channel_id == transport.channel_id
+    assert thread.original_recipient_address == "retired-routing@example.test"
 
 
 def test_manual_sync_rejects_unknown_or_untransported_address(db_session):

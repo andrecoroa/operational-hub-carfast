@@ -505,6 +505,31 @@ def _channel_for_payload(db: Session, payload: dict) -> EmailChannel:
                 ),
             )
         )
+    # Microsoft Graph can expose a historical envelope recipient that no
+    # longer belongs to an active channel.  Route such messages through the
+    # physical mailbox used by the configured transport, while retaining the
+    # original recipient on the message/thread for identity and audit.
+    if not channel:
+        transport_mailbox = _address(payload.get("TransportMailbox"))
+        if transport_mailbox:
+            alias = db.scalar(
+                select(EmailChannelAlias)
+                .join(EmailChannel, EmailChannel.id == EmailChannelAlias.channel_id)
+                .where(
+                    EmailChannelAlias.active.is_(True),
+                    EmailChannel.active.is_(True),
+                    func.lower(EmailChannelAlias.address) == transport_mailbox,
+                )
+            )
+            if alias:
+                channel = db.get(EmailChannel, alias.channel_id)
+            else:
+                channel = db.scalar(
+                    select(EmailChannel).where(
+                        EmailChannel.active.is_(True),
+                        func.lower(EmailChannel.address) == transport_mailbox,
+                    )
+                )
     if not channel:
         channels = list(db.scalars(select(EmailChannel).where(EmailChannel.active.is_(True))))
         for address in addresses:
@@ -863,7 +888,11 @@ def ingest_inbound(db: Session, payload: dict) -> tuple[EmailThread, bool]:
         )
         if not thread.original_recipient_address:
             thread.original_recipient_address = (
-                channel_alias.address if channel_alias else delivery.original_recipient
+                delivery.original_recipient
+                if source_provider == "microsoft_graph"
+                else channel_alias.address
+                if channel_alias
+                else delivery.original_recipient
             )
         if delivery.technical_recipient and not thread.technical_recipient_address:
             thread.technical_recipient_address = delivery.technical_recipient
@@ -925,9 +954,14 @@ def ingest_inbound(db: Session, payload: dict) -> tuple[EmailThread, bool]:
     if not thread:
         now = datetime.now(UTC)
         hierarchy = _resolved_inbound_hierarchy(db, channel, rule)
+        payload_original_recipient = str(
+            payload.get("OriginalRecipient") or ""
+        ).strip()
         original_recipient = (
-            (channel_alias.address if channel_alias else None)
-            or str(payload.get("OriginalRecipient") or "").strip()
+            payload_original_recipient
+            if source_provider == "microsoft_graph" and payload_original_recipient
+            else (channel_alias.address if channel_alias else None)
+            or payload_original_recipient
         )
         technical_recipient = (
             channel_alias.inbound_forward_address if channel_alias else None

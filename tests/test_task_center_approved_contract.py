@@ -300,7 +300,8 @@ def test_row_selection_opens_the_authorized_drawer_and_keeps_keyboard_support() 
     assert "if(row)toggleSelection(row,button)" in TEMPLATE
     assert "groupButtons.find(button=>button.dataset.groupTask===id)" in TEMPLATE
     assert "if(!row||(grouped&&!groupButton))continue" in TEMPLATE
-    assert "select(row,groupButton||null);break" in TEMPLATE
+    assert "toggleSelection(row,groupButton||null);break" in TEMPLATE
+    assert "select(row,groupButton||null);break" not in TEMPLATE
     assert ".task-center-approved-workspace{display:block" in CSS
 
 

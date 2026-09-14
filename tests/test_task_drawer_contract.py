@@ -56,7 +56,7 @@ def test_task_drawer_actions_reuse_authorized_task_endpoints() -> None:
 def test_task_drawer_is_lateral_on_desktop_and_full_width_on_mobile() -> None:
     assert ".task-drawer-mount{position:relative;width:min(620px,44vw)" in CSS
     assert "@media(max-width:700px){.task-drawer-mount{width:100vw}" in CSS
-    assert ".task-drawer-backdrop{background:transparent}" in CSS
+    assert ".task-drawer-shell>.task-drawer-backdrop{background:transparent!important}" in CSS
 
 
 def test_authorized_drawer_response_is_a_fragment(authenticated_client, db_session) -> None:

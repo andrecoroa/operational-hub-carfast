@@ -10777,6 +10777,37 @@ CLEAN_WORKSHOP_STEP_DEFS = [
     {"key": "fecho", "number": 7, "label": "Validação e Fecho", "path": "/v2-clean/workshop/fecho"},
 ]
 
+CLEAN_WORKSHOP_STAGE_DEFS = [
+    {
+        "key": "entrada",
+        "number": 1,
+        "label": "Entrada",
+        "subtitle": "Receção e serviços",
+        "phase_keys": ("entrada",),
+    },
+    {
+        "key": "analise",
+        "number": 2,
+        "label": "Análise e decisão",
+        "subtitle": "Validação, diagnóstico e controlo",
+        "phase_keys": ("validacao", "diagnostico", "inspecao", "auditoria"),
+    },
+    {
+        "key": "execucao",
+        "number": 3,
+        "label": "Execução",
+        "subtitle": "Reparação e evidências",
+        "phase_keys": ("reparacao",),
+    },
+    {
+        "key": "fecho",
+        "number": 4,
+        "label": "Fecho",
+        "subtitle": "Validação e entrega",
+        "phase_keys": ("fecho",),
+    },
+]
+
 CLEAN_WORKSHOP_ENTRY_REASONS = [
     "Revisão / degradação óleo",
     "Verificação de rotina",
@@ -11693,6 +11724,69 @@ def clean_workshop_steps(
         }
         for step in clean_workshop_step_defs_for_process(process)
     ]
+
+
+def clean_workshop_stages(
+    query_suffix: str = "",
+    process: WorkshopPhasedProcess | None = None,
+    active_key: str = "entrada",
+) -> list[dict[str, object]]:
+    """Group the existing workshop phases into four visible stages.
+
+    Phase definitions, URLs and ordering remain the source of truth. This
+    helper changes navigation presentation only, so the workflow rules and
+    persistence model continue to operate on the original phases.
+    """
+
+    phase_steps = clean_workshop_steps(query_suffix, process)
+    phase_by_key = {str(step["key"]): step for step in phase_steps}
+    phase_order = {str(step["key"]): index for index, step in enumerate(phase_steps)}
+    process_current_key = str(process.current_phase_code or active_key) if process else active_key
+    current_index = phase_order.get(process_current_key, phase_order.get(active_key, 0))
+    process_closed = bool(process and process.status in {"closed", "completed"})
+    stages: list[dict[str, object]] = []
+
+    for stage in CLEAN_WORKSHOP_STAGE_DEFS:
+        members: list[dict[str, object]] = []
+        for phase_key in stage["phase_keys"]:
+            phase_step = phase_by_key.get(str(phase_key))
+            if not phase_step:
+                continue
+            phase_index = phase_order[str(phase_key)]
+            members.append(
+                {
+                    **phase_step,
+                    "active": str(phase_key) == active_key,
+                    "current": str(phase_key) == process_current_key,
+                    "complete": process_closed or phase_index < current_index,
+                }
+            )
+        if not members:
+            continue
+
+        active = any(bool(member["active"]) for member in members)
+        current = any(bool(member["current"]) for member in members)
+        preferred_member = next(
+            (member for member in members if member["active"] or member["current"]),
+            members[0],
+        )
+        stages.append(
+            {
+                "key": stage["key"],
+                "number": stage["number"],
+                "label": stage["label"],
+                "subtitle": stage["subtitle"],
+                "href": preferred_member["href"],
+                "active": active,
+                "current": current,
+                "complete": process_closed or all(
+                    bool(member["complete"]) for member in members
+                ),
+                "members": members,
+            }
+        )
+
+    return stages
 
 
 
@@ -26471,6 +26565,7 @@ def clean_workshop_entry(
             "current_entry_timestamp": current_entry_timestamp,
             "current_user_name": user_name,
             "workshop_steps": clean_workshop_steps(query_suffix, process),
+            "workshop_stages": clean_workshop_stages(query_suffix, process, "entrada"),
             "vehicle_context": vehicle_context,
             "is_historical": historical,
             "is_new_entry": False,
@@ -26790,6 +26885,7 @@ def clean_workshop_phase(
             "phase_key": phase,
             "phase": phase_config,
             "workshop_steps": clean_workshop_steps(query_suffix, process),
+            "workshop_stages": clean_workshop_stages(query_suffix, process, phase),
             "vehicle_context": vehicle_context,
             "is_historical": historical,
             "workshop_process": process,

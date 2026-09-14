@@ -77,7 +77,7 @@ def test_workshop_responsive_contract_has_local_not_global_overflow():
     assert ".visual-workshop-layout { display: grid" in css
     assert "grid-template-columns: minmax(0,1fr) 286px" in css
     assert ".visual-workshop-stepper" in css and "overflow-x: auto" in css
-    assert "grid-template-columns: repeat(7,118px)" in css
+    assert "grid-template-columns: repeat(4,180px)" in css
     assert ".visual-workshop-tabs::-webkit-scrollbar { display: none; }" in css
     assert "@media (max-width:1199px)" in css
     assert "@media (max-width:767px)" in css

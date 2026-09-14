@@ -96,11 +96,8 @@
       </section>
     {% endif %}
 
-    <section class="clean-stepper clean-stepper-seven{% if foundation_ui_enabled %} visual-workshop-stepper{% endif %}" aria-label="Fases do processo">
-      {% for step in workshop_steps %}
-        <a class="{% if step.key == active_step %}active{% endif %}" href="{{ step.href }}"><b>{{ step.number }}</b>{{ step.label }}</a>
-      {% endfor %}
-    </section>
+    {% set workshop_stage_nav_class = "visual-workshop-stepper" if foundation_ui_enabled else "" %}
+    {% include "_clean_workshop_stage_nav.html" %}
     {% if foundation_ui_enabled %}<nav class="visual-workshop-tabs" aria-label="Áreas do processo">
       <a class="active" href="#workshop-phase-content">Trabalho da fase</a>
       {% if workshop_process %}<a href="#workshop-documents">Documentos e fotografias</a>{% endif %}

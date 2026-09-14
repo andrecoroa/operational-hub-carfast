@@ -1,4 +1,4 @@
-from datetime import date, time
+from datetime import date, time, timedelta
 from pathlib import Path
 
 import pytest
@@ -29,6 +29,7 @@ from app.services.work_classification import (
     validate_work_hierarchy,
     work_hierarchy_context,
 )
+from app.web import router as task_router
 
 
 def test_clean_task_shortcut_opens_creation_form(authenticated_client):
@@ -152,7 +153,8 @@ def test_clean_task_creation_models_have_distinct_persisted_contracts(
     complete_task = db_session.scalar(select(Task).where(Task.title == "Trabalho planeado"))
     assert (request_task.entity_type, request_task.entity_id) == ("vehicle", "42")
     assert (information_task.entity_type, information_task.entity_id) == ("process", "PROC-7")
-    assert information_task.due_on is None
+    assert request_task.due_on == date.today() + timedelta(days=1)
+    assert information_task.due_on == date.today() + timedelta(days=1)
     assert complete_task.priority == "high"
     assert complete_task.due_on == date(2026, 9, 5)
 
@@ -1047,6 +1049,56 @@ def test_clean_task_deadline_time_create_preserve_clear_and_validate(
     )
     assert "due_date_required" in without_date.headers["location"]
     assert db_session.scalar(select(Task).where(Task.title == "Hora sem data")) is None
+
+
+def test_clean_task_creation_and_edit_expose_references_and_default_deadline(
+    authenticated_client, db_session, monkeypatch
+):
+    monkeypatch.setattr(task_router.settings, "visual_foundation_enabled", True)
+    page = authenticated_client.get("/v2-clean/tasks?create=1")
+    assert page.status_code == 200
+    assert "Referências" in page.text
+    assert 'name="plate"' in page.text
+    assert 'name="contract_number"' in page.text
+    assert 'name="reservation_number"' in page.text
+    assert "Relação técnica (opcional)" in page.text
+    assert f'value="{(date.today() + timedelta(days=1)).isoformat()}"' in page.text
+
+    created = authenticated_client.post(
+        "/v2-clean/tasks",
+        data={
+            "title": "Tarefa com referências visíveis",
+            "workspace": "operational",
+            "plate": "aa-10-bb",
+            "contract_number": "CONT-10",
+            "reservation_number": "RES-10",
+        },
+        follow_redirects=False,
+    )
+    assert created.status_code == 303
+    task = db_session.scalar(
+        select(Task).where(Task.title == "Tarefa com referências visíveis")
+    )
+    assert task.due_on == date.today() + timedelta(days=1)
+    task.assigned_to_id = task.created_by_id
+    task.assignment_state = "assigned_user"
+    db_session.commit()
+
+    detail = authenticated_client.get(f"/v2-clean/tasks/{task.id}/detail")
+    assert detail.status_code == 200
+    assert 'name="plate" maxlength="40" value="AA-10-BB"' in detail.text
+    assert 'name="contract_number" maxlength="120" value="CONT-10"' in detail.text
+    assert 'name="reservation_number" maxlength="120" value="RES-10"' in detail.text
+    assert "Iniciar trabalho" in detail.text
+
+    started = authenticated_client.post(
+        f"/v2-clean/tasks/{task.id}/transition",
+        data={"status": "in_execution", "return_url": "/v2-clean/tasks"},
+        follow_redirects=False,
+    )
+    assert started.status_code == 303
+    db_session.refresh(task)
+    assert task.status == "in_execution"
 
 
 def test_clean_task_center_prefills_document_context(authenticated_client, db_session):

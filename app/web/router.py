@@ -6888,6 +6888,7 @@ def clean_tasks_center(
                 "unread_comment_notifications_by_task": unread_comment_notifications_by_task,
                 "task_due_soon_days": TASK_DUE_SOON_DAYS,
                 "task_today": date.today(),
+                "task_default_due_on": date.today() + timedelta(days=1),
                 "task_due_soon_limit": date.today()
                 + timedelta(days=TASK_DUE_SOON_DAYS),
                 "recent_documents": recent_documents,
@@ -6980,10 +6981,11 @@ def _manual_case_task(
     due_time: str = "",
     priority: str = "normal",
 ) -> Task:
-    parsed_due = parse_iso_or_dmy_date(due_on)
+    requested_due = parse_iso_or_dmy_date(due_on)
     parsed_due_time = parse_optional_time(due_time)
-    if parsed_due_time and not parsed_due:
+    if parsed_due_time and not requested_due:
         raise ValueError("due_date_required")
+    parsed_due = requested_due or date.today() + timedelta(days=1)
     return Task(
         title=title.strip()[:200],
         description=None,
@@ -7891,13 +7893,14 @@ def clean_tasks_create(
         not workspace.strip() or not clean_category or not clean_subcategory
     ):
         return RedirectResponse("/v2-clean/tasks?create=1&error=missing_classification#new-task", status_code=303)
-    parsed_due = parse_iso_or_dmy_date(due_on)
+    requested_due = parse_iso_or_dmy_date(due_on)
     try:
         parsed_due_time = parse_optional_time(due_time)
     except ValueError:
         return RedirectResponse("/v2-clean/tasks?create=1&error=invalid_due_time#new-task", status_code=303)
-    if parsed_due_time and not parsed_due:
+    if parsed_due_time and not requested_due:
         return RedirectResponse("/v2-clean/tasks?create=1&error=due_date_required#new-task", status_code=303)
+    parsed_due = requested_due or date.today() + timedelta(days=1)
     normalized_plate = normalize_identifier(plate) if plate else None
     now = datetime.now(UTC)
     with SessionLocal() as db:

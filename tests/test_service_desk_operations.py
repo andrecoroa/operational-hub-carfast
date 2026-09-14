@@ -9,6 +9,7 @@ from app.models.tasks import (
     Task,
     TaskAssignmentEvent,
     TaskHelpRequest,
+    TaskHistory,
     TaskParticipant,
     TaskSlaEvent,
 )
@@ -160,6 +161,16 @@ def test_category_policy_initializes_team_claim_sla_and_complete_audit(db_sessio
     assert task.assignment_state == "assigned_user"
     assert task.assigned_by_id == executor.id
     assert task.assigned_at == start + timedelta(minutes=5)
+    assert task.status == "in_execution"
+    db_session.flush()
+    assert db_session.scalar(
+        select(TaskHistory).where(
+            TaskHistory.task_id == task.id,
+            TaskHistory.field_name == "status",
+            TaskHistory.old_value == "new",
+            TaskHistory.new_value == "in_execution",
+        )
+    )
 
     original_resolution = task.resolution_due_at
     pause_task_sla(

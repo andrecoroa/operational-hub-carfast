@@ -479,6 +479,17 @@ def claim_task(db: Session, task: Task, *, user_id: int, now: datetime | None = 
     task.assigned_at = effective_now
     task.claimed_by_id = user_id
     task.claimed_at = effective_now
+    if task.status == "new":
+        task.status = "in_execution"
+        db.add(
+            TaskHistory(
+                task_id=task.id,
+                user_id=user_id,
+                field_name="status",
+                old_value="new",
+                new_value="in_execution",
+            )
+        )
     db.add(
         TaskAssignmentEvent(
             task_id=task.id,

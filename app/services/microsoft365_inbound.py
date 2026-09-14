@@ -4,15 +4,18 @@ import json
 import urllib.error
 import urllib.parse
 import urllib.request
+from collections.abc import Iterable
 from datetime import UTC, datetime, timedelta
+from email.utils import getaddresses
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.models.email import (
     EmailAuditEvent,
     EmailChannel,
+    EmailChannelAlias,
     EmailChannelTransport,
     EmailMessage,
     EmailSyncCheckpoint,
@@ -44,6 +47,46 @@ def _recipient(item: dict[str, Any] | None) -> dict[str, str]:
         "Email": str(value.get("address") or "").strip(),
         "Name": str(value.get("name") or "").strip(),
     }
+
+
+def _address(value: Any) -> str:
+    raw = str(value or "").strip()
+    parsed = getaddresses([raw])
+    return str(parsed[0][1] if parsed else raw).strip().casefold()
+
+
+def _original_recipient(
+    item: dict[str, Any], *, mailbox: str, headers: list[dict[str, str]]
+) -> str:
+    """Return the delivered-to address without inventing mailbox identities.
+
+    Exchange commonly retains the envelope recipient in one of these headers.
+    When it does not, Graph's To recipients are authoritative.  Prefer a To
+    address different from the mailbox endpoint so aliases/direct addresses are
+    preserved, then fall back to the endpoint itself.
+    """
+
+    mailbox_address = _address(mailbox)
+    by_name: dict[str, list[str]] = {}
+    for row in headers:
+        by_name.setdefault(str(row.get("Name") or "").casefold(), []).append(
+            str(row.get("Value") or "")
+        )
+    for name in ("x-original-to", "delivered-to", "x-forwarded-to", "envelope-to"):
+        for value in by_name.get(name, []):
+            for _display_name, address in getaddresses([value]):
+                normalized = _address(address)
+                if normalized:
+                    return normalized
+
+    recipients = [
+        _address(_recipient(row).get("Email")) for row in item.get("toRecipients") or []
+    ]
+    recipients = [address for address in recipients if address]
+    return next(
+        (address for address in recipients if address != mailbox_address),
+        recipients[0] if recipients else mailbox_address,
+    )
 
 
 def _graph_get(url: str, token_kwargs: dict[str, str]) -> dict[str, Any]:
@@ -107,15 +150,21 @@ def graph_message_payload(
         row["Name"].casefold() == "message-id" for row in headers
     ):
         headers.append({"Name": "Message-ID", "Value": item["internetMessageId"]})
+    original_recipient = _original_recipient(item, mailbox=mailbox, headers=headers)
+    to_recipients = [_recipient(row) for row in item.get("toRecipients") or []]
+    if original_recipient and all(
+        _address(row.get("Email")) != original_recipient for row in to_recipients
+    ):
+        to_recipients.insert(0, {"Email": original_recipient, "Name": ""})
     return {
         "SourceProvider": "microsoft_graph",
         "MessageID": str(item["id"]),
         "OriginalMessageID": str(item.get("conversationId") or ""),
-        "OriginalRecipient": mailbox,
+        "OriginalRecipient": original_recipient,
         "From": sender["Email"],
         "FromName": sender["Name"],
-        "To": mailbox,
-        "ToFull": [_recipient(row) for row in item.get("toRecipients") or []],
+        "To": original_recipient,
+        "ToFull": to_recipients,
         "CcFull": [_recipient(row) for row in item.get("ccRecipients") or []],
         "Subject": str(item.get("subject") or "(sem assunto)"),
         "Date": received,
@@ -247,11 +296,76 @@ def sync_transport_inbox(db: Session, transport: EmailChannelTransport) -> dict[
         raise
 
 
-def sync_enabled_inboxes(db: Session) -> dict[int, dict[str, int]]:
-    transports = db.scalars(
+def sync_enabled_inboxes(
+    db: Session, *, mailboxes: Iterable[str] | None = None
+) -> dict[int, dict[str, int]]:
+    query = (
         select(EmailChannelTransport).where(
             EmailChannelTransport.provider == "microsoft365",
             EmailChannelTransport.enabled.is_(True),
         )
-    ).all()
+    )
+    requested = {_address(value) for value in (mailboxes or []) if _address(value)}
+    if requested:
+        channel_ids = set(
+            db.scalars(
+                select(EmailChannel.id).where(
+                    or_(
+                        func.lower(EmailChannel.address).in_(requested),
+                        func.lower(EmailChannel.default_reply_address).in_(requested),
+                        func.lower(EmailChannel.from_address).in_(requested),
+                    )
+                )
+            )
+        )
+        channel_ids.update(
+            db.scalars(
+                select(EmailChannelAlias.channel_id).where(
+                    EmailChannelAlias.active.is_(True),
+                    func.lower(EmailChannelAlias.address).in_(requested),
+                )
+            )
+        )
+        query = query.where(
+            or_(
+                func.lower(EmailChannelTransport.mailbox_address).in_(requested),
+                EmailChannelTransport.channel_id.in_(channel_ids),
+            )
+        )
+    transports = db.scalars(query.order_by(EmailChannelTransport.id)).all()
+    if requested:
+        resolved = {
+            _address(transport.mailbox_address)
+            for transport in transports
+            if transport.mailbox_address
+        }
+        transport_channel_ids = {transport.channel_id for transport in transports}
+        if transport_channel_ids:
+            for channel in db.scalars(
+                select(EmailChannel).where(EmailChannel.id.in_(transport_channel_ids))
+            ):
+                resolved.update(
+                    _address(value)
+                    for value in (
+                        channel.address,
+                        channel.default_reply_address,
+                        channel.from_address,
+                    )
+                    if _address(value) in requested
+                )
+            resolved.update(
+                _address(value)
+                for value in db.scalars(
+                    select(EmailChannelAlias.address).where(
+                        EmailChannelAlias.active.is_(True),
+                        EmailChannelAlias.channel_id.in_(transport_channel_ids),
+                        func.lower(EmailChannelAlias.address).in_(requested),
+                    )
+                )
+            )
+        missing = requested - resolved
+        if missing:
+            raise ValueError(
+                "Sem transporte Microsoft 365 ativo para: " + ", ".join(sorted(missing))
+            )
     return {transport.id: sync_transport_inbox(db, transport) for transport in transports}

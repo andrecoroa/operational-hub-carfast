@@ -8,6 +8,7 @@ from app.models.email import (
     EmailAttachment,
     EmailAuditEvent,
     EmailChannel,
+    EmailChannelAlias,
     EmailChannelTransport,
     EmailMessage,
     EmailMessageDelivery,
@@ -68,6 +69,41 @@ def test_graph_payload_is_provider_marked_and_preserves_rfc_message_id():
     assert {row["Name"].casefold() for row in payload["Headers"]} == {"message-id"}
 
 
+def test_graph_payload_preserves_original_recipient_from_delivery_header():
+    message = _message()
+    message["internetMessageHeaders"] = [
+        {"name": "Delivered-To", "value": "Functional Alias <claims@example.test>"}
+    ]
+    payload = inbound.graph_message_payload(
+        message, mailbox="functional@example.test", attachments=[]
+    )
+
+    assert payload["OriginalRecipient"] == "claims@example.test"
+    assert payload["To"] == "claims@example.test"
+    assert payload["ToFull"] == [
+        {"Email": "claims@example.test", "Name": ""},
+        {"Email": "frota-graph@carfast.local", "Name": "Frota"}
+    ]
+
+
+def test_graph_payload_prefers_non_mailbox_to_recipient_then_falls_back():
+    message = _message()
+    message["toRecipients"] = [
+        {"emailAddress": {"address": "functional@example.test"}},
+        {"emailAddress": {"address": "alias@example.test"}},
+    ]
+    payload = inbound.graph_message_payload(
+        message, mailbox="functional@example.test", attachments=[]
+    )
+    assert payload["OriginalRecipient"] == "alias@example.test"
+
+    message["toRecipients"] = []
+    payload = inbound.graph_message_payload(
+        message, mailbox="functional@example.test", attachments=[]
+    )
+    assert payload["OriginalRecipient"] == "functional@example.test"
+
+
 def test_graph_attachment_collection_avoids_derived_property_select(monkeypatch):
     requested = []
 
@@ -123,6 +159,74 @@ def test_delta_sync_persists_message_checkpoint_and_is_idempotent(db_session, mo
         select(EmailAuditEvent).where(EmailAuditEvent.action == "microsoft_graph_synced")
     )
     assert audit.details_json["folder"] == "inbox"
+
+
+def test_manual_sync_can_select_transport_by_configured_alias(db_session, monkeypatch):
+    transport = _transport(db_session)
+    alias = EmailChannelAlias(
+        channel_id=transport.channel_id,
+        address="approved-alias@carfast.local",
+        active=True,
+    )
+    db_session.add(alias)
+    db_session.commit()
+    calls = []
+
+    def fake_sync(db, selected):
+        calls.append(selected.id)
+        return {"seen": 0, "created": 0}
+
+    monkeypatch.setattr(inbound, "sync_transport_inbox", fake_sync)
+
+    result = inbound.sync_enabled_inboxes(
+        db_session, mailboxes=["APPROVED-ALIAS@carfast.local"]
+    )
+
+    assert result == {transport.id: {"seen": 0, "created": 0}}
+    assert calls == [transport.id]
+
+
+def test_graph_original_recipient_routes_to_configured_alias_channel(db_session):
+    transport = _transport(db_session)
+    alias = EmailChannelAlias(
+        channel_id=transport.channel_id,
+        address="claims@carfast.local",
+        active=True,
+    )
+    db_session.add(alias)
+    db_session.commit()
+    message = _message()
+    message["internetMessageHeaders"] = [
+        {"name": "X-Original-To", "value": "claims@carfast.local"}
+    ]
+
+    thread, created = ingest_inbound(
+        db_session,
+        inbound.graph_message_payload(
+            message, mailbox=transport.mailbox_address, attachments=[]
+        ),
+    )
+
+    assert created is True
+    assert thread.channel_id == transport.channel_id
+    stored = db_session.scalar(select(EmailMessage))
+    assert stored.recipients_json == [
+        {"Email": "claims@carfast.local", "Name": ""},
+        {"Email": "frota-graph@carfast.local", "Name": "Frota"}
+    ]
+
+
+def test_manual_sync_rejects_unknown_or_untransported_address(db_session):
+    _transport(db_session)
+
+    try:
+        inbound.sync_enabled_inboxes(
+            db_session, mailboxes=["unknown@carfast.local"]
+        )
+    except ValueError as exc:
+        assert "unknown@carfast.local" in str(exc)
+    else:
+        raise AssertionError("unknown address must not be silently accepted")
 
 
 def test_graph_attachment_and_postmark_copy_merge_without_duplicate(

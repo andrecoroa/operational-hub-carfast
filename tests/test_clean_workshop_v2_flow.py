@@ -21,6 +21,7 @@ from app.models.workshop_phased import (
 from app.services.rentway_fleet_importer import import_rentway_fleet_xlsx
 from app.web import router as web_router
 from app.web.router import clean_workshop_phase_advance_error
+from app.web.router import clean_workshop_stages
 from app.web.router import clean_workshop_technical_reading_rows
 from app.services.users import create_user
 
@@ -96,6 +97,35 @@ def test_workshop_web_actions_reject_forgery_and_adverse_order_and_audit_save(au
     assert "return_context" not in phase_row.data_json["form_snapshot"]
     audit = db_session.scalar(select(AuditLog).where(AuditLog.entity_id == str(process.id), AuditLog.action == "workshop.phase.saved"))
     assert audit is not None
+
+
+def test_workshop_navigation_groups_existing_phases_into_four_visible_stages():
+    suffix = "?process_id=41&return_context=safe-token"
+
+    stages = clean_workshop_stages(suffix, active_key="diagnostico")
+
+    assert [stage["key"] for stage in stages] == [
+        "entrada",
+        "analise",
+        "execucao",
+        "fecho",
+    ]
+    assert [stage["label"] for stage in stages] == [
+        "Entrada",
+        "Análise e decisão",
+        "Execução",
+        "Fecho",
+    ]
+    analysis = stages[1]
+    assert analysis["active"] is True
+    assert analysis["href"] == f"/v2-clean/workshop/diagnostico{suffix}"
+    assert [member["key"] for member in analysis["members"]] == [
+        "validacao",
+        "diagnostico",
+        "inspecao",
+        "auditoria",
+    ]
+    assert all(suffix in str(member["href"]) for member in analysis["members"])
 
 
 def test_rentway_fleet_update_preserves_workshop_mileage(db_session, tmp_path):
@@ -737,6 +767,14 @@ def test_clean_workshop_entry_validation_and_diagnostic_flow(client, db_session)
         f"/v2-clean/workshop/validacao?process_id={process_id}"
     )
     assert validation_page.status_code == 200
+    assert validation_page.text.count("data-workshop-stage-key=") == 4
+    assert 'data-workshop-stage-key="analise"' in validation_page.text
+    assert 'data-workshop-phase-key="validacao"' in validation_page.text
+    assert 'data-workshop-phase-key="diagnostico"' in validation_page.text
+    assert 'data-workshop-phase-key="inspecao"' in validation_page.text
+    assert 'data-workshop-phase-key="auditoria"' in validation_page.text
+    assert "4 etapas visíveis · fases e dados preservados" in validation_page.text
+    assert "clean-stepper-seven" not in validation_page.text
     assert 'data-target="prerequisitos"' not in validation_page.text
     assert "data-history-preview-open" in validation_page.text
     assert "clean-history-preview-modal" in validation_page.text

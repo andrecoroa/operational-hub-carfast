@@ -29747,3 +29747,159 @@ body:has(.email-preview-dialog[open]) { overflow: hidden; }
   .print-service-history table { font-size: 9pt; }
   .print-service-history tr { break-inside: avoid; }
 }
+
+/* Workshop: four visible stages over the existing seven-phase workflow. */
+.clean-workshop-stage-shell {
+  display: grid;
+  gap: 10px;
+}
+.clean-workshop-stage-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  color: #667085;
+  font-size: 12px;
+  font-weight: 800;
+}
+.clean-workshop-stage-heading span {
+  color: #0f2a5f;
+  font-weight: 950;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+.clean-stepper-four {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+.clean-stepper-four a {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  min-height: 68px;
+  padding: 10px 12px;
+  text-align: left;
+}
+.clean-stepper-four a > b {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid #cdd6e3;
+  border-radius: 999px;
+  background: #fff;
+  color: #0f2a5f;
+}
+.clean-stepper-four a > span {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+}
+.clean-stepper-four a strong {
+  color: inherit;
+  font-size: 13px;
+  line-height: 1.2;
+}
+.clean-stepper-four a small {
+  color: #667085;
+  font-size: 11px;
+  font-weight: 750;
+  line-height: 1.25;
+}
+.clean-stepper-four a.current:not(.active) {
+  border-color: #9bb7ec;
+  background: #f5f8ff;
+}
+.clean-stepper-four a.complete:not(.active) > b {
+  border-color: #a6d4b4;
+  background: #eaf8ee;
+  color: #166534;
+}
+.clean-stepper-four a.active {
+  border-color: #165dff;
+  background: #eef4ff;
+  color: #0f2a5f;
+  box-shadow: inset 3px 0 0 #165dff;
+}
+.clean-stepper-four a.active > b {
+  border-color: #165dff;
+  background: #165dff;
+  color: #fff;
+}
+.clean-workshop-phase-nav {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px 14px;
+  align-items: center;
+  border: 1px solid #d9e2ef;
+  border-radius: 8px;
+  background: #f8fbff;
+  padding: 9px 11px;
+}
+.clean-workshop-phase-nav > span {
+  color: #667085;
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+.clean-workshop-phase-nav > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+.clean-workshop-phase-nav a {
+  min-height: 32px;
+  border: 1px solid #d9e2ef;
+  border-radius: 999px;
+  background: #fff;
+  color: #475467;
+  padding: 6px 10px;
+  font-size: 11px;
+  font-weight: 850;
+  text-decoration: none;
+}
+.clean-workshop-phase-nav a.complete:not(.active) {
+  border-color: #b9dcc3;
+  color: #166534;
+}
+.clean-workshop-phase-nav a.current:not(.active) {
+  border-color: #9bb7ec;
+  background: #f0f5ff;
+  color: #0f2a5f;
+}
+.clean-workshop-phase-nav a.active {
+  border-color: #165dff;
+  background: #165dff;
+  color: #fff;
+}
+
+@media (max-width: 1180px) {
+  .clean-stepper-four { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 640px) {
+  .clean-workshop-stage-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .clean-workshop-phase-nav {
+    grid-template-columns: 1fr;
+  }
+  .clean-stepper-four {
+    grid-template-columns: 1fr;
+  }
+  .clean-stepper-four a {
+    min-height: 58px;
+  }
+  .clean-workshop-phase-nav > div {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+}

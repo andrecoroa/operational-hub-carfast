@@ -444,8 +444,8 @@ dialog { border: 1px solid var(--cf-gray-200); border-radius: 12px; box-shadow: 
 .visual-workshop-vehicle-card .clean-vehicle-quick-facts { gap: 0; border: 1px solid var(--workshop-border); border-radius: 7px; }
 .visual-workshop-vehicle-card .clean-vehicle-quick-facts > span { min-height: 52px; padding: 8px 11px; border-right: 1px solid var(--workshop-border); }
 .visual-workshop-vehicle-card .clean-vehicle-header-footer { min-height: 44px; padding: 8px 14px; background: var(--cf-gray-050); }
-.visual-workshop-stepper { display: grid; margin: 12px 0 0; padding: 10px 14px; grid-template-columns: repeat(7,minmax(88px,1fr)); gap: 0; overflow-x: auto; background: #fff; border: 1px solid var(--workshop-border); border-radius: 9px 9px 0 0; }
-.visual-workshop-stepper a { position: relative; display: grid; min-width: 88px; padding: 5px 8px 5px 38px; align-content: center; color: var(--cf-gray-600); border: 0; background: transparent; font-size: 10px; text-decoration: none; }
+.visual-workshop-stepper { display: grid; margin: 0; padding: 10px 14px; grid-template-columns: repeat(4,minmax(150px,1fr)); gap: 8px; overflow-x: auto; background: #fff; border: 1px solid var(--workshop-border); border-radius: 9px; }
+.visual-workshop-stepper a { position: relative; display: grid; min-width: 150px; padding: 7px 9px 7px 42px; align-content: center; color: var(--cf-gray-600); border: 0; background: transparent; font-size: 10px; text-decoration: none; }
 .visual-workshop-stepper a::after { position: absolute; top: 50%; right: -3px; width: 14px; height: 1px; content: ""; background: var(--cf-gray-300); }
 .visual-workshop-stepper a:last-child::after { display: none; }
 .visual-workshop-stepper a b { position: absolute; left: 5px; display: grid; width: 26px; height: 26px; place-items: center; color: var(--cf-gray-600); background: var(--cf-gray-100); border: 1px solid var(--cf-gray-300); border-radius: 50%; }
@@ -493,7 +493,7 @@ dialog { border: 1px solid var(--cf-gray-200); border-radius: 12px; box-shadow: 
   .visual-workshop-vehicle-card .clean-vehicle-header-main { padding: 12px; }
   .visual-workshop-vehicle-card .clean-vehicle-quick-facts { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); }
   .visual-workshop-vehicle-card .clean-vehicle-quick-facts > span { border-right: 0; border-bottom: 1px solid var(--workshop-border); }
-  .visual-workshop-stepper { padding: 9px 8px; grid-template-columns: repeat(7,118px); scroll-snap-type: x proximity; }
+  .visual-workshop-stepper { padding: 9px 8px; grid-template-columns: repeat(4,180px); scroll-snap-type: x proximity; }
   .visual-workshop-stepper a { min-height: 44px; scroll-snap-align: center; }
   .visual-workshop-tabs { padding: 0 8px; }
   .visual-workshop-tabs :is(a,button) { min-height: 48px; }

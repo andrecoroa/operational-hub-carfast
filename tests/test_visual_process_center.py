@@ -83,6 +83,40 @@ def test_batch_detail_uses_responsive_case_workspace_and_drawers() -> None:
     assert ".process-lines-table tr{display:grid" in css
 
 
+def test_batch_detail_translates_states_and_labels_imported_values() -> None:
+    router = (ROOT / "app" / "web" / "router.py").read_text(encoding="utf-8")
+
+    for contract in (
+        '"active": "Ativo"',
+        '"new": "Nova"',
+        '"in_execution": "Em curso"',
+        'f"Data: {date_match.group(3)}/{date_match.group(2)}/{date_match.group(1)}"',
+        'rendered.append(f"Montante: {formatted} €")',
+        'rendered.append(f"Referência: {part}")',
+        'label = "Detalhe"',
+    ):
+        assert contract in router
+
+    detail = (ROOT / "app" / "templates" / "clean_process_batch.html").read_text(
+        encoding="utf-8"
+    )
+    assert "display_description_by_row_id" in detail
+    assert "row.description or ''" in detail  # o valor original continua no formulário
+
+
+def test_batch_description_formats_dates_references_details_and_euros() -> None:
+    from app.web.router import _format_process_batch_description
+
+    assert _format_process_batch_description(
+        "2026-08-11T00:00:00\n15691\nFornecedor Demo\n1234.5"
+    ) == (
+        "Data: 11/08/2026 · Referência: 15691 · "
+        "Detalhe: Fornecedor Demo · Montante: 1.234,50 €"
+    )
+    assert _format_process_batch_description("Texto livre") == "Detalhe: Texto livre"
+    assert _format_process_batch_description(None) == ""
+
+
 def test_process_center_preserves_rbac_and_uses_local_table_overflow() -> None:
     source = TEMPLATE.read_text(encoding="utf-8")
     css = CSS.read_text(encoding="utf-8")

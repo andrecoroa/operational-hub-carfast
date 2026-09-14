@@ -20,8 +20,11 @@ def test_task_drawer_keeps_preview_lateral_and_opens_edit_on_full_page() -> None
     assert "/detail{% if return_context %}?return_context=" in DRAWER
     assert "#task-edit" in DRAWER
     assert "showEdit" not in CENTER
-    assert "restoredTask = location.hash.match" in CENTER
-    assert "openTaskWorkbenchOnDemand(requested || restoredTask)" in CENTER
+    assert "window.pendingTaskWorkbenchId" in APPROVED
+    assert "openTaskWorkbenchOnDemand(pendingTaskWorkbenchId)" in CENTER
+    assert "openTaskWorkbenchOnDemand(requested || restoredTask)" not in CENTER
+    assert "mountPreview(row,groupButton)" not in APPROVED
+    assert "rawSearch.get('open_task')" in APPROVED
 
 
 def test_creation_and_full_page_edit_keep_independent_reference_fields() -> None:

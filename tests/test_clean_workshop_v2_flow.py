@@ -7,6 +7,7 @@ from urllib.parse import parse_qs, urlsplit
 
 from openpyxl import Workbook
 from sqlalchemy import select
+from sqlalchemy.dialects import postgresql
 
 import app.main as app_main
 from app.models.documents import Document, DocumentLink, VehicleDocumentRecord, VehicleDocumentRecordTag
@@ -29,6 +30,15 @@ from app.web.router import clean_workshop_substeps
 from app.web.router import clean_workshop_stages
 from app.web.router import clean_workshop_technical_reading_rows
 from app.services.users import create_user
+from app.services.workshop_historical_evidence import historical_equivalent_invoice_statement
+
+
+def test_historical_invoice_query_does_not_distinct_postgresql_json():
+    sql = str(historical_equivalent_invoice_statement(1, date(2026, 1, 29), "degradation").compile(
+        dialect=postgresql.dialect()
+    ))
+    assert "DISTINCT" not in sql.upper()
+    assert "vehicle_document_records.id IN (SELECT vehicle_document_record_tags.record_id" in sql
 
 
 def test_workshop_web_actions_reject_forgery_and_adverse_order_and_audit_save(authenticated_client, db_session):

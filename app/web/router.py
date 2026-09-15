@@ -27081,6 +27081,36 @@ def clean_workshop_print_report(request: Request, process_id: int, report_type: 
                 for phase_code in CLEAN_WORKSHOP_PHASES
             },
         }
+        entry_form = phase_forms.get("entrada", {})
+        historical_date = str(entry_form.get("historical_intervention_date") or "").strip()
+        if process.creation_mode == "historical" and historical_date:
+            try:
+                vehicle_context = {
+                    **vehicle_context,
+                    "entry_date": datetime.fromisoformat(historical_date).strftime("%d/%m/%Y"),
+                }
+            except ValueError:
+                pass
+        elif process.received_at:
+            vehicle_context = {
+                **vehicle_context,
+                "entry_date": process.received_at.strftime("%d/%m/%Y"),
+            }
+
+        report = dict(report_config)
+        if report_type == "diagnostic-order":
+            validation_phase = clean_workshop_get_phase(db, process.id, "validacao")
+            if not validation_phase or validation_phase.status != "completed":
+                report["status"] = "Rascunho - validação pendente"
+        elif report_type == "repair-order":
+            audit_phase = clean_workshop_get_phase(db, process.id, "auditoria")
+            authorization = clean_form_value(phase_forms.get("auditoria", {}), "audit_repair_authorized")
+            if not audit_phase or audit_phase.status != "completed" or authorization not in {"Sim", "Com reserva"}:
+                report["status"] = "Rascunho - autorização pendente"
+            elif authorization == "Com reserva":
+                report["status"] = "Autorizado com reserva"
+        elif report_type == "final-report" and process.status != "closed":
+            report["status"] = "Rascunho - processo aberto"
         reports = db.scalars(
             select(WorkshopPhasedTechnicalReport)
             .where(
@@ -27129,7 +27159,7 @@ def clean_workshop_print_report(request: Request, process_id: int, report_type: 
             "clean_workshop_print_report.html",
             {
                 "report_type": report_type,
-                "report": report_config,
+                "report": report,
                 "process": process,
                 "vehicle_context": vehicle_context,
                 "entry": phase_forms.get("entrada", {}),

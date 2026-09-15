@@ -24794,7 +24794,7 @@ body.clean-task-preview-open {
   font-style: normal;
 }
 
-.clean-diagnostic-suggestions form {
+.clean-diagnostic-suggestions .suggestion-actions {
   display: flex;
   gap: 6px;
 }

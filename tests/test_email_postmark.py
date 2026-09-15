@@ -12,6 +12,7 @@ from app.models.email import (
     EmailAttachment,
     EmailAuditEvent,
     EmailChannel,
+    EmailChannelAlias,
     EmailChannelTransport,
     EmailChannelUser,
     EmailExecutorEligibility,
@@ -33,6 +34,7 @@ from app.services.email_postmark import (
     ensure_email_channels,
     ingest_inbound,
     ingest_outbound_event,
+    inbox_rule_matches,
     normalize_inbound_attachments,
     outbound_identity,
     reply_all_recipients,
@@ -420,6 +422,11 @@ def test_inbound_subject_rule_overrides_channel_defaults(db_session, tmp_path, m
     assert thread.document_type == "stock_invoice"
     assert 1 <= (thread.due_at.date() - thread.created_at.date()).days <= 2
     assert thread.task_id is None
+    attachment = db_session.scalar(
+        select(EmailAttachment).join(EmailMessage).where(EmailMessage.thread_id == thread.id)
+    )
+    assert attachment.document_type == "stock_invoice"
+    assert attachment.destination == "documentation"
 
 
 def test_fleet_inbound_rejects_unrelated_admin_hierarchy_and_accepts_valid_fleet_hierarchy(
@@ -515,6 +522,184 @@ def test_inbound_exact_rule_does_not_match_partial_subject(db_session, tmp_path,
     thread, _ = ingest_inbound(db_session, payload)
 
     assert thread.document_type == "default_document"
+
+
+def test_inbox_rule_combines_subject_and_sender_conditions():
+    rule = EmailInboxRule(
+        channel_id=1,
+        name="VVP deterministic",
+        subject_match="processamento concluído",
+        match_type="contains",
+        sender_match="vvp.example",
+        sender_match_type="domain",
+        condition_operator="and",
+    )
+
+    assert inbox_rule_matches(
+        rule,
+        subject="Processamento concluído 123",
+        sender="Sistema <notify@vvp.example>",
+    )
+    assert not inbox_rule_matches(
+        rule,
+        subject="Processamento concluído 123",
+        sender="unknown@example.org",
+    )
+    rule.condition_operator = "or"
+    assert inbox_rule_matches(
+        rule, subject="Outro assunto", sender="notify@vvp.example"
+    )
+
+
+def test_deterministic_rule_applies_status_and_audits_actions(
+    db_session, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(settings, "email_storage_root", str(tmp_path))
+    ensure_email_channels(db_session)
+    channel = db_session.scalar(select(EmailChannel).where(EmailChannel.code == "test"))
+    db_session.add(
+        EmailInboxRule(
+            channel_id=channel.id,
+            name="Newsletter",
+            subject_match="Novo Subscritor à Newsletter",
+            match_type="exact",
+            auto_task_mode="none",
+            status_action="archived",
+            deterministic=True,
+            sort_order=1,
+        )
+    )
+    db_session.commit()
+    payload = _payload("pm-rule-archive")
+    payload["Subject"] = "Novo Subscritor à Newsletter"
+
+    thread, _ = ingest_inbound(db_session, payload)
+
+    assert thread.status == "archived"
+    assert thread.task_id is None
+    audit = db_session.scalar(
+        select(EmailAuditEvent).where(EmailAuditEvent.action == "inbox_rule_applied")
+    )
+    assert audit.details_json["rule_name"] == "Newsletter"
+    assert audit.details_json["actions"] == ["status:archived"]
+    attachment = db_session.scalar(
+        select(EmailAttachment).join(EmailMessage).where(EmailMessage.thread_id == thread.id)
+    )
+    assert attachment is not None
+
+
+def test_non_deterministic_rule_cannot_close_thread(db_session, tmp_path, monkeypatch):
+    monkeypatch.setattr(settings, "email_storage_root", str(tmp_path))
+    ensure_email_channels(db_session)
+    channel = db_session.scalar(select(EmailChannel).where(EmailChannel.code == "test"))
+    db_session.add(
+        EmailInboxRule(
+            channel_id=channel.id,
+            name="Broad close",
+            subject_match="Pedido",
+            match_type="contains",
+            auto_task_mode="none",
+            status_action="resolved",
+            deterministic=False,
+            sort_order=1,
+        )
+    )
+    db_session.commit()
+
+    thread, _ = ingest_inbound(db_session, _payload("pm-rule-no-close"))
+
+    assert thread.status != "resolved"
+    audit = db_session.scalar(
+        select(EmailAuditEvent).where(EmailAuditEvent.action == "inbox_rule_applied")
+    )
+    assert "status:resolved:skipped_non_deterministic" in audit.details_json["actions"]
+
+
+def test_admin_rule_preview_is_read_only(authenticated_client, db_session, tmp_path, monkeypatch):
+    monkeypatch.setattr(settings, "email_storage_root", str(tmp_path))
+    ensure_email_channels(db_session)
+    channel = db_session.scalar(select(EmailChannel).where(EmailChannel.code == "test"))
+    thread, _ = ingest_inbound(db_session, _payload("pm-preview"))
+    before_status = thread.status
+
+    response = authenticated_client.post(
+        "/v2-clean/admin/work-classification/email-inbox-rules/preview",
+        data={
+            "channel_id": channel.id,
+            "subject_match": "Pedido de informação",
+            "match_type": "exact",
+            "sender_match": "example.com",
+            "sender_match_type": "domain",
+            "condition_operator": "and",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["read_only"] is True
+    assert response.json()["matched"] == 1
+    db_session.refresh(thread)
+    assert thread.status == before_status
+
+
+def test_channel_classification_edit_preserves_blank_outbound_identity(
+    authenticated_client, db_session
+):
+    channel = EmailChannel(
+        code="reports-test",
+        name="Reports",
+        address=None,
+        default_reply_address=None,
+        from_address=None,
+        reply_to_address=None,
+        from_name=None,
+        active=True,
+    )
+    db_session.add(channel)
+    db_session.commit()
+    page = authenticated_client.get("/v2-clean/admin/work-classification?view=channels")
+    assert page.status_code == 200
+    editor = page.text.split(f'id="work-edit-channel-{channel.id}"', 1)[1].split(
+        "</dialog>", 1
+    )[0]
+    assert 'name="from_address" value="" required' not in editor
+    assert 'name="default_reply_address" value="" required' not in editor
+    assert 'name="address" required placeholder="endereço real confirmado"' not in editor
+
+    response = authenticated_client.post(
+        f"/v2-clean/admin/work-classification/email-channels/{channel.id}",
+        data={
+            "name": "Reports",
+            "active": "on",
+            "auto_task_mode": "none",
+            "assignment_mode": "manual",
+            "reply_policy": "mailbox",
+            "from_address": "",
+            "default_reply_address": "",
+            "from_name": "",
+        },
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    assert "saved" in response.headers["location"]
+    db_session.refresh(channel)
+    assert channel.from_address is None
+    assert channel.default_reply_address is None
+    assert channel.reply_to_address is None
+
+
+def test_blank_alias_form_does_not_create_alias(authenticated_client, db_session):
+    ensure_email_channels(db_session)
+    channel = db_session.scalar(select(EmailChannel).where(EmailChannel.code == "test"))
+    before = db_session.scalar(select(func.count()).select_from(EmailChannelAlias))
+
+    response = authenticated_client.post(
+        "/v2-clean/admin/work-classification/email-channel-aliases",
+        data={"channel_id": channel.id, "address": ""},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert db_session.scalar(select(func.count()).select_from(EmailChannelAlias)) == before
 
 
 def test_clean_email_inbox_and_thread_render(

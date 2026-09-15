@@ -80,7 +80,11 @@ from app.services.email_access_admin import (
     grant_snapshot,
     plan_email_role_batch,
 )
-from app.services.email_postmark import inbox_rule_matches, outbound_identity
+from app.services.email_postmark import (
+    deterministic_rule_close_allowed,
+    inbox_rule_matches,
+    outbound_identity,
+)
 from app.services.email_rule_catalog import REVIEWED_EMAIL_RULE_PRESETS
 from app.services.service_desk import (
     ASSIGNMENT_MODES,
@@ -4235,6 +4239,36 @@ def _email_rule_audit_snapshot(rule: EmailInboxRule) -> dict:
     }
 
 
+def _auto_close_form_safe(
+    *,
+    status_action: str,
+    deterministic: str,
+    match_type: str,
+    sender_match: str,
+    sender_match_type: str,
+    condition_operator: str,
+    active: str,
+    preview_confirmed: str,
+) -> bool:
+    if status_action not in {"resolved", "archived"}:
+        return True
+    if deterministic != "on":
+        return False
+    if active != "on":
+        return True
+    candidate = EmailInboxRule(
+        channel_id=0,
+        name="validation",
+        subject_match="validation",
+        match_type=match_type,
+        sender_match=sender_match.strip() or None,
+        sender_match_type=sender_match_type,
+        condition_operator=condition_operator,
+        deterministic=True,
+    )
+    return preview_confirmed == "on" and deterministic_rule_close_allowed(candidate)
+
+
 @clean_admin_router.post("/v2-clean/admin/work-classification/email-inbox-rules/preview")
 def clean_admin_preview_email_inbox_rule(
     request: Request,
@@ -4336,8 +4370,16 @@ def clean_admin_create_email_inbox_rule(
         or sender_match_type not in {"contains", "exact", "domain"}
         or condition_operator not in {"and", "or"}
         or status_action not in {"none", "in_progress", "resolved", "archived"}
-        or status_action in {"resolved", "archived"}
-        and (deterministic != "on" or active == "on" and preview_confirmed != "on")
+        or not _auto_close_form_safe(
+            status_action=status_action,
+            deterministic=deterministic,
+            match_type=match_type,
+            sender_match=sender_match,
+            sender_match_type=sender_match_type,
+            condition_operator=condition_operator,
+            active=active,
+            preview_confirmed=preview_confirmed,
+        )
         or auto_task_mode not in {"", "none", "open", "complete"}
         or assignment_mode not in {"", *ASSIGNMENT_MODES}
         or first_response_unit not in {"minutes", "days"}
@@ -4511,8 +4553,16 @@ def clean_admin_update_email_inbox_rule(
         or sender_match_type not in {"contains", "exact", "domain"}
         or condition_operator not in {"and", "or"}
         or status_action not in {"none", "in_progress", "resolved", "archived"}
-        or status_action in {"resolved", "archived"}
-        and (deterministic != "on" or active == "on" and preview_confirmed != "on")
+        or not _auto_close_form_safe(
+            status_action=status_action,
+            deterministic=deterministic,
+            match_type=match_type,
+            sender_match=sender_match,
+            sender_match_type=sender_match_type,
+            condition_operator=condition_operator,
+            active=active,
+            preview_confirmed=preview_confirmed,
+        )
         or auto_task_mode not in {"", "none", "open", "complete"}
         or assignment_mode not in {"", *ASSIGNMENT_MODES}
         or first_response_unit not in {"minutes", "days"}

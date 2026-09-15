@@ -778,6 +778,18 @@ def inbox_rule_matches(rule: EmailInboxRule, *, subject: str, sender: str = "") 
     )
 
 
+def deterministic_rule_close_allowed(rule: EmailInboxRule) -> bool:
+    """Close only exact subjects or subject+verified sender conjunctions."""
+    return bool(rule.deterministic) and (
+        rule.match_type == "exact"
+        or (
+            bool((rule.sender_match or "").strip())
+            and rule.condition_operator == "and"
+            and rule.sender_match_type in {"exact", "domain"}
+        )
+    )
+
+
 def _inbox_rule(
     db: Session, channel_id: int, subject: str, sender: str = ""
 ) -> EmailInboxRule | None:
@@ -1152,7 +1164,7 @@ def ingest_inbound(db: Session, payload: dict) -> tuple[EmailThread, bool]:
         if auto_task_mode in {"open", "complete"} and created_thread:
             applied_actions.append(f"task:{auto_task_mode}")
         if rule.status_action != "none":
-            if rule.status_action in {"resolved", "archived"} and not rule.deterministic:
+            if rule.status_action in {"resolved", "archived"} and not deterministic_rule_close_allowed(rule):
                 applied_actions.append(f"status:{rule.status_action}:skipped_non_deterministic")
             else:
                 thread.status = rule.status_action

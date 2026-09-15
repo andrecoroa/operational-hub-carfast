@@ -32,6 +32,7 @@ from app.services.bootstrap import (
 )
 from app.services.email_postmark import (
     ensure_email_channels,
+    deterministic_rule_close_allowed,
     ingest_inbound,
     ingest_outbound_event,
     inbox_rule_matches,
@@ -549,6 +550,23 @@ def test_inbox_rule_combines_subject_and_sender_conditions():
     assert inbox_rule_matches(
         rule, subject="Outro assunto", sender="notify@vvp.example"
     )
+
+
+def test_auto_close_requires_structurally_deterministic_conditions():
+    broad = EmailInboxRule(
+        channel_id=1,
+        name="Broad",
+        subject_match="autorização",
+        match_type="contains",
+        deterministic=True,
+    )
+    assert not deterministic_rule_close_allowed(broad)
+    broad.sender_match = "vvp.example"
+    broad.sender_match_type = "domain"
+    broad.condition_operator = "and"
+    assert deterministic_rule_close_allowed(broad)
+    broad.condition_operator = "or"
+    assert not deterministic_rule_close_allowed(broad)
 
 
 def test_deterministic_rule_applies_status_and_audits_actions(

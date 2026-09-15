@@ -27147,6 +27147,15 @@ def clean_workshop_print_report(request: Request, process_id: int, report_type: 
                 .limit(8)
             ).all()
 
+        from app.services.workshop_historical_evidence import historical_workshop_document_evidence
+
+        historical_evidence = historical_workshop_document_evidence(
+            db,
+            process,
+            intervention_date=historical_date,
+            service_type=next(iter(clean_form_values(phase_forms.get("validacao", {}), "service_type")), ""),
+        )
+
         repair_form = phase_forms.get("reparacao", {})
         material_rows = []
         for index in range(1, 9):
@@ -27180,6 +27189,7 @@ def clean_workshop_print_report(request: Request, process_id: int, report_type: 
                 "process_services": process_services,
                 "history_services": history_services,
                 "material_rows": material_rows,
+                "historical_evidence": historical_evidence,
                 "printed_at": datetime.now().strftime("%d/%m/%Y %H:%M"),
                 "return_url": clean_workshop_process_url(process),
             },

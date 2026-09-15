@@ -1,6 +1,7 @@
 import html
 import json
 import re
+from html.parser import HTMLParser
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
@@ -17,6 +18,8 @@ from app.models.workshop_phased import (
     WorkshopPhasedProcess,
     WorkshopPhasedProcessPhase,
     WorkshopPhasedTechnicalReport,
+    WorkshopDiagnosticCatalogItem,
+    WorkshopDiagnosticSuggestion,
 )
 from app.services.rentway_fleet_importer import import_rentway_fleet_xlsx
 from app.web import router as web_router
@@ -164,6 +167,79 @@ def test_validation_visible_save_advances_legacy_template_snapshot(authenticated
     assert phase.status == "completed"
     assert "pedido_orientacao" in phase.data_json["saved_substeps"]
     assert db_session.get(WorkshopPhasedProcess, process.id).current_phase_code == "diagnostico"
+
+
+def test_diagnostic_suggestions_do_not_nest_forms_or_break_phase_save(authenticated_client, db_session):
+    process = WorkshopPhasedProcess(
+        public_reference="OF-TEST-DIAGNOSTIC-FORM",
+        process_type="general",
+        title="Diagnostic form ownership",
+        creation_mode="historical",
+        status="active",
+        plate_snapshot="ZZ-97-ZZ",
+        current_phase_code="diagnostico",
+        priority="normal",
+        origin="v2_clean",
+        metadata_json={},
+    )
+    catalog = WorkshopDiagnosticCatalogItem(
+        code="test_diagnostic_form_ownership",
+        name="Informações de manutenção",
+        family="maintenance",
+        requirement="conditional",
+        active=True,
+    )
+    db_session.add_all([process, catalog])
+    db_session.flush()
+    db_session.add_all(
+        [
+            WorkshopPhasedProcessPhase(
+                process_id=process.id,
+                phase_code="diagnostico",
+                name="Diagnóstico",
+                status="in_progress",
+                sort_order=3,
+                data_json={},
+            ),
+            WorkshopDiagnosticSuggestion(
+                process_id=process.id,
+                catalog_item_id=catalog.id,
+                status="suggested",
+                explanation="Teste de formulário",
+            ),
+        ]
+    )
+    db_session.commit()
+
+    response = authenticated_client.get(f"/v2-clean/workshop/diagnostico?process_id={process.id}")
+    assert response.status_code == 200
+
+    class FormOwnershipParser(HTMLParser):
+        def __init__(self):
+            super().__init__()
+            self.form_depth = 0
+            self.nested_form = False
+            self.phase_button_owned = False
+            self.suggestion_button_owned = False
+
+        def handle_starttag(self, tag, attrs):
+            attributes = dict(attrs)
+            if tag == "form":
+                self.nested_form |= self.form_depth > 0
+                self.form_depth += 1
+            elif tag == "button":
+                self.phase_button_owned |= attributes.get("value") == "save_substep" and self.form_depth == 1
+                self.suggestion_button_owned |= attributes.get("value") == "confirmed" and bool(attributes.get("form"))
+
+        def handle_endtag(self, tag):
+            if tag == "form":
+                self.form_depth -= 1
+
+    parser = FormOwnershipParser()
+    parser.feed(response.text)
+    assert not parser.nested_form
+    assert parser.phase_button_owned
+    assert parser.suggestion_button_owned
 
 
 def test_workshop_navigation_groups_existing_phases_into_four_visible_stages():

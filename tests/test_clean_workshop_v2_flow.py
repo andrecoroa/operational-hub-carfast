@@ -9,7 +9,8 @@ from openpyxl import Workbook
 from sqlalchemy import select
 
 import app.main as app_main
-from app.models.documents import Document, DocumentLink
+from app.models.documents import Document, DocumentLink, VehicleDocumentRecord, VehicleDocumentRecordTag
+from datetime import date
 from app.models.audit import AuditLog
 from app.models.tasks import Task
 from app.models.vehicles import Vehicle, VehicleExternalSnapshot
@@ -753,7 +754,7 @@ def test_historical_workshop_prints_draft_and_documented_entry_date(authenticate
                 name="Validação",
                 status="in_progress",
                 sort_order=2,
-                data_json={"form_snapshot": {"validation_diagnostic_focus": "Confrontar FO e diagnóstico"}},
+                data_json={"form_snapshot": {"validation_diagnostic_focus": "Confrontar FO e diagnóstico", "service_type": ["Degradação óleo"]}},
             ),
             WorkshopPhasedProcessPhase(
                 process_id=process.id,
@@ -778,18 +779,40 @@ def test_historical_workshop_prints_draft_and_documented_entry_date(authenticate
             ),
         ]
     )
+    work_order = VehicleDocumentRecord(
+        vehicle_id=vehicle.id, main_group="work_orders", document_date=date(2026, 1, 29),
+        external_reference="FO 1289", metadata_json={"work_order_lines": [
+            {"description": "Substituição do óleo", "quantity": "1"},
+            {"description": "Substituição filtro do óleo", "quantity": "1"},
+        ]},
+    )
+    comparison = VehicleDocumentRecord(
+        vehicle_id=vehicle.id, main_group="invoices", document_date=date(2025, 2, 13),
+        external_reference="TAL_FAC 2025/11169437", supplier_name="Oficina exemplo",
+        metadata_json={"invoice_lines": [{"description": "Óleo 5W30", "quantity": "6,60"}]},
+    )
+    db_session.add_all([work_order, comparison])
+    db_session.flush()
+    db_session.add(VehicleDocumentRecordTag(
+        vehicle_id=vehicle.id, record_id=comparison.id, category="maintenance", value="degradation",
+    ))
     db_session.commit()
 
     diagnostic = authenticated_client.get(f"/v2-clean/workshop/{process.id}/print/diagnostic-order")
     assert "29/01/2026" in diagnostic.text
     assert "Degradação: óleo e filtro conforme FO 1289" in diagnostic.text
     assert "Rascunho - validação pendente" in diagnostic.text
+    assert "TAL_FAC 2025/11169437" in diagnostic.text
+    assert "Não comprovam os materiais desta FO" in diagnostic.text
 
     repair = authenticated_client.get(f"/v2-clean/workshop/{process.id}/print/repair-order")
     assert "Rascunho - autorização pendente" in repair.text
     assert "Registo histórico; autorização não localizada" in repair.text
     assert "Óleo do motor" in repair.text
     assert "FO 1289; sem valor" in repair.text
+    assert "Substituição do óleo" in repair.text
+    assert "Substituição filtro do óleo" in repair.text
+    assert "quantidades de materiais" in repair.text
 
     final = authenticated_client.get(f"/v2-clean/workshop/{process.id}/print/final-report")
     assert "Rascunho - processo aberto" in final.text

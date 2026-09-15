@@ -13,6 +13,26 @@ from app.models.documents import VehicleDocumentRecord, VehicleDocumentRecordTag
 from app.models.workshop_phased import WorkshopPhasedProcess
 
 
+def historical_equivalent_invoice_statement(vehicle_id: int, on_date: date, service_code: str):
+    """Select records by tagged IDs; DISTINCT over PostgreSQL JSON is invalid."""
+    return (
+        select(VehicleDocumentRecord)
+        .where(
+            VehicleDocumentRecord.vehicle_id == vehicle_id,
+            VehicleDocumentRecord.main_group == "invoices",
+            VehicleDocumentRecord.document_date < on_date,
+            VehicleDocumentRecord.id.in_(
+                select(VehicleDocumentRecordTag.record_id).where(
+                    VehicleDocumentRecordTag.category == "maintenance",
+                    VehicleDocumentRecordTag.value == service_code,
+                )
+            ),
+        )
+        .order_by(VehicleDocumentRecord.document_date.desc(), VehicleDocumentRecord.id.desc())
+        .limit(4)
+    )
+
+
 def historical_workshop_document_evidence(
     db: Session,
     process: WorkshopPhasedProcess,
@@ -61,18 +81,7 @@ def historical_workshop_document_evidence(
     equivalent_invoices: list[dict[str, object]] = []
     if service_code:
         invoices = db.scalars(
-            select(VehicleDocumentRecord)
-            .join(VehicleDocumentRecordTag, VehicleDocumentRecordTag.record_id == VehicleDocumentRecord.id)
-            .where(
-                VehicleDocumentRecord.vehicle_id == process.vehicle_id,
-                VehicleDocumentRecord.main_group == "invoices",
-                VehicleDocumentRecord.document_date < on_date,
-                VehicleDocumentRecordTag.category == "maintenance",
-                VehicleDocumentRecordTag.value == service_code,
-            )
-            .distinct()
-            .order_by(VehicleDocumentRecord.document_date.desc(), VehicleDocumentRecord.id.desc())
-            .limit(4)
+            historical_equivalent_invoice_statement(process.vehicle_id, on_date, service_code)
         ).all()
         for invoice in invoices:
             metadata = invoice.metadata_json if isinstance(invoice.metadata_json, dict) else {}

@@ -11896,6 +11896,11 @@ def clean_workshop_substeps(
     phase_key: str,
     process: WorkshopPhasedProcess | None = None,
 ) -> tuple[str, ...]:
+    # The validation workbench now has one visible card. Older template
+    # snapshots still contain the three former substeps; following them would
+    # redirect a save back to an invisible card instead of advancing the phase.
+    if phase_key == "validacao":
+        return ("pedido_orientacao",)
     snapshot = process.template_snapshot_json if process else None
     phases = snapshot.get("config", {}).get("phases", []) if isinstance(snapshot, dict) else []
     for phase in phases:
@@ -12193,9 +12198,9 @@ def clean_workshop_validation_substep_status(
         "pedido": "Guardado"
         if clean_workshop_substep_is_saved(
             saved_substeps,
-            "pedido",
+            "pedido_orientacao",
             legacy_has_data=has_decision or has_history_answer or has_service_data,
-        )
+        ) or clean_workshop_substep_is_saved(saved_substeps, "pedido", legacy_has_data=False)
         else "Por validar",
         "orientacao": "Guardado"
         if clean_workshop_substep_is_saved(

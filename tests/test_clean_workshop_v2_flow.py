@@ -21,6 +21,7 @@ from app.models.workshop_phased import (
 from app.services.rentway_fleet_importer import import_rentway_fleet_xlsx
 from app.web import router as web_router
 from app.web.router import clean_workshop_phase_advance_error
+from app.web.router import clean_workshop_substeps
 from app.web.router import clean_workshop_stages
 from app.web.router import clean_workshop_technical_reading_rows
 from app.services.users import create_user
@@ -97,6 +98,72 @@ def test_workshop_web_actions_reject_forgery_and_adverse_order_and_audit_save(au
     assert "return_context" not in phase_row.data_json["form_snapshot"]
     audit = db_session.scalar(select(AuditLog).where(AuditLog.entity_id == str(process.id), AuditLog.action == "workshop.phase.saved"))
     assert audit is not None
+
+
+def test_validation_visible_save_advances_legacy_template_snapshot(authenticated_client, db_session):
+    process = WorkshopPhasedProcess(
+        public_reference="OF-TEST-VALIDATION-CARD",
+        process_type="general",
+        title="Single visible validation card",
+        creation_mode="historical",
+        status="active",
+        plate_snapshot="ZZ-98-ZZ",
+        current_phase_code="validacao",
+        priority="normal",
+        origin="v2_clean",
+        metadata_json={},
+        template_snapshot_json={
+            "config": {
+                "phases": [
+                    {"code": "validacao", "substeps": ["prerequisitos", "pedido", "orientacao"]},
+                    {"code": "diagnostico", "substeps": ["relatorios", "leituras", "problemas"]},
+                ]
+            }
+        },
+    )
+    db_session.add(process)
+    db_session.flush()
+    db_session.add(
+        WorkshopPhasedProcessPhase(
+            process_id=process.id,
+            phase_code="validacao",
+            name="Validação",
+            status="in_progress",
+            sort_order=2,
+            data_json={},
+        )
+    )
+    db_session.commit()
+
+    assert clean_workshop_substeps("validacao", process) == ("pedido_orientacao",)
+    saved = authenticated_client.post(
+        "/v2-clean/workshop/validacao/save",
+        data={
+            "process_id": str(process.id),
+            "action": "save_substep",
+            "current_substep": "pedido_orientacao",
+            "form_state_json": json.dumps(
+                {
+                    "service_decision": "Seguir diagnóstico",
+                    "validation_closed": "Com reservas",
+                    "validation_reserve_reason": "Autorização original por confirmar.",
+                }
+            ),
+        },
+        follow_redirects=False,
+    )
+    assert saved.status_code == 303
+    assert saved.headers["location"] == f"/v2-clean/workshop/diagnostico?process_id={process.id}"
+    db_session.expire_all()
+    phase = db_session.scalar(
+        select(WorkshopPhasedProcessPhase).where(
+            WorkshopPhasedProcessPhase.process_id == process.id,
+            WorkshopPhasedProcessPhase.phase_code == "validacao",
+        )
+    )
+    assert phase.status == "completed"
+    assert "pedido_orientacao" in phase.data_json["saved_substeps"]
+    assert db_session.get(WorkshopPhasedProcess, process.id).current_phase_code == "diagnostico"
 
 
 def test_workshop_navigation_groups_existing_phases_into_four_visible_stages():

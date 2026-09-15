@@ -565,6 +565,94 @@ def test_workshop_print_reports_and_repair_material_fields(authenticated_client,
     assert "2 h 30 min" in repair_report.text
     assert "3 h 10 min" in repair_report.text
 
+
+def test_historical_workshop_prints_draft_and_documented_entry_date(authenticated_client, db_session):
+    vehicle = Vehicle(
+        plate="BD-29-LZ",
+        vin="VINBD29LZ123456789",
+        brand="CITROEN",
+        model="JUMPER",
+        active=True,
+    )
+    db_session.add(vehicle)
+    db_session.flush()
+    process = WorkshopPhasedProcess(
+        process_type="workshop",
+        title="Oficina histórica BD-29-LZ",
+        creation_mode="historical",
+        status="open",
+        vehicle_id=vehicle.id,
+        plate_snapshot=vehicle.plate,
+        current_phase_code="validacao",
+        priority="normal",
+        metadata_json={},
+    )
+    db_session.add(process)
+    db_session.flush()
+    db_session.add_all(
+        [
+            WorkshopPhasedProcessPhase(
+                process_id=process.id,
+                phase_code="entrada",
+                name="Entrada",
+                status="completed",
+                sort_order=1,
+                data_json={
+                    "historical_intervention_date": "2026-01-29",
+                    "entry_km": "123596",
+                    "entry_reasons": ["Revisão / degradação óleo"],
+                    "short_description": "Degradação: óleo e filtro conforme FO 1289",
+                },
+            ),
+            WorkshopPhasedProcessPhase(
+                process_id=process.id,
+                phase_code="validacao",
+                name="Validação",
+                status="in_progress",
+                sort_order=2,
+                data_json={"form_snapshot": {"validation_diagnostic_focus": "Confrontar FO e diagnóstico"}},
+            ),
+            WorkshopPhasedProcessPhase(
+                process_id=process.id,
+                phase_code="auditoria",
+                name="Auditoria",
+                status="not_started",
+                sort_order=5,
+                data_json={"form_snapshot": {}},
+            ),
+            WorkshopPhasedProcessPhase(
+                process_id=process.id,
+                phase_code="reparacao",
+                name="Reparação",
+                status="not_started",
+                sort_order=6,
+                data_json={"form_snapshot": {
+                    "repair_authorized_services": "Registo histórico; autorização não localizada",
+                    "repair_material_1_name": "Óleo do motor",
+                    "repair_material_1_origin": "FO 1289; sem valor",
+                    "repair_summary": "Troca de óleo e filtro documentada",
+                }},
+            ),
+        ]
+    )
+    db_session.commit()
+
+    diagnostic = authenticated_client.get(f"/v2-clean/workshop/{process.id}/print/diagnostic-order")
+    assert "29/01/2026" in diagnostic.text
+    assert "Degradação: óleo e filtro conforme FO 1289" in diagnostic.text
+    assert "Rascunho - validação pendente" in diagnostic.text
+
+    repair = authenticated_client.get(f"/v2-clean/workshop/{process.id}/print/repair-order")
+    assert "Rascunho - autorização pendente" in repair.text
+    assert "Registo histórico; autorização não localizada" in repair.text
+    assert "Óleo do motor" in repair.text
+    assert "FO 1289; sem valor" in repair.text
+
+    final = authenticated_client.get(f"/v2-clean/workshop/{process.id}/print/final-report")
+    assert "Rascunho - processo aberto" in final.text
+    assert "Por fechar" in final.text
+    assert "Troca de óleo e filtro documentada" in final.text
+
 def test_clean_workshop_entry_validation_and_diagnostic_flow(client, db_session):
     vehicle = Vehicle(
         plate="BB-13-PT",

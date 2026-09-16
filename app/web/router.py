@@ -27552,7 +27552,7 @@ async def clean_workshop_create_material_need(request: Request, process_id: int)
         )
         db.commit()
     return RedirectResponse(
-        f"/v2-clean/workshop/reparacao?process_id={process_id}&material_saved=1#ordem-reparacao",
+        f"/v2-clean/workshop/reparacao?process_id={process_id}&material_saved=1#workshop-materials",
         status_code=303,
     )
 

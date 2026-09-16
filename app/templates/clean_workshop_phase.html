@@ -42,7 +42,7 @@
         </div>
         <div class="clean-context-action-row">
           {% if workshop_process and not workshop_admin.is_cancelled and not workshop_admin.is_closed %}
-            {% if phase_key == "reparacao" %}<button type="button" class="button-link" onclick="document.getElementById('workshop-stock-request').showModal()">Pedido ao Stock</button>{% endif %}
+            {% if phase_key == "reparacao" %}<button type="button" class="button-link" onclick="document.getElementById('workshop-stock-request').showModal()">Solicitar material</button>{% endif %}
           {% else %}
             <span class="clean-context-action-empty">Sem ações operacionais disponíveis nesta fase.</span>
           {% endif %}
@@ -702,9 +702,24 @@
               </div>
             </details>
           </div>
-          <details class="clean-workshop-materials" id="workshop-materials">
-            <summary>Material e pedidos ao Stock</summary>
-            <p>Consulta o material previsto, regista referências e abre pedidos ao Stock quando necessário.</p>
+          <section class="clean-workshop-material-request" id="workshop-materials" aria-label="Material e pedidos ao Stock">
+            <div class="clean-workshop-material-request-heading">
+              <div><p class="eyebrow">Material da reparação</p><h3>Pedidos ao Stock</h3><p>O pedido fica pendente até o Stock confirmar a entrega.</p></div>
+              {% if workshop_process and not workshop_admin.is_cancelled and not workshop_admin.is_closed %}<button type="button" class="button-link" onclick="document.getElementById('workshop-stock-request').showModal()">Solicitar material</button>{% endif %}
+            </div>
+            {% if material_needs %}
+              <div class="clean-stock-needs-list">
+                {% for need in material_needs %}
+                  <article><div><b>{{ need.material_description }}</b><span>{{ need.requested_quantity or "-" }} · {{ need.material_code or "Sem referência" }}{% if need.stock_request_reference %} · Pedido {{ need.stock_request_reference }}{% endif %}</span></div><em>{{ {"requested":"Pendente no Stock","usage_reported":"Utilização comunicada","delivered":"Entregue","applied":"Aplicado"}.get(need.stock_status, need.stock_status) }}</em></article>
+                {% endfor %}
+              </div>
+            {% else %}
+              <p class="clean-workshop-material-request-empty">Ainda sem pedidos de material neste processo.</p>
+            {% endif %}
+          </section>
+          <details class="clean-workshop-materials">
+            <summary>Referências e material previsto</summary>
+            <p>Consulta e regista as referências previstas para a reparação.</p>
             <div class="clean-repair-material-table">
               <div class="clean-repair-material-row clean-repair-material-head"><b>Material</b><b>Referência</b><b>Quantidade</b><b>Estado / origem</b></div>
               {% for index in range(1, 9) %}
@@ -716,14 +731,6 @@
                 </div>
               {% endfor %}
             </div>
-            {% if material_needs %}
-              <div class="clean-stock-needs-list">
-                {% for need in material_needs %}
-                  <article><div><b>{{ need.material_description }}</b><span>{{ need.requested_quantity or "-" }} · {{ need.operation_label }}</span></div><em>{{ {"requested":"Pendente no Stock","usage_reported":"Utilização comunicada","delivered":"Entregue","applied":"Aplicado"}.get(need.stock_status, need.stock_status) }}</em></article>
-                {% endfor %}
-              </div>
-            {% endif %}
-            <button type="button" class="secondary" onclick="document.getElementById('workshop-stock-request').showModal()">Abrir pedidos ao Stock</button>
           </details>
           <dialog id="workshop-stock-request" class="stock-dialog clean-workshop-stock-dialog">
             <div class="stock-card-heading"><div><h3>Material da reparação</h3><p>{{ vehicle_context.plate or '' }} · Processo #{{ workshop_process.id }}</p></div><button type="button" class="secondary" onclick="this.closest('dialog').close()">Fechar</button></div>

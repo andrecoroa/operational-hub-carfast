@@ -29156,6 +29156,33 @@ body:has(.email-preview-dialog[open]) { overflow: hidden; }
   margin: 0 0 12px;
 }
 
+.clean-workshop-material-request {
+  margin-top: 14px;
+  padding: 14px 16px;
+  border: 1px solid #d8e1eb;
+  background: #f8fafc;
+  display: grid;
+  gap: 12px;
+}
+
+.clean-workshop-material-request-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.clean-workshop-material-request-heading h3 {
+  margin: 0 0 4px;
+}
+
+.clean-workshop-material-request-heading p,
+.clean-workshop-material-request-empty {
+  margin: 0;
+  color: #607087;
+}
+
 .clean-workshop-materials {
   margin-top: 14px;
   padding: 14px 16px;

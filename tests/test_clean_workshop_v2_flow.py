@@ -17,6 +17,7 @@ from app.models.tasks import Task
 from app.models.vehicles import Vehicle, VehicleExternalSnapshot
 from app.models.workshop import WorkshopProcess
 from app.models.workshop_phased import (
+    WorkshopMaterialNeed,
     WorkshopPhasedProcess,
     WorkshopPhasedProcessPhase,
     WorkshopPhasedTechnicalReport,
@@ -630,6 +631,87 @@ def test_workshop_dashboard_shows_operational_context_and_updates_situation(
     db_session.refresh(process)
     assert process.metadata_json["operational_situation"] == "in_progress"
     assert "operational_waiting_reason" not in process.metadata_json
+
+
+def test_repair_material_request_is_direct_and_uses_existing_stock_contract(
+    authenticated_client, db_session
+):
+    vehicle = Vehicle(plate="MT-26-QA", active=True, lifecycle_status="active")
+    db_session.add(vehicle)
+    db_session.flush()
+    process = WorkshopPhasedProcess(
+        public_reference="OF-MATERIAL-QA",
+        process_type="workshop",
+        title="Pedido de material de teste",
+        creation_mode="synthetic_test",
+        status="active",
+        vehicle_id=vehicle.id,
+        plate_snapshot=vehicle.plate,
+        current_phase_code="reparacao",
+        priority="normal",
+        origin="v2_clean",
+        metadata_json={},
+    )
+    db_session.add(process)
+    db_session.flush()
+    db_session.add(
+        WorkshopPhasedProcessPhase(
+            process_id=process.id,
+            phase_code="reparacao",
+            name="Reparação",
+            status="in_progress",
+            sort_order=6,
+            data_json={"form_snapshot": {}},
+        )
+    )
+    db_session.commit()
+
+    before = authenticated_client.get(
+        f"/v2-clean/workshop/reparacao?process_id={process.id}"
+    )
+    assert before.status_code == 200
+    direct_section = before.text.split('id="workshop-materials"', 1)[1].split(
+        "</section>", 1
+    )[0]
+    assert "Solicitar material" in direct_section
+    assert "Ainda sem pedidos de material" in direct_section
+    assert before.text.count('id="workshop-stock-request"') == 1
+    assert f'formaction="/v2-clean/workshop/{process.id}/material-needs"' in before.text
+    assert 'value="request"' in before.text
+    assert 'value="direct_usage"' in before.text
+
+    created = authenticated_client.post(
+        f"/v2-clean/workshop/{process.id}/material-needs",
+        data={
+            "request_mode": "request",
+            "origin": "repair",
+            "material_description": "Pastilhas de teste",
+            "material_code": "SYN-PAD",
+            "requested_quantity": "1",
+        },
+        follow_redirects=False,
+    )
+    assert created.status_code == 303
+    assert created.headers["location"].endswith("#workshop-materials")
+    db_session.expire_all()
+    needs = db_session.scalars(
+        select(WorkshopMaterialNeed).where(WorkshopMaterialNeed.process_id == process.id)
+    ).all()
+    assert len(needs) == 1
+    assert needs[0].stock_status == "requested"
+    assert needs[0].material_code == "SYN-PAD"
+
+    after = authenticated_client.get(
+        f"/v2-clean/workshop/reparacao?process_id={process.id}"
+    )
+    assert after.status_code == 200
+    direct_section = after.text.split('id="workshop-materials"', 1)[1].split(
+        "</section>", 1
+    )[0]
+    assert "Pastilhas de teste" in direct_section
+    assert "Pendente no Stock" in direct_section
+    assert needs[0].stock_request_reference in direct_section
+    assert after.text.count("Pastilhas de teste") == 1
 
 
 def test_workshop_print_reports_and_repair_material_fields(authenticated_client, db_session):

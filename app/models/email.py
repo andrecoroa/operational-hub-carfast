@@ -218,6 +218,18 @@ class EmailInboxRule(TimestampMixin, Base):
             "(warning_minutes IS NULL OR warning_minutes >= 0)",
             name="ck_email_inbox_rules_sla_minutes",
         ),
+        CheckConstraint(
+            "condition_operator IN ('and', 'or')",
+            name="ck_email_inbox_rules_condition_operator",
+        ),
+        CheckConstraint(
+            "sender_match_type IN ('contains', 'exact', 'domain')",
+            name="ck_email_inbox_rules_sender_match_type",
+        ),
+        CheckConstraint(
+            "status_action IN ('none', 'in_progress', 'resolved', 'archived')",
+            name="ck_email_inbox_rules_status_action",
+        ),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -227,6 +239,11 @@ class EmailInboxRule(TimestampMixin, Base):
     name: Mapped[str] = mapped_column(String(160))
     subject_match: Mapped[str] = mapped_column(String(500))
     match_type: Mapped[str] = mapped_column(String(20), default="contains", index=True)
+    sender_match: Mapped[str | None] = mapped_column(String(255), index=True)
+    sender_match_type: Mapped[str] = mapped_column(String(20), default="contains")
+    condition_operator: Mapped[str] = mapped_column(String(10), default="and")
+    status_action: Mapped[str] = mapped_column(String(20), default="none", index=True)
+    deterministic: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
     default_queue_id: Mapped[int | None] = mapped_column(
         ForeignKey("work_queues.id", ondelete="SET NULL"), index=True
     )

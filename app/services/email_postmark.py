@@ -722,6 +722,8 @@ def reconcile_inbound_attachments(
             source_attachment_id=item["source_id"],
             ingest_state="blocked",
             ingest_reason="attachment_size_limit_exceeded",
+            document_type=thread.document_type,
+            destination="documentation" if thread.document_type else None,
         )
         if estimated_size <= settings.email_max_attachment_bytes:
             try:
@@ -749,8 +751,48 @@ def reconcile_inbound_attachments(
     return result
 
 
-def _inbox_rule(db: Session, channel_id: int, subject: str) -> EmailInboxRule | None:
+def inbox_rule_matches(rule: EmailInboxRule, *, subject: str, sender: str = "") -> bool:
+    """Evaluate an inbox rule without side effects (also used by admin previews)."""
     normalized = subject.strip().casefold()
+    expected = rule.subject_match.strip().casefold()
+    subject_matches = bool(expected) and (
+        (rule.match_type == "exact" and normalized == expected)
+        or (rule.match_type == "contains" and expected in normalized)
+    )
+    sender_expected = (rule.sender_match or "").strip().casefold()
+    if not sender_expected:
+        return subject_matches
+    normalized_sender = _address(sender).casefold()
+    sender_matches = (
+        (rule.sender_match_type == "exact" and normalized_sender == sender_expected)
+        or (rule.sender_match_type == "contains" and sender_expected in normalized_sender)
+        or (
+            rule.sender_match_type == "domain"
+            and normalized_sender.rpartition("@")[2] == sender_expected.removeprefix("@")
+        )
+    )
+    return (
+        subject_matches or sender_matches
+        if rule.condition_operator == "or"
+        else subject_matches and sender_matches
+    )
+
+
+def deterministic_rule_close_allowed(rule: EmailInboxRule) -> bool:
+    """Close only exact subjects or subject+verified sender conjunctions."""
+    return bool(rule.deterministic) and (
+        rule.match_type == "exact"
+        or (
+            bool((rule.sender_match or "").strip())
+            and rule.condition_operator == "and"
+            and rule.sender_match_type in {"exact", "domain"}
+        )
+    )
+
+
+def _inbox_rule(
+    db: Session, channel_id: int, subject: str, sender: str = ""
+) -> EmailInboxRule | None:
     rules = db.scalars(
         select(EmailInboxRule)
         .where(
@@ -760,11 +802,7 @@ def _inbox_rule(db: Session, channel_id: int, subject: str) -> EmailInboxRule | 
         .order_by(EmailInboxRule.sort_order, EmailInboxRule.id)
     ).all()
     for rule in rules:
-        expected = rule.subject_match.strip().casefold()
-        if expected and (
-            (rule.match_type == "exact" and normalized == expected)
-            or (rule.match_type == "contains" and expected in normalized)
-        ):
+        if inbox_rule_matches(rule, subject=subject, sender=sender):
             return rule
     return None
 
@@ -926,8 +964,8 @@ def ingest_inbound(db: Session, payload: dict) -> tuple[EmailThread, bool]:
 
     external_id = str(payload.get("MessageID") or payload.get("MessageId") or key)
     subject = str(payload.get("Subject") or "(sem assunto)")[:500]
-    rule = _inbox_rule(db, channel.id, subject)
     sender = _address(payload.get("From"))
+    rule = _inbox_rule(db, channel.id, subject, sender)
     headers = _headers(payload)
     conversation_id = str(payload.get("OriginalMessageID") or "").strip() or None
     thread = None
@@ -1065,7 +1103,7 @@ def ingest_inbound(db: Session, payload: dict) -> tuple[EmailThread, bool]:
     )
     thread.last_message_at = message.received_at
     auto_task_mode = rule.auto_task_mode if rule and rule.auto_task_mode else channel.auto_task_mode
-    if created_thread and auto_task_mode in {"open", "complete"}:
+    if created_thread and not thread.task_id and auto_task_mode in {"open", "complete"}:
         queue = db.get(WorkQueue, thread.work_queue_id) if thread.work_queue_id else None
         now = datetime.now(UTC)
         task = Task(
@@ -1119,6 +1157,37 @@ def ingest_inbound(db: Session, payload: dict) -> tuple[EmailThread, bool]:
                 message_id=message.id,
                 action="task_created_automatically",
                 details_json={"task_id": task.id, "mode": auto_task_mode},
+            )
+        )
+    applied_actions: list[str] = []
+    if rule:
+        if auto_task_mode in {"open", "complete"} and created_thread:
+            applied_actions.append(f"task:{auto_task_mode}")
+        if rule.status_action != "none":
+            if rule.status_action in {"resolved", "archived"} and not deterministic_rule_close_allowed(rule):
+                applied_actions.append(f"status:{rule.status_action}:skipped_non_deterministic")
+            else:
+                thread.status = rule.status_action
+                if rule.status_action == "resolved":
+                    thread.resolved_at = datetime.now(UTC)
+                applied_actions.append(f"status:{rule.status_action}")
+        db.add(
+            EmailAuditEvent(
+                thread_id=thread.id,
+                message_id=message.id,
+                action="inbox_rule_applied",
+                details_json={
+                    "rule_id": rule.id,
+                    "rule_name": rule.name,
+                    "conditions": {
+                        "subject_match": rule.subject_match,
+                        "match_type": rule.match_type,
+                        "sender_match": rule.sender_match,
+                        "sender_match_type": rule.sender_match_type,
+                        "operator": rule.condition_operator,
+                    },
+                    "actions": applied_actions,
+                },
             )
         )
     event.processed = True

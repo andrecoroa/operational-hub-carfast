@@ -25,6 +25,23 @@
   </section>
 {% endif %}
 
+{% if workshop_process and workshop_admin.operational_situation == "waiting" and not workshop_admin.is_closed and not workshop_admin.is_cancelled %}
+  <section class="clean-panel clean-card-wide clean-process-waiting-banner" role="status">
+    <div>
+      <p class="eyebrow">Processo em espera</p>
+      <h3>{{ workshop_admin.waiting_reason or "Motivo não registado" }}</h3>
+      <p>As fases e os dados permanecem disponíveis. Retoma o processo nas ações rápidas quando o bloqueio estiver resolvido.</p>
+    </div>
+    {% if workshop_admin.can_update_operational %}
+      <form method="post" action="/v2-clean/workshop/{{ workshop_process.id }}/operational-situation">
+        <input type="hidden" name="action" value="resume">
+        <input type="hidden" name="return_url" value="{{ workshop_action_return_url }}">
+        <button class="button-link primary-link" type="submit">Retomar processo</button>
+      </form>
+    {% endif %}
+  </section>
+{% endif %}
+
 {% if request.query_params.get("admin_error") %}
   <section class="clean-panel clean-card-wide clean-phase-error" role="alert">
     <strong>Ação administrativa não concluída.</strong>

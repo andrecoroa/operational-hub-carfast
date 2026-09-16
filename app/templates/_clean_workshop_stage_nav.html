@@ -1,7 +1,7 @@
 <section class="clean-workshop-stage-shell clean-card-wide" aria-label="Etapas do processo">
   <div class="clean-workshop-stage-heading">
-    <span>Fluxo simplificado</span>
-    <strong>4 etapas visíveis · fases e dados preservados</strong>
+    <div><span>Fluxo simplificado</span><strong>4 etapas visíveis · fases e dados preservados</strong></div>
+    <button type="button" class="secondary clean-workshop-view-toggle" data-workshop-view-toggle aria-pressed="false">Ver processo completo</button>
   </div>
   <nav class="clean-stepper clean-stepper-four {{ workshop_stage_nav_class|default('') }}" aria-label="Etapas principais da Oficina">
     {% for stage in workshop_stages %}
@@ -18,10 +18,15 @@
   </nav>
   {% for stage in workshop_stages %}
     {% if stage.active and stage.members|length > 1 %}
-      <nav class="clean-workshop-phase-nav" aria-label="Passos de {{ stage.label }}">
-        <span>Passos desta etapa</span>
-        <div>
-          {% for phase_step in stage.members %}
+      <details class="clean-workshop-phase-picker">
+        <summary>
+          <span>Passo atual</span>
+          <strong>{% for phase_step in stage.members %}{% if phase_step.active %}{{ phase_step.label }}{% endif %}{% endfor %}</strong>
+          <em>Alterar</em>
+        </summary>
+        <nav class="clean-workshop-phase-nav" aria-label="Passos de {{ stage.label }}">
+          <div>
+            {% for phase_step in stage.members %}
             <a
               class="{% if phase_step.active %}active{% endif %}{% if phase_step.current %} current{% endif %}{% if phase_step.complete %} complete{% endif %}"
               href="{{ phase_step.href }}"
@@ -29,8 +34,31 @@
               {% if phase_step.active %}aria-current="page"{% endif %}
             >{% if phase_step.complete and not phase_step.active %}✓ {% endif %}{{ phase_step.label }}</a>
           {% endfor %}
-        </div>
-      </nav>
+          </div>
+        </nav>
+      </details>
     {% endif %}
   {% endfor %}
 </section>
+<script>
+  (() => {
+    const main = document.querySelector("main.clean-content");
+    const toggle = document.querySelector("[data-workshop-view-toggle]");
+    if (!main || !toggle) return;
+    const storageKey = "carfast-workshop-view";
+    const applyMode = (complete) => {
+      main.classList.toggle("workshop-simple-view", !complete);
+      toggle.setAttribute("aria-pressed", complete ? "true" : "false");
+      toggle.textContent = complete ? "Voltar ao modo simples" : "Ver processo completo";
+      document.querySelectorAll("details.clean-workshop-focus-section").forEach((section) => {
+        section.open = complete || section.classList.contains("clean-workshop-focus-primary");
+      });
+      try { sessionStorage.setItem(storageKey, complete ? "complete" : "simple"); } catch (_) {}
+    };
+    let complete = false;
+    try { complete = sessionStorage.getItem(storageKey) === "complete"; } catch (_) {}
+    applyMode(complete);
+    document.addEventListener("DOMContentLoaded", () => applyMode(complete), { once: true });
+    toggle.addEventListener("click", () => applyMode(main.classList.contains("workshop-simple-view")));
+  })();
+</script>

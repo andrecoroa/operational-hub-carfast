@@ -34,12 +34,10 @@
           <span>Operações essenciais ligadas ao processo e à viatura.</span>
         </div>
         <div class="clean-context-action-row">
-          {% if workshop_process and not workshop_admin.is_cancelled and not workshop_admin.is_closed %}
-            <a class="button-link secondary-link" href="/v2-clean/tasks?workspace=workshop&record_type=task&entity_type=workshop_phased_process&entity_id={{ workshop_process.id }}&phase=entrada&plate={{ workshop_process.plate_snapshot or '' }}&category=Oficina&return_url=/v2-clean/workshop-entry%3Fprocess_id%3D{{ workshop_process.id }}">Criar tarefa</a>
-          {% else %}
+          {% if not workshop_process %}
             <span class="clean-context-action-empty">Define a matrícula e cria o processo para libertar ações desta fase.</span>
           {% endif %}
-          <a class="button-link secondary-link" href="{{ vehicle_detail_href }}">Ficha da viatura</a>
+          {% include "_clean_workshop_primary_actions.html" %}
         </div>
       </article>
     </section>

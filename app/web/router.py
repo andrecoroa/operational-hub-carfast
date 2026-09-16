@@ -10746,6 +10746,7 @@ async def clean_workshop_operational_situation_save(request: Request, process_id
     form = await request.form()
     action = str(form.get("action") or "").strip().lower()
     waiting_reason = str(form.get("waiting_reason") or "").strip()
+    requested_return_url = str(form.get("return_url") or "").strip()
     return_scope = str(form.get("scope") or "open").strip().lower()
     if return_scope not in {"open", "closed", "cancelled", "all"}:
         return_scope = "open"
@@ -10760,15 +10761,21 @@ async def clean_workshop_operational_situation_save(request: Request, process_id
         else "updated",
     }
     return_query = urlencode(return_filters)
+    dashboard_return_url = f"/v2-clean/workshop?{return_query}"
+    safe_return_url = (
+        _clean_v2_return_url(requested_return_url, dashboard_return_url)
+        if requested_return_url
+        else dashboard_return_url
+    )
     if action not in {"wait", "resume"} or (action == "wait" and not waiting_reason):
         return RedirectResponse(
-            f"/v2-clean/workshop?{return_query}&situation_error=invalid",
+            _append_query_flag(safe_return_url, situation_error="invalid"),
             status_code=303,
         )
     with SessionLocal() as db:
         process = db.get(WorkshopPhasedProcess, process_id)
         if not process or process.status in {"closed", "cancelled"}:
-            return RedirectResponse(f"/v2-clean/workshop?{return_query}", status_code=303)
+            return RedirectResponse(safe_return_url, status_code=303)
         metadata = dict(process.metadata_json or {}) if isinstance(process.metadata_json, dict) else {}
         before = {
             "operational_situation": metadata.get("operational_situation"),
@@ -10797,6 +10804,11 @@ async def clean_workshop_operational_situation_save(request: Request, process_id
             user_id=get_web_user_id(request),
         )
         db.commit()
+    if requested_return_url:
+        return RedirectResponse(
+            _append_query_flag(safe_return_url, operational_updated=action),
+            status_code=303,
+        )
     return RedirectResponse(
         f"/v2-clean/workshop?{return_query}#workshop-process-{process_id}",
         status_code=303,
@@ -11209,6 +11221,9 @@ def clean_workshop_admin_context(
     cancellation = (
         metadata.get("cancellation") if isinstance(metadata.get("cancellation"), dict) else {}
     )
+    operational_situation = str(metadata.get("operational_situation") or "in_progress")
+    if process and process.status in {"closed", "cancelled"}:
+        operational_situation = process.status
     creator = db.get(User, process.created_by_id) if process and process.created_by_id else None
     open_task_count = 0
     if process:
@@ -11227,8 +11242,13 @@ def clean_workshop_admin_context(
         )
     return {
         "can_manage": can_manage_admin(db, current_user),
+        "can_update_operational": has_any_web_permission(
+            request, "workshop.write", "admin.manage"
+        ),
         "is_cancelled": bool(process and process.status == "cancelled"),
         "is_closed": bool(process and process.status == "closed"),
+        "operational_situation": operational_situation,
+        "waiting_reason": str(metadata.get("operational_waiting_reason") or "").strip(),
         "cancellation": cancellation,
         "open_task_count": int(open_task_count),
         "creator_name": (creator.name or creator.email) if creator else "-",
@@ -26658,6 +26678,7 @@ def clean_workshop_entry(
             "saved": saved,
             "error": error,
             "workshop_return_url": workshop_return_url,
+            "workshop_action_return_url": f"{request.url.path}{query_suffix}" if process else "",
             "return_context": valid_return_context,
         },
     )
@@ -27010,6 +27031,7 @@ def clean_workshop_phase(
             "workshop_stock_statuses": WORKSHOP_STOCK_STATUSES,
             "phase_error": CLEAN_WORKSHOP_PHASE_ERROR_MESSAGES.get(error or ""),
             "workshop_return_url": workshop_return_url,
+            "workshop_action_return_url": f"{request.url.path}{query_suffix}" if process else "",
             "return_context": valid_return_context,
             "phase_print_report": {
                 "validacao": ("diagnostic-order", "Imprimir ordem de diagnóstico"),
@@ -27530,7 +27552,7 @@ async def clean_workshop_create_material_need(request: Request, process_id: int)
         )
         db.commit()
     return RedirectResponse(
-        f"/v2-clean/workshop/reparacao?process_id={process_id}&material_saved=1#ordem-reparacao",
+        f"/v2-clean/workshop/reparacao?process_id={process_id}&material_saved=1#workshop-materials",
         status_code=303,
     )
 

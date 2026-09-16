@@ -28,6 +28,7 @@ from app.web.portal import portal_router
 from app.web.router import web_router
 from app.web.stock import stock_router
 from app.web.suppliers import supplier_router
+from app.web.supplier_audits import supplier_audit_router
 from app.web.vehicle_sales import vehicle_sales_router
 
 if settings.microsoft365_token_encryption_key:
@@ -531,6 +532,7 @@ def create_app() -> FastAPI:
     app.include_router(vehicle_sales_router)
     app.include_router(stock_router)
     app.include_router(supplier_router)
+    app.include_router(supplier_audit_router)
     app.include_router(email_router)
     app.include_router(microsoft365_router)
     app.include_router(web_router)

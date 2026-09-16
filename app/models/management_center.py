@@ -178,3 +178,61 @@ class ManagementHistory(Base):
     new_value: Mapped[str | None] = mapped_column(Text)
     detail: Mapped[str | None] = mapped_column(Text)
     changed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class SupplierAuditCase(TimestampMixin, Base):
+    __tablename__ = "supplier_audit_cases"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    process_id: Mapped[int] = mapped_column(ForeignKey("management_processes.id", ondelete="CASCADE"), unique=True, index=True)
+    vehicle_id: Mapped[int | None] = mapped_column(ForeignKey("vehicles.id", ondelete="RESTRICT"), index=True)
+    problem_type: Mapped[str] = mapped_column(String(80), index=True)
+    suspicion_description: Mapped[str] = mapped_column(Text)
+    assessment_grade: Mapped[str] = mapped_column(String(40), default="suspicion", index=True)
+    detected_on: Mapped[date | None] = mapped_column(Date, index=True)
+    immediate_risk: Mapped[str | None] = mapped_column(Text)
+    potential_value: Mapped[float | None] = mapped_column(Numeric(12, 2))
+    owner_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), index=True)
+    verification_data_json: Mapped[dict | None] = mapped_column(JSON)
+    missing_elements_json: Mapped[list | None] = mapped_column(JSON)
+    conclusion: Mapped[str | None] = mapped_column(String(40), index=True)
+    cause: Mapped[str | None] = mapped_column(Text)
+    probable_responsibility: Mapped[str | None] = mapped_column(Text)
+    impact: Mapped[str | None] = mapped_column(Text)
+    requested_outcome: Mapped[str | None] = mapped_column(Text)
+    final_result: Mapped[str | None] = mapped_column(Text)
+
+
+class SupplierAuditParty(TimestampMixin, Base):
+    __tablename__ = "supplier_audit_parties"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    audit_id: Mapped[int] = mapped_column(ForeignKey("supplier_audit_cases.id", ondelete="CASCADE"), index=True)
+    supplier_id: Mapped[int | None] = mapped_column(ForeignKey("stock_suppliers.id", ondelete="SET NULL"), index=True)
+    entity_name: Mapped[str] = mapped_column(String(200))
+    role: Mapped[str] = mapped_column(String(120))
+    related_intervention: Mapped[str | None] = mapped_column(Text)
+    request_text: Mapped[str | None] = mapped_column(Text)
+    due_on: Mapped[date | None] = mapped_column(Date, index=True)
+    response_status: Mapped[str] = mapped_column(String(40), default="not_requested", index=True)
+    position_summary: Mapped[str | None] = mapped_column(Text)
+
+
+class SupplierAuditEmailDraft(TimestampMixin, Base):
+    __tablename__ = "supplier_audit_email_drafts"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    audit_id: Mapped[int] = mapped_column(ForeignKey("supplier_audit_cases.id", ondelete="CASCADE"), index=True)
+    revision_of_id: Mapped[int | None] = mapped_column(
+        ForeignKey("supplier_audit_email_drafts.id", ondelete="SET NULL"), index=True
+    )
+    party_id: Mapped[int | None] = mapped_column(ForeignKey("supplier_audit_parties.id", ondelete="SET NULL"), index=True)
+    recipient: Mapped[str | None] = mapped_column(String(255))
+    subject: Mapped[str] = mapped_column(String(255))
+    body: Mapped[str] = mapped_column(Text)
+    concrete_request: Mapped[str | None] = mapped_column(Text)
+    due_on: Mapped[date | None] = mapped_column(Date)
+    references_json: Mapped[list | None] = mapped_column(JSON)
+    status: Mapped[str] = mapped_column(String(40), default="preparing", index=True)
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    created_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))

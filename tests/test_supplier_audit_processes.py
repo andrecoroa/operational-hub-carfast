@@ -3,6 +3,7 @@ from sqlalchemy import select
 from app.models.documents import Document, DocumentLink
 from app.models.management_center import ManagementHistory, ManagementProcess, SupplierAuditCase, SupplierAuditEmailDraft, SupplierAuditParty
 from app.models.vehicles import Vehicle
+from app.models.stock import StockSupplier
 
 
 def _vehicle(db_session):
@@ -11,15 +12,23 @@ def _vehicle(db_session):
     return vehicle
 
 
+def _supplier(db_session):
+    supplier = StockSupplier(name="Fornecedor de teste", active=True)
+    db_session.add(supplier); db_session.commit(); db_session.refresh(supplier)
+    return supplier
+
+
 def test_supplier_audit_lifecycle_reuses_process_vehicle_documents_and_history(authenticated_client, db_session):
     vehicle = _vehicle(db_session)
-    response = authenticated_client.post("/v2-clean/processes/supplier-audits", data={"title": "Manutenção possivelmente prematura", "vehicle_id": vehicle.id, "problem_type": "premature_maintenance", "suspicion_description": "Intervalo observado inferior ao plano, por verificar.", "priority": "high"}, follow_redirects=False)
+    supplier = _supplier(db_session)
+    response = authenticated_client.post("/v2-clean/processes/supplier-audits", data={"title": "Manutenção possivelmente prematura", "supplier_id": supplier.id, "vehicle_id": vehicle.id, "problem_type": "premature_maintenance", "suspicion_description": "Intervalo observado inferior ao plano, por verificar.", "priority": "high"}, follow_redirects=False)
     assert response.status_code == 303
     audit = db_session.scalar(select(SupplierAuditCase))
     process = db_session.get(ManagementProcess, audit.process_id)
     assert process.internal_reference.startswith("AF-")
     assert audit.assessment_grade == "suspicion"
     assert "fatura/OR" in audit.missing_elements_json
+    assert db_session.scalar(select(SupplierAuditParty).where(SupplierAuditParty.audit_id == audit.id, SupplierAuditParty.supplier_id == supplier.id))
 
     authenticated_client.post(f"/v2-clean/processes/supplier-audits/{audit.id}/verification", data={"assessment_grade": "probable", "status": "waiting_information", "verification_data": "Plano confirmado; motivo ainda desconhecido.", "missing_elements": "motivo técnico\nautorização"})
     db_session.expire_all(); assert db_session.get(SupplierAuditCase, audit.id).assessment_grade == "probable"
@@ -38,7 +47,8 @@ def test_supplier_audit_lifecycle_reuses_process_vehicle_documents_and_history(a
 
 def test_email_is_only_versioned_draft_and_conclusion_is_human(authenticated_client, db_session):
     vehicle = _vehicle(db_session)
-    authenticated_client.post("/v2-clean/processes/supplier-audits", data={"title": "Garantia por analisar", "vehicle_id": vehicle.id, "problem_type": "warranty_refusal", "suspicion_description": "Recusa ainda sem fundamento documental."})
+    supplier = _supplier(db_session)
+    authenticated_client.post("/v2-clean/processes/supplier-audits", data={"title": "Garantia por analisar", "supplier_id": supplier.id, "vehicle_id": vehicle.id, "problem_type": "warranty_refusal", "suspicion_description": "Recusa ainda sem fundamento documental."})
     audit = db_session.scalar(select(SupplierAuditCase))
     response = authenticated_client.post(f"/v2-clean/processes/supplier-audits/{audit.id}/drafts", data={"recipient": "fornecedor@example.test", "subject": "Pedido de elementos", "body": "Solicitamos documentação.", "status": "authorized"}, follow_redirects=False)
     assert response.status_code == 303
@@ -72,3 +82,15 @@ def test_vehicle_entry_point_is_contextual(authenticated_client, db_session):
     response = authenticated_client.get(f"/v2-clean/fleet/{vehicle.id}")
     assert response.status_code == 200
     assert f"/v2-clean/processes/supplier-audits?vehicle_id={vehicle.id}" in response.text
+
+
+def test_supplier_is_required_and_vehicle_is_optional(authenticated_client, db_session):
+    supplier = _supplier(db_session)
+    response = authenticated_client.post("/v2-clean/processes/supplier-audits", data={"title": "Erro de faturação", "supplier_id": supplier.id, "problem_type": "billing_error", "suspicion_description": "Valor por confirmar."}, follow_redirects=False)
+    assert response.status_code == 303
+    audit = db_session.scalar(select(SupplierAuditCase))
+    assert audit.vehicle_id is None
+    assert db_session.scalar(select(SupplierAuditParty).where(SupplierAuditParty.audit_id == audit.id, SupplierAuditParty.supplier_id == supplier.id))
+    listing = authenticated_client.get(f"/v2-clean/processes/supplier-audits?supplier_id={supplier.id}")
+    assert listing.status_code == 200
+    assert "Erro de faturação" in listing.text

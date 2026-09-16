@@ -26,6 +26,9 @@ supplier_audit_router = APIRouter(include_in_schema=False)
 
 TYPE_CODE = "supplier_audit"
 PROBLEM_MODELS = {
+    "billing_error": ("Erro de faturação", ["fatura", "serviço acordado", "valor faturado", "esclarecimento do fornecedor"]),
+    "repair_error": ("Erro de reparação", ["ordem de reparação", "diagnóstico", "trabalho executado", "resultado observado"]),
+    "service_not_performed": ("Serviço não efetuado", ["serviço solicitado", "ordem de reparação", "evidência da execução", "fatura"]),
     "premature_maintenance": ("Manutenção prematura", ["plano", "quilometragem anterior", "quilometragem atual", "data anterior", "motivo técnico", "autorização", "fatura/OR"]),
     "delayed_repair": ("Reparação demorada", ["data de entrada", "diagnóstico", "aprovação", "peças", "data de conclusão", "imobilização"]),
     "brake_frequency": ("Frequência de calços/discos", ["eixo", "datas", "quilometragens", "medições", "oficinas", "peças e valores"]),
@@ -75,35 +78,43 @@ def _history(db, audit, user, action, detail):
 
 
 @supplier_audit_router.get("/v2-clean/processes/supplier-audits", response_class=HTMLResponse)
-def supplier_audit_list(request: Request, vehicle_id: int | None = None):
+def supplier_audit_list(request: Request, vehicle_id: int | None = None, supplier_id: int | None = None):
     with SessionLocal() as db:
         user, allowed = _can(request, db)
         if not allowed:
             return RedirectResponse("/v2-clean?error=forbidden", status_code=303)
-        rows = list(db.execute(select(SupplierAuditCase, ManagementProcess, Vehicle).join(ManagementProcess, ManagementProcess.id == SupplierAuditCase.process_id).outerjoin(Vehicle, Vehicle.id == SupplierAuditCase.vehicle_id).order_by(SupplierAuditCase.id.desc())))
+        primary_supplier = SupplierAuditParty.__table__.alias("primary_supplier")
+        query = select(SupplierAuditCase, ManagementProcess, Vehicle, StockSupplier).join(ManagementProcess, ManagementProcess.id == SupplierAuditCase.process_id).outerjoin(Vehicle, Vehicle.id == SupplierAuditCase.vehicle_id).outerjoin(primary_supplier, (primary_supplier.c.audit_id == SupplierAuditCase.id) & (primary_supplier.c.role == "supplier")).outerjoin(StockSupplier, StockSupplier.id == primary_supplier.c.supplier_id)
+        if supplier_id:
+            query = query.where(primary_supplier.c.supplier_id == supplier_id)
+        rows = list(db.execute(query.order_by(SupplierAuditCase.id.desc())))
         vehicle = db.get(Vehicle, vehicle_id) if vehicle_id else None
         vehicles = list(db.scalars(select(Vehicle).where(Vehicle.active.is_(True)).order_by(Vehicle.plate).limit(1000)))
-        return templates.TemplateResponse(request, "supplier_audit_list.html", {"rows": rows, "vehicle": vehicle, "vehicles": vehicles, "problem_models": PROBLEM_MODELS, "labels": LABELS, "can_write": _can(request, db, True)[1]})
+        suppliers = list(db.scalars(select(StockSupplier).where(StockSupplier.active.is_(True)).order_by(StockSupplier.name)))
+        return templates.TemplateResponse(request, "supplier_audit_list.html", {"rows": rows, "vehicle": vehicle, "vehicles": vehicles, "suppliers": suppliers, "supplier_id": supplier_id, "problem_models": PROBLEM_MODELS, "labels": LABELS, "can_write": _can(request, db, True)[1]})
 
 
 @supplier_audit_router.post("/v2-clean/processes/supplier-audits")
-def supplier_audit_create(request: Request, title: str = Form(...), vehicle_id: int = Form(...), problem_type: str = Form(...), suspicion_description: str = Form(...), priority: str = Form("normal"), detected_on: str = Form(""), immediate_risk: str = Form(""), potential_value: str = Form("")):
+def supplier_audit_create(request: Request, title: str = Form(...), supplier_id: int = Form(...), vehicle_id: int | None = Form(None), problem_type: str = Form(...), suspicion_description: str = Form(...), priority: str = Form("normal"), detected_on: str = Form(""), immediate_risk: str = Form(""), potential_value: str = Form("")):
     with SessionLocal() as db:
         user, allowed = _can(request, db, True)
-        vehicle = db.get(Vehicle, vehicle_id)
-        if not allowed or not vehicle or problem_type not in PROBLEM_MODELS or not title.strip() or not suspicion_description.strip():
+        vehicle = db.get(Vehicle, vehicle_id) if vehicle_id else None
+        supplier = db.get(StockSupplier, supplier_id)
+        if not allowed or not supplier or not supplier.active or (vehicle_id and not vehicle) or problem_type not in PROBLEM_MODELS or not title.strip() or not suspicion_description.strip():
             return RedirectResponse("/v2-clean/processes/supplier-audits?error=invalid", status_code=303)
         process_type = _type(db)
         year = date.today().year
         sequence = (db.scalar(select(func.count(ManagementProcess.id)).where(ManagementProcess.internal_reference.like(f"AF-{year}-%"))) or 0) + 1
         reference = f"AF-{year}-{sequence:04d}"
-        process = ManagementProcess(process_type_id=process_type.id, internal_reference=reference, title=title.strip()[:240], status="analysis", phase="registration", priority=priority if priority in {"low", "normal", "high", "urgent", "critical"} else "normal", plate=vehicle.plate, opened_on=date.today())
+        process = ManagementProcess(process_type_id=process_type.id, internal_reference=reference, title=title.strip()[:240], status="analysis", phase="registration", priority=priority if priority in {"low", "normal", "high", "urgent", "critical"} else "normal", plate=vehicle.plate if vehicle else None, opened_on=date.today())
         db.add(process); db.flush()
         try: value = Decimal(potential_value.replace(",", ".")) if potential_value.strip() else None
         except InvalidOperation: value = None
-        audit = SupplierAuditCase(process_id=process.id, vehicle_id=vehicle.id, problem_type=problem_type, suspicion_description=suspicion_description.strip(), detected_on=date.fromisoformat(detected_on) if detected_on else None, immediate_risk=immediate_risk.strip() or None, potential_value=value, owner_id=user.id, verification_data_json={}, missing_elements_json=PROBLEM_MODELS[problem_type][1])
+        audit = SupplierAuditCase(process_id=process.id, vehicle_id=vehicle.id if vehicle else None, problem_type=problem_type, suspicion_description=suspicion_description.strip(), detected_on=date.fromisoformat(detected_on) if detected_on else None, immediate_risk=immediate_risk.strip() or None, potential_value=value, owner_id=user.id, verification_data_json={}, missing_elements_json=PROBLEM_MODELS[problem_type][1])
         db.add(audit); db.flush()
-        db.add(ManagementProcessAssociation(process_id=process.id, entity_type="vehicle", entity_id=vehicle.id, association_role="subject", created_by_id=user.id))
+        db.add(SupplierAuditParty(audit_id=audit.id, supplier_id=supplier.id, entity_name=supplier.name, role="supplier", response_status="not_requested"))
+        if vehicle:
+            db.add(ManagementProcessAssociation(process_id=process.id, entity_type="vehicle", entity_id=vehicle.id, association_role="subject", created_by_id=user.id))
         _history(db, audit, user, "supplier_audit_created", "Suspeita registada; não foi atribuída responsabilidade.")
         db.commit()
         return RedirectResponse(f"/v2-clean/processes/supplier-audits/{audit.id}", status_code=303)

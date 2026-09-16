@@ -20,6 +20,7 @@ from app.models.email import (
     EmailAuditEvent,
     EmailChannel,
     EmailChannelAlias,
+    EmailChannelTransport,
     EmailInboxRule,
     EmailMessage,
     EmailMessageDelivery,
@@ -39,6 +40,7 @@ from app.services.service_desk import (
     mark_task_resolved,
     transition_email_waiting,
 )
+from app.services.work_classification import validate_work_hierarchy
 
 _EMAIL_ADDRESS_RE = re.compile(r"^[^\s<>@]+@[^\s<>@]+\.[^\s<>@]+$")
 
@@ -89,7 +91,15 @@ def outbound_identity(
 def _event_key(payload: dict) -> str:
     message_id = payload.get("MessageID") or payload.get("MessageId")
     if message_id:
-        return f"message:{message_id}"
+        provider = str(payload.get("SourceProvider") or "postmark").strip().casefold()
+        candidate = (
+            f"microsoft_graph:message:{message_id}"
+            if provider == "microsoft_graph"
+            else f"message:{message_id}"
+        )
+        if len(candidate) <= 128:
+            return candidate
+        return f"{provider}:sha256:" + hashlib.sha256(candidate.encode()).hexdigest()
     canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str)
     return "sha256:" + hashlib.sha256(canonical.encode()).hexdigest()
 
@@ -408,6 +418,20 @@ def _message_ids(value: str | None) -> list[str]:
 
 def _channel_for_payload(db: Session, payload: dict) -> EmailChannel:
     ensure_email_channels(db)
+    if str(payload.get("SourceProvider") or "").strip().casefold() == "microsoft_graph":
+        mailbox = _address(payload.get("OriginalRecipient") or payload.get("To"))
+        channel = db.scalar(
+            select(EmailChannel)
+            .join(EmailChannelTransport, EmailChannelTransport.channel_id == EmailChannel.id)
+            .where(
+                EmailChannel.active.is_(True),
+                EmailChannelTransport.provider == "microsoft365",
+                EmailChannelTransport.enabled.is_(True),
+                func.lower(EmailChannelTransport.mailbox_address) == mailbox,
+            )
+        )
+        if channel:
+            return channel
     recipients = payload.get("ToFull") or []
     # Postmark exposes plus-addressing first as the top-level MailboxHash and
     # also on ToFull recipients.  Keep that precedence deterministic: a
@@ -481,6 +505,31 @@ def _channel_for_payload(db: Session, payload: dict) -> EmailChannel:
                 ),
             )
         )
+    # Microsoft Graph can expose a historical envelope recipient that no
+    # longer belongs to an active channel.  Route such messages through the
+    # physical mailbox used by the configured transport, while retaining the
+    # original recipient on the message/thread for identity and audit.
+    if not channel:
+        transport_mailbox = _address(payload.get("TransportMailbox"))
+        if transport_mailbox:
+            alias = db.scalar(
+                select(EmailChannelAlias)
+                .join(EmailChannel, EmailChannel.id == EmailChannelAlias.channel_id)
+                .where(
+                    EmailChannelAlias.active.is_(True),
+                    EmailChannel.active.is_(True),
+                    func.lower(EmailChannelAlias.address) == transport_mailbox,
+                )
+            )
+            if alias:
+                channel = db.get(EmailChannel, alias.channel_id)
+            else:
+                channel = db.scalar(
+                    select(EmailChannel).where(
+                        EmailChannel.active.is_(True),
+                        func.lower(EmailChannel.address) == transport_mailbox,
+                    )
+                )
     if not channel:
         channels = list(db.scalars(select(EmailChannel).where(EmailChannel.active.is_(True))))
         for address in addresses:
@@ -591,6 +640,8 @@ def normalize_inbound_attachments(payload: dict, provider: str = "postmark") -> 
                 separators=(",", ":"),
             ).encode()
         ).hexdigest()
+        if len(source_id) > 128:
+            source_id = "sha256:" + hashlib.sha256(source_id.encode()).hexdigest()
         normalized.append(
             {
                 "source_id": source_id or fingerprint,
@@ -718,7 +769,52 @@ def _inbox_rule(db: Session, channel_id: int, subject: str) -> EmailInboxRule | 
     return None
 
 
+def _resolved_inbound_hierarchy(
+    db: Session, channel: EmailChannel, rule: EmailInboxRule | None
+):
+    names = (
+        "default_queue_id",
+        "default_department_id",
+        "default_category_id",
+        "default_subcategory_id",
+    )
+    channel_values = tuple(getattr(channel, name) for name in names)
+    overlaid_values = tuple(
+        getattr(rule, name) if rule and getattr(rule, name) is not None else value
+        for name, value in zip(names, channel_values)
+    )
+    for values in (overlaid_values, channel_values):
+        selection = validate_work_hierarchy(
+            db,
+            queue_id=values[0],
+            department_id=values[1],
+            category_id=values[2],
+            subcategory_id=values[3],
+        )
+        if not selection:
+            continue
+        channel_tokens = set(
+            re.split(r"[^a-z0-9]+", f"{channel.code} {channel.name}".casefold())
+        )
+        if channel_tokens.intersection({"frota", "fleet"}):
+            scope = " ".join(
+                (
+                    selection.queue.code,
+                    selection.queue.name,
+                    selection.department.code,
+                    selection.department.name,
+                )
+            ).casefold()
+            if not any(token in scope for token in ("frota", "fleet")):
+                continue
+        return selection
+    return None
+
+
 def ingest_inbound(db: Session, payload: dict) -> tuple[EmailThread, bool]:
+    source_provider = str(payload.get("SourceProvider") or "postmark").strip().casefold()
+    if source_provider not in {"postmark", "microsoft_graph"}:
+        raise ValueError("Unsupported inbound email provider.")
     key = _event_key(payload)
     existing_event = db.scalar(select(EmailWebhookEvent).where(EmailWebhookEvent.event_key == key))
     if existing_event:
@@ -742,6 +838,7 @@ def ingest_inbound(db: Session, payload: dict) -> tuple[EmailThread, bool]:
                     message=message,
                     event=existing_event,
                     payload=existing_event.payload_json,
+                    provider=source_provider,
                 )
                 db.commit()
             return thread, False
@@ -781,8 +878,22 @@ def ingest_inbound(db: Session, payload: dict) -> tuple[EmailThread, bool]:
             alias=channel_alias,
         )
         db.add(delivery)
-        if delivery.original_recipient and not thread.original_recipient_address:
-            thread.original_recipient_address = delivery.original_recipient
+        reconcile_inbound_attachments(
+            db,
+            thread=thread,
+            message=message,
+            event=event,
+            payload=payload,
+            provider=source_provider,
+        )
+        if not thread.original_recipient_address:
+            thread.original_recipient_address = (
+                delivery.original_recipient
+                if source_provider == "microsoft_graph"
+                else channel_alias.address
+                if channel_alias
+                else delivery.original_recipient
+            )
         if delivery.technical_recipient and not thread.technical_recipient_address:
             thread.technical_recipient_address = delivery.technical_recipient
         event.processed = True
@@ -842,9 +953,15 @@ def ingest_inbound(db: Session, payload: dict) -> tuple[EmailThread, bool]:
     created_thread = thread is None
     if not thread:
         now = datetime.now(UTC)
+        hierarchy = _resolved_inbound_hierarchy(db, channel, rule)
+        payload_original_recipient = str(
+            payload.get("OriginalRecipient") or ""
+        ).strip()
         original_recipient = (
-            str(payload.get("OriginalRecipient") or "").strip()
-            or (channel_alias.address if channel_alias else None)
+            payload_original_recipient
+            if source_provider == "microsoft_graph" and payload_original_recipient
+            else (channel_alias.address if channel_alias else None)
+            or payload_original_recipient
         )
         technical_recipient = (
             channel_alias.inbound_forward_address if channel_alias else None
@@ -859,40 +976,17 @@ def ingest_inbound(db: Session, payload: dict) -> tuple[EmailThread, bool]:
             functional_owner_user_id=channel.functional_owner_user_id,
             original_recipient_address=original_recipient,
             technical_recipient_address=technical_recipient,
-            work_queue_id=(
-                rule.default_queue_id
-                if rule and rule.default_queue_id
-                else channel.default_queue_id
-            ),
-            work_department_id=(
-                rule.default_department_id
-                if rule and rule.default_department_id
-                else channel.default_department_id
-            ),
-            work_category_id=(
-                rule.default_category_id
-                if rule and rule.default_category_id
-                else channel.default_category_id
-            ),
+            work_queue_id=hierarchy.queue.id if hierarchy else None,
+            work_department_id=hierarchy.department.id if hierarchy else None,
+            work_category_id=hierarchy.category.id if hierarchy and hierarchy.category else None,
             work_subcategory_id=(
-                rule.default_subcategory_id
-                if rule and rule.default_subcategory_id
-                else channel.default_subcategory_id
+                hierarchy.subcategory.id if hierarchy and hierarchy.subcategory else None
             ),
             classification_status=(
                 "review"
-                if channel.requires_triage
-                else "classified"
-                if (
-                    rule.default_queue_id
-                    if rule and rule.default_queue_id
-                    else channel.default_queue_id
-                )
-                and (
-                    rule.default_department_id
-                    if rule and rule.default_department_id
-                    else channel.default_department_id
-                )
+                if hierarchy and channel.requires_triage
+                else hierarchy.status
+                if hierarchy
                 else "unclassified"
             ),
             administrative_review_required=(
@@ -967,6 +1061,7 @@ def ingest_inbound(db: Session, payload: dict) -> tuple[EmailThread, bool]:
         message=message,
         event=event,
         payload=payload,
+        provider=source_provider,
     )
     thread.last_message_at = message.received_at
     auto_task_mode = rule.auto_task_mode if rule and rule.auto_task_mode else channel.auto_task_mode
@@ -1036,6 +1131,7 @@ def ingest_inbound(db: Session, payload: dict) -> tuple[EmailThread, bool]:
                 "logical_message_key": logical_key,
                 "original_recipient": thread.original_recipient_address,
                 "technical_recipient": thread.technical_recipient_address,
+                "source_provider": source_provider,
             },
         )
     )

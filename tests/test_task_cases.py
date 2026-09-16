@@ -8,7 +8,20 @@ from sqlalchemy import func, select
 from sqlalchemy.sql import literal
 
 import app.web.router as task_router
-from app.models import AuditLog, Permission, Role, RolePermission, Task, TaskCase, TaskHistory, User
+from app.models import (
+    AuditLog,
+    Permission,
+    Role,
+    RolePermission,
+    Task,
+    TaskCase,
+    TaskHistory,
+    User,
+    WorkCategory,
+    WorkDepartment,
+    WorkQueue,
+)
+from app.models.organization import Team
 from app.services.task_cases import (
     TaskCaseError,
     add_task_to_case,
@@ -286,6 +299,78 @@ def test_category_grouping_route_is_fail_safe(
     assert page.status_code == 200, page.text
     assert 'data-grouping="category"' in page.text
     assert "Categoria sem erro 500" in page.text
+
+
+def test_category_grouping_keeps_complete_canonical_group_and_hides_flat_table(
+    authenticated_client, db_session, monkeypatch
+) -> None:
+    _grant_cases(db_session)
+    monkeypatch.setattr(task_router.settings, "task_cases_enabled", True)
+    monkeypatch.setattr(task_router.settings, "visual_foundation_enabled", True)
+    queue = WorkQueue(code="canonical-test", name="Canonical test", active=True)
+    db_session.add(queue)
+    db_session.flush()
+    department = WorkDepartment(
+        queue_id=queue.id,
+        code="canonical-test",
+        name="Canonical test",
+        active=True,
+    )
+    db_session.add(department)
+    db_session.flush()
+    category = WorkCategory(
+        department_id=department.id,
+        code="canonical-test",
+        name="Categoria canónica",
+        active=True,
+    )
+    db_session.add(category)
+    db_session.flush()
+    for index in range(55):
+        task = _task(db_session, f"Tarefa canónica {index:02d}")
+        task.work_category_id = category.id
+        # Historical display text must not become part of the group identity.
+        task.category = "Nome antigo A" if index % 2 else "Nome antigo B"
+    db_session.commit()
+
+    page = authenticated_client.get(
+        "/v2-clean/tasks?grouping=category&workspace=mine&mine_kind=all"
+    )
+
+    assert page.status_code == 200, page.text
+    assert "Tarefa canónica 00" in page.text
+    assert "Tarefa canónica 54" in page.text
+    assert "55 tarefas" in page.text
+    assert re.search(r"<small>\d+ nesta página</small>", page.text) is None
+    assert (
+        'class="task-center-approved-table-wrap" data-task-scroll hidden aria-hidden="true"'
+        in page.text
+    )
+
+
+def test_team_grouping_uses_visible_task_teams(
+    authenticated_client, db_session, monkeypatch
+) -> None:
+    _grant_cases(db_session)
+    monkeypatch.setattr(task_router.settings, "task_cases_enabled", True)
+    monkeypatch.setattr(task_router.settings, "visual_foundation_enabled", True)
+    team = Team(code="grouping-contract", name="Equipa do agrupamento", active=True)
+    db_session.add(team)
+    db_session.flush()
+    with_team = _task(db_session, "Tarefa agrupada na equipa")
+    with_team.team_id = team.id
+    _task(db_session, "Tarefa agrupada sem equipa")
+    db_session.commit()
+
+    page = authenticated_client.get(
+        "/v2-clean/tasks?grouping=team&workspace=mine&mine_kind=all"
+    )
+
+    assert page.status_code == 200, page.text
+    assert 'data-grouping="team"' in page.text
+    assert "Equipa do agrupamento" in page.text
+    assert "Sem equipa" in page.text
+    assert "Tarefa agrupada na equipa" in page.text
 
 
 def test_case_grouping_only_shows_persisted_cases_and_their_tasks(

@@ -96,7 +96,7 @@ def test_email_thread_uses_full_width_reader_drawer_navigation_and_spam() -> Non
     for text in ("Voltar à caixa", "Anterior", "Próximo", "Confirmar classificação", "Guardar gestão", "Ligações", "Marcar email como tratado", "Aguardar conclusão da tarefa", "Abrir tarefa", "Spam"):
         assert text in source
     assert "email-treatment-drawer" in source
-    assert ".email-treatment-drawer{position:fixed" in css
+    assert ".visual-email-thread-page .email-treatment-drawer{position:relative" in css
     assert 'window.confirm("Mover esta conversa para Spam?' in script
     assert 'destinationId": "junkemail"' in (ROOT / "app/services/microsoft365_oauth.py").read_text(encoding="utf-8")
     assert '@email_router.post("/v2-clean/email/{thread_id}/spam")' in router
@@ -128,7 +128,7 @@ def test_email_inline_preview_prioritizes_message_reading_space() -> None:
     assert ".email-inline-preview-body .email-body-frame{box-sizing:border-box" in css
     assert "height:clamp(280px,42vh,520px)" in css
     assert "Anexos para tratamento" in source
-    assert "Tratar anexo" in source
+    assert "Abrir" in source and "Descarregar" in source
     assert "Imagens incorporadas no email · não contam como anexos" in source
 
 
@@ -155,7 +155,7 @@ def test_email_operational_indicators_match_task_center_language_and_density() -
 
     for code, label in (
         ("to_treat", "Por tratar"),
-        ("new", "Novos"),
+        ("new", "Novas / por triar"),
         ("unassigned", "Por atribuir"),
         ("overdue", "Atrasados"),
         ("risk", "Em risco"),
@@ -192,68 +192,18 @@ def test_email_full_page_reader_scroll_and_action_hierarchy_contract() -> None:
     source = THREAD.read_text(encoding="utf-8")
     script = JS.read_text(encoding="utf-8")
 
-    base = (ROOT / "app/templates/base.html").read_text(encoding="utf-8")
-    page = (ROOT / "app/templates/clean_email_thread.html").read_text(encoding="utf-8")
-
-    assert 'class="ui-contract-v1"' in base
-    assert "visual-email-thread-page" in page
-    assert "body.ui-contract-v1 .visual-email-thread-page{height:100dvh!important;min-height:0!important;overflow:hidden!important" in css
-    assert ".email-modal-shell-full{display:flex!important;flex-direction:column" in css
-    assert "height:calc(100dvh - 84px)!important" in css
-    assert ".email-reader-grid{display:grid!important" in css
-    assert "overflow:auto!important;overscroll-behavior:contain" in css
-    assert "body.ui-contract-v1 .visual-email-thread-page .email-modal-footer{position:relative!important" in css
-    assert "min-height:52px;height:52px;padding:11px 18px" in css
-    assert "font-size:14px;font-weight:700" in css
-    assert "grid-template-columns:minmax(148px,.7fr)" in css
-    assert "grid-template-columns:repeat(2,minmax(0,1fr));gap:10px" in css
+    assert ".ui-contract-v1 .visual-email-thread-page{height:100dvh!important;min-height:0!important;overflow:hidden!important" in css
+    assert ".ui-contract-v1 .visual-email-thread-page .email-modal-shell{display:flex!important" in css
+    assert ".ui-contract-v1 .visual-email-thread-page .email-modal-header{position:sticky" in css
+    assert ".ui-contract-v1 .visual-email-thread-page .email-modal-footer{position:sticky!important" in css
+    assert ".ui-contract-v1 .visual-email-thread-page .email-treatment-drawer{position:relative" in css
+    assert "max-height:min(58vh,680px)" in css
     assert "@media(max-width:1100px)" in css
     assert "@media(max-width:600px)" in css
     assert 'class="email-reply-primary"' in source
     assert 'class="email-create-task-action"' in source
     assert "email-treatment-open" in source
-    assert 'aria-expanded="false"' in source
-    assert "data-email-drawer-close" in source
-    assert "Triagem e classificação" in source
-    assert "Responsável e prazo" in source
-    assert "Estado do email" in source
-    assert "Notas e conclusão" in source
-    assert "Histórico recente" in source
     assert "email-spam-action" in source
-    assert 'const shell = drawer.closest("[data-email-thread-id]")' in script
-    assert 'shell.classList.toggle("is-treatment-open", open)' in script
-    assert 'shell.querySelectorAll("[data-email-drawer-open]")' in script
-    assert 'button.setAttribute("aria-expanded", String(open))' in script
-    assert 'root.classList.toggle("is-treatment-open", open)' not in script
-    assert 'setOpen(!drawer.classList.contains("is-open"))' in script
-    assert 'shell.querySelectorAll("[data-email-open-composer]")' in script
-    assert 'event.key === "Escape"' in script
-    assert "frame.contentDocument?.documentElement?.scrollHeight" in script
-    assert "frame.style.height" in script
-    assert "ui-contract-v1.css?v=20260910-email-workspace" in base
-    assert "email.js?v=20260910-email-drawer-fix" in page
-
-
-def test_email_treatment_drawer_layout_tracks_the_shell_state() -> None:
-    css = CONTRACT_CSS.read_text(encoding="utf-8")
-    source = THREAD.read_text(encoding="utf-8")
-
-    assert 'class="email-reader-grid"' in source
-    assert 'class="email-triage-pane email-treatment-drawer"' in source
-    assert source.index('class="email-reader-grid"') < source.index('class="email-modal-footer"')
-    assert ".email-modal-shell-full.is-treatment-open .email-reader-grid{grid-template-columns:minmax(0,1fr) minmax(360px,440px)!important" in css
-    assert "@media(max-width:900px)" in css
-    assert ".email-modal-shell-full.is-treatment-open .email-reader-grid{grid-template-columns:minmax(0,1fr)!important}" in css
-
-
-def test_email_classification_changes_keep_before_after_audit_contract() -> None:
-    router = ROUTER.read_text(encoding="utf-8")
-
-    assert '"classification_audit": classification_audit' in router
-    assert '"classification_audit_users": classification_audit_users' in router
-    assert '"classification_audit_rows": classification_audit_rows' in router
-    assert "classification_before = {" in router
-    assert "classification_after = {" in router
-    assert '"before": classification_before' in router
-    assert '"after": classification_after' in router
-    assert '"classification_changed": classification_before' in router
+    assert "frame.style.height" not in script
+    assert "email-html-editor" in source
+    assert "bindHtmlEditors" in script

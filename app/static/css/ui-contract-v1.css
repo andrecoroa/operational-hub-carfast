@@ -170,11 +170,15 @@
 .ui-contract-v1 .visual-service-desk .clean-task-table .button-link { min-height: 30px; padding: 5px 8px; white-space: nowrap; }
 
 /* Centro de Processos shares the same compact command-workspace contract. */
-.ui-contract-v1 .process-command-page { gap: 10px; }
+.ui-contract-v1 .process-command-page { height:auto; min-height:100vh; max-height:none; gap:10px; overflow:visible; }
 .ui-contract-v1 .process-command-header { min-height: 0; margin: 0; padding: 6px 0 8px; align-items: center; }
 .ui-contract-v1 .process-command-header .eyebrow { margin: 0 0 1px; font-size: 10px; }
-.ui-contract-v1 .process-command-header h2 { margin: 0; font-size: 22px; line-height: 28px; }
+.ui-contract-v1 .process-command-header h2 { margin:0; font-size:18px; line-height:22px; }
 .ui-contract-v1 .process-command-header p:not(.eyebrow) { margin: 1px 0 0; font-size: 12px; line-height: 16px; }
+.ui-contract-v1 .process-create-panel > summary strong,.ui-contract-v1 .process-create-panel > summary { font-size:14px; line-height:18px; }
+.ui-contract-v1 .process-batch-cases { padding:14px; }
+.ui-contract-v1 .process-batch-cases .process-command-section-head { margin-bottom:8px; }
+.ui-contract-v1 .process-batch-cases h3 { font-size:15px; line-height:19px; }
 .ui-contract-v1 .process-command-actions :is(.button-link,button) { min-height: var(--ui-control-compact); height: var(--ui-control-compact); padding: 5px 12px; }
 .ui-contract-v1 .process-command-kpis { min-height: 56px; margin: 0; gap: 8px; }
 .ui-contract-v1 .process-command-kpis > a { display: grid; min-height: 56px; padding: 7px 10px; grid-template-columns: 28px auto 1fr; column-gap: 8px; align-content: center; }
@@ -360,7 +364,7 @@
 
 .ui-contract-v1 .clean-admin-directory,
 .ui-contract-v1 .clean-admin-residual-nav { margin: 0; }
-.ui-contract-v1 .clean-admin-content { height:100vh; max-height:100vh; overflow:hidden; grid-template-rows:52px auto minmax(0,1fr); }
+.ui-contract-v1 .clean-admin-content { min-height:100vh; height:auto; max-height:none; overflow:visible; grid-template-rows:52px auto auto; }
 .ui-contract-v1 .admin-model-workbench { padding: 0; overflow: hidden; }
 .ui-contract-v1 .admin-model-workbench > .table-heading { min-height: 52px; padding: 8px 12px; }
 .ui-contract-v1 .admin-model-columns { display: grid; grid-template-columns: minmax(190px,.7fr) minmax(190px,.7fr) minmax(320px,1.4fr); min-height: 440px; gap: 0; }
@@ -422,13 +426,13 @@
 .ui-contract-v1 .email-secondary-filters > summary { display:flex; min-height:32px; padding:6px 10px; align-items:center; border:1px solid var(--ui-color-border); border-radius:6px; cursor:pointer; list-style:none; white-space:nowrap; }
 .ui-contract-v1 .email-secondary-filters > div { position:absolute; z-index:30; top:36px; right:0; display:grid; width:280px; gap:8px; padding:10px; border:1px solid var(--ui-color-border); border-radius:8px; background:var(--ui-color-surface); box-shadow:0 10px 28px rgba(15,23,42,.16); }
 .ui-contract-v1 .clean-admin-header { padding:8px 12px; }
-.ui-contract-v1 .clean-admin-master-detail { display:grid; grid-template-columns:210px minmax(0,1fr); gap:12px; min-width:0; min-height:0; height:100%; max-height:none; overflow:hidden; align-items:start; }
+.ui-contract-v1 .clean-admin-master-detail { display:grid; grid-template-columns:210px minmax(0,1fr); gap:12px; min-width:0; min-height:0; height:auto; max-height:none; overflow:visible; align-items:start; }
 .ui-contract-v1 .clean-admin-master { position:sticky; top:8px; display:grid; gap:8px; padding:10px; border:1px solid var(--ui-color-border); border-radius:8px; background:var(--ui-color-surface); }
 .ui-contract-v1 .clean-admin-master nav { display:grid; gap:2px; }
 .ui-contract-v1 .clean-admin-master a { min-height:32px; padding:7px 9px; border-radius:6px; color:var(--ui-color-text); text-decoration:none; font-size:12px; font-weight:700; white-space:nowrap; }
 .ui-contract-v1 .clean-admin-master a:is(:hover,.active) { background:var(--ui-color-surface-muted); color:var(--ui-color-primary); }
 .ui-contract-v1 .clean-admin-master small { color:var(--ui-color-text-muted); line-height:1.35; }
-.ui-contract-v1 .clean-admin-detail { display:grid; min-width:0; min-height:0; height:100%; max-height:none; padding-bottom:16px; overflow:auto; scrollbar-gutter:stable; gap:12px; align-content:start; }
+.ui-contract-v1 .clean-admin-detail { display:grid; min-width:0; min-height:0; height:auto; max-height:none; padding-bottom:16px; overflow:visible; gap:12px; align-content:start; }
 .ui-contract-v1 .clean-admin-detail > .clean-card-wide { width:100%; min-width:0; }
 .ui-contract-v1 .clean-admin-overview-strip { grid-template-columns:repeat(3,minmax(0,1fr)); }
 
@@ -446,6 +450,10 @@
   .ui-contract-v1 .ui-context-preview { display: none; }
   .ui-contract-v1 .admin-model-columns { grid-template-columns: repeat(2,minmax(0,1fr)); }
   .ui-contract-v1 .admin-model-detail { grid-column: 1 / -1; }
+  .ui-contract-v1 .clean-admin-master-detail { grid-template-columns:minmax(0,1fr); }
+  .ui-contract-v1 .clean-admin-master { position:static; }
+  .ui-contract-v1 .clean-admin-master nav { display:flex; flex-wrap:wrap; gap:4px; }
+  .ui-contract-v1 .clean-admin-master nav > a { flex:1 1 150px; }
 }
 @media (max-width: 640px) {
   .ui-contract-v1 { --visual-sidebar-width: 0px; }
@@ -466,6 +474,10 @@
   .ui-contract-v1 .admin-model-columns,
   .ui-contract-v1 .clean-admin-role-workspace { grid-template-columns: minmax(0,1fr); }
   .ui-contract-v1 .admin-model-detail { grid-column: auto; }
+  .ui-contract-v1 .clean-admin-master { padding:8px; }
+  .ui-contract-v1 .clean-admin-master nav { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .ui-contract-v1 .clean-admin-master nav > a { min-width:0; white-space:normal; }
+  .ui-contract-v1 .clean-admin-master > small { display:none; }
 }
 /* Task cases/grouped proposal: feature-gated by the server-rendered controls. */
 .task-grouping-modes{display:flex;align-items:center;gap:8px;margin:0 0 10px}.task-grouping-modes button[aria-pressed="true"]{background:var(--primary,#176b44);color:#fff}.task-grouping-modes small{margin-left:auto;color:var(--muted,#667085)}
@@ -531,6 +543,13 @@
 .task-center-approved .task-center-approved-preview>footer button:not(.primary):hover{background:#eef5ff;border-color:#7da8dc}
 .task-center-approved .task-center-approved-preview>footer button.primary{font-weight:700;box-shadow:0 1px 2px rgba(21,92,196,.18)}
 @media(max-width:850px){.task-preview-description{min-height:5.4em;max-height:8.1em}}
+
+/* Task Center: one contextual drawer, with explicit preview and edit modes. */
+body.task-drawer-open{overflow:hidden}.task-drawer-shell{position:fixed;z-index:1200;inset:0;display:flex;justify-content:flex-end}.task-drawer-shell[hidden]{display:none}.task-drawer-backdrop{position:absolute;inset:0;width:100%;height:100%;border:0;border-radius:0;background:rgba(15,31,54,.18)}.task-drawer-mount{position:relative;width:min(620px,44vw);height:100%;background:#fff;border-left:1px solid #dfe6ee;box-shadow:-16px 0 38px rgba(15,31,54,.18);overflow:hidden}.task-drawer-loading{display:grid;height:100%;place-items:center;padding:24px;color:#52677c}.task-workbench-drawer{height:100%;display:flex;flex-direction:column;color:#263d54}.task-drawer-header{display:flex;min-height:72px;align-items:flex-start;gap:12px;padding:14px 16px;border-bottom:1px solid #dfe6ee}.task-drawer-header>div{min-width:0;flex:1}.task-drawer-header small{font-weight:800;color:#52677c}.task-drawer-header h2{margin:3px 0 5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:16px}.task-drawer-header p{display:flex;gap:6px;margin:0}.task-drawer-header p span{padding:3px 7px;border-radius:999px;background:#edf3f9;font-size:10px;font-weight:700}.task-drawer-close{width:30px;height:30px;padding:0;border:0;background:transparent;color:#52677c;font-size:20px}.task-workbench-drawer>[data-task-drawer-mode]{min-height:0;flex:1;display:flex;flex-direction:column}.task-workbench-drawer>[data-task-drawer-mode][hidden]{display:none}.task-drawer-actions{display:flex;gap:7px;padding:9px 14px;border-bottom:1px solid #dfe6ee;background:#fbfcfd}.task-drawer-actions button,.task-drawer-actions summary{width:auto;min-height:30px;padding:5px 10px;border:1px solid #b8c8da;border-radius:6px;background:#fff;color:#155cc4;font-size:11px;font-weight:700}.task-drawer-actions button.primary{border-color:#155cc4;background:#155cc4;color:#fff}.task-drawer-more{position:relative;margin-left:auto}.task-drawer-more summary{list-style:none;cursor:pointer}.task-drawer-more summary::-webkit-details-marker{display:none}.task-drawer-more>div{position:absolute;z-index:4;top:36px;right:0;width:235px;padding:5px;border:1px solid #d5dee9;border-radius:8px;background:#fff;box-shadow:0 10px 28px rgba(15,31,54,.2)}.task-drawer-more>div>*{display:flex;width:100%;min-height:32px;align-items:center;justify-content:space-between;padding:6px 8px;border:0;border-radius:5px;background:#fff;color:#334b64;text-align:left;text-decoration:none;font-size:11px;font-weight:500}.task-drawer-more>div>*:hover{background:#eef5ff}.task-drawer-more form{padding:0}.task-drawer-more form button{width:100%;color:#8a3b31}.task-drawer-scroll{min-height:0;flex:1;padding:12px 14px;overflow:auto}.task-drawer-facts{display:grid;grid-template-columns:1fr 1fr;margin:0 0 12px;border:1px solid #dfe6ee;border-radius:7px;overflow:hidden}.task-drawer-facts div{padding:8px 10px;border-bottom:1px solid #e6ebf1}.task-drawer-facts div:nth-child(odd){border-right:1px solid #e6ebf1}.task-drawer-facts dt{font-size:9px;text-transform:uppercase;color:#66778a}.task-drawer-facts dd{margin:3px 0 0;font-size:11px;font-weight:700}.task-drawer-section{padding:11px 0;border-top:1px solid #e1e7ee}.task-drawer-section h3{margin:0 0 8px;font-size:12px}.task-drawer-section-title{display:flex;align-items:center;justify-content:space-between;gap:8px}.task-drawer-section-title button,.task-drawer-relations button{width:auto;padding:3px 7px;border:0;background:transparent;color:#155cc4;font-size:10px}.task-drawer-description{margin:0;white-space:pre-wrap;font-size:11px;line-height:1.5}.task-drawer-context{display:flex;gap:6px;flex-wrap:wrap}.task-drawer-context span,.task-drawer-info{padding:5px 7px;border-radius:6px;background:#edf4ff;color:#315d91;font-size:10px}.task-drawer-support-item{padding:8px;border:1px solid #dfe6ee;border-radius:7px}.task-drawer-support-item>span{float:right;font-size:10px;color:#6a5a1b}.task-drawer-support-item p{font-size:11px}.task-drawer-support-item form{display:flex;gap:7px}.task-drawer-support-item select{flex:1}.task-drawer-relations{margin:0}.task-drawer-relations div{display:grid;grid-template-columns:70px 1fr;margin:4px 0}.task-drawer-relations dt{font-size:10px;font-weight:700}.task-drawer-relations dd{margin:0;font-size:11px}.task-drawer-comments article{display:grid;grid-template-columns:1fr auto;gap:2px 10px;padding:6px 0;border-bottom:1px solid #edf1f5}.task-drawer-comments article p{grid-column:1/-1;margin:0;font-size:11px}.task-drawer-comments time,.task-drawer-history time{font-size:9px;color:#718093}.task-drawer-comment-form{display:flex;gap:7px;margin-top:8px}.task-drawer-comment-form textarea{min-height:34px;flex:1}.task-drawer-history p{display:grid;grid-template-columns:110px 1fr auto;gap:7px;margin:5px 0;font-size:10px}.task-drawer-footer{display:flex;min-height:52px;align-items:center;justify-content:flex-end;gap:7px;padding:8px 14px;border-top:1px solid #dfe6ee;background:#fbfcfd}.task-drawer-footer form{display:flex;gap:7px;margin-left:auto}.task-drawer-edit-form{min-height:0;flex:1;display:flex;flex-direction:column}.task-drawer-edit-form label{display:grid;gap:4px;margin-bottom:9px;color:#43586d;font-size:10px;font-weight:700}.task-drawer-edit-form input,.task-drawer-edit-form select,.task-drawer-edit-form textarea{width:100%}.task-drawer-edit-form fieldset{margin:10px 0;padding:10px;border:1px solid #dfe6ee;border-radius:7px}.task-drawer-edit-form legend{padding:0 5px;font-size:11px;font-weight:800}.task-drawer-edit-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 9px}.task-drawer-edit-form .task-classification-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.task-drawer-footer .secondary{background:#fff;color:#155cc4}
+@media(max-width:1000px){.task-drawer-mount{width:min(620px,62vw)}}
+@media(max-width:700px){.task-drawer-mount{width:100vw}.task-drawer-backdrop{display:none}.task-drawer-edit-grid,.task-drawer-edit-form .task-classification-grid{grid-template-columns:1fr}.task-drawer-actions{overflow-x:auto}.task-drawer-actions>*{flex:0 0 auto}}
+.task-drawer-shell>.task-drawer-backdrop{background:transparent!important}
+.task-drawer-actions>a{display:inline-flex;width:auto;min-height:30px;align-items:center;padding:5px 10px;border:1px solid #b8c8da;border-radius:6px;background:#fff;color:#155cc4;text-decoration:none;font-size:11px;font-weight:700}.task-drawer-actions>a.primary{border-color:#155cc4;background:#155cc4;color:#fff}
 
 /* Final Task Center filters: search and scope first, operational filters second, organisation last. */
 .task-center-approved .task-center-approved-filters{height:auto!important;min-height:0!important;padding:8px;gap:7px!important}
@@ -606,7 +625,9 @@
 
 /* Task Center compact work surface: approved dense list, preview and editor. */
 .sr-only{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;white-space:nowrap!important;border:0!important}
-.task-center-approved-toolbar{display:flex;height:42px;min-height:42px;padding:0;align-items:center;justify-content:space-between;border-bottom:1px solid #dfe6ee}
+.task-center-approved-toolbar{display:flex;height:42px;min-height:42px;padding:0;align-items:center;justify-content:space-between;border-bottom:0}
+.task-center-approved-navigation{display:flex;min-width:0;flex:1;align-items:center;justify-content:space-between;gap:16px;margin-right:16px;border-bottom:1px solid #dfe6ee}
+.task-center-queue-chips{display:flex;align-items:center;gap:4px;margin-left:auto}.task-center-queue-chips>span{color:#52677c;font-size:10px;font-weight:700}.task-center-queue-chips button{width:auto;min-width:0;height:28px;min-height:28px;padding:0 9px;border:1px solid #c7d3e1;background:#fff;color:#334b64;border-radius:7px;font-size:10px;font-weight:700;white-space:nowrap}.task-center-queue-chips button[aria-pressed=true]{border-color:#1f63d7;background:#eaf2ff;color:#154f9e;box-shadow:inset 0 -2px #1f63d7}.task-center-queue-chips button:focus-visible{outline:3px solid #87b7f4;outline-offset:2px}
 .task-center-approved-toolbar .task-center-approved-tabs{height:42px;min-height:42px;border:0;align-items:stretch}
 .task-center-approved-toolbar .task-center-approved-tabs a{display:flex;min-height:42px;padding:0 3px;align-items:center}
 .task-center-approved-toolbar-actions,.task-center-detail-header-actions{display:flex;align-items:center;gap:6px}
@@ -681,16 +702,18 @@
   .task-center-approved .task-grouping-modes{overflow-x:auto}.task-center-approved .c-category,.task-center-approved .c-owner{display:none}.task-center-approved .c-subject{width:34%}
 }
 @media(max-width:850px){
+  .task-center-approved-navigation{flex:1 0 100%;order:2;flex-wrap:wrap;gap:0;margin-right:0}.task-center-approved-tabs{flex:1 1 auto}.task-center-queue-chips{flex:1 0 100%;margin:-2px 0 4px;padding-left:0}
   .task-center-approved-toolbar{height:auto;min-height:42px;gap:6px;flex-wrap:wrap}.task-center-approved-toolbar-actions{margin-left:auto}
+  .task-center-approved-toolbar-actions{order:1}
   .task-center-approved-toolbar-actions :is(a,button){min-width:0;padding:0 7px}
-  .task-center-approved .task-center-approved-metric{min-width:96px}
+  .task-center-approved-metrics{height:auto!important;flex-wrap:wrap;overflow-x:visible}.task-center-approved .task-center-approved-metric{min-width:96px}
   .task-filter-primary-row{display:grid;grid-template-columns:minmax(0,1fr) auto}.task-filter-search{grid-column:1 / -1}.task-filter-scope,.task-center-approved .task-grouping-modes{grid-column:1 / -1}.task-filter-toggle{grid-column:2;grid-row:2}
   .task-center-approved table :is(th,td):nth-child(4),.task-center-approved table :is(th,td):nth-child(5),.task-center-approved table :is(th,td):nth-child(6){display:none}.task-center-approved .c-updated{width:24%}
   .task-center-approved-preview-body{display:block;padding-right:34px}.task-preview-context,.task-preview-facts{margin-top:5px}.task-preview-facts{display:flex;flex-wrap:wrap}.task-preview-facts section{flex:1 1 210px}
   .task-detail-page-grid{grid-template-columns:minmax(0,1fr)!important}.task-center-detail-header{align-items:flex-start;gap:8px}.task-center-detail-title{display:block}.task-center-detail-title h2{margin:2px 0}.task-center-detail-title .task-detail-status-line{flex-wrap:wrap}
 }
 @media(max-width:560px){
-  .task-center-approved-toolbar-actions{width:100%;justify-content:flex-end}.task-filter-primary-row{display:flex;flex-direction:column;align-items:stretch}.task-filter-scope>div,.task-center-approved .task-grouping-modes{display:grid;grid-template-columns:repeat(3,minmax(0,1fr))}.task-filter-scope button,.task-center-approved .task-grouping-modes button{width:100%;min-width:0}.task-filter-toggle{align-self:flex-end}
+  .task-center-approved-toolbar{display:grid;grid-template-columns:minmax(0,1fr)}.task-center-approved-navigation,.task-center-approved-toolbar-actions,.task-center-queue-chips{width:100%;max-width:100%;min-width:0}.task-center-approved-toolbar-actions{justify-content:flex-end;flex-wrap:wrap}.task-center-queue-chips{flex-wrap:wrap}.task-filter-primary-row{display:flex;flex-direction:column;align-items:stretch}.task-filter-scope>div,.task-center-approved .task-grouping-modes{display:grid;grid-template-columns:repeat(3,minmax(0,1fr))}.task-filter-scope button,.task-center-approved .task-grouping-modes button{width:100%;min-width:0}.task-filter-toggle{align-self:flex-end}
   .task-center-approved table :is(th,td):last-child{display:none}.task-center-approved-preview>footer{overflow-x:auto}.task-center-approved .task-center-approved-preview>footer button{flex:0 0 92px;width:92px;min-width:92px}
   .task-center-detail-header{flex-direction:column}.task-center-detail-header-actions{width:100%;justify-content:flex-end}
 }
@@ -970,43 +993,54 @@
 @media (max-width:700px){.ui-contract-v1 .email-modal-header{align-items:flex-start}.ui-contract-v1 .email-header-actions,.ui-contract-v1 .email-thread-navigation{width:100%}.ui-contract-v1 .email-thread-navigation>*{flex:1 1 auto;text-align:center}.ui-contract-v1 .email-create-task-form{width:100%}.ui-contract-v1 .email-create-task-form fieldset{width:100%;flex-direction:column}.ui-contract-v1 .visual-email-thread-page .email-conversation{padding-inline:8px}}
 
 /* Full-page email reader: the document owns scrolling and actions never cover content. */
-body.ui-contract-v1 .visual-email-thread-page{height:auto!important;min-height:100dvh;overflow-x:clip!important;overflow-y:visible!important;padding-bottom:max(40px,env(safe-area-inset-bottom))}
-body.ui-contract-v1 .visual-email-thread-page .email-modal-shell{display:block!important;height:auto!important;min-height:0!important;max-height:none!important;overflow:visible!important}
-body.ui-contract-v1 .visual-email-thread-page .email-reader-grid,body.ui-contract-v1 .visual-email-thread-page .email-conversation{height:auto!important;max-height:none!important;overflow:visible!important}
-body.ui-contract-v1 .visual-email-thread-page .email-conversation{padding-bottom:28px}
-body.ui-contract-v1 .visual-email-thread-page .email-body-frame{display:block;width:100%;height:clamp(420px,62vh,760px);min-height:280px;max-height:none;border:1px solid var(--ui-color-border);border-radius:8px}
-body.ui-contract-v1 .visual-email-thread-page .email-modal-footer{position:relative!important;inset:auto!important;z-index:1;display:grid!important;grid-template-columns:minmax(148px,.7fr) minmax(126px,.6fr) minmax(108px,.52fr) minmax(168px,.8fr) minmax(360px,1.7fr);align-items:center;gap:12px;margin-top:0;padding:18px 20px calc(18px + env(safe-area-inset-bottom));overflow:visible!important;border-top:1px solid var(--ui-color-border);background:#f8fafc;box-shadow:none}
-body.ui-contract-v1 .visual-email-thread-page .email-modal-footer>*,body.ui-contract-v1 .visual-email-thread-page .email-modal-footer>form{min-width:0!important}
-body.ui-contract-v1 .visual-email-thread-page .email-modal-footer :is(button,.button-link){min-height:52px;height:52px;padding:11px 18px;border-radius:9px;font-size:14px;font-weight:700;line-height:1.2;white-space:normal}
-body.ui-contract-v1 .visual-email-thread-page .email-reply-primary{color:#fff;background:#155eef;border-color:#155eef}body.ui-contract-v1 .visual-email-thread-page .email-reply-primary:hover{background:#0f4fd1}body.ui-contract-v1 .visual-email-thread-page .email-reply-primary:focus-visible{outline:3px solid #8bb8ff;outline-offset:2px}
-body.ui-contract-v1 .visual-email-thread-page .email-treatment-open{color:#174ea6;background:#eaf2ff;border-color:#8bb8ff}body.ui-contract-v1 .visual-email-thread-page .email-treatment-open:hover{background:#dceaff}
-body.ui-contract-v1 .visual-email-thread-page .email-spam-action{color:#9b2c24;background:#fff7ed;border-color:#f3b37a}body.ui-contract-v1 .visual-email-thread-page .email-spam-action:hover{background:#ffedd5;border-color:#e8873b}
-body.ui-contract-v1 .visual-email-thread-page .email-create-task-action{color:#fff;background:#176c45;border-color:#176c45}body.ui-contract-v1 .visual-email-thread-page .email-create-task-action:hover{background:#125b3a}
-body.ui-contract-v1 .visual-email-thread-page .email-modal-footer :is(button,.button-link):focus-visible{outline:3px solid #8bb8ff;outline-offset:2px}body.ui-contract-v1 .visual-email-thread-page .email-modal-footer :is(button,.button-link):disabled{cursor:not-allowed;opacity:.5;filter:saturate(.5)}
-body.ui-contract-v1 .visual-email-thread-page .email-create-task-form{display:grid;grid-template-columns:minmax(0,1fr) minmax(138px,auto);align-items:center;gap:12px}body.ui-contract-v1 .visual-email-thread-page .email-create-task-form fieldset{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));align-content:center;gap:7px 14px;min-width:0;min-height:64px;padding:8px 12px}body.ui-contract-v1 .visual-email-thread-page .email-create-task-form label{display:grid;grid-template-columns:18px minmax(0,1fr);align-items:start;gap:6px;min-width:0;line-height:1.25}body.ui-contract-v1 .visual-email-thread-page .email-create-task-form input{width:16px;height:16px;margin:1px 0}body.ui-contract-v1 .visual-email-thread-page .email-create-task-form span{overflow-wrap:anywhere}
-@media(max-width:1100px){body.ui-contract-v1 .visual-email-thread-page .email-modal-footer{grid-template-columns:repeat(4,minmax(0,1fr))}body.ui-contract-v1 .visual-email-thread-page .email-create-task-form{grid-column:1/-1;grid-template-columns:minmax(0,1fr) auto}}
-@media(max-width:600px){body.ui-contract-v1 .visual-email-thread-page{padding-bottom:max(24px,env(safe-area-inset-bottom))}body.ui-contract-v1 .visual-email-thread-page .email-body-frame{height:clamp(340px,58vh,620px)}body.ui-contract-v1 .visual-email-thread-page .email-modal-footer{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;padding:14px 8px calc(18px + env(safe-area-inset-bottom))}body.ui-contract-v1 .visual-email-thread-page .email-modal-footer :is(button,.button-link){width:100%;min-height:52px;height:52px;padding-inline:12px}body.ui-contract-v1 .visual-email-thread-page .email-create-task-form{grid-template-columns:1fr;gap:10px}body.ui-contract-v1 .visual-email-thread-page .email-create-task-form fieldset{grid-template-columns:1fr;min-height:0;padding:10px 12px}body.ui-contract-v1 .visual-email-thread-page .email-create-task-action{width:100%}}
+.ui-contract-v1.visual-email-thread-page{height:auto!important;min-height:100dvh;overflow-x:hidden!important;overflow-y:auto!important;padding-bottom:max(40px,env(safe-area-inset-bottom))}
+.ui-contract-v1.visual-email-thread-page .email-modal-shell{height:auto!important;min-height:0!important;max-height:none!important;overflow:visible!important}
+.ui-contract-v1.visual-email-thread-page .email-reader-grid,.ui-contract-v1.visual-email-thread-page .email-conversation{height:auto!important;max-height:none!important;overflow:visible!important}
+.ui-contract-v1.visual-email-thread-page .email-conversation{padding-bottom:28px}
+.ui-contract-v1.visual-email-thread-page .email-body-frame{display:block;width:100%;height:clamp(420px,62vh,760px);min-height:280px;max-height:none;border:1px solid var(--ui-color-border);border-radius:8px}
+.ui-contract-v1.visual-email-thread-page .email-modal-footer{position:relative!important;inset:auto!important;z-index:1;display:grid!important;grid-template-columns:auto auto auto minmax(130px,.7fr) minmax(310px,1.6fr);align-items:stretch;gap:10px;margin-top:0;padding:14px 16px calc(14px + env(safe-area-inset-bottom));overflow:visible!important;border-top:1px solid var(--ui-color-border);background:#f8fafc;box-shadow:none}
+.ui-contract-v1.visual-email-thread-page .email-modal-footer>*,.ui-contract-v1.visual-email-thread-page .email-modal-footer>form{min-width:0!important}
+.ui-contract-v1.visual-email-thread-page .email-modal-footer :is(button,.button-link){min-height:44px;height:auto;padding:9px 14px;border-radius:8px;font-size:13px;font-weight:700;line-height:1.2;white-space:normal}
+.ui-contract-v1.visual-email-thread-page .email-reply-primary{color:#fff;background:#155eef;border-color:#155eef}.ui-contract-v1.visual-email-thread-page .email-reply-primary:hover{background:#0f4fd1}.ui-contract-v1.visual-email-thread-page .email-reply-primary:focus-visible{outline:3px solid #8bb8ff;outline-offset:2px}
+.ui-contract-v1.visual-email-thread-page .email-treatment-open{color:#174ea6;background:#eaf2ff;border-color:#8bb8ff}.ui-contract-v1.visual-email-thread-page .email-treatment-open:hover{background:#dceaff}
+.ui-contract-v1.visual-email-thread-page .email-spam-action{color:#9b2c24;background:#fff7ed;border-color:#f3b37a}.ui-contract-v1.visual-email-thread-page .email-spam-action:hover{background:#ffedd5;border-color:#e8873b}
+.ui-contract-v1.visual-email-thread-page .email-create-task-action{color:#fff;background:#176c45;border-color:#176c45}.ui-contract-v1.visual-email-thread-page .email-create-task-action:hover{background:#125b3a}
+.ui-contract-v1.visual-email-thread-page .email-modal-footer :is(button,.button-link):focus-visible{outline:3px solid #8bb8ff;outline-offset:2px}.ui-contract-v1.visual-email-thread-page .email-modal-footer :is(button,.button-link):disabled{cursor:not-allowed;opacity:.5;filter:saturate(.5)}
+.ui-contract-v1.visual-email-thread-page .email-create-task-form{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:stretch;gap:10px}.ui-contract-v1.visual-email-thread-page .email-create-task-form fieldset{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px 12px;min-width:0;padding:7px 10px}.ui-contract-v1.visual-email-thread-page .email-create-task-form label{display:grid;grid-template-columns:18px minmax(0,1fr);align-items:start;gap:6px;min-width:0;line-height:1.25}.ui-contract-v1.visual-email-thread-page .email-create-task-form input{width:16px;height:16px;margin:1px 0}.ui-contract-v1.visual-email-thread-page .email-create-task-form span{overflow-wrap:anywhere}
+@media(max-width:1100px){.ui-contract-v1.visual-email-thread-page .email-modal-footer{grid-template-columns:repeat(4,minmax(0,1fr))}.ui-contract-v1.visual-email-thread-page .email-create-task-form{grid-column:1/-1;grid-template-columns:minmax(0,1fr) auto}}
+@media(max-width:600px){.ui-contract-v1.visual-email-thread-page{padding-bottom:max(24px,env(safe-area-inset-bottom))}.ui-contract-v1.visual-email-thread-page .email-body-frame{height:clamp(340px,58vh,620px)}.ui-contract-v1.visual-email-thread-page .email-modal-footer{grid-template-columns:repeat(2,minmax(0,1fr));padding:12px 8px calc(18px + env(safe-area-inset-bottom))}.ui-contract-v1.visual-email-thread-page .email-create-task-form{grid-template-columns:1fr}.ui-contract-v1.visual-email-thread-page .email-create-task-form fieldset{grid-template-columns:1fr}.ui-contract-v1.visual-email-thread-page .email-create-task-action{width:100%}}
 
-/* Email workspace: persistent command bar and one scrolling content region. */
-body.ui-contract-v1 .visual-email-thread-page{height:100dvh!important;min-height:0!important;overflow:hidden!important;padding-bottom:0!important}
-body.ui-contract-v1 .visual-email-thread-page .email-modal-shell-full{display:flex!important;flex-direction:column;height:calc(100dvh - 84px)!important;min-height:520px!important;max-height:none!important;overflow:hidden!important}
-body.ui-contract-v1 .visual-email-thread-page .email-modal-header{flex:0 0 auto;order:0}
-body.ui-contract-v1 .visual-email-thread-page .email-modal-footer{position:relative!important;inset:auto!important;z-index:8;flex:0 0 auto;order:1;margin:0;box-shadow:0 8px 20px rgb(15 23 42 / 8%)}
-body.ui-contract-v1 .visual-email-thread-page .email-reader-grid{display:grid!important;grid-template-columns:minmax(0,1fr)!important;grid-template-rows:auto!important;flex:1 1 auto;order:2;min-height:0!important;height:auto!important;max-height:none!important;overflow:auto!important;overscroll-behavior:contain;background:#eef2f7}
-body.ui-contract-v1 .visual-email-thread-page .email-conversation{min-width:0;width:100%;height:auto!important;max-height:none!important;overflow:visible!important;padding-bottom:32px}
-body.ui-contract-v1 .visual-email-thread-page .email-treatment-drawer{display:none;position:relative;z-index:1;inset:auto;width:auto;height:auto;padding:14px;overflow:visible;background:#f8fafc;border-left:1px solid var(--ui-color-border);box-shadow:none;transform:none;transition:none}
-body.ui-contract-v1 .visual-email-thread-page .email-treatment-drawer.is-open{display:block;transform:none}
-body.ui-contract-v1 .visual-email-thread-page .email-modal-shell-full.is-treatment-open .email-reader-grid{grid-template-columns:minmax(0,1fr) minmax(360px,440px)!important;align-items:start}
-body.ui-contract-v1 .visual-email-thread-page .email-treatment-open.is-active{color:#fff;background:#174ea6;border-color:#174ea6}
-body.ui-contract-v1 .visual-email-thread-page .email-drawer-header{top:0;margin:-14px -14px 12px;padding:12px 14px}
-body.ui-contract-v1 .visual-email-thread-page .email-treatment-area{display:block;margin:0 0 12px;padding:12px;border:1px solid #dbe3ec;border-radius:10px;background:#fff;box-shadow:0 2px 8px rgb(15 23 42 / 4%)}
-body.ui-contract-v1 .visual-email-thread-page .email-treatment-area>summary{margin:-12px;padding:12px;cursor:pointer;list-style-position:inside}
-body.ui-contract-v1 .visual-email-thread-page .email-treatment-area[open]>summary{margin-bottom:12px;border-bottom:1px solid #e5eaf0}
-body.ui-contract-v1 .visual-email-thread-page section.email-treatment-area>header{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
-body.ui-contract-v1 .visual-email-thread-page .email-treatment-summary dl dd small{display:block;margin-top:3px;color:#64748b}
-body.ui-contract-v1 .visual-email-thread-page .email-classification-history{display:grid;gap:7px;margin-top:12px;padding-top:12px;border-top:1px solid #e5eaf0}
-body.ui-contract-v1 .visual-email-thread-page .email-classification-history article{display:grid;grid-template-columns:auto 1fr;gap:2px 8px;padding:8px;border-radius:7px;background:#f8fafc}
-body.ui-contract-v1 .visual-email-thread-page .email-classification-history article span{text-align:right;color:#64748b;font-size:11px}
-body.ui-contract-v1 .visual-email-thread-page .email-classification-history article small{grid-column:1/-1;color:#475569}
-body.ui-contract-v1 .visual-email-thread-page .email-treatment-cancel{width:100%;margin-top:4px}
-@media(max-width:900px){body.ui-contract-v1 .visual-email-thread-page .email-modal-shell-full{height:calc(100dvh - 96px)!important;min-height:440px!important}body.ui-contract-v1 .visual-email-thread-page .email-modal-shell-full.is-treatment-open .email-reader-grid{grid-template-columns:minmax(0,1fr)!important}body.ui-contract-v1 .visual-email-thread-page .email-treatment-drawer{border-left:0;border-top:1px solid var(--ui-color-border)}}
+/* Email workspace: fixed controls with full-width treatment and composer work areas. */
+.ui-contract-v1 .visual-email-thread-page{height:100dvh!important;min-height:0!important;overflow:hidden!important;padding-bottom:0}
+.ui-contract-v1 .visual-email-thread-page .email-modal-shell{display:flex!important;flex-direction:column;height:calc(100dvh - 54px)!important;min-height:0!important;overflow:hidden!important}
+.ui-contract-v1 .visual-email-thread-page .email-modal-header{position:sticky;z-index:30;top:0;flex:0 0 auto;order:0;background:#fff}
+.ui-contract-v1 .visual-email-thread-page .email-modal-footer{position:sticky!important;z-index:29;top:0!important;bottom:auto!important;flex:0 0 auto;order:1;display:grid!important;grid-template-columns:auto auto auto minmax(130px,.7fr) minmax(310px,1.6fr);margin:0!important;padding:8px 16px!important;border-top:0;border-bottom:1px solid var(--ui-color-border);box-shadow:0 6px 14px rgb(15 23 42 / 7%)}
+.ui-contract-v1 .visual-email-thread-page .email-reader-grid{display:flex!important;flex:1 1 auto;flex-direction:column;order:2;min-height:0;overflow:auto!important;background:#fff}
+.ui-contract-v1 .visual-email-thread-page .email-conversation{order:2;width:100%;min-height:0;overflow:visible!important;padding:16px clamp(12px,2vw,28px) 28px}
+.ui-contract-v1 .visual-email-thread-page .email-treatment-drawer{position:relative;z-index:2;inset:auto;order:1;display:none;width:100%;height:auto;max-height:min(58vh,680px);padding:12px 16px 18px;overflow:auto;overscroll-behavior:contain;border:0;border-bottom:1px solid var(--ui-color-border);background:#f8fafc;box-shadow:0 10px 24px rgb(15 23 42 / 9%);transform:none;transition:none}
+.ui-contract-v1 .visual-email-thread-page .email-treatment-drawer.is-open{display:block;transform:none}
+.ui-contract-v1 .visual-email-thread-page .email-drawer-header{position:sticky;z-index:3;top:-12px;padding:10px 0;background:#f8fafc}
+.ui-contract-v1 .visual-email-thread-page .email-body-frame{display:block;width:100%;height:clamp(360px,52vh,620px)!important;min-height:280px;max-height:620px!important;overflow:auto;border:1px solid var(--ui-color-border);border-radius:8px}
+.ui-contract-v1 .visual-email-thread-page .email-message-card,.ui-contract-v1 .visual-email-thread-page .email-message-addresses,.ui-contract-v1 .visual-email-thread-page .email-message-addresses dd{min-width:0;max-width:100%;overflow-wrap:anywhere}
+.ui-contract-v1 .visual-email-thread-page .email-composer{width:100%;max-width:none;padding:4px 0}
+.ui-contract-v1 .visual-email-thread-page .email-compose-recipient-grid{grid-template-columns:repeat(4,minmax(0,1fr))}
+.ui-contract-v1 .visual-email-thread-page .email-editor-label{display:block!important;width:100%}
+.ui-contract-v1 .visual-email-thread-page .email-editor-label>span{width:100%}
+.ui-contract-v1 .visual-email-thread-page .email-html-toolbar{display:flex;gap:5px;padding:6px;border:1px solid #cbd5e1;border-bottom:0;border-radius:8px 8px 0 0;background:#eef2f7}
+.ui-contract-v1 .visual-email-thread-page .email-html-toolbar button{min-width:34px;min-height:30px;padding:4px 8px;background:#fff;color:#172033}
+.ui-contract-v1 .visual-email-thread-page .email-html-editor{display:block;min-height:220px;max-height:42vh;padding:12px;overflow:auto;white-space:pre-wrap;border:1px solid #cbd5e1;border-radius:0 0 8px 8px;background:#fff;color:#172033}
+.ui-contract-v1 .visual-email-thread-page .email-html-editor:empty::before{content:attr(data-placeholder);color:#7a8799;pointer-events:none}
+.ui-contract-v1 .visual-email-thread-page .email-attachments{margin:14px 0 0;padding:12px;border:1px solid #bfdbfe;border-radius:8px;background:#f8fbff}
+.ui-contract-v1 .visual-email-thread-page .email-attachment-row{grid-template-columns:34px minmax(0,1fr) auto auto}
+.ui-contract-v1 .visual-email-thread-page .email-attachment-actions{display:flex;gap:6px;align-items:center}.ui-contract-v1 .visual-email-thread-page .email-attachment-actions :is(button,.button-link){width:auto;min-height:34px;padding:6px 10px}
+body.email-treatment-drawer-open{overflow:auto}
+@media(max-width:900px){.ui-contract-v1 .visual-email-thread-page .email-modal-shell{height:calc(100dvh - 48px)!important}.ui-contract-v1 .visual-email-thread-page .email-modal-footer{grid-template-columns:repeat(2,minmax(0,1fr))}.ui-contract-v1 .visual-email-thread-page .email-create-task-form{grid-column:1/-1}.ui-contract-v1 .visual-email-thread-page .email-compose-recipient-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.ui-contract-v1 .visual-email-thread-page .email-treatment-drawer{max-height:65vh}.ui-contract-v1 .visual-email-thread-page .email-attachment-row{grid-template-columns:32px minmax(0,1fr)}.ui-contract-v1 .visual-email-thread-page .email-attachment-row>.email-badge,.ui-contract-v1 .visual-email-thread-page .email-attachment-actions{grid-column:2}}
+
+/* Email follow-up: drafts and resilient attachment previews. */
+.ui-contract-v1 .email-message-card.is-draft{border:2px dashed #8b5cf6;background:#faf7ff;box-shadow:none}
+.ui-contract-v1 .email-message-card.is-draft>header{background:#f3e8ff;border-bottom-color:#c4b5fd}
+.ui-contract-v1 .email-draft-badge{display:inline-flex;padding:4px 8px;border:1px solid #8b5cf6;border-radius:999px;background:#fff;color:#5b21b6;font-size:11px;font-weight:800;white-space:nowrap}
+.ui-contract-v1 .email-draft-actions{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid #ddd6fe;background:#faf5ff}.ui-contract-v1 .email-draft-actions button{background:#6d28d9}.ui-contract-v1 .email-draft-actions small{color:#5b21b6;font-weight:700}
+.ui-contract-v1 .email-pdf-preview{height:100%;min-height:58vh;background:#f8fafc}
+.ui-contract-v1 .email-pdf-preview iframe{display:block;width:100%;height:100%;min-height:58vh;border:0;background:#fff}
+.ui-contract-v1 .email-preview-fallback{margin:0;padding:8px 12px;border-top:1px solid #d8e0ea;background:#fff7ed;color:#7c2d12;font-size:12px}

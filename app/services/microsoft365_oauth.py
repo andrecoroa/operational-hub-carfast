@@ -12,12 +12,14 @@ import urllib.request
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Protocol
+from pathlib import Path
 
 from cryptography.fernet import Fernet, InvalidToken, MultiFernet
 from sqlalchemy import select
 
 from app.core.database import SessionLocal
 from app.models.email import EmailSecretReference
+from app.models.email import EmailAttachment, EmailMessage
 from app.services.audit import record_audit
 
 GRAPH_DELEGATED_SCOPES = (
@@ -27,6 +29,8 @@ GRAPH_DELEGATED_SCOPES = (
     "User.Read",
     "Mail.ReadWrite.Shared",
     "Mail.Send.Shared",
+    "MailboxSettings.Read",
+    "MailboxSettings.ReadWrite",
 )
 OAUTH_ATTEMPT_TTL = timedelta(minutes=10)
 
@@ -170,6 +174,7 @@ def authorization_url(
             "response_type": "code",
             "redirect_uri": redirect_uri,
             "response_mode": "query",
+            "prompt": "login",
             "scope": " ".join(GRAPH_DELEGATED_SCOPES),
             "state": state,
             "code_challenge": challenge,
@@ -262,7 +267,7 @@ def exchange_authorization_code(
 
 def _delegated_access_token(
     *, tenant_id: str, client_id: str, client_credential_reference: str,
-    token_reference: str,
+    token_reference: str, force_refresh: bool = False,
 ) -> str:
     """Return a current delegated token, refreshing it through its opaque store."""
     token_payload = json.loads(_secret_store.read(token_reference))
@@ -270,7 +275,7 @@ def _delegated_access_token(
     expires_at = datetime.fromisoformat(expires_at_raw) if expires_at_raw else None
     if expires_at and expires_at.tzinfo is None:
         expires_at = expires_at.replace(tzinfo=UTC)
-    if token_payload.get("access_token") and (
+    if not force_refresh and token_payload.get("access_token") and (
         expires_at is None or expires_at > datetime.now(UTC) + timedelta(minutes=2)
     ):
         return str(token_payload["access_token"])
@@ -288,8 +293,11 @@ def _delegated_access_token(
         headers={"Content-Type": "application/x-www-form-urlencoded"},
         method="POST",
     )
-    with urllib.request.urlopen(request, timeout=20) as response:
-        refreshed = json.loads(response.read())
+    try:
+        with urllib.request.urlopen(request, timeout=20) as response:
+            refreshed = json.loads(response.read())
+    except urllib.error.HTTPError as exc:
+        raise RuntimeError(f"Microsoft identity devolveu HTTP {exc.code}.") from exc
     if not refreshed.get("access_token"):
         raise RuntimeError("A renovação OAuth Microsoft 365 não devolveu access token.")
     refreshed.setdefault("refresh_token", token_payload.get("refresh_token"))
@@ -326,3 +334,112 @@ def move_shared_mailbox_message_to_junk(
                 raise RuntimeError(f"Microsoft Graph devolveu HTTP {response.status}.")
     except urllib.error.HTTPError as exc:
         raise RuntimeError(f"Microsoft Graph devolveu HTTP {exc.code}.") from exc
+
+
+def _graph_recipient(value: object) -> dict[str, dict[str, str]] | None:
+    address = value.get("Email") if isinstance(value, dict) else str(value or "")
+    address = str(address or "").strip()
+    if not address:
+        return None
+    return {"emailAddress": {"address": address}}
+
+
+def send_shared_mailbox_message(
+    message: EmailMessage,
+    *,
+    tenant_id: str,
+    client_id: str,
+    client_credential_reference: str,
+    token_reference: str,
+    mailbox_address: str,
+    sender_address: str,
+    reply_to: str,
+    attachments: list[EmailAttachment] | None = None,
+) -> dict[str, object]:
+    """Send through a configured shared mailbox using delegated Graph access."""
+    token_kwargs = {
+        "tenant_id": tenant_id,
+        "client_id": client_id,
+        "client_credential_reference": client_credential_reference,
+        "token_reference": token_reference,
+    }
+    token = _delegated_access_token(
+        **token_kwargs,
+    )
+
+    recipients = [
+        recipient
+        for value in (message.recipients_json or [])
+        if (recipient := _graph_recipient(value)) is not None
+    ]
+    if not recipients:
+        raise RuntimeError("A mensagem Microsoft 365 não tem destinatário.")
+
+    graph_message: dict[str, object] = {
+        "subject": message.subject,
+        "body": {
+            "contentType": "HTML" if message.html_body else "Text",
+            "content": message.html_body or message.text_body or "",
+        },
+        "toRecipients": recipients,
+        # Graph submits through the configured mailbox, while ``from`` may be
+        # an Exchange-authorized alias of that same mailbox. Exchange remains
+        # authoritative and rejects aliases that are not enabled tenant-side.
+        "from": {"emailAddress": {"address": sender_address}},
+        "replyTo": [{"emailAddress": {"address": reply_to}}],
+    }
+    for source, target in ((message.cc_json, "ccRecipients"), (message.bcc_json, "bccRecipients")):
+        values = [
+            recipient
+            for value in (source or [])
+            if (recipient := _graph_recipient(value)) is not None
+        ]
+        if values:
+            graph_message[target] = values
+
+    if attachments:
+        try:
+            graph_message["attachments"] = [
+                {
+                    "@odata.type": "#microsoft.graph.fileAttachment",
+                    "name": attachment.file_name,
+                    "contentType": attachment.content_type or "application/octet-stream",
+                    "contentBytes": base64.b64encode(
+                        Path(attachment.storage_path).read_bytes()
+                    ).decode("ascii"),
+                }
+                for attachment in attachments
+            ]
+        except OSError as exc:
+            raise RuntimeError("Um anexo da resposta já não está disponível.") from exc
+
+    mailbox = urllib.parse.quote(mailbox_address, safe="")
+    body = json.dumps({"message": graph_message, "saveToSentItems": True}).encode("utf-8")
+
+    def submit(access_token: str) -> None:
+        request = urllib.request.Request(
+            f"https://graph.microsoft.com/v1.0/users/{mailbox}/sendMail",
+            data=body,
+            headers={
+                "Authorization": f"Bearer {access_token}",
+                "Content-Type": "application/json",
+            },
+            method="POST",
+        )
+        with urllib.request.urlopen(request, timeout=20) as response:
+            if response.status != 202:
+                raise RuntimeError(f"Microsoft Graph devolveu HTTP {response.status}.")
+
+    try:
+        submit(token)
+    except urllib.error.HTTPError as exc:
+        if exc.code != 401:
+            raise RuntimeError(f"Microsoft Graph devolveu HTTP {exc.code}.") from exc
+        refreshed_token = _delegated_access_token(**token_kwargs, force_refresh=True)
+        try:
+            submit(refreshed_token)
+        except urllib.error.HTTPError as retry_exc:
+            raise RuntimeError(
+                f"Microsoft Graph devolveu HTTP {retry_exc.code} após renovar a autenticação."
+            ) from retry_exc
+    return {"Provider": "microsoft365", "MessageID": None}

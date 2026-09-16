@@ -13,12 +13,10 @@ def test_alert_builder_requires_authentication():
     assert response.headers["location"] == "/login?next=%2Falerts"
 
 
-def test_alert_builder_template_contains_rule_designer():
-    template = (
-        Path(__file__).resolve().parents[1] / "app" / "templates" / "alerts.html"
-    ).read_text(encoding="utf-8")
+def test_clean_navigation_opens_operational_notifications():
+    root = Path(__file__).resolve().parents[1]
+    sidebar = (root / "app" / "templates" / "_sidebar.html").read_text(encoding="utf-8")
+    topbar = (root / "app" / "templates" / "_visual_topbar.html").read_text(encoding="utf-8")
 
-    assert "Alertas personalizados" in template
-    assert "Escolha a fonte de dados" in template
-    assert "Comparação entre campos" in template
-    assert 'data-action="add-rule"' in template
+    assert 'href="/v2-clean/tasks/notifications"' in sidebar
+    assert 'href="/v2-clean/tasks/notifications"' in topbar

@@ -54,6 +54,11 @@ def test_clean_admin_pages_are_available_to_admin(authenticated_client):
     assert "Código técnico" in roles_page.text
     assert ">Email<" in roles_page.text
     assert "/v2-clean/admin/work-classification?view=channels" in roles_page.text
+    assert 'data-admin-table' in roles_page.text
+    assert 'data-permission-search' in roles_page.text
+    assert 'data-permission-state' in roles_page.text
+    assert 'data-permission-group-toggle' in roles_page.text
+    assert '/static/js/admin-table-tools.js' in roles_page.text
 
 
 def test_clean_admin_setup_is_guided_fail_closed_and_ordered(authenticated_client):
@@ -155,10 +160,24 @@ def test_work_classification_uses_compact_hierarchy_table_and_editors(authentica
     assert 'data-work-edit-parent' in response.text
     assert "Código estável (não editável)" in response.text
     assert "Administração da hierarquia" in response.text
+    assert 'class="clean-work-admin-nav"' in response.text
+    assert 'data-admin-filter-columns="Categoria,Função,Utilizador/equipa"' in response.text
 
 
 def test_work_classification_registers_lisbon_datetime_filter():
     assert "lisbon_datetime" in clean_admin.templates.env.filters
+
+
+def test_work_classification_initial_tab_keeps_admin_table_default_filter():
+    template = open(
+        "app/templates/_clean_admin_work_classification.html", encoding="utf-8"
+    ).read()
+
+    guard = template.index("let initializingAdminView = true")
+    initial_click = template.index("requestedAdminTab?.click()")
+    release = template.index("initializingAdminView = false")
+    assert guard < initial_click < release
+    assert "if (!initializingAdminView) applyAreaSearch();" in template
 
 
 def test_work_scope_permissions_have_an_edit_action(authenticated_client, db_session):

@@ -1,14 +1,17 @@
 import html
 import json
 import re
+from html.parser import HTMLParser
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
 from openpyxl import Workbook
 from sqlalchemy import select
+from sqlalchemy.dialects import postgresql
 
 import app.main as app_main
-from app.models.documents import Document, DocumentLink
+from app.models.documents import Document, DocumentLink, VehicleDocumentRecord, VehicleDocumentRecordTag
+from datetime import date
 from app.models.audit import AuditLog
 from app.models.tasks import Task
 from app.models.vehicles import Vehicle, VehicleExternalSnapshot
@@ -17,13 +20,25 @@ from app.models.workshop_phased import (
     WorkshopPhasedProcess,
     WorkshopPhasedProcessPhase,
     WorkshopPhasedTechnicalReport,
+    WorkshopDiagnosticCatalogItem,
+    WorkshopDiagnosticSuggestion,
 )
 from app.services.rentway_fleet_importer import import_rentway_fleet_xlsx
 from app.web import router as web_router
 from app.web.router import clean_workshop_phase_advance_error
+from app.web.router import clean_workshop_substeps
 from app.web.router import clean_workshop_stages
 from app.web.router import clean_workshop_technical_reading_rows
 from app.services.users import create_user
+from app.services.workshop_historical_evidence import historical_equivalent_invoice_statement
+
+
+def test_historical_invoice_query_does_not_distinct_postgresql_json():
+    sql = str(historical_equivalent_invoice_statement(1, date(2026, 1, 29), "degradation").compile(
+        dialect=postgresql.dialect()
+    ))
+    assert "DISTINCT" not in sql.upper()
+    assert "vehicle_document_records.id IN (SELECT vehicle_document_record_tags.record_id" in sql
 
 
 def test_workshop_web_actions_reject_forgery_and_adverse_order_and_audit_save(authenticated_client, db_session):
@@ -97,6 +112,145 @@ def test_workshop_web_actions_reject_forgery_and_adverse_order_and_audit_save(au
     assert "return_context" not in phase_row.data_json["form_snapshot"]
     audit = db_session.scalar(select(AuditLog).where(AuditLog.entity_id == str(process.id), AuditLog.action == "workshop.phase.saved"))
     assert audit is not None
+
+
+def test_validation_visible_save_advances_legacy_template_snapshot(authenticated_client, db_session):
+    process = WorkshopPhasedProcess(
+        public_reference="OF-TEST-VALIDATION-CARD",
+        process_type="general",
+        title="Single visible validation card",
+        creation_mode="historical",
+        status="active",
+        plate_snapshot="ZZ-98-ZZ",
+        current_phase_code="validacao",
+        priority="normal",
+        origin="v2_clean",
+        metadata_json={},
+        template_snapshot_json={
+            "config": {
+                "phases": [
+                    {"code": "validacao", "substeps": ["prerequisitos", "pedido", "orientacao"]},
+                    {"code": "diagnostico", "substeps": ["relatorios", "leituras", "problemas"]},
+                ]
+            }
+        },
+    )
+    db_session.add(process)
+    db_session.flush()
+    db_session.add(
+        WorkshopPhasedProcessPhase(
+            process_id=process.id,
+            phase_code="validacao",
+            name="Validação",
+            status="in_progress",
+            sort_order=2,
+            data_json={},
+        )
+    )
+    db_session.commit()
+
+    assert clean_workshop_substeps("validacao", process) == ("pedido_orientacao",)
+    saved = authenticated_client.post(
+        "/v2-clean/workshop/validacao/save",
+        data={
+            "process_id": str(process.id),
+            "action": "save_substep",
+            "current_substep": "pedido_orientacao",
+            "form_state_json": json.dumps(
+                {
+                    "service_decision": "Seguir diagnóstico",
+                    "validation_closed": "Com reservas",
+                    "validation_reserve_reason": "Autorização original por confirmar.",
+                }
+            ),
+        },
+        follow_redirects=False,
+    )
+    assert saved.status_code == 303
+    assert saved.headers["location"] == f"/v2-clean/workshop/diagnostico?process_id={process.id}"
+    db_session.expire_all()
+    phase = db_session.scalar(
+        select(WorkshopPhasedProcessPhase).where(
+            WorkshopPhasedProcessPhase.process_id == process.id,
+            WorkshopPhasedProcessPhase.phase_code == "validacao",
+        )
+    )
+    assert phase.status == "completed"
+    assert "pedido_orientacao" in phase.data_json["saved_substeps"]
+    assert db_session.get(WorkshopPhasedProcess, process.id).current_phase_code == "diagnostico"
+
+
+def test_diagnostic_suggestions_do_not_nest_forms_or_break_phase_save(authenticated_client, db_session):
+    process = WorkshopPhasedProcess(
+        public_reference="OF-TEST-DIAGNOSTIC-FORM",
+        process_type="general",
+        title="Diagnostic form ownership",
+        creation_mode="historical",
+        status="active",
+        plate_snapshot="ZZ-97-ZZ",
+        current_phase_code="diagnostico",
+        priority="normal",
+        origin="v2_clean",
+        metadata_json={},
+    )
+    catalog = WorkshopDiagnosticCatalogItem(
+        code="test_diagnostic_form_ownership",
+        name="Informações de manutenção",
+        family="maintenance",
+        requirement="conditional",
+        active=True,
+    )
+    db_session.add_all([process, catalog])
+    db_session.flush()
+    db_session.add_all(
+        [
+            WorkshopPhasedProcessPhase(
+                process_id=process.id,
+                phase_code="diagnostico",
+                name="Diagnóstico",
+                status="in_progress",
+                sort_order=3,
+                data_json={},
+            ),
+            WorkshopDiagnosticSuggestion(
+                process_id=process.id,
+                catalog_item_id=catalog.id,
+                status="suggested",
+                explanation="Teste de formulário",
+            ),
+        ]
+    )
+    db_session.commit()
+
+    response = authenticated_client.get(f"/v2-clean/workshop/diagnostico?process_id={process.id}")
+    assert response.status_code == 200
+
+    class FormOwnershipParser(HTMLParser):
+        def __init__(self):
+            super().__init__()
+            self.form_depth = 0
+            self.nested_form = False
+            self.phase_button_owned = False
+            self.suggestion_button_owned = False
+
+        def handle_starttag(self, tag, attrs):
+            attributes = dict(attrs)
+            if tag == "form":
+                self.nested_form |= self.form_depth > 0
+                self.form_depth += 1
+            elif tag == "button":
+                self.phase_button_owned |= attributes.get("value") == "save_substep" and self.form_depth == 1
+                self.suggestion_button_owned |= attributes.get("value") == "confirmed" and bool(attributes.get("form"))
+
+        def handle_endtag(self, tag):
+            if tag == "form":
+                self.form_depth -= 1
+
+    parser = FormOwnershipParser()
+    parser.feed(response.text)
+    assert not parser.nested_form
+    assert parser.phase_button_owned
+    assert parser.suggestion_button_owned
 
 
 def test_workshop_navigation_groups_existing_phases_into_four_visible_stages():
@@ -564,6 +718,116 @@ def test_workshop_print_reports_and_repair_material_fields(authenticated_client,
     assert "Telecarregamento não autorizado" in repair_report.text
     assert "2 h 30 min" in repair_report.text
     assert "3 h 10 min" in repair_report.text
+
+
+def test_historical_workshop_prints_draft_and_documented_entry_date(authenticated_client, db_session):
+    vehicle = Vehicle(
+        plate="BD-29-LZ",
+        vin="VINBD29LZ123456789",
+        brand="CITROEN",
+        model="JUMPER",
+        active=True,
+    )
+    db_session.add(vehicle)
+    db_session.flush()
+    process = WorkshopPhasedProcess(
+        process_type="workshop",
+        title="Oficina histórica BD-29-LZ",
+        creation_mode="historical",
+        status="open",
+        vehicle_id=vehicle.id,
+        plate_snapshot=vehicle.plate,
+        current_phase_code="validacao",
+        priority="normal",
+        metadata_json={},
+    )
+    db_session.add(process)
+    db_session.flush()
+    db_session.add_all(
+        [
+            WorkshopPhasedProcessPhase(
+                process_id=process.id,
+                phase_code="entrada",
+                name="Entrada",
+                status="completed",
+                sort_order=1,
+                data_json={
+                    "historical_intervention_date": "2026-01-29",
+                    "entry_km": "123596",
+                    "entry_reasons": ["Revisão / degradação óleo"],
+                    "short_description": "Degradação: óleo e filtro conforme FO 1289",
+                },
+            ),
+            WorkshopPhasedProcessPhase(
+                process_id=process.id,
+                phase_code="validacao",
+                name="Validação",
+                status="in_progress",
+                sort_order=2,
+                data_json={"form_snapshot": {"validation_diagnostic_focus": "Confrontar FO e diagnóstico", "service_type": ["Degradação óleo"]}},
+            ),
+            WorkshopPhasedProcessPhase(
+                process_id=process.id,
+                phase_code="auditoria",
+                name="Auditoria",
+                status="not_started",
+                sort_order=5,
+                data_json={"form_snapshot": {}},
+            ),
+            WorkshopPhasedProcessPhase(
+                process_id=process.id,
+                phase_code="reparacao",
+                name="Reparação",
+                status="not_started",
+                sort_order=6,
+                data_json={"form_snapshot": {
+                    "repair_authorized_services": "Registo histórico; autorização não localizada",
+                    "repair_material_1_name": "Óleo do motor",
+                    "repair_material_1_origin": "FO 1289; sem valor",
+                    "repair_summary": "Troca de óleo e filtro documentada",
+                }},
+            ),
+        ]
+    )
+    work_order = VehicleDocumentRecord(
+        vehicle_id=vehicle.id, main_group="work_orders", document_date=date(2026, 1, 29),
+        external_reference="FO 1289", metadata_json={"work_order_lines": [
+            {"description": "Substituição do óleo", "quantity": "1"},
+            {"description": "Substituição filtro do óleo", "quantity": "1"},
+        ]},
+    )
+    comparison = VehicleDocumentRecord(
+        vehicle_id=vehicle.id, main_group="invoices", document_date=date(2025, 2, 13),
+        external_reference="TAL_FAC 2025/11169437", supplier_name="Oficina exemplo",
+        metadata_json={"invoice_lines": [{"description": "Óleo 5W30", "quantity": "6,60"}]},
+    )
+    db_session.add_all([work_order, comparison])
+    db_session.flush()
+    db_session.add(VehicleDocumentRecordTag(
+        vehicle_id=vehicle.id, record_id=comparison.id, category="maintenance", value="degradation",
+    ))
+    db_session.commit()
+
+    diagnostic = authenticated_client.get(f"/v2-clean/workshop/{process.id}/print/diagnostic-order")
+    assert "29/01/2026" in diagnostic.text
+    assert "Degradação: óleo e filtro conforme FO 1289" in diagnostic.text
+    assert "Rascunho - validação pendente" in diagnostic.text
+    assert "TAL_FAC 2025/11169437" in diagnostic.text
+    assert "Não comprovam os materiais desta FO" in diagnostic.text
+
+    repair = authenticated_client.get(f"/v2-clean/workshop/{process.id}/print/repair-order")
+    assert "Rascunho - autorização pendente" in repair.text
+    assert "Registo histórico; autorização não localizada" in repair.text
+    assert "Óleo do motor" in repair.text
+    assert "FO 1289; sem valor" in repair.text
+    assert "Substituição do óleo" in repair.text
+    assert "Substituição filtro do óleo" in repair.text
+    assert "quantidades de materiais" in repair.text
+
+    final = authenticated_client.get(f"/v2-clean/workshop/{process.id}/print/final-report")
+    assert "Rascunho - processo aberto" in final.text
+    assert "Por fechar" in final.text
+    assert "Troca de óleo e filtro documentada" in final.text
 
 def test_clean_workshop_entry_validation_and_diagnostic_flow(client, db_session):
     vehicle = Vehicle(

@@ -8,6 +8,7 @@ from app.models.email import (
     EmailChannel,
     EmailChannelAlias,
     EmailChannelRole,
+    EmailChannelTransport,
     EmailMessage,
     EmailMessageDelivery,
     EmailTemplate,
@@ -21,6 +22,11 @@ from app.models.work_hierarchy import (
 )
 from app.services.bootstrap import seed_email_channels
 from app.services.email_postmark import ingest_inbound
+from app.services.email_transport import (
+    OutboundIdentityError,
+    resolve_outbound_identity,
+    send_channel_message,
+)
 from app.web import email as email_web
 from app.web.email import (
     _channel_access,
@@ -39,6 +45,316 @@ FUNCTIONAL_CODES = {
     "suporte",
     "outros",
 }
+
+
+def _identity_channel(db_session, code: str, *, policy: str = "original") -> EmailChannel:
+    channel = EmailChannel(
+        code=code,
+        name=code.title(),
+        from_name="CarFast",
+        from_address=f"{code}@example.test",
+        reply_to_address=f"{code}@example.test",
+        reply_policy=policy,
+        active=True,
+    )
+    db_session.add(channel)
+    db_session.flush()
+    return channel
+
+
+def test_original_reply_identity_uses_only_active_alias_of_same_channel(db_session):
+    channel = _identity_channel(db_session, "functional-original")
+    other = _identity_channel(db_session, "functional-other")
+    db_session.add_all(
+        [
+            EmailChannelAlias(
+                channel_id=channel.id,
+                address="received@example.test",
+                inbound_forward_address="technical@inbound.example.test",
+                active=True,
+            ),
+            EmailChannelAlias(
+                channel_id=other.id,
+                address="other@example.test",
+                active=True,
+            ),
+        ]
+    )
+    db_session.flush()
+
+    thread = EmailThread(
+        channel_id=channel.id,
+        subject="Alias",
+        original_recipient_address="RECEIVED@example.test",
+    )
+    identity = resolve_outbound_identity(db_session, channel, thread)
+    assert identity.sender_address == "received@example.test"
+    assert identity.reply_to_address == "received@example.test"
+    assert identity.transport_sender == '"CarFast" <received@example.test>'
+
+    for invalid in (
+        None,
+        "technical@inbound.example.test",
+        "other@example.test",
+        "arbitrary@example.test",
+    ):
+        thread.original_recipient_address = invalid
+        try:
+            resolve_outbound_identity(db_session, channel, thread)
+        except OutboundIdentityError as exc:
+            assert exc.code in {
+                "original_sender_unavailable",
+                "original_sender_not_authorized",
+            }
+        else:
+            raise AssertionError(f"Expected {invalid!r} to be rejected")
+
+
+def test_original_reply_identity_rejects_inactive_alias_and_new_message(db_session):
+    channel = _identity_channel(db_session, "functional-inactive")
+    alias = EmailChannelAlias(
+        channel_id=channel.id,
+        address="inactive@example.test",
+        active=False,
+    )
+    db_session.add(alias)
+    db_session.flush()
+    thread = EmailThread(
+        channel_id=channel.id,
+        subject="Alias inativo",
+        original_recipient_address=alias.address,
+    )
+
+    for candidate in (thread, None):
+        try:
+            resolve_outbound_identity(db_session, channel, candidate)
+        except OutboundIdentityError as exc:
+            assert exc.code in {
+                "original_sender_unavailable",
+                "original_sender_not_authorized",
+            }
+        else:
+            raise AssertionError("Expected original policy to fail closed")
+
+
+def test_mailbox_reply_identity_preserves_configured_sender(db_session):
+    channel = _identity_channel(db_session, "mailbox-policy", policy="mailbox")
+    identity = resolve_outbound_identity(db_session, channel, None)
+    assert identity.sender_address == "mailbox-policy@example.test"
+    assert identity.reply_to_address == "mailbox-policy@example.test"
+
+
+def test_microsoft365_original_alias_is_explicit_sender(db_session, monkeypatch):
+    from app.services import email_transport
+
+    monkeypatch.setattr(email_transport.settings, "microsoft365_email_enabled", True)
+    channel = _identity_channel(db_session, "m365-original")
+    alias = EmailChannelAlias(
+        channel_id=channel.id,
+        address="alias@example.test",
+        active=True,
+    )
+    db_session.add_all(
+        [
+            alias,
+            EmailChannelTransport(
+                channel_id=channel.id,
+                provider="microsoft365",
+                enabled=True,
+                mailbox_address="technical-mailbox@example.test",
+                tenant_id="tenant",
+                client_id="client",
+                client_credential_reference="env://secret",
+                token_reference="db://token",
+            ),
+        ]
+    )
+    db_session.flush()
+    thread = EmailThread(
+        channel_id=channel.id,
+        subject="M365 alias",
+        original_recipient_address=alias.address,
+    )
+    identity = resolve_outbound_identity(db_session, channel, thread)
+    calls = []
+    message = EmailMessage(
+        thread_id=thread.id,
+        direction="outbound",
+        state="approved",
+        sender=identity.sender_address,
+        recipients_json=[{"Email": "external@example.test"}],
+        subject="Resposta",
+    )
+    result = send_channel_message(
+        db_session,
+        channel,
+        message,
+        identity.transport_sender,
+        reply_to=identity.reply_to_address,
+        microsoft365_sender=lambda supplied, **kwargs: calls.append(kwargs)
+        or {"Provider": "microsoft365"},
+    )
+    assert result["Provider"] == "microsoft365"
+    assert calls[0]["mailbox_address"] == "technical-mailbox@example.test"
+    assert calls[0]["sender_address"] == "alias@example.test"
+    assert calls[0]["reply_to"] == "alias@example.test"
+
+
+def test_microsoft365_original_sender_selects_matching_physical_transport(
+    db_session, monkeypatch
+):
+    from app.services import email_transport
+
+    monkeypatch.setattr(email_transport.settings, "microsoft365_email_enabled", True)
+    channel = _identity_channel(db_session, "multi-m365")
+    channel.reply_policy = "original"
+    aliases = [
+        EmailChannelAlias(channel_id=channel.id, address=address, active=True)
+        for address in ("backoffice@example.test", "contratos@example.test")
+    ]
+    transports = [
+        EmailChannelTransport(
+            channel_id=channel.id,
+            provider="microsoft365",
+            enabled=True,
+            mailbox_address=address,
+            tenant_id="tenant",
+            client_id="client",
+            client_credential_reference="env://secret",
+            token_reference=f"db://{address}",
+        )
+        for address in ("backoffice@example.test", "contratos@example.test")
+    ]
+    db_session.add_all([*aliases, *transports])
+    db_session.flush()
+    thread = EmailThread(
+        channel_id=channel.id,
+        subject="Contrato",
+        original_recipient_address="contratos@example.test",
+    )
+    identity = resolve_outbound_identity(db_session, channel, thread)
+    calls = []
+    message = EmailMessage(
+        thread_id=thread.id,
+        direction="outbound",
+        state="approved",
+        sender=identity.sender_address,
+        recipients_json=[{"Email": "external@example.test"}],
+        subject="Resposta",
+    )
+
+    send_channel_message(
+        db_session,
+        channel,
+        message,
+        identity.transport_sender,
+        reply_to=identity.reply_to_address,
+        microsoft365_sender=lambda supplied, **kwargs: calls.append(kwargs)
+        or {"Provider": "microsoft365"},
+    )
+
+    assert calls[0]["mailbox_address"] == "contratos@example.test"
+    assert calls[0]["sender_address"] == "contratos@example.test"
+
+
+def test_reply_route_persists_original_alias_and_blocks_arbitrary_sender(
+    authenticated_client, db_session, monkeypatch
+):
+    monkeypatch.setattr(
+        email_web,
+        "SessionLocal",
+        sessionmaker(bind=db_session.get_bind(), autoflush=False, autocommit=False),
+    )
+    thread, _ = ingest_inbound(db_session, _payload("original-route"))
+    channel = db_session.get(EmailChannel, thread.channel_id)
+    channel.reply_policy = "original"
+    db_session.commit()
+
+    response = authenticated_client.post(
+        f"/v2-clean/email/{thread.id}/reply",
+        data={"body": "Resposta em rascunho.", "submit": "draft"},
+        follow_redirects=False,
+    )
+    assert response.headers["location"].endswith("saved=draft")
+    draft = db_session.scalar(
+        select(EmailMessage)
+        .where(
+            EmailMessage.thread_id == thread.id,
+            EmailMessage.direction == "outbound",
+        )
+        .order_by(EmailMessage.id.desc())
+    )
+    assert draft.sender == "multas@carfast.pt"
+
+    response = authenticated_client.post(
+        f"/v2-clean/email/{thread.id}/reply",
+        data={
+            "body": "Tentativa inválida.",
+            "sender_address": "arbitrary@example.test",
+            "submit": "draft",
+        },
+        follow_redirects=False,
+    )
+    assert response.headers["location"].endswith("error=forbidden")
+
+    response = authenticated_client.post(
+        f"/v2-clean/email/{thread.id}/reply",
+        data={"body": "Resposta para aprovação.", "submit": "approval"},
+        follow_redirects=False,
+    )
+    assert response.headers["location"].endswith("saved=pending_approval")
+    pending = db_session.scalar(
+        select(EmailMessage)
+        .where(
+            EmailMessage.thread_id == thread.id,
+            EmailMessage.state == "pending_approval",
+        )
+        .order_by(EmailMessage.id.desc())
+    )
+    sent = []
+
+    def fake_send_channel_message(*args, **kwargs):
+        sent.append((args[3], kwargs["reply_to"]))
+        return {"MessageID": "test-message-id"}
+
+    monkeypatch.setattr(email_web, "send_channel_message", fake_send_channel_message)
+    monkeypatch.setattr(email_web, "outbound_enabled_for_channel", lambda *args: True)
+    response = authenticated_client.post(
+        f"/v2-clean/email/{thread.id}/messages/{pending.id}/approve",
+        follow_redirects=False,
+    )
+    assert response.headers["location"].endswith("saved=sent")
+    assert len(sent) == 1
+    assert sent[0][0].endswith("<multas@carfast.pt>")
+    assert sent[0][1] == "multas@carfast.pt"
+
+
+def test_new_message_is_blocked_for_original_alias_policy(
+    authenticated_client, db_session, monkeypatch
+):
+    monkeypatch.setattr(
+        email_web,
+        "SessionLocal",
+        sessionmaker(bind=db_session.get_bind(), autoflush=False, autocommit=False),
+    )
+    channel = db_session.scalar(
+        select(EmailChannel).where(EmailChannel.code == "multas")
+    )
+    channel.reply_policy = "original"
+    db_session.commit()
+
+    response = authenticated_client.post(
+        "/v2-clean/email/new",
+        data={
+            "channel_id": channel.id,
+            "recipients": "external@example.test",
+            "subject": "Nova mensagem",
+            "body": "Não deve criar conversa.",
+            "submit": "draft",
+        },
+        follow_redirects=False,
+    )
+    assert response.headers["location"].endswith("error=sender_not_configured")
 
 
 def _payload(delivery_id: str, mailbox_hash: str = "multas") -> dict:
@@ -275,6 +591,49 @@ def test_fallback_dedup_and_reply_all_remove_internal_aliases(db_session):
         "external-one@example.org",
         "external-two@example.org",
     ]
+
+
+def test_reply_never_targets_the_functional_mailbox(db_session):
+    thread, _ = ingest_inbound(db_session, _payload("internal-sender"))
+    message = db_session.scalar(
+        select(EmailMessage).where(EmailMessage.thread_id == thread.id)
+    )
+    message.sender = "multas@carfast.pt"
+    message.recipients_json = [{"Email": "cliente@example.org"}]
+    db_session.commit()
+
+    defaults = _reply_defaults(db_session, thread)
+
+    assert defaults["reply_to"] == "cliente@example.org"
+    assert defaults["reply_all_to"] == ["cliente@example.org"]
+
+
+def test_outbound_only_conversation_replies_to_external_recipient(db_session):
+    channel = db_session.scalar(select(EmailChannel).where(EmailChannel.code == "multas"))
+    thread = EmailThread(
+        channel_id=channel.id,
+        subject="Teste",
+        sender_email="multas@carfast.pt",
+        status="waiting_reply",
+    )
+    db_session.add(thread)
+    db_session.flush()
+    db_session.add(
+        EmailMessage(
+            thread_id=thread.id,
+            direction="outbound",
+            sender="multas@carfast.pt",
+            recipients_json=[{"Email": "cliente@example.org"}],
+            subject="Teste",
+            state="sent",
+        )
+    )
+    db_session.commit()
+
+    defaults = _reply_defaults(db_session, thread)
+
+    assert defaults["reply_to"] == "cliente@example.org"
+    assert defaults["reply_all_to"] == ["cliente@example.org"]
 
 
 def test_approval_is_invalidated_when_message_changes(

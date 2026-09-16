@@ -4,6 +4,7 @@ import hashlib
 import json
 import re
 from datetime import UTC, datetime, timedelta
+from email.utils import parseaddr
 from html import escape
 from html.parser import HTMLParser
 from mimetypes import guess_type
@@ -14,7 +15,7 @@ from urllib.parse import quote, urlparse
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, File, Form, Header, Request, UploadFile
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import case, func, or_, select
 
@@ -53,12 +54,16 @@ from app.services.email_postmark import (
     ingest_inbound,
     ingest_outbound_event,
     normalize_inbound_attachments,
-    outbound_identity,
     reply_all_recipients,
     send_message,
     webhook_authorized,
 )
-from app.services.email_transport import send_channel_message
+from app.services.email_transport import (
+    OutboundIdentityError,
+    outbound_enabled_for_channel,
+    resolve_outbound_identity,
+    send_channel_message,
+)
 from app.services.microsoft365_oauth import move_shared_mailbox_message_to_junk
 from app.services.service_desk import (
     assignment_label,
@@ -157,12 +162,18 @@ EMAIL_WORK_VIEW_LABELS = {
 }
 EMAIL_CLOSED_STATUSES = {"resolved", "archived"}
 EMAIL_SIGNAL_LABELS = {
-    "to_treat": "Por tratar",
-    "new": "Novos",
+    "to_treat": "Em aberto",
+    "new": "Novas / por triar",
     "unassigned": "Por atribuir",
     "overdue": "Atrasados",
     "risk": "Em risco",
 }
+
+
+def _lisbon_day_bounds(value: datetime) -> tuple[datetime, datetime]:
+    local_value = value.astimezone(ZoneInfo("Europe/Lisbon"))
+    local_start = local_value.replace(hour=0, minute=0, second=0, microsecond=0)
+    return local_start.astimezone(UTC), (local_start + timedelta(days=1)).astimezone(UTC)
 
 EMAIL_ADDRESS_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 EMAIL_LINK_KINDS = {
@@ -574,22 +585,16 @@ def _sender_channel(db, message: EmailMessage) -> EmailChannel | None:
 def _channel_sender_address(
     db, thread: EmailThread, channel: EmailChannel
 ) -> str | None:
-    value = (channel.from_address or "").strip().lower()
-    return value if EMAIL_ADDRESS_PATTERN.fullmatch(value) else None
-
-
-def _channel_reply_to_address(channel: EmailChannel) -> str | None:
     try:
-        _, reply_to = outbound_identity(
-            channel.from_name, channel.from_address, channel.reply_to_address
-        )
-    except ValueError:
+        return resolve_outbound_identity(db, channel, thread).sender_address
+    except OutboundIdentityError:
         return None
-    return reply_to
 
 
-def _channel_sender_options(db, channel: EmailChannel) -> list[str]:
-    values = [_channel_sender_address(db, None, channel)]
+def _channel_sender_options(
+    db, thread: EmailThread, channel: EmailChannel
+) -> list[str]:
+    values = [_channel_sender_address(db, thread, channel)]
     return list(dict.fromkeys(item.casefold() for item in values if item))
 
 
@@ -641,7 +646,7 @@ def _is_internal_address(address: str, internal: set[str]) -> bool:
 
 
 def _reply_defaults(db, thread: EmailThread) -> dict[str, object]:
-    latest = db.scalar(
+    latest_inbound = db.scalar(
         select(EmailMessage)
         .where(
             EmailMessage.thread_id == thread.id,
@@ -649,15 +654,47 @@ def _reply_defaults(db, thread: EmailThread) -> dict[str, object]:
         )
         .order_by(EmailMessage.id.desc())
     )
-    sender = (latest.sender if latest else thread.sender_email or "").strip().lower()
+    latest = latest_inbound or db.scalar(
+        select(EmailMessage)
+        .where(EmailMessage.thread_id == thread.id)
+        .order_by(EmailMessage.id.desc())
+    )
     internal = _internal_email_addresses(db)
-    all_candidates = [sender]
-    if latest:
+
+    all_candidates: list[str] = []
+    if latest_inbound:
+        headers = latest_inbound.headers_json or {}
+        if isinstance(headers, dict):
+            reply_to_header = next(
+                (
+                    str(value)
+                    for key, value in headers.items()
+                    if str(key).strip().casefold() == "reply-to" and value
+                ),
+                "",
+            )
+            if reply_to_header:
+                all_candidates.append(parseaddr(reply_to_header)[1])
+        all_candidates.append(latest_inbound.sender or "")
+        all_candidates.extend(
+            str(item.get("Email") or "").strip().lower()
+            for item in [
+                *(latest_inbound.recipients_json or []),
+                *(latest_inbound.cc_json or []),
+            ]
+            if isinstance(item, dict)
+        )
+    elif latest:
+        # An outbound-only conversation may still be opened from Sent Items.
+        # Replying must target the external recipient, never the functional mailbox.
         all_candidates.extend(
             str(item.get("Email") or "").strip().lower()
             for item in [*(latest.recipients_json or []), *(latest.cc_json or [])]
             if isinstance(item, dict)
         )
+    else:
+        all_candidates.append(thread.sender_email or "")
+
     reply_all: list[str] = []
     seen: set[str] = set()
     for address in all_candidates:
@@ -670,6 +707,7 @@ def _reply_defaults(db, thread: EmailThread) -> dict[str, object]:
             continue
         seen.add(address)
         reply_all.append(address)
+    sender = reply_all[0] if reply_all else ""
     return {
         "reply_to": sender,
         "reply_all_to": reply_all[:1],
@@ -763,6 +801,17 @@ def _thread_view_data(db, thread: EmailThread) -> dict:
             .where(EmailMessage.thread_id == thread.id)
             .order_by(EmailMessage.created_at, EmailMessage.id)
         )
+    )
+    message_author_ids = {
+        message.created_by_id for message in messages if message.created_by_id
+    }
+    message_authors = (
+        {
+            user.id: user
+            for user in db.scalars(select(User).where(User.id.in_(message_author_ids)))
+        }
+        if message_author_ids
+        else {}
     )
     message_ids = [message.id for message in messages]
     attachments = list(
@@ -908,6 +957,7 @@ def _thread_view_data(db, thread: EmailThread) -> dict:
         )
     return {
         "messages": messages,
+        "message_authors": message_authors,
         "message_refs": {
             message.id: message_reference(thread, position)
             for position, message in enumerate(messages, 1)
@@ -931,9 +981,6 @@ def _thread_view_data(db, thread: EmailThread) -> dict:
             )
         ),
         "thread_reference": thread_reference(thread),
-        "classification_audit": classification_audit,
-        "classification_audit_users": classification_audit_users,
-        "classification_audit_rows": classification_audit_rows,
     }
 
 
@@ -1134,14 +1181,10 @@ def email_inbox(
                 EmailThread.status.not_in({"resolved", "archived"}),
             )
         elif due == "today":
-            tomorrow = now + timedelta(days=1)
+            local_day_start, local_day_end = _lisbon_day_bounds(now)
             query = query.where(
-                EmailThread.resolution_due_at >= now.replace(
-                    hour=0, minute=0, second=0, microsecond=0
-                ),
-                EmailThread.resolution_due_at < tomorrow.replace(
-                    hour=0, minute=0, second=0, microsecond=0
-                ),
+                EmailThread.resolution_due_at >= local_day_start,
+                EmailThread.resolution_due_at < local_day_end,
             )
         elif due == "no_sla":
             query = query.where(EmailThread.resolution_due_at.is_(None))
@@ -1290,8 +1333,8 @@ def email_inbox(
             elif effective_responsible.isdigit(): statement = statement.where(EmailThread.assigned_to_id == int(effective_responsible))
             if effective_due == "overdue": statement = statement.where(EmailThread.resolution_due_at < now, EmailThread.status.not_in({"resolved", "archived"}))
             elif effective_due == "today":
-                tomorrow = now + timedelta(days=1)
-                statement = statement.where(EmailThread.resolution_due_at >= now.replace(hour=0, minute=0, second=0, microsecond=0), EmailThread.resolution_due_at < tomorrow.replace(hour=0, minute=0, second=0, microsecond=0))
+                local_day_start, local_day_end = _lisbon_day_bounds(now)
+                statement = statement.where(EmailThread.resolution_due_at >= local_day_start, EmailThread.resolution_due_at < local_day_end)
             elif effective_due == "no_sla": statement = statement.where(EmailThread.resolution_due_at.is_(None))
             if clean_query:
                 pattern = f"%{clean_query}%"
@@ -1318,6 +1361,34 @@ def email_inbox(
             indicator_base = indicator_base.where(EmailThread.assigned_to_id == user_id)
         if channel:
             indicator_base = indicator_base.where(EmailChannel.code == channel)
+        if responsible == "mine":
+            indicator_base = indicator_base.where(EmailThread.assigned_to_id == user_id)
+        elif responsible == "unassigned":
+            indicator_base = indicator_base.where(
+                EmailThread.assigned_to_id.is_(None),
+                EmailThread.executor_team_id.is_(None),
+            )
+        elif responsible.startswith("team:") and responsible[5:].isdigit():
+            indicator_base = indicator_base.where(
+                EmailThread.executor_team_id == int(responsible[5:])
+            )
+        elif responsible.isdigit():
+            indicator_base = indicator_base.where(
+                EmailThread.assigned_to_id == int(responsible)
+            )
+        if due == "overdue":
+            indicator_base = indicator_base.where(
+                EmailThread.resolution_due_at < now,
+                EmailThread.status.not_in(EMAIL_CLOSED_STATUSES),
+            )
+        elif due == "today":
+            local_day_start, local_day_end = _lisbon_day_bounds(now)
+            indicator_base = indicator_base.where(
+                EmailThread.resolution_due_at >= local_day_start,
+                EmailThread.resolution_due_at < local_day_end,
+            )
+        elif due == "no_sla":
+            indicator_base = indicator_base.where(EmailThread.resolution_due_at.is_(None))
         if clean_query:
             indicator_base = indicator_base.where(or_(*search_terms))
         indicator_rows = indicator_base.subquery()
@@ -1574,8 +1645,6 @@ def email_new_message(
         return RedirectResponse("/v2-clean/email?error=forbidden", status_code=303)
     if submit not in {"draft", "approval", "send"}:
         return RedirectResponse("/v2-clean/email?error=invalid_action", status_code=303)
-    if submit == "send" and not settings.email_outbound_enabled:
-        return RedirectResponse("/v2-clean/email?error=send_disabled", status_code=303)
     user_id, permissions = auth
     recipient_list = [
         item.strip()
@@ -1600,6 +1669,8 @@ def email_new_message(
             or not _can_use_channel(db, user_id, permissions, channel.id, "reply")
         ):
             return RedirectResponse("/v2-clean/email?error=forbidden", status_code=303)
+        if submit == "send" and not outbound_enabled_for_channel(db, channel.id):
+            return RedirectResponse("/v2-clean/email?error=send_disabled", status_code=303)
         supplier = db.get(StockSupplier, supplier_id) if supplier_id else None
         if supplier and not supplier.active:
             return RedirectResponse("/v2-clean/email?error=inactive_supplier", status_code=303)
@@ -1626,10 +1697,10 @@ def email_new_message(
         ):
             return RedirectResponse("/v2-clean/email?error=forbidden", status_code=303)
         try:
-            sender_address, reply_to_address = outbound_identity(
-                channel.from_name, channel.from_address, channel.reply_to_address
-            )
-        except ValueError:
+            identity = resolve_outbound_identity(db, channel, None)
+            sender_address = identity.transport_sender
+            reply_to_address = identity.reply_to_address
+        except OutboundIdentityError:
             return RedirectResponse(
                 "/v2-clean/email?error=sender_not_configured", status_code=303
             )
@@ -1915,7 +1986,7 @@ def email_thread(request: Request, thread_id: int):
             "email_templates": _ranked_email_templates(db, thread),
             "reply_defaults": _reply_defaults(db, thread),
             "reply_sender_address": _channel_sender_address(db, thread, channel),
-            "reply_sender_options": _channel_sender_options(db, channel),
+            "reply_sender_options": _channel_sender_options(db, thread, channel),
             "can_change_sender": _can_use_channel(
                 db, user_id, permissions, thread.channel_id, "change_sender", thread=thread
             ),
@@ -1961,7 +2032,7 @@ def email_thread(request: Request, thread_id: int):
                 and _can_use_channel(
                     db, user_id, permissions, thread.channel_id, "reply", thread=thread
                 ),
-                "outbound_enabled": settings.email_outbound_enabled,
+                "outbound_enabled": outbound_enabled_for_channel(db, channel.id),
                 "embedded": False,
                 "foundation_ui_enabled": settings.visual_foundation_enabled,
                 "return_context": return_context,
@@ -2079,7 +2150,7 @@ def email_thread_preview(request: Request, thread_id: int):
             "email_templates": _ranked_email_templates(db, thread),
             "reply_defaults": _reply_defaults(db, thread),
             "reply_sender_address": _channel_sender_address(db, thread, channel),
-            "reply_sender_options": _channel_sender_options(db, channel),
+            "reply_sender_options": _channel_sender_options(db, thread, channel),
             "can_change_sender": _can_use_channel(
                 db, user_id, permissions, thread.channel_id, "change_sender", thread=thread
             ),
@@ -2122,7 +2193,7 @@ def email_thread_preview(request: Request, thread_id: int):
                 and _can_use_channel(
                     db, user_id, permissions, thread.channel_id, "reply", thread=thread
                 ),
-                "outbound_enabled": settings.email_outbound_enabled,
+                "outbound_enabled": outbound_enabled_for_channel(db, thread.channel_id),
                 "embedded": True,
             },
         )
@@ -2181,6 +2252,8 @@ def email_triage(
     team_requires_claim: str = Form(""),
     due_at: str = Form(""),
     waiting_until: str = Form(""),
+    return_context: str = Form(""),
+    sequence: str = Form(""),
 ):
     auth = _auth(request, "email.triage", "email.manage", "admin.manage")
     if not auth:
@@ -2208,22 +2281,17 @@ def email_triage(
             db, user_id, permissions, thread.channel_id, "alter", thread=thread
         ):
             return RedirectResponse("/v2-clean/email?error=not_found", status_code=303)
-        classification_before = {
-            "content_type": thread.content_type,
-            "nature": thread.nature,
-            "document_type": thread.document_type,
-            "work_queue_id": thread.work_queue_id,
-            "work_department_id": thread.work_department_id,
-            "work_category_id": thread.work_category_id,
-            "work_subcategory_id": thread.work_subcategory_id,
-            "provisional_category_id": thread.provisional_category_id,
-            "provisional_subcategory_id": thread.provisional_subcategory_id,
-            "classification_status": thread.classification_status,
-            "classification_other_text": thread.classification_other_text,
-        }
         hierarchy_selection = None
         proposal_selection = None
-        if work_queue_id.strip() or work_department_id.strip():
+        if any(
+            value.strip()
+            for value in (
+                work_queue_id,
+                work_department_id,
+                work_category_id,
+                work_subcategory_id,
+            )
+        ):
             official_category_id, category_proposal_id = parse_classification_choice(
                 work_category_id
             )
@@ -2435,19 +2503,6 @@ def email_triage(
                 )
         if clean_action == "validate" and thread.status == "triage":
             thread.status = "in_progress"
-        classification_after = {
-            "content_type": thread.content_type,
-            "nature": thread.nature,
-            "document_type": thread.document_type,
-            "work_queue_id": thread.work_queue_id,
-            "work_department_id": thread.work_department_id,
-            "work_category_id": thread.work_category_id,
-            "work_subcategory_id": thread.work_subcategory_id,
-            "provisional_category_id": thread.provisional_category_id,
-            "provisional_subcategory_id": thread.provisional_subcategory_id,
-            "classification_status": thread.classification_status,
-            "classification_other_text": thread.classification_other_text,
-        }
         db.add(
             EmailAuditEvent(
                 thread_id=thread.id,
@@ -2458,10 +2513,6 @@ def email_triage(
                     else "triage_saved"
                 ),
                 details_json={
-                    "before": classification_before,
-                    "after": classification_after,
-                    "classification_changed": classification_before
-                    != classification_after,
                     "content_type": thread.content_type,
                     "nature": thread.nature,
                     "document_type": thread.document_type,
@@ -2474,8 +2525,17 @@ def email_triage(
             )
         )
         db.commit()
+    safe_return_context = (
+        return_context
+        if return_context.startswith("/v2-clean/email") and not return_context.startswith("//")
+        else "/v2-clean/email"
+    )
+    safe_sequence = ",".join(item for item in sequence.split(",")[:100] if item.isdigit())
+    suffix = f"&return_context={quote(safe_return_context, safe='')}"
+    if safe_sequence:
+        suffix += f"&sequence={safe_sequence}"
     return RedirectResponse(
-        f"/v2-clean/email/{thread_id}?saved={clean_action}", status_code=303
+        f"/v2-clean/email/{thread_id}?saved={clean_action}{suffix}", status_code=303
     )
 
 
@@ -2513,6 +2573,7 @@ def email_attachment_preview(request: Request, attachment_id: int):
                 "thread": thread,
                 "reference": reference,
                 "can_preview": _attachment_can_preview(attachment),
+                "is_pdf": _attachment_media_type(attachment) == "application/pdf",
                 "can_alter": bool(
                     permissions.intersection(
                         {"email.triage", "email.manage", "admin.manage"}
@@ -2529,6 +2590,97 @@ def email_attachment_preview(request: Request, attachment_id: int):
                 **_classification_context(),
             },
         )
+
+
+@email_router.get("/v2-clean/email/attachments/{attachment_id}/pdf-preview")
+def email_attachment_pdf_preview(request: Request, attachment_id: int):
+    auth = _auth(request, "email.read", "email.triage", "email.manage", "admin.manage")
+    if not auth:
+        return HTMLResponse("Sem acesso.", status_code=403)
+    user_id, permissions = auth
+    with SessionLocal() as db:
+        attachment = db.get(EmailAttachment, attachment_id)
+        message = db.get(EmailMessage, attachment.message_id) if attachment else None
+        thread = db.get(EmailThread, message.thread_id) if message else None
+        if (
+            not thread
+            or not attachment
+            or _attachment_media_type(attachment) != "application/pdf"
+            or not _can_use_channel(db, user_id, permissions, thread.channel_id, thread=thread)
+        ):
+            return HTMLResponse("PDF não encontrado.", status_code=404)
+        path = Path(attachment.storage_path or "")
+        if attachment.ingest_state != "stored" or not path.is_file():
+            return HTMLResponse(
+                "<h2>Pré-visualização indisponível</h2><p>O ficheiro PDF não está disponível. "
+                "Use Abrir ficheiro ou Descarregar.</p>",
+                status_code=409,
+            )
+        try:
+            import fitz
+
+            with fitz.open(path) as document:
+                page_count = document.page_count
+                if page_count < 1:
+                    raise ValueError("empty_pdf")
+        except Exception:
+            return HTMLResponse(
+                "<h2>Não foi possível mostrar este PDF</h2><p>Use Abrir ficheiro ou "
+                "Descarregar para continuar.</p>",
+                status_code=422,
+            )
+        visible_page_count = min(page_count, 50)
+        pages = "".join(
+            f'<figure><img src="/v2-clean/email/attachments/{attachment.id}/pdf-page/{page}" '
+            f'alt="Página {page} de {page_count}"><figcaption>Página {page} de {page_count}</figcaption></figure>'
+            for page in range(1, visible_page_count + 1)
+        )
+        if page_count > visible_page_count:
+            pages += (
+                f"<p role='status'>Mostradas as primeiras {visible_page_count} de {page_count} páginas. "
+                "Use Abrir ficheiro ou Descarregar para consultar o documento completo.</p>"
+            )
+        return HTMLResponse(
+            "<!doctype html><html><head><meta charset='utf-8'><style>"
+            "body{margin:0;padding:18px;background:#e5e7eb;color:#172033;font:13px Arial,sans-serif}"
+            "figure{max-width:980px;margin:0 auto 18px}img{display:block;width:100%;height:auto;background:#fff;box-shadow:0 2px 12px #0002}"
+            "figcaption{padding:6px;text-align:center}</style></head><body>"
+            f"{pages}</body></html>",
+            headers={"Content-Security-Policy": "default-src 'self'; img-src 'self'; style-src 'unsafe-inline'"},
+        )
+
+
+@email_router.get("/v2-clean/email/attachments/{attachment_id}/pdf-page/{page_number}")
+def email_attachment_pdf_page(request: Request, attachment_id: int, page_number: int):
+    auth = _auth(request, "email.read", "email.triage", "email.manage", "admin.manage")
+    if not auth:
+        return HTMLResponse("Sem acesso.", status_code=403)
+    user_id, permissions = auth
+    with SessionLocal() as db:
+        attachment = db.get(EmailAttachment, attachment_id)
+        message = db.get(EmailMessage, attachment.message_id) if attachment else None
+        thread = db.get(EmailThread, message.thread_id) if message else None
+        if (
+            not thread
+            or not attachment
+            or _attachment_media_type(attachment) != "application/pdf"
+            or not _can_use_channel(db, user_id, permissions, thread.channel_id, thread=thread)
+        ):
+            return HTMLResponse("PDF não encontrado.", status_code=404)
+        path = Path(attachment.storage_path or "")
+        if attachment.ingest_state != "stored" or not path.is_file():
+            return HTMLResponse("Ficheiro indisponível.", status_code=404)
+        try:
+            import fitz
+
+            with fitz.open(path) as document:
+                if page_number < 1 or page_number > document.page_count:
+                    return HTMLResponse("Página não encontrada.", status_code=404)
+                pixmap = document.load_page(page_number - 1).get_pixmap(matrix=fitz.Matrix(1.5, 1.5), alpha=False)
+                content = pixmap.tobytes("png")
+        except Exception:
+            return HTMLResponse("Não foi possível renderizar esta página.", status_code=422)
+        return Response(content=content, media_type="image/png")
 
 
 @email_router.get("/v2-clean/email/attachments/{attachment_id}/file")
@@ -2826,9 +2978,11 @@ def email_reply(
     request: Request,
     thread_id: int,
     body: str = Form(""),
+    body_html: str = Form(""),
     recipient_email: str = Form(""),
     reply_mode: str = Form("sender"),
     reply_source_message_id: int | None = Form(None),
+    draft_message_id: int | None = Form(None),
     recipients: str = Form(""),
     cc: str = Form(""),
     bcc: str = Form(""),
@@ -2845,10 +2999,6 @@ def email_reply(
     if submit not in {"draft", "approval", "send"}:
         return RedirectResponse(
             f"/v2-clean/email/{thread_id}?error=invalid_action", status_code=303
-        )
-    if submit == "send" and not settings.email_outbound_enabled:
-        return RedirectResponse(
-            f"/v2-clean/email/{thread_id}?error=send_disabled", status_code=303
         )
     user_id, permissions = auth
     with SessionLocal() as db:
@@ -2872,6 +3022,10 @@ def email_reply(
         ):
             return RedirectResponse(
                 f"/v2-clean/email/{thread_id}?error=forbidden", status_code=303
+            )
+        if submit == "send" and not outbound_enabled_for_channel(db, sender_channel.id):
+            return RedirectResponse(
+                f"/v2-clean/email/{thread_id}?error=send_disabled", status_code=303
             )
         if submit == "send" and not _can_use_channel(
             db, user_id, permissions, sender_channel.id, "send_direct"
@@ -2934,33 +3088,17 @@ def email_reply(
             return RedirectResponse(
                 f"/v2-clean/email/{thread_id}?error=invalid_recipient", status_code=303
             )
-        policy_sender = _channel_sender_address(db, thread, sender_channel)
         try:
-            transport_sender, reply_to_address = outbound_identity(
-                sender_channel.from_name,
-                sender_channel.from_address,
-                sender_channel.reply_to_address,
-            )
-        except ValueError:
-            transport_sender, reply_to_address = None, None
-        requested_sender = sender_address.strip().lower() or policy_sender
-        configured_senders = {
-            item
-            for item in (policy_sender,)
-            if item
-        }
-        configured_senders = {item.casefold() for item in configured_senders}
-        if (
-            not requested_sender
-            or requested_sender not in configured_senders
-            or not reply_to_address
-        ):
+            identity = resolve_outbound_identity(db, sender_channel, thread)
+        except OutboundIdentityError:
             return RedirectResponse(
                 f"/v2-clean/email/{thread_id}?error=sender_not_configured", status_code=303
             )
-        if requested_sender != policy_sender and not _can_use_channel(
-            db, user_id, permissions, thread.channel_id, "change_sender", thread=thread
-        ):
+        policy_sender = identity.sender_address
+        transport_sender = identity.transport_sender
+        reply_to_address = identity.reply_to_address
+        requested_sender = sender_address.strip().casefold() or policy_sender
+        if requested_sender != policy_sender:
             return RedirectResponse(
                 f"/v2-clean/email/{thread_id}?error=forbidden", status_code=303
             )
@@ -2990,6 +3128,7 @@ def email_reply(
                 body.strip() or (template.body_template if template else ""),
                 template_context,
             )
+            rendered_html = _render_email_template(body_html.strip(), template_context)
         except ValueError:
             return RedirectResponse(
                 f"/v2-clean/email/{thread_id}?error=template_variables_missing",
@@ -2999,27 +3138,44 @@ def email_reply(
             return RedirectResponse(
                 f"/v2-clean/email/{thread_id}?error=missing_message", status_code=303
             )
+        clean_html = None
+        if rendered_html:
+            parser = _SafeEmailHTMLParser()
+            parser.feed(rendered_html)
+            clean_html = "".join(parser.parts).strip() or None
         state = {
             "approval": "pending_approval",
             "send": "approved",
         }.get(submit, "draft")
-        message = EmailMessage(
-            thread_id=thread.id,
-            direction="outbound",
-            state=state,
-            sender=requested_sender,
-            recipients_json=_recipient_json(to_list),
-            cc_json=_recipient_json(cc_list),
-            bcc_json=_recipient_json(bcc_list),
-            subject=clean_subject[:500],
-            text_body=clean_body,
-            compose_mode=mode,
-            template_id=template.id if template else None,
-            template_version=template.version if template else None,
-            template_snapshot_json=email_template_snapshot(
-                template, rendered_subject=clean_subject, rendered_body=clean_body
-            ),
-            created_by_id=user_id,
+        message = db.get(EmailMessage, draft_message_id) if draft_message_id else None
+        if message and (
+            message.thread_id != thread.id
+            or message.direction != "outbound"
+            or message.state != "draft"
+        ):
+            return RedirectResponse(
+                f"/v2-clean/email/{thread_id}?error=invalid_draft", status_code=303
+            )
+        if not message:
+            message = EmailMessage(thread_id=thread.id, direction="outbound", created_by_id=user_id)
+        else:
+            message.content_revision += 1
+            message.approved_by_id = None
+            message.approved_at = None
+            message.approved_revision = None
+        message.state = state
+        message.sender = requested_sender
+        message.recipients_json = _recipient_json(to_list)
+        message.cc_json = _recipient_json(cc_list)
+        message.bcc_json = _recipient_json(bcc_list)
+        message.subject = clean_subject[:500]
+        message.text_body = clean_body
+        message.html_body = clean_html
+        message.compose_mode = mode
+        message.template_id = template.id if template else None
+        message.template_version = template.version if template else None
+        message.template_snapshot_json = email_template_snapshot(
+            template, rendered_subject=clean_subject, rendered_body=clean_body
         )
         message.approval_fingerprint = _message_fingerprint(message)
         db.add(message)
@@ -3036,7 +3192,10 @@ def email_reply(
                 f"/v2-clean/email/{thread_id}?error=attachment_too_large",
                 status_code=303,
             )
-        thread.status = "waiting_approval" if state == "pending_approval" else "in_progress"
+        if state == "pending_approval":
+            thread.status = "waiting_approval"
+        elif submit == "send":
+            thread.status = "in_progress"
         if submit == "send":
             prior_messages = db.scalars(
                 select(EmailMessage)
@@ -3244,7 +3403,7 @@ def email_approve(request: Request, thread_id: int, message_id: int):
                 f"/v2-clean/email/{thread_id}?error=approval_invalidated",
                 status_code=303,
             )
-        if not settings.email_outbound_enabled:
+        if not outbound_enabled_for_channel(db, sender_channel.id):
             return RedirectResponse(
                 f"/v2-clean/email/{thread_id}?error=send_disabled", status_code=303
             )
@@ -3270,14 +3429,11 @@ def email_approve(request: Request, thread_id: int, message_id: int):
             )
         )
         try:
-            transport_sender, reply_to_address = outbound_identity(
-                sender_channel.from_name,
-                sender_channel.from_address,
-                sender_channel.reply_to_address,
-            )
-        except ValueError:
-            transport_sender, reply_to_address = None, None
-        if not transport_sender or not reply_to_address:
+            identity = resolve_outbound_identity(db, sender_channel, thread)
+        except OutboundIdentityError:
+            identity = None
+        message_sender = parseaddr(message.sender or "")[1].strip().casefold()
+        if not identity or message_sender != identity.sender_address:
             return RedirectResponse(
                 f"/v2-clean/email/{thread_id}?error=sender_not_configured",
                 status_code=303,
@@ -3287,8 +3443,8 @@ def email_approve(request: Request, thread_id: int, message_id: int):
                 db,
                 sender_channel,
                 message,
-                transport_sender,
-                reply_to=reply_to_address,
+                identity.transport_sender,
+                reply_to=identity.reply_to_address,
                 postmark_sender=send_message,
                 parent_message_id=parent_message_id,
                 references=references,
@@ -3607,6 +3763,8 @@ def email_mark_spam(
                 EmailChannelTransport.channel_id == thread.channel_id,
                 EmailChannelTransport.provider == "microsoft365",
                 EmailChannelTransport.enabled.is_(True),
+                func.lower(EmailChannelTransport.mailbox_address)
+                == func.lower(thread.original_recipient_address),
             )
         )
         message = db.scalar(

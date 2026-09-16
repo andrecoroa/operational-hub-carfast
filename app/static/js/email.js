@@ -71,10 +71,12 @@
   };
   const bindTemplates = (root) => {
     root.querySelectorAll("[data-email-template]").forEach((select) => select.addEventListener("change", () => {
-      const textarea = select.closest("form")?.querySelector('textarea[name="body"]');
+      const textarea = select.closest("form")?.querySelector('[data-email-body-plain]');
+      const editor = select.closest("form")?.querySelector("[data-email-html-editor]");
       const subject = select.closest("form")?.querySelector('[data-email-compose-subject]');
       const option = select.selectedOptions[0];
       if (textarea && option?.dataset.body) textarea.value = option.dataset.body;
+      if (editor && option?.dataset.body) editor.textContent = option.dataset.body;
       if (subject && option?.dataset.subject) subject.value = option.dataset.subject;
     }));
     root.querySelectorAll("[data-email-template-search]").forEach((search) => {
@@ -129,16 +131,6 @@
     });
   };
   const bindBodyViews = (root) => {
-    const fitFrame = (frame) => {
-      try {
-        const height = frame.contentDocument?.documentElement?.scrollHeight;
-        if (height) frame.style.height = `${Math.max(280, height + 8)}px`;
-      } catch (_) { /* sandboxed bodies keep their own scroll as a safe fallback */ }
-    };
-    root.querySelectorAll(".email-body-frame").forEach((frame) => {
-      frame.addEventListener("load", () => fitFrame(frame));
-      fitFrame(frame);
-    });
     root.querySelectorAll("[data-email-body-view]").forEach((button) => button.addEventListener("click", () => {
       const messageId = button.dataset.emailMessageId;
       const frame = root.querySelector(`#email-body-${messageId}`);
@@ -147,6 +139,27 @@
       frame.src = `${frame.dataset.emailBodyBase}?view=${view}`;
       button.closest(".email-body-switch")?.querySelectorAll("[data-email-body-view]").forEach((item) => item.classList.toggle("active", item === button));
     }));
+  };
+  const bindHtmlEditors = (root) => {
+    root.querySelectorAll(".email-reply-form").forEach((form) => {
+      const editor = form.querySelector("[data-email-html-editor]");
+      const plain = form.querySelector("[data-email-body-plain]");
+      const html = form.querySelector("[data-email-body-html]");
+      if (!editor || !plain || !html) return;
+      const sync = () => {
+        plain.value = editor.innerText.trim();
+        html.value = editor.innerHTML.trim();
+      };
+      editor.addEventListener("input", sync);
+      form.addEventListener("submit", sync);
+      form.querySelectorAll("[data-email-format]").forEach((button) => button.addEventListener("click", () => {
+        editor.focus();
+        const command = button.dataset.emailFormat;
+        const value = command === "createLink" ? window.prompt("Endereço da ligação (https://)") : null;
+        if (command !== "createLink" || value) document.execCommand(command, false, value);
+        sync();
+      }));
+    });
   };
   const bindPanelSwitch = (root) => {
     const shell = root.querySelector("[data-email-thread-id]");
@@ -158,7 +171,10 @@
       composer.hidden = !visible;
       shell?.classList.toggle("is-composing", visible);
       if (visible) {
-        composer.querySelector('textarea[name="body"]')?.focus();
+        const treatment = root.querySelector("[data-email-treatment-drawer]");
+        treatment?.classList.add("is-open");
+        treatment?.setAttribute("aria-hidden", "false");
+        composer.querySelector("[data-email-html-editor]")?.focus();
         if (window.matchMedia("(max-width: 900px)").matches) {
           composer.scrollIntoView({block: "start"});
         }
@@ -170,28 +186,44 @@
   const bindTreatmentDrawer = (root) => {
     const drawer = root.querySelector("[data-email-treatment-drawer]");
     if (!drawer) return;
-    const shell = drawer.closest("[data-email-thread-id]");
-    if (!shell) return;
-    let trigger = null;
     const setOpen = (open) => {
       drawer.classList.toggle("is-open", open);
       drawer.setAttribute("aria-hidden", String(!open));
-      shell.classList.toggle("is-treatment-open", open);
-      shell.querySelectorAll("[data-email-drawer-open]").forEach((button) => {
-        button.setAttribute("aria-expanded", String(open));
-        button.classList.toggle("is-active", open);
-      });
+      document.body.classList.toggle("email-treatment-drawer-open", open);
       if (open) drawer.querySelector("[data-email-drawer-close]")?.focus({preventScroll: true});
-      else trigger?.focus({preventScroll: true});
     };
-    shell.querySelectorAll("[data-email-drawer-open]").forEach((button) => button.addEventListener("click", () => { trigger = button; setOpen(!drawer.classList.contains("is-open")); }));
-    shell.querySelectorAll("[data-email-open-composer]").forEach((button) => button.addEventListener("click", () => { trigger = button; setOpen(true); }));
-    drawer.querySelectorAll("[data-email-drawer-close]").forEach((button) => button.addEventListener("click", () => setOpen(false)));
-    root.addEventListener("keydown", (event) => { if (event.key === "Escape" && drawer.classList.contains("is-open")) setOpen(false); });
+    root.querySelectorAll("[data-email-drawer-open]").forEach((button) => button.addEventListener("click", () => setOpen(true)));
+    drawer.querySelector("[data-email-drawer-close]")?.addEventListener("click", () => setOpen(false));
+    drawer.addEventListener("click", (event) => { if (event.target === drawer) setOpen(false); });
     const sections = [...drawer.querySelectorAll(".email-drawer-section")];
     sections.forEach((section) => section.addEventListener("toggle", () => {
       if (!section.open) return;
       sections.forEach((other) => { if (other !== section) other.open = false; });
+    }));
+  };
+  const bindDraftActions = (root) => {
+    const addresses = (items) => (items || []).map((item) => typeof item === "string" ? item : item.Email).filter(Boolean).join(", ");
+    root.querySelectorAll("[data-email-edit-draft]").forEach((button) => button.addEventListener("click", () => {
+      const payloadNode = root.querySelector(`[data-email-draft-payload="${button.dataset.emailEditDraft}"]`);
+      const form = root.querySelector(".email-reply-form");
+      if (!payloadNode || !form) return;
+      const payload = JSON.parse(payloadNode.textContent || "{}");
+      root.querySelector("[data-email-open-composer]")?.click();
+      const setValue = (selector, value) => {
+        const field = form.querySelector(selector);
+        if (field) field.value = value;
+      };
+      setValue("[data-email-draft-message-id]", payload.id || "");
+      setValue('[name="recipients"]', addresses(payload.to));
+      setValue('[name="cc"]', addresses(payload.cc));
+      setValue('[name="bcc"]', addresses(payload.bcc));
+      setValue('[name="subject"]', payload.subject || "");
+      const editor = form.querySelector("[data-email-html-editor]");
+      if (!editor) return;
+      if (payload.html) editor.innerHTML = payload.html;
+      else editor.textContent = payload.body || "";
+      editor.dispatchEvent(new Event("input", {bubbles: true}));
+      editor.focus();
     }));
   };
   const bindLinkKinds = (root) => {
@@ -208,8 +240,10 @@
     bindReplyModes(root);
     bindReplySenders(root);
     bindBodyViews(root);
+    bindHtmlEditors(root);
     bindPanelSwitch(root);
     bindTreatmentDrawer(root);
+    bindDraftActions(root);
     bindLinkKinds(root);
     root.querySelectorAll("[data-email-spam-form]").forEach((form) => form.addEventListener("submit", (event) => {
       if (!window.confirm("Mover esta conversa para Spam? Esta ação também a retira da caixa Microsoft 365.")) event.preventDefault();

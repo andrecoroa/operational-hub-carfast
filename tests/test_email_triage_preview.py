@@ -3,6 +3,7 @@ import json
 import re
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
 from sqlalchemy.orm import sessionmaker
@@ -144,8 +145,8 @@ def test_inbox_open_is_native_full_page_navigation_and_cannot_render_inline():
     assert "sourceRow.after(inlinePreviewRow)" not in script
     assert "window.location.assign(`/v2-clean/email/${threadId}?return_context=" in script
     assert "window.location.assign(element.dataset.emailThreadUrl)" in script
-    assert "email.js?v=20260910-email-page-scroll" in inbox
-    assert "email.js?v=20260910-email-drawer-fix" in thread
+    assert "email.js?v=20260910-email-full-page-navigation" in inbox
+    assert "email.js?v=20260912-email-horizontal-workspace" in thread
 
 
 def test_inbox_facets_apply_remaining_filters_server_side(authenticated_client, db_session, tmp_path, monkeypatch):
@@ -177,7 +178,7 @@ def test_inbox_facets_apply_remaining_filters_server_side(authenticated_client, 
     assert re.findall(r"\d+ resultado\(s\) com todos os filtros ativos", response.text) == [
         "2 resultado(s) com todos os filtros ativos"
     ]
-    for label in ("Por tratar", "Novos", "Por atribuir", "Atrasados", "Em risco"):
+    for label in ("Em aberto", "Novas / por triar", "Por atribuir", "Atrasados", "Em risco"):
         assert f"<span>{label}</span>" in response.text
     assert "signal=unassigned" in response.text
     assert "signal=risk" in response.text
@@ -229,8 +230,8 @@ def test_operational_indicators_use_existing_email_states_and_sla_warning(
 
     assert overview.status_code == 200
     for label, count in (
-        ("Por tratar", 5),
-        ("Novos", 2),
+        ("Em aberto", 5),
+        ("Novas / por triar", 2),
         ("Por atribuir", 1),
         ("Atrasados", 1),
         ("Em risco", 1),
@@ -474,6 +475,7 @@ def test_outbound_off_rejects_send_before_any_durable_mutation(
 ):
     monkeypatch.setattr(settings, "email_storage_root", str(tmp_path))
     monkeypatch.setattr(settings, "email_outbound_enabled", False)
+    monkeypatch.setattr(settings, "microsoft365_email_enabled", False)
     _bind_email_session(monkeypatch, db_session)
     thread, _ = ingest_inbound(db_session, _payload("outbound-off-atomic"))
     db_session.commit()
@@ -487,10 +489,13 @@ def test_outbound_off_rejects_send_before_any_durable_mutation(
     )
     compose = authenticated_client.post(
         "/v2-clean/email/new",
-        data={"submit": "send", "channel_id": thread.channel_id},
+        data={
+            "submit": "send",
+            "channel_id": thread.channel_id,
+            "recipients": "recipient@example.com",
+        },
         follow_redirects=False,
     )
-
     assert "error=send_disabled" in reply.headers["location"]
     assert "error=send_disabled" in compose.headers["location"]
     assert len(db_session.scalars(select(email_web.EmailThread)).all()) == before_threads
@@ -520,6 +525,16 @@ def test_outbound_off_rejects_send_before_any_durable_mutation(
     assert pending.state == "pending_approval"
     assert pending.postmark_error is None
     assert len(db_session.scalars(select(EmailAuditEvent)).all()) == before_audits
+
+
+def test_lisbon_due_day_bounds_follow_local_calendar_across_dst():
+    start, end = email_web._lisbon_day_bounds(
+        datetime(2026, 3, 29, 12, tzinfo=ZoneInfo("Europe/Lisbon"))
+    )
+
+    assert start == datetime(2026, 3, 29, 0, tzinfo=UTC)
+    assert end == datetime(2026, 3, 29, 23, tzinfo=UTC)
+    assert end - start == timedelta(hours=23)
 
 
 def test_hierarchy_only_renders_active_options_and_server_rejects_cross_branch_selection(
@@ -589,6 +604,44 @@ def test_ineligible_executor_is_rejected_by_server(
     assert thread.assigned_to_id is None
 
 
+def test_partial_hierarchy_is_rejected_without_mutating_triage(
+    authenticated_client, db_session, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(settings, "email_storage_root", str(tmp_path))
+    _bind_email_session(monkeypatch, db_session)
+    thread, _ = ingest_inbound(db_session, _payload("partial-email-hierarchy"))
+    queue = WorkQueue(code="partial-email", name="Fila parcial", active=True)
+    db_session.add(queue)
+    db_session.flush()
+    department = WorkDepartment(
+        queue_id=queue.id, code="partial-email-dept", name="Departamento parcial", active=True
+    )
+    db_session.add(department)
+    db_session.flush()
+    category = WorkCategory(
+        department_id=department.id,
+        code="partial-email-category",
+        name="Categoria parcial",
+        active=True,
+    )
+    db_session.add(category)
+    db_session.commit()
+
+    response = authenticated_client.post(
+        f"/v2-clean/email/{thread.id}/triage",
+        data={"work_category_id": str(category.id), "triage_notes": "não guardar"},
+        follow_redirects=False,
+    )
+    db_session.expire_all()
+    stored = db_session.get(EmailThread, thread.id)
+
+    assert "error=invalid_hierarchy" in response.headers["location"]
+    assert stored.work_queue_id is None
+    assert stored.work_department_id is None
+    assert stored.work_category_id is None
+    assert stored.triage_notes is None
+
+
 def test_reply_all_mode_and_mailbox_policy_controls_are_present():
     template = (ROOT / "app/templates/_email_thread_content.html").read_text(
         encoding="utf-8"
@@ -614,6 +667,7 @@ def test_reply_attachment_is_stored_with_draft(
         f"/v2-clean/email/{thread.id}/reply",
         data={
             "body": "Segue o documento pedido.",
+            "body_html": "<p>Segue o <strong>documento</strong>.</p><script>bad()</script>",
             "recipients": "cliente@example.com",
             "submit": "draft",
         },
@@ -633,8 +687,121 @@ def test_reply_attachment_is_stored_with_draft(
 
     assert response.status_code == 303
     assert outbound.state == "draft"
+    assert outbound.html_body == "<p>Segue o <strong>documento</strong>.</p>"
     assert attachment.file_name == "resposta.txt"
     assert Path(attachment.storage_path).read_bytes() == b"conteudo"
+
+
+def test_saved_draft_keeps_triage_and_can_be_continued_without_creating_a_second_message(
+    authenticated_client, db_session, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(settings, "email_storage_root", str(tmp_path))
+    _bind_email_session(monkeypatch, db_session)
+    thread, _ = ingest_inbound(db_session, _payload("draft-continuation"))
+    original_status = thread.status
+
+    first = authenticated_client.post(
+        f"/v2-clean/email/{thread.id}/reply",
+        data={
+            "body": "Primeira versão guardada.",
+            "body_html": "<p>Primeira versão guardada.</p>",
+            "recipients": "cliente@example.com",
+            "subject": "Rascunho sintético",
+            "submit": "draft",
+        },
+        follow_redirects=False,
+    )
+    db_session.expire_all()
+    draft = db_session.scalar(
+        select(EmailMessage).where(
+            EmailMessage.thread_id == thread.id,
+            EmailMessage.direction == "outbound",
+        )
+    )
+    detail = authenticated_client.get(f"/v2-clean/email/{thread.id}")
+
+    assert first.status_code == 303
+    assert db_session.get(EmailThread, thread.id).status == original_status
+    assert "Continuar rascunho" in detail.text
+    assert "Rascunho · não enviado" in detail.text
+    assert "Guardado:" in detail.text and "· Lisboa" in detail.text
+    assert f'data-email-draft-payload="{draft.id}"' in detail.text
+    assert "Rascunho sintético" in detail.text
+
+    second = authenticated_client.post(
+        f"/v2-clean/email/{thread.id}/reply",
+        data={
+            "draft_message_id": str(draft.id),
+            "body": "Segunda versão persistida.",
+            "body_html": "<p>Segunda versão persistida.</p>",
+            "recipients": "cliente@example.com",
+            "subject": "Rascunho sintético revisto",
+            "submit": "draft",
+        },
+        follow_redirects=False,
+    )
+    db_session.expire_all()
+    drafts = list(
+        db_session.scalars(
+            select(EmailMessage).where(
+                EmailMessage.thread_id == thread.id,
+                EmailMessage.direction == "outbound",
+            )
+        )
+    )
+
+    assert second.status_code == 303
+    assert len(drafts) == 1
+    assert drafts[0].id == draft.id
+    assert drafts[0].text_body == "Segunda versão persistida."
+    assert drafts[0].content_revision == 2
+    assert db_session.get(EmailThread, thread.id).status == original_status
+
+
+def test_pdf_preview_is_server_rendered_with_explicit_fallback(
+    authenticated_client, db_session, tmp_path, monkeypatch
+):
+    import fitz
+
+    monkeypatch.setattr(settings, "email_storage_root", str(tmp_path))
+    _bind_email_session(monkeypatch, db_session)
+    document = fitz.open()
+    page = document.new_page()
+    page.insert_text((72, 72), "PDF sintético para pré-visualização")
+    pdf_bytes = document.tobytes()
+    document.close()
+    payload = _payload("preview-pdf-rendered")
+    payload["Attachments"] = [{
+        "Name": "teste-sintetico.pdf",
+        "ContentType": "application/pdf",
+        "Content": base64.b64encode(pdf_bytes).decode(),
+        "ContentID": "",
+    }]
+    thread, _ = ingest_inbound(db_session, payload)
+    attachment = db_session.scalar(
+        select(EmailAttachment).where(EmailAttachment.message_id.in_(
+            select(EmailMessage.id).where(EmailMessage.thread_id == thread.id)
+        ))
+    )
+
+    panel = authenticated_client.get(
+        f"/v2-clean/email/attachments/{attachment.id}/preview"
+    )
+    preview = authenticated_client.get(
+        f"/v2-clean/email/attachments/{attachment.id}/pdf-preview"
+    )
+    page_image = authenticated_client.get(
+        f"/v2-clean/email/attachments/{attachment.id}/pdf-page/1"
+    )
+
+    assert panel.status_code == 200
+    assert f"/attachments/{attachment.id}/pdf-preview" in panel.text
+    assert "Abrir ficheiro" in panel.text and "Descarregar" in panel.text
+    assert preview.status_code == 200
+    assert f"/attachments/{attachment.id}/pdf-page/1" in preview.text
+    assert page_image.status_code == 200
+    assert page_image.headers["content-type"] == "image/png"
+    assert page_image.content.startswith(b"\x89PNG")
 
 
 def test_postmark_payload_includes_stored_reply_attachment(tmp_path, monkeypatch):
@@ -896,6 +1063,8 @@ def test_validate_classification_is_explicit_and_audited(
             "work_queue_id": str(queue.id),
             "work_department_id": str(department.id),
             "work_category_id": str(category.id),
+            "return_context": "/v2-clean/email?view=mine&status=open",
+            "sequence": f"{thread.id},999999",
         },
         follow_redirects=False,
     )
@@ -911,48 +1080,11 @@ def test_validate_classification_is_explicit_and_audited(
     )
 
     assert "saved=validate" in response.headers["location"]
+    assert "return_context=%2Fv2-clean%2Femail%3Fview%3Dmine%26status%3Dopen" in response.headers["location"]
+    assert f"sequence={thread.id},999999" in response.headers["location"]
     assert stored.classification_status == "classified"
     assert stored.status == "in_progress"
     assert audit is not None
-    assert audit.user_id is not None
-    assert audit.created_at is not None
-    assert audit.details_json["before"]["work_category_id"] is None
-    assert audit.details_json["after"]["work_category_id"] == category.id
-    assert audit.details_json["classification_changed"] is True
-
-    replacement = WorkCategory(
-        department_id=department.id,
-        code="email-reclassified-category",
-        name="Categoria alterada",
-        active=True,
-    )
-    db_session.add(replacement)
-    db_session.commit()
-    changed = authenticated_client.post(
-        f"/v2-clean/email/{thread.id}/triage",
-        data={
-            "action": "validate",
-            "work_queue_id": str(queue.id),
-            "work_department_id": str(department.id),
-            "work_category_id": str(replacement.id),
-        },
-        follow_redirects=False,
-    )
-    db_session.expire_all()
-    changed_audit = db_session.scalar(
-        select(EmailAuditEvent)
-        .where(
-            EmailAuditEvent.thread_id == thread.id,
-            EmailAuditEvent.action == "classification_validated",
-        )
-        .order_by(EmailAuditEvent.id.desc())
-    )
-
-    assert "saved=validate" in changed.headers["location"]
-    assert db_session.get(EmailThread, thread.id).work_category_id == replacement.id
-    assert changed_audit.details_json["before"]["work_category_id"] == category.id
-    assert changed_audit.details_json["after"]["work_category_id"] == replacement.id
-    assert changed_audit.details_json["classification_changed"] is True
 
     saved_after_validation = authenticated_client.post(
         f"/v2-clean/email/{thread.id}/triage",

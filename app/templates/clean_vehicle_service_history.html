@@ -21,7 +21,7 @@
         <td><strong>{{ event.service_label }}</strong><small>{{ event.service_code }}</small></td><td>{{ event.classification or '-' }}</td><td>{{ event.axle or '-' }}{% if event.position %} · {{ event.position }}{% endif %}</td>
         <td>{{ event.supplier_name or '-' }}</td><td>{{ event.work_order_reference or '-' }}{% if event.work_order_confidence is not none %}<small>{{ (event.work_order_confidence * 100)|round|int }}%</small>{% endif %}</td>
         <td>{{ '%.2f'|format(event.amount) if event.amount is not none else '-' }} {{ event.currency if event.amount is not none else '' }}</td><td><span class="status-pill">{{ status_labels.get(event.status, event.status) }}</span></td>
-        <td>{% if document %}<a href="/v2-clean/documents/{{ document.id }}" target="_blank">Abrir fatura</a>{% endif %}{% if not print_view and document %}<a href="/v2-clean/fleet/{{ vehicle.id }}/documents?main_group=invoices&open_item=document%3A{{ document.id }}">Tratar na ficha</a>{% endif %}{% if can_write and not print_view %}<a href="/v2-clean/fleet/{{ vehicle.id }}/services/{{ event.id }}">Decisão do evento</a>{% endif %}<small>{{ event.evidence_text or '-' }}</small></td>
+        <td>{% if document %}<a href="/v2-clean/documents/{{ document.id }}" target="_blank">Abrir fatura</a>{% endif %}{% if not print_view and document %}<a href="/v2-clean/fleet/{{ vehicle.id }}/documents?main_group=invoices&open_item=document%3A{{ document.id }}">Tratar na fatura</a>{% endif %}<small>{{ event.evidence_text or '-' }}</small></td>
       </tr>{% else %}<tr><td colspan="10">Sem serviços para os filtros escolhidos.</td></tr>{% endfor %}</tbody>
     </table></div></section>
   </main>

@@ -249,7 +249,7 @@
           <div><p class="eyebrow">Acessos</p><h3>Utilizadores</h3><p>{{ users|length }} registos apresentados</p></div>
         </div>
         <div class="table-wrap clean-admin-user-table-wrap">
-          <table class="clean-admin-user-table">
+          <table class="clean-admin-user-table" data-admin-table data-admin-filter-columns="Perfis,Áreas,Equipas">
             <thead><tr><th>Utilizador</th><th>Estado</th><th>Último acesso</th><th>Perfis</th><th>Áreas</th><th>Equipas</th><th><span class="sr-only">Ações</span></th></tr></thead>
             <tbody>
               {% for item in users %}
@@ -302,6 +302,7 @@
     {% endif %}
 
     {% if admin_section == "roles" %}
+      {% set permission_total = permission_groups.values()|map('length')|sum %}
       <div class="clean-admin-section-heading clean-card-wide">
         <div><p class="eyebrow">Perfis de acesso</p><h3>Perfis e permissões</h3><p>Abra um perfil para consultar ou alterar a matriz completa numa área larga.</p></div>
       </div>
@@ -319,7 +320,7 @@
       {% endif %}
       <section class="clean-panel clean-card-wide clean-admin-role-overview">
         <div class="table-wrap">
-          <table class="clean-admin-role-table">
+          <table class="clean-admin-role-table" data-admin-table data-admin-filter-columns="Tipo">
             <thead><tr><th>Perfil</th><th>Tipo</th><th>Estado</th><th>Permissões</th><th>Ação</th></tr></thead>
             <tbody>
               {% for role in roles %}
@@ -327,7 +328,7 @@
                   <td><strong>{{ role.name }}</strong><small>{{ role.description or role.code }}</small></td>
                   <td>{{ "Sistema" if role.is_system else "Personalizado" }}</td>
                   <td><span class="pill {{ 'priority-high' if role.active else 'muted-pill' }}">{{ "Ativo" if role.active else "Inativo" }}</span></td>
-                  <td><strong>{{ role_permissions.get(role.id, [])|length }}</strong> de {{ permission_groups.values()|map('length')|sum }}</td>
+                  <td><strong>{{ permission_total if role.code == 'admin' else role_permissions.get(role.id, [])|length }}</strong> de {{ permission_total }}</td>
                   <td><button class="secondary clean-admin-role-select" type="button" data-role-id="{{ role.id }}">Gerir</button></td>
                 </tr>
               {% endfor %}
@@ -341,10 +342,16 @@
           <div><p class="eyebrow">Matriz de permissões</p><h3 id="clean-admin-selected-role">Selecionar perfil</h3><p>Permissões agrupadas por módulo. Código técnico apresentado como informação secundária.</p></div>
           <label>Perfil
             <select id="clean-admin-role-picker">
-              {% for role in roles %}<option value="{{ role.id }}">{{ role.name }} · {{ role_permissions.get(role.id, [])|length }} permissões</option>{% endfor %}
+              {% for role in roles %}<option value="{{ role.id }}">{{ role.name }} · {{ permission_total if role.code == 'admin' else role_permissions.get(role.id, [])|length }} permissões</option>{% endfor %}
             </select>
           </label>
         </header>
+        <div class="clean-admin-permission-tools" role="search" aria-label="Filtrar permissões">
+          <label>Pesquisar<input type="search" data-permission-search placeholder="Nome ou código técnico"></label>
+          <label>Estado<select data-permission-state><option value="all">Todas</option><option value="checked">Atribuídas</option><option value="unchecked">Não atribuídas</option></select></label>
+          <button type="button" class="secondary compact-button" data-permission-expand>Recolher grupos</button>
+          <span data-permission-results aria-live="polite"></span>
+        </div>
         {% for role in roles %}
           <div class="clean-admin-role-editor" data-role-editor="{{ role.id }}" data-role-name="{{ role.name }}" {% if not loop.first %}hidden{% endif %}>
             <div class="clean-admin-role-editor-summary">
@@ -354,14 +361,14 @@
             <form class="clean-admin-permission-form" method="post" action="/v2-clean/admin/roles/{{ role.id }}/permissions">
               <div class="clean-admin-permission-groups">
                 {% for group, group_permissions in permission_groups.items() %}
-                  <fieldset class="clean-admin-permission-group">
-                    <legend><span>{{ permission_group_labels.get(group, group|replace('_', ' ')|title) }}</span><small>{{ group_permissions|length }} permissões</small></legend>
+                  <fieldset class="clean-admin-permission-group" data-permission-group>
+                    <legend><button type="button" class="clean-admin-permission-group-toggle" data-permission-group-toggle aria-expanded="true"><span>{{ permission_group_labels.get(group, group|replace('_', ' ')|title) }}</span><small>{{ group_permissions|length }} permissões</small></button></legend>
                     {% if group == "email" %}
                       <p class="clean-admin-permission-hint">Estas permissões autorizam as funções gerais. Define as caixas acessíveis em <a href="/v2-clean/admin/work-classification?view=channels">Filas e classificação · Email</a>.</p>
                     {% endif %}
                     <div class="clean-admin-permission-group-list">
                       {% for permission in group_permissions %}
-                        <label class="clean-admin-permission-item">
+                        <label class="clean-admin-permission-item" data-permission-item>
                           <span><strong>{{ permission.name or permission.code }}</strong><code>{{ permission.code }}</code></span>
                           <input type="checkbox" name="permission_codes" value="{{ permission.code }}"
                             {% if role.code == "admin" or permission.code in role_permissions.get(role.id, []) %}checked{% endif %}
@@ -708,4 +715,5 @@ DEPOIS
     });
   });
 </script>
+<script src="/static/js/admin-table-tools.js"></script>
 {% endblock %}

@@ -49,8 +49,20 @@ from app.models.documents import (
     VehicleDocumentAuditField,
     VehicleDocumentRecord,
     VehicleDocumentRecordTag,
+    VehicleOfficialDocument,
+    VehicleOfficialDocumentFile,
 )
-from app.models.imports import ImportBatch, ImportError, ImportFile, ImportMapping, ImportRawRow
+from app.models.imports import (
+    ImportBatch,
+    ImportError,
+    ImportFile,
+    ImportMapping,
+    ImportRawRow,
+    ProcessBatch,
+    ProcessBatchRow,
+    ProcessBatchRowComment,
+    ProcessBatchTaskRow,
+)
 from app.models.incidents import Incident, IncidentEvent, IncidentEvidence
 from app.models.invoice_service_history import InvoiceServiceEvent, InvoiceServiceImportBatch
 from app.models.integrations import EmailIntake, EmailIntakeAttachment
@@ -93,7 +105,14 @@ from app.models.tasks import (
     TaskRecurrenceTemplate,
     TaskSlaEvent,
 )
-from app.models.task_templates import TaskTemplate, TaskTemplateUsage, TaskTemplateVersion
+from app.models.task_templates import (
+    ProcessInstance,
+    ProcessModel,
+    ProcessModelVersion,
+    TaskTemplate,
+    TaskTemplateUsage,
+    TaskTemplateVersion,
+)
 from app.models.vehicle_history_audit import (
     VehicleHistoryAudit,
     VehicleHistoryAuditDocument,
@@ -161,6 +180,7 @@ from app.services.task_cases import (
     create_related_case,
 )
 from app.services.authorization import get_user_authorized_unit_codes, get_user_permission_codes
+from app.services.case_workflow_authorization import can_access_case
 from app.services.task_queues import (
     authorized_task_queue,
     canonical_task_queue,
@@ -204,10 +224,9 @@ from app.services.invoice_service_history import (
     STATUS_LABELS as INVOICE_SERVICE_STATUS_LABELS,
     InvoiceServiceImportError,
     apply_invoice_service_import,
-    decide_invoice_service_event,
-    link_event_to_work_order,
     preview_invoice_service_import,
     rollback_invoice_service_batch,
+    validate_document_invoice_service_events,
     vehicle_service_history,
 )
 from app.services.document_service_classification import save_service_classifications
@@ -231,6 +250,7 @@ from app.services.documentation_treatment import (
     service_count,
 )
 from app.services.documentation_vehicle_view import documentation_by_vehicle_overview
+from app.services.task_attachment_treatment import treat_task_attachment
 from app.services.management_center import (
     ACTION_STATUS_LABELS,
     AR_IMPORT_TYPE,
@@ -252,6 +272,15 @@ from app.services.pending_document_importer import (
     reconcile_pending_invoices,
 )
 from app.services.photo_capture import required_photo_blockers
+from app.services.process_batches import (
+    add_batch,
+    add_row_comment,
+    compose_description,
+    create_batch_process,
+    create_task_for_rows,
+    mirror_task_comment_to_rows,
+    update_batch_row,
+)
 from app.services.portal_access import (
     portal_context,
     portal_csrf_token,
@@ -290,6 +319,7 @@ from app.services.task_bulk_importer import (
     TASK_BULK_FIELDS,
     TASK_BULK_IMPORT_TYPE,
     create_tasks_from_bulk_import,
+    iter_task_import_rows,
     preview_task_bulk_import,
     store_task_bulk_upload,
 )
@@ -2384,6 +2414,7 @@ PRIORITY_LABELS = dict(PRIORITIES)
 PRIORITY_DISPLAY_LABELS = {**PRIORITY_LABELS, "low": "Baixa"}
 
 TASK_ARCHIVE_STATUSES = {"closed", "cancelled", "no_action_needed"}
+TASK_ACTIVE_EXCLUDED_STATUSES = TASK_ARCHIVE_STATUSES | {"resolved"}
 
 
 def task_origin_label(task: Task) -> str:
@@ -4010,15 +4041,70 @@ def clean_experience_denied(request: Request) -> RedirectResponse | None:
     return None
 
 
-def clean_process_area_cards(db: Session) -> list[dict[str, object]]:
+def clean_process_area_cards(
+    db: Session, *, accessible_task_types: set[str] | None = None
+) -> list[dict[str, object]]:
+    allowed_task_types = accessible_task_types or {
+        code for codes in TASK_WORKSPACE_TASK_TYPES.values() for code in codes
+    }
+    task_area_types = {
+        "operational": set(TASK_WORKSPACE_TASK_TYPES["operational"])
+        | set(TASK_WORKSPACE_TASK_TYPES["workshop"]),
+        "management": set(TASK_WORKSPACE_TASK_TYPES["audit"])
+        | set(TASK_WORKSPACE_TASK_TYPES["management"]),
+        "administration": set(TASK_WORKSPACE_TASK_TYPES["administration"]),
+    }
+
+    def task_counts(area: str) -> tuple[int, int]:
+        task_types = task_area_types[area].intersection(allowed_task_types)
+        if not task_types:
+            return 0, 0
+        active = (
+            Task.task_type.in_(tuple(task_types)),
+            Task.closed_at.is_(None),
+            ~Task.status.in_(TASK_ARCHIVE_STATUSES | TASK_PLANNED_STATUSES),
+        )
+        open_count = db.scalar(select(func.count()).select_from(Task).where(*active)) or 0
+        critical_count = (
+            db.scalar(
+                select(func.count())
+                .select_from(Task)
+                .where(*active, Task.priority.in_({"high", "urgent"}))
+            )
+            or 0
+        )
+        return open_count, critical_count
+
+    operational_open, operational_critical = task_counts("operational")
+    management_open, management_critical = task_counts("management")
+    administration_open, administration_critical = task_counts("administration")
+    fleet_open = (
+        db.scalar(
+            select(func.count())
+            .select_from(VehicleHistoryAudit)
+            .where(VehicleHistoryAudit.status != "closed")
+        )
+        or 0
+    )
+    fleet_critical = (
+        db.scalar(
+            select(func.count())
+            .select_from(VehicleHistoryAudit)
+            .where(
+                VehicleHistoryAudit.status != "closed",
+                VehicleHistoryAudit.priority.in_({"high", "urgent", "critical"}),
+            )
+        )
+        or 0
+    )
     return [
         {
             "code": "operational",
             "short": "OP",
             "label": "Operacional",
             "description": "Coordenação diária, tarefas guiadas e ocorrências rápidas.",
-            "open": 0,
-            "critical": 0,
+            "open": operational_open,
+            "critical": operational_critical,
             "models": ["Transferência crítica", "Verificação operacional"],
             "href": "/v2-clean/tasks?workspace=operational",
             "action": "Abrir tarefas",
@@ -4029,8 +4115,8 @@ def clean_process_area_cards(db: Session) -> list[dict[str, object]]:
             "short": "FR",
             "label": "Frota",
             "description": "Ciclo técnico, documentação e decisões comerciais da viatura.",
-            "open": 0,
-            "critical": 0,
+            "open": fleet_open,
+            "critical": fleet_critical,
             "models": ["Auditoria técnica da viatura", "Preparação para venda", "Regularização documental da viatura"],
             "href": "/v2-clean/fleet",
             "action": "Abrir frota",
@@ -4041,8 +4127,8 @@ def clean_process_area_cards(db: Session) -> list[dict[str, object]]:
             "short": "GE",
             "label": "Gestão",
             "description": "Sinistros, fornecedores, discussões e validações de gestão.",
-            "open": 0,
-            "critical": 0,
+            "open": management_open,
+            "critical": management_critical,
             "models": ["Sinistro acompanhado", "Reclamação fornecedor", "Discussão Stellantis"],
             "href": "/v2-clean/tasks?workspace=audit",
             "action": "Abrir auditoria",
@@ -4053,8 +4139,8 @@ def clean_process_area_cards(db: Session) -> list[dict[str, object]]:
             "short": "AD",
             "label": "Administração",
             "description": "Procedimentos, protocolos e organização interna.",
-            "open": 0,
-            "critical": 0,
+            "open": administration_open,
+            "critical": administration_critical,
             "models": ["Alteração de procedimento", "Revisão de protocolo", "Descritivo de função"],
             "href": "/v2-clean/admin/overview",
             "action": "Abrir administração",
@@ -4183,12 +4269,50 @@ def clean_experience_home(request: Request):
     if denied:
         return denied
     with SessionLocal() as db:
-        area_cards = clean_process_area_cards(db)
+        user_id = get_web_user_id(request)
+        user = db.get(User, user_id) if user_id else None
+        accessible_task_types = user_accessible_task_type_codes(db, user) if user else set()
+        area_cards = clean_process_area_cards(
+            db, accessible_task_types=set(accessible_task_types)
+        )
+        active_workshop_process = and_(
+            or_(
+                WorkshopPhasedProcess.origin == "v2_clean",
+                WorkshopPhasedProcess.origin.is_(None),
+            ),
+            WorkshopPhasedProcess.status.notin_(("closed", "cancelled")),
+        )
         quick_metrics = {
             "vehicles": count_rows(db, Vehicle),
-            "workshop_alerts": area_cards[0]["critical"],
-            "tasks": area_cards[0]["open"],
-            "audits": area_cards[1]["open"],
+            "workshop_alerts": db.scalar(
+                select(func.count())
+                .select_from(WorkshopPhasedProcessAlert)
+                .join(
+                    WorkshopPhasedProcess,
+                    WorkshopPhasedProcess.id == WorkshopPhasedProcessAlert.process_id,
+                )
+                .where(
+                    WorkshopPhasedProcessAlert.status == "open",
+                    active_workshop_process,
+                )
+            )
+            or 0,
+            "tasks": db.scalar(
+                select(func.count())
+                .select_from(Task)
+                .where(
+                    Task.task_type.in_(tuple(accessible_task_types)),
+                    Task.closed_at.is_(None),
+                    ~Task.status.in_(TASK_ARCHIVE_STATUSES | TASK_PLANNED_STATUSES),
+                )
+            )
+            or 0,
+            "audits": db.scalar(
+                select(func.count())
+                .select_from(VehicleHistoryAudit)
+                .where(VehicleHistoryAudit.status != "closed")
+            )
+            or 0,
         }
         return templates.TemplateResponse(
             request,
@@ -4323,7 +4447,32 @@ def clean_process_center(
             )
         )
         process_type_by_id = {item.id: item for item in process_types}
+        batch_model_versions = _published_batch_model_versions(db) if not access_denied else []
+        batch_model_by_id = {
+            item.id: db.get(ProcessModel, item.model_id) for item in batch_model_versions
+        }
+        batch_cases: list[dict[str, object]] = []
+        if not access_denied:
+            candidates = list(
+                db.execute(
+                    select(ProcessInstance, TaskCase)
+                    .join(TaskCase, TaskCase.id == ProcessInstance.case_id)
+                    .where(
+                        ProcessInstance.process_kind == "batch_data_treatment",
+                        ProcessInstance.deleted_at.is_(None),
+                        TaskCase.deleted_at.is_(None),
+                    )
+                    .order_by(ProcessInstance.created_at.desc(), ProcessInstance.id.desc())
+                    .limit(100)
+                )
+            )
+            batch_cases = [
+                {"process": process, "case": case_record}
+                for process, case_record in candidates
+                if can_access_case(db, current_user, case_record, "read")
+            ][:50]
         recent_management: list[ManagementProcess] = []
+        process_inbox_records: list[QuickRecord] = []
         if not access_denied and not filter_error:
             statement = select(ManagementProcess).order_by(
                 ManagementProcess.closed_at.is_not(None),
@@ -4356,6 +4505,17 @@ def clean_process_center(
                     )
             if not filter_error:
                 recent_management = list(db.scalars(statement.limit(50)))
+            process_inbox_records = list(
+                db.scalars(
+                    select(QuickRecord)
+                    .where(
+                        QuickRecord.workspace == "processes",
+                        QuickRecord.closed_at.is_(None),
+                    )
+                    .order_by(QuickRecord.created_at.desc(), QuickRecord.id.desc())
+                    .limit(100)
+                )
+            )
 
         return_token = issue_return_context(
             settings.app_secret_key,
@@ -4417,7 +4577,11 @@ def clean_process_center(
             {
                 "area_cards": area_cards,
                 "recent_management": recent_management,
+                "process_inbox_records": process_inbox_records,
                 "process_type_by_id": process_type_by_id,
+                "batch_model_versions": batch_model_versions,
+                "batch_model_by_id": batch_model_by_id,
+                "batch_cases": batch_cases,
                 "process_types": process_types,
                 "process_categories": process_categories,
                 "process_subcategories": process_subcategories,
@@ -4440,9 +4604,585 @@ def clean_process_center(
                 "can_coordinate_team": not access_denied and "tasks.management.update" in permission_codes,
                 "can_coordinate_operational": not access_denied and "tasks.management.close" in permission_codes,
                 "manager_exception_mode": not access_denied and "manager" in role_codes,
+                # The legacy ManagementProcess workbench remains available in the
+                # database and dedicated compatibility routes, but it must not be
+                # projected into the new Process Center.
+                "show_legacy_management_processes": False,
                 "foundation_ui_enabled": settings.visual_foundation_enabled,
             },
         )
+
+
+@web_router.post("/v2-clean/processes/inbox", response_class=HTMLResponse)
+def clean_process_inbox_create(
+    request: Request,
+    title: str = Form(...),
+    record_type: str = Form("need"),
+    priority: str = Form("normal"),
+):
+    user_id = get_web_user_id(request)
+    if not user_id:
+        return RedirectResponse("/login", status_code=303)
+    with SessionLocal() as db:
+        user = db.get(User, user_id)
+        permissions = get_user_permission_codes(db, user) if user else set()
+        roles = task_role_codes(db, user_id)
+        if roles and roles.issubset({"admin", "user_admin", "functional_admin"}):
+            return RedirectResponse("/v2-clean/processes?error=forbidden", status_code=303)
+        if not permissions.intersection({"management_center.write", "tasks.management.create"}):
+            return RedirectResponse("/v2-clean/processes?error=forbidden", status_code=303)
+        clean_title = " ".join(title.split())[:200]
+        if not clean_title:
+            return RedirectResponse("/v2-clean/processes?error=invalid_inbox", status_code=303)
+        if record_type not in {"need", "idea", "problem", "task_candidate"}:
+            record_type = "need"
+        if priority not in {"low", "normal", "high", "urgent"}:
+            priority = "normal"
+        record = QuickRecord(
+            workspace="processes",
+            record_type=record_type,
+            title=clean_title,
+            status="new",
+            priority=priority,
+            source="manual",
+            created_by_id=user_id,
+        )
+        db.add(record)
+        db.flush()
+        record_audit(
+            db,
+            action="process_inbox.create",
+            entity_type="quick_record",
+            entity_id=record.id,
+            detail=f"Entrada de processos criada: {record.title}",
+            user_id=user_id,
+        )
+        db.commit()
+    return RedirectResponse("/v2-clean/processes#process-inbox", status_code=303)
+
+
+@web_router.post("/v2-clean/processes/inbox/{record_id}", response_class=HTMLResponse)
+def clean_process_inbox_update(
+    request: Request,
+    record_id: int,
+    title: str = Form(...),
+    record_type: str = Form("need"),
+    priority: str = Form("normal"),
+    status: str = Form("new"),
+    destination: str = Form("undecided"),
+    model_version_id: str = Form(""),
+    description: str = Form(""),
+):
+    user_id = get_web_user_id(request)
+    if not user_id:
+        return RedirectResponse("/login", status_code=303)
+    with SessionLocal() as db:
+        user = db.get(User, user_id)
+        permissions = get_user_permission_codes(db, user) if user else set()
+        roles = task_role_codes(db, user_id)
+        if roles and roles.issubset({"admin", "user_admin", "functional_admin"}):
+            return RedirectResponse("/v2-clean/processes?error=forbidden", status_code=303)
+        if not permissions.intersection({"management_center.write", "tasks.management.create"}):
+            return RedirectResponse("/v2-clean/processes?error=forbidden", status_code=303)
+        record = db.get(QuickRecord, record_id)
+        if not record or record.workspace != "processes":
+            return RedirectResponse("/v2-clean/processes?error=invalid_inbox", status_code=303)
+        record.title = " ".join(title.split())[:200] or record.title
+        record.record_type = record_type if record_type in {"need", "idea", "problem", "task_candidate"} else record.record_type
+        record.priority = priority if priority in {"low", "normal", "high", "urgent"} else record.priority
+        record.status = status if status in {"new", "reviewing", "planned", "converted", "closed"} else record.status
+        record.description = description.strip() or None
+        record.entity_type = destination if destination in {"task", "process", "workshop_process", "no_action"} else None
+        if destination == "task" and not record.converted_task_id:
+            task = Task(
+                title=record.title,
+                description=record.description,
+                task_type="process_task",
+                source="process_inbox",
+                status="new",
+                priority=record.priority or "normal",
+                created_by_id=user_id,
+                entity_type="quick_record",
+                entity_id=str(record.id),
+            )
+            db.add(task)
+            db.flush()
+            record.converted_task_id = task.id
+            record.status = "converted"
+            record.entity_id = str(task.id)
+        elif destination == "process" and not record.entity_id:
+            version = db.get(ProcessModelVersion, parse_optional_int(model_version_id))
+            unit_id = db.scalar(
+                select(UserOrganizationalUnit.organizational_unit_id)
+                .where(UserOrganizationalUnit.user_id == user_id)
+                .order_by(UserOrganizationalUnit.id)
+                .limit(1)
+            )
+            if not version or version not in _published_batch_model_versions(db) or not unit_id:
+                return RedirectResponse("/v2-clean/processes?error=invalid_model#process-inbox", status_code=303)
+            try:
+                _, process = create_batch_process(
+                    db,
+                    model_version=version,
+                    title=record.title,
+                    description=record.description,
+                    organizational_unit_id=unit_id,
+                    actor_id=user_id,
+                )
+            except ValueError:
+                db.rollback()
+                return RedirectResponse("/v2-clean/processes?error=invalid_process#process-inbox", status_code=303)
+            record.status = "converted"
+            record.entity_id = str(process.id)
+        elif destination == "workshop_process":
+            # Workshop remains a separate module; the inbox keeps a pending hand-off
+            # until the required vehicle context is chosen there.
+            record.status = "planned"
+        if record.status in {"converted", "closed"} or record.entity_type == "no_action":
+            record.closed_at = datetime.now(UTC)
+        db.commit()
+    return RedirectResponse("/v2-clean/processes#process-inbox", status_code=303)
+
+
+def _batch_process_access(db: Session, request: Request, *, write: bool = False) -> tuple[int, User] | None:
+    user_id = get_web_user_id(request)
+    user = db.get(User, user_id) if user_id else None
+    if not user:
+        return None
+    permissions = get_user_permission_codes(db, user)
+    required = {"management_center.write", "tasks.management.create"} if write else PROCESS_CENTER_PERMISSIONS
+    if not permissions.intersection(required):
+        return None
+    return user_id, user
+
+
+def _published_batch_model_versions(db: Session) -> list[ProcessModelVersion]:
+    versions = list(
+        db.scalars(
+            select(ProcessModelVersion)
+            .join(ProcessModel, ProcessModel.id == ProcessModelVersion.model_id)
+            .where(ProcessModelVersion.status == "published", ProcessModel.active.is_(True))
+            .order_by(ProcessModel.name, ProcessModelVersion.version.desc())
+        )
+    )
+    return [
+        version
+        for version in versions
+        if isinstance(version.definition_json, dict)
+        and version.definition_json.get("kind") == "batch_data_treatment"
+    ]
+
+
+@web_router.post("/v2-clean/processes/batches/start", response_class=HTMLResponse)
+def clean_process_batch_start(
+    request: Request,
+    title: str = Form(...),
+    model_version_id: int = Form(...),
+    description: str = Form(""),
+):
+    with SessionLocal() as db:
+        access = _batch_process_access(db, request, write=True)
+        if not access:
+            return RedirectResponse("/v2-clean/processes?error=forbidden", status_code=303)
+        user_id, _ = access
+        version = db.get(ProcessModelVersion, model_version_id)
+        if version not in _published_batch_model_versions(db):
+            return RedirectResponse("/v2-clean/processes?error=invalid_model", status_code=303)
+        unit_id = db.scalar(
+            select(UserOrganizationalUnit.organizational_unit_id)
+            .where(UserOrganizationalUnit.user_id == user_id)
+            .order_by(UserOrganizationalUnit.id)
+            .limit(1)
+        )
+        if not unit_id:
+            return RedirectResponse("/v2-clean/processes?error=forbidden", status_code=303)
+        try:
+            _, process = create_batch_process(
+                db,
+                model_version=version,
+                title=" ".join(title.split())[:200],
+                description=description.strip() or None,
+                organizational_unit_id=unit_id,
+                actor_id=user_id,
+            )
+            created_process_id = process.id
+            db.commit()
+        except ValueError:
+            db.rollback()
+            return RedirectResponse("/v2-clean/processes?error=invalid_process", status_code=303)
+    return RedirectResponse(
+        f"/v2-clean/processes/batches/{created_process_id}", status_code=303
+    )
+
+
+def _format_process_batch_description(value: str | None) -> str:
+    parts = [part.strip() for part in re.split(r"[\r\n]+", value or "") if part.strip()]
+    rendered: list[str] = []
+    detail_number = 0
+    for index, part in enumerate(parts):
+        date_match = re.fullmatch(r"(\d{4})-(\d{2})-(\d{2})T00:00:00", part)
+        if date_match:
+            rendered.append(
+                f"Data: {date_match.group(3)}/{date_match.group(2)}/{date_match.group(1)}"
+            )
+            continue
+        if index == len(parts) - 1 and re.fullmatch(r"[-+]?\d+(?:[.,]\d{1,2})", part):
+            amount = Decimal(part.replace(",", "."))
+            formatted = (
+                f"{amount:,.2f}".replace(",", "_").replace(".", ",").replace("_", ".")
+            )
+            rendered.append(f"Montante: {formatted} €")
+            continue
+        if re.fullmatch(r"\d+", part):
+            rendered.append(f"Referência: {part}")
+            continue
+        detail_number += 1
+        label = "Detalhe" if detail_number == 1 else f"Detalhe {detail_number}"
+        rendered.append(f"{label}: {part}")
+    return " · ".join(rendered)
+
+
+@web_router.get("/v2-clean/processes/batches/{process_id}", response_class=HTMLResponse)
+def clean_process_batch_detail(request: Request, process_id: int, error: str = "", created: str = ""):
+    with SessionLocal() as db:
+        access = _batch_process_access(db, request)
+        if not access:
+            return RedirectResponse("/v2-clean/processes?error=forbidden", status_code=303)
+        process = db.get(ProcessInstance, process_id)
+        if not process or process.process_kind != "batch_data_treatment":
+            return RedirectResponse("/v2-clean/processes?error=invalid_process", status_code=303)
+        case_record = db.get(TaskCase, process.case_id)
+        if not case_record or not can_access_case(db, access[1], case_record, "read"):
+            return RedirectResponse("/v2-clean/processes?error=forbidden", status_code=303)
+        batches = list(db.scalars(select(ProcessBatch).where(ProcessBatch.process_instance_id == process.id).order_by(ProcessBatch.id.desc())))
+        rows = list(db.scalars(select(ProcessBatchRow).where(ProcessBatchRow.batch_id.in_([item.id for item in batches])).order_by(ProcessBatchRow.batch_id.desc(), ProcessBatchRow.row_number))) if batches else []
+        links = list(db.scalars(select(ProcessBatchTaskRow).where(ProcessBatchTaskRow.batch_row_id.in_([row.id for row in rows])))) if rows else []
+        task_by_id = {task.id: task for task in db.scalars(select(Task).where(Task.id.in_({link.task_id for link in links})))} if links else {}
+        link_by_row_id = {link.batch_row_id: link for link in links}
+        comments = list(db.scalars(select(ProcessBatchRowComment).where(ProcessBatchRowComment.batch_row_id.in_([row.id for row in rows])).order_by(ProcessBatchRowComment.created_at.desc()))) if rows else []
+        comments_by_row_id: dict[int, list[ProcessBatchRowComment]] = defaultdict(list)
+        for comment in comments:
+            comments_by_row_id[comment.batch_row_id].append(comment)
+        row_counts = {
+            "total": len(rows),
+            "available": sum(
+                1
+                for row in rows
+                if row.id not in link_by_row_id and row.status in {"ready", "pending"}
+            ),
+            "in_progress": sum(1 for row in rows if row.status == "in_progress"),
+            "completed": sum(1 for row in rows if row.status == "completed"),
+            "error": sum(1 for row in rows if row.status == "error"),
+        }
+        row_counts["progress"] = (
+            round((row_counts["completed"] / row_counts["total"]) * 100)
+            if row_counts["total"]
+            else 0
+        )
+        status_labels = {
+            "active": "Ativo",
+            "new": "Nova",
+            "in_execution": "Em curso",
+            "pending": "Pendente",
+            "ready": "Disponível",
+            "in_progress": "Em tratamento",
+            "completed": "Concluída",
+            "excluded": "Excluída",
+            "error": "Com erro",
+            "open": "Aberto",
+            "waiting": "A aguardar",
+            "closed": "Concluído",
+            "cancelled": "Cancelado",
+        }
+
+        users = list(db.scalars(select(User).where(User.active.is_(True)).order_by(User.name, User.email)))
+        return templates.TemplateResponse(
+            request,
+            "clean_process_batch.html",
+            {
+                "process": process,
+                "case_record": case_record,
+                "batches": batches,
+                "rows": rows,
+                "rows_by_batch": {batch.id: [row for row in rows if row.batch_id == batch.id] for batch in batches},
+                "link_by_row_id": link_by_row_id,
+                "task_by_id": task_by_id,
+                "comments_by_row_id": comments_by_row_id,
+                "row_counts": row_counts,
+                "task_count": len({link.task_id for link in links}),
+                "status_labels": status_labels,
+                "display_description_by_row_id": {
+                    row.id: _format_process_batch_description(row.description) for row in rows
+                },
+                "users": users,
+                "error": error[:80],
+                "created": created[:80],
+                "foundation_ui_enabled": settings.visual_foundation_enabled,
+            },
+        )
+
+
+@web_router.post("/v2-clean/processes/batches/{process_id}/upload", response_class=HTMLResponse)
+def clean_process_batch_upload(request: Request, process_id: int, file: UploadFile = File(...)):
+    user_id = get_web_user_id(request)
+    if not user_id:
+        return RedirectResponse("/login", status_code=303)
+    denied = require_any_web_permission(request, "imports.run", "management_center.write")
+    if denied:
+        return denied
+    with SessionLocal() as db:
+        access = _batch_process_access(db, request, write=True)
+        process = db.get(ProcessInstance, process_id)
+        case_record = db.get(TaskCase, process.case_id) if process else None
+        if (
+            not access
+            or not process
+            or process.process_kind != "batch_data_treatment"
+            or not case_record
+            or not can_access_case(db, access[1], case_record, "execute")
+        ):
+            return RedirectResponse("/v2-clean/processes?error=forbidden", status_code=303)
+    if not file.filename or not file.filename.lower().endswith((".xlsx", ".csv")):
+        return RedirectResponse(f"/v2-clean/processes/batches/{process_id}?error=invalid_file", status_code=303)
+    suffix = Path(file.filename).suffix
+    with NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+        tmp.write(file.file.read())
+        tmp_path = Path(tmp.name)
+    try:
+        stored_path = store_task_bulk_upload(tmp_path, file.filename)
+    finally:
+        tmp_path.unlink(missing_ok=True)
+    first = next(iter(iter_task_import_rows(stored_path)), None)
+    if not first:
+        stored_path.unlink(missing_ok=True)
+        return RedirectResponse(f"/v2-clean/processes/batches/{process_id}?error=empty_file", status_code=303)
+    sheet_name, headers, _, _, _ = first
+    with SessionLocal() as db:
+        process = db.get(ProcessInstance, process_id)
+        import_batch = ImportBatch(
+            source_system="carfast_processes",
+            import_type="process_batch_source",
+            status="pending_mapping",
+            imported_by_id=user_id,
+            total_rows=0,
+            detail=f"Ficheiro de origem para processo #{process_id}",
+        )
+        db.add(import_batch)
+        db.flush()
+        import_file = ImportFile(
+            batch_id=import_batch.id,
+            original_name=file.filename,
+            file_name=stored_path.name,
+            storage_path=str(stored_path),
+            sheet_name=sheet_name,
+            columns_json=headers,
+        )
+        db.add(import_file)
+        db.commit()
+        request.session["process_batch_pending"] = {
+            "process_id": process_id,
+            "path": str(stored_path),
+            "original_name": file.filename,
+            "sheet_name": sheet_name,
+            "headers": headers,
+            "import_batch_id": import_batch.id,
+            "import_file_id": import_file.id,
+        }
+        return templates.TemplateResponse(
+            request,
+            "clean_process_batch_mapping.html",
+            {"process": process, "headers": headers, "original_name": file.filename, "foundation_ui_enabled": settings.visual_foundation_enabled},
+        )
+
+
+@web_router.post("/v2-clean/processes/batches/{process_id}/map", response_class=HTMLResponse)
+async def clean_process_batch_map(request: Request, process_id: int):
+    pending = request.session.get("process_batch_pending")
+    if not pending or pending.get("process_id") != process_id:
+        return RedirectResponse(f"/v2-clean/processes/batches/{process_id}?error=upload_expired", status_code=303)
+    form = await request.form()
+    headers = pending.get("headers") or []
+    allowed_targets = {"ignore", "row_key", "title", "responsible", "due_on", "priority", *{f"description_{index}" for index in range(1, 21)}}
+    mapping = {header: str(form.get(f"column_{index}") or "ignore") for index, header in enumerate(headers)}
+    mapping = {header: target for header, target in mapping.items() if target in allowed_targets and target != "ignore"}
+    if "title" not in mapping.values() or len(mapping.values()) != len(set(mapping.values())):
+        return RedirectResponse(f"/v2-clean/processes/batches/{process_id}?error=invalid_mapping", status_code=303)
+    parsed_rows = [raw for _, _, _, _, raw in iter_task_import_rows(pending["path"])]
+    pending["mapping"] = mapping
+    request.session["process_batch_pending"] = pending
+    title_column = next(column for column, target in mapping.items() if target == "title")
+    preview_rows = [
+        {
+            "row_number": index,
+            "title": str(raw.get(title_column) or "").strip()[:200],
+            "description": compose_description(raw, mapping) or "",
+            "source": raw,
+        }
+        for index, raw in enumerate(parsed_rows, start=2)
+    ]
+    with SessionLocal() as db:
+        access = _batch_process_access(db, request, write=True)
+        process = db.get(ProcessInstance, process_id)
+        if not access or not process:
+            return RedirectResponse("/v2-clean/processes?error=forbidden", status_code=303)
+        return templates.TemplateResponse(
+            request,
+            "clean_process_batch_preview.html",
+            {
+                "process": process,
+                "original_name": pending["original_name"],
+                "preview_rows": preview_rows,
+                "foundation_ui_enabled": settings.visual_foundation_enabled,
+            },
+        )
+
+
+@web_router.post("/v2-clean/processes/batches/{process_id}/confirm", response_class=HTMLResponse)
+async def clean_process_batch_confirm(request: Request, process_id: int):
+    pending = request.session.get("process_batch_pending")
+    if not pending or pending.get("process_id") != process_id or not pending.get("mapping"):
+        return RedirectResponse(f"/v2-clean/processes/batches/{process_id}?error=upload_expired", status_code=303)
+    form = await request.form()
+    parsed_rows = [raw for _, _, _, _, raw in iter_task_import_rows(pending["path"])]
+    titles = [str(value).strip() for value in form.getlist("row_title")]
+    descriptions = [str(value).strip() for value in form.getlist("row_description")]
+    if len(titles) != len(parsed_rows) or len(descriptions) != len(parsed_rows) or any(not title for title in titles):
+        return RedirectResponse(f"/v2-clean/processes/batches/{process_id}?error=invalid_batch", status_code=303)
+    custom_columns: list[tuple[int, str]] = []
+    for column_index, value in enumerate(form.getlist("custom_column_name")):
+        name = " ".join(str(value).split())[:80]
+        if name and name.casefold() not in {item[1].casefold() for item in custom_columns}:
+            custom_columns.append((column_index, name))
+    with SessionLocal() as db:
+        access = _batch_process_access(db, request, write=True)
+        process = db.get(ProcessInstance, process_id)
+        if not access or not process:
+            return RedirectResponse("/v2-clean/processes?error=forbidden", status_code=303)
+        try:
+            batch = add_batch(
+                db,
+                process=process,
+                name=pending["original_name"],
+                mapping=pending["mapping"],
+                rows=parsed_rows,
+                actor_id=access[0],
+                import_file_id=pending.get("import_file_id"),
+            )
+            created_batch_id = batch.id
+            db.flush()
+            batch_rows = list(
+                db.scalars(
+                    select(ProcessBatchRow)
+                    .where(ProcessBatchRow.batch_id == batch.id)
+                    .order_by(ProcessBatchRow.row_number)
+                )
+            )
+            for row_index, batch_row in enumerate(batch_rows):
+                batch_row.title = titles[row_index][:200]
+                batch_row.description = descriptions[row_index] or None
+                custom_fields: dict[str, str] = {}
+                for column_index, name in custom_columns:
+                    values = form.getlist(f"custom_{column_index}")
+                    value = str(values[row_index]).strip() if row_index < len(values) else ""
+                    if value:
+                        custom_fields[name] = value
+                if custom_fields:
+                    batch_row.source_json = {**(batch_row.source_json or {}), **custom_fields}
+                    batch_row.treatment_json = {
+                        **(batch_row.treatment_json or {}),
+                        "custom_fields": custom_fields,
+                    }
+            import_batch = db.get(ImportBatch, pending.get("import_batch_id"))
+            if import_batch:
+                for row_number, raw in enumerate(parsed_rows, start=2):
+                    db.add(
+                        ImportRawRow(
+                            batch_id=import_batch.id,
+                            row_number=row_number,
+                            external_reference=None,
+                            raw_json=raw,
+                            row_hash=hashlib.sha1(
+                                json.dumps(raw, ensure_ascii=False, default=str, sort_keys=True).encode("utf-8")
+                            ).hexdigest(),
+                        )
+                    )
+                import_batch.status = "completed"
+                import_batch.total_rows = len(parsed_rows)
+                import_batch.created_rows = len(parsed_rows)
+                import_batch.finished_at = datetime.now(UTC)
+            db.commit()
+        except ValueError:
+            db.rollback()
+            return RedirectResponse(f"/v2-clean/processes/batches/{process_id}?error=invalid_batch", status_code=303)
+    request.session.pop("process_batch_pending", None)
+    return RedirectResponse(
+        f"/v2-clean/processes/batches/{process_id}?created=batch-{created_batch_id}",
+        status_code=303,
+    )
+
+
+@web_router.post("/v2-clean/processes/batches/{process_id}/tasks", response_class=HTMLResponse)
+def clean_process_batch_create_task(
+    request: Request,
+    process_id: int,
+    batch_id: int = Form(...),
+    row_ids: list[int] = Form(default=[]),
+    title: str = Form(...),
+    assigned_to_id: str = Form(""),
+    due_on: str = Form(""),
+    priority: str = Form("normal"),
+):
+    with SessionLocal() as db:
+        access = _batch_process_access(db, request, write=True)
+        if not access:
+            return RedirectResponse("/v2-clean/processes?error=forbidden", status_code=303)
+        try:
+            task = create_task_for_rows(
+                db,
+                batch_id=batch_id,
+                row_ids=row_ids,
+                title=title,
+                actor_id=access[0],
+                assigned_to_id=parse_optional_int(assigned_to_id),
+                due_on=parse_optional_date(due_on),
+                priority=priority if priority in {"low", "normal", "high", "urgent"} else "normal",
+            )
+            created_task_id = task.id
+            db.commit()
+        except ValueError:
+            db.rollback()
+            return RedirectResponse(f"/v2-clean/processes/batches/{process_id}?error=invalid_selection", status_code=303)
+    return RedirectResponse(
+        f"/v2-clean/processes/batches/{process_id}?created=task-{created_task_id}",
+        status_code=303,
+    )
+
+
+@web_router.post("/v2-clean/processes/batches/{process_id}/rows/{row_id}", response_class=HTMLResponse)
+def clean_process_batch_update_row(
+    request: Request,
+    process_id: int,
+    row_id: int,
+    revision: int = Form(...),
+    status: str = Form(...),
+    treatment: str = Form(""),
+    comment: str = Form(""),
+    title: str = Form(...),
+    description: str = Form(""),
+):
+    with SessionLocal() as db:
+        access = _batch_process_access(db, request, write=True)
+        if not access:
+            return RedirectResponse("/v2-clean/processes?error=forbidden", status_code=303)
+        try:
+            update_batch_row(db, row_id=row_id, expected_revision=revision, actor_id=access[0], status=status, treatment={"notes": treatment.strip()}, title=title, description=description)
+            if comment.strip():
+                add_row_comment(db, row_id=row_id, actor_id=access[0], comment=comment)
+            db.commit()
+        except ValueError:
+            db.rollback()
+            return RedirectResponse(f"/v2-clean/processes/batches/{process_id}?error=stale_row", status_code=303)
+    return RedirectResponse(f"/v2-clean/processes/batches/{process_id}#row-{row_id}", status_code=303)
 
 
 @web_router.post("/v2-clean/processes", response_class=HTMLResponse)
@@ -4856,7 +5596,7 @@ def clean_tasks_center(
             return bool(classification_permissions.intersection(required))
 
         cases_enabled = settings.task_cases_enabled and "cases.read" in classification_permissions
-        active_grouping = grouping if grouping in {"flat", "category", "case"} else "flat"
+        active_grouping = grouping if grouping in {"flat", "category", "case", "team"} else "flat"
         if not cases_enabled:
             active_grouping = "flat"
         opportunistic_generate_recurring_tasks(db)
@@ -5090,9 +5830,9 @@ def clean_tasks_center(
                 )
             )
         if active_status == "open":
-            filters.extend([Task.closed_at.is_(None), ~Task.status.in_(TASK_ARCHIVE_STATUSES)])
+            filters.extend([Task.closed_at.is_(None), ~Task.status.in_(TASK_ACTIVE_EXCLUDED_STATUSES)])
         elif active_status == "closed":
-            filters.append(or_(Task.closed_at.is_not(None), Task.status.in_(TASK_ARCHIVE_STATUSES)))
+            filters.append(or_(Task.closed_at.is_not(None), Task.status.in_(TASK_ACTIVE_EXCLUDED_STATUSES)))
         elif active_status != "all":
             filters.append(Task.status == active_status)
         if active_kind == "problem":
@@ -5199,7 +5939,25 @@ def clean_tasks_center(
         total_tasks = db.scalar(
             select(func.count()).select_from(Task).where(*filters)
         ) or 0
-        total_pages = max(1, (total_tasks + page_size - 1) // page_size)
+        category_page_ids: list[int | None] = []
+        pagination_total = total_tasks
+        if cases_enabled and active_grouping == "category":
+            # Paginate canonical category groups, never the tasks inside them.
+            # This keeps a category whole and prevents it from reappearing on
+            # the next page. NULL is one explicit "Por classificar" group.
+            all_category_ids = list(
+                db.scalars(
+                    select(Task.work_category_id)
+                    .where(*filters)
+                    .group_by(Task.work_category_id)
+                    .order_by(
+                        Task.work_category_id.is_(None),
+                        Task.work_category_id,
+                    )
+                ).all()
+            )
+            pagination_total = len(all_category_ids)
+        total_pages = max(1, (pagination_total + page_size - 1) // page_size)
         active_page = min(max(page, 1), total_pages)
         valid_sorts = {
             "priority",
@@ -5236,13 +5994,35 @@ def clean_tasks_center(
             "created_asc": (Task.created_at.asc(), Task.id.asc()),
             "updated_desc": (Task.updated_at.desc(), Task.id.desc()),
         }
-        tasks = db.scalars(
+        task_page_query = (
             select(Task)
             .where(*filters)
             .order_by(*sort_expressions[active_sort])
-            .offset((active_page - 1) * page_size)
-            .limit(page_size)
-        ).all()
+        )
+        if cases_enabled and active_grouping == "category":
+            category_page_ids = all_category_ids[
+                (active_page - 1) * page_size : active_page * page_size
+            ]
+            concrete_category_ids = [
+                category_id for category_id in category_page_ids if category_id is not None
+            ]
+            category_page_filter = (
+                or_(
+                    Task.work_category_id.in_(tuple(concrete_category_ids)),
+                    Task.work_category_id.is_(None),
+                )
+                if None in category_page_ids and concrete_category_ids
+                else Task.work_category_id.is_(None)
+                if None in category_page_ids
+                else Task.work_category_id.in_(tuple(concrete_category_ids))
+            )
+            tasks = db.scalars(task_page_query.where(category_page_filter)).all()
+        else:
+            tasks = db.scalars(
+                task_page_query
+                .offset((active_page - 1) * page_size)
+                .limit(page_size)
+            ).all()
         task_ids = [task.id for task in tasks]
         tasks_by_id = {task.id: task for task in tasks}
         task_update_allowed_by_id = {
@@ -5335,12 +6115,13 @@ def clean_tasks_center(
                 ):
                     decisions_by_task[decision_item.task_id].append(decision_item)
             linked_documents = db.execute(
-                select(TaskDocument.task_id, Document)
+                select(TaskDocument.task_id, TaskDocument.category, Document)
                 .join(Document, Document.id == TaskDocument.document_id)
                 .where(TaskDocument.task_id.in_(task_ids))
                 .order_by(Document.created_at.desc())
             ).all()
-            for linked_task_id, linked_document in linked_documents:
+            for linked_task_id, link_category, linked_document in linked_documents:
+                linked_document.task_link_category = (link_category or "").strip().lower()
                 documents_by_task[linked_task_id].append(linked_document)
             email_by_task = {
                 item.task_id: item
@@ -5485,6 +6266,12 @@ def clean_tasks_center(
         recent_documents = db.scalars(
             select(Document).order_by(Document.created_at.desc()).limit(80)
         ).all()
+        task_attachment_vehicles = db.scalars(
+            select(Vehicle)
+            .where(or_(Vehicle.plate.is_not(None), Vehicle.vin.is_not(None)))
+            .order_by(Vehicle.plate, Vehicle.vin)
+            .limit(5000)
+        ).all()
         counter_base_filters = [Task.task_type.in_(tuple(task_type_codes))]
         if visibility_filter is not None:
             counter_base_filters.append(visibility_filter)
@@ -5492,13 +6279,13 @@ def clean_tasks_center(
         open_task_filter = [
             *open_filter,
             Task.closed_at.is_(None),
-            ~Task.status.in_(TASK_ARCHIVE_STATUSES),
+            ~Task.status.in_(TASK_ACTIVE_EXCLUDED_STATUSES),
         ]
         scoped_open_task_filter = list(open_task_filter)
         if active_relation_filter is not None:
             scoped_open_task_filter.append(active_relation_filter)
         if active_assignment:
-            scoped_open_task_filter.append(Task.assigned_to_id.is_(None))
+            scoped_open_task_filter.append(Task.assignment_state == "team_unclaimed")
         unassigned_counter_filter = [*open_task_filter, claimable_relation_filter]
         if active_mine_kind == "team" and active_relation_filter is not None:
             unassigned_counter_filter.append(active_relation_filter)
@@ -5566,10 +6353,16 @@ def clean_tasks_center(
         }
         task_counter_metrics = {
             "new": db.scalar(select(func.count()).select_from(Task).where(*scoped_open_task_filter, Task.status == "new")) or 0,
-            "unassigned": db.scalar(select(func.count()).select_from(Task).where(*unassigned_counter_filter, Task.assigned_to_id.is_(None))) or 0,
+            "unassigned": db.scalar(select(func.count()).select_from(Task).where(*unassigned_counter_filter, Task.assignment_state == "team_unclaimed")) or 0,
             "risk": db.scalar(select(func.count()).select_from(Task).where(*scoped_open_task_filter, due_soon_condition)) or 0,
             "late": db.scalar(select(func.count()).select_from(Task).where(*scoped_open_task_filter, overdue_condition)) or 0,
             "active": db.scalar(select(func.count()).select_from(Task).where(*scoped_open_task_filter)) or 0,
+            "support": db.scalar(
+                select(func.count()).select_from(Task).where(
+                    *scoped_open_task_filter,
+                    Task.status == "support_requested",
+                )
+            ) or 0,
         }
         task_category_counts = {
             code: db.scalar(
@@ -5691,15 +6484,19 @@ def clean_tasks_center(
         }
         task_sla_by_id = {task.id: sla_snapshot(task) for task in tasks}
         task_sla_labels_by_id = {
-            task_id: {
-                "overdue": "SLA ultrapassado",
-                "warning": "SLA em risco",
-                "paused": "SLA pausado",
-                "within": "SLA dentro do prazo",
-                "completed": "SLA cumprido",
-                "not_configured": "SLA não configurado",
-            }[snapshot.overall]
-            for task_id, snapshot in task_sla_by_id.items()
+            task.id: (
+                "SLA calculado ultrapassado"
+                if task.due_on is None and task_sla_by_id[task.id].overall == "overdue"
+                else {
+                    "overdue": "SLA ultrapassado",
+                    "warning": "SLA em risco",
+                    "paused": "SLA pausado",
+                    "within": "SLA dentro do prazo",
+                    "completed": "SLA cumprido",
+                    "not_configured": "SLA não configurado",
+                }[task_sla_by_id[task.id].overall]
+            )
+            for task in tasks
         }
         task_assignment_labels = {
             task.id: assignment_label(
@@ -5717,7 +6514,7 @@ def clean_tasks_center(
             )
         } if cases_enabled and visible_case_ids else {}
         active_case_child = and_(
-            Task.closed_at.is_(None), ~Task.status.in_(TASK_ARCHIVE_STATUSES)
+            Task.closed_at.is_(None), ~Task.status.in_(TASK_ACTIVE_EXCLUDED_STATUSES)
         )
         summary_columns = (
             func.count(Task.id).label("count"),
@@ -5782,19 +6579,29 @@ def clean_tasks_center(
                 if summary.risk
                 else "active"
             )
-        visible_categories = {
-            (task.work_category_id, task.category) for task in tasks
-        }
+        visible_categories = {task.work_category_id for task in tasks}
         category_summaries = {}
         if cases_enabled and active_grouping == "category" and visible_categories:
             category_summaries = {
-                (row.work_category_id, row.category): row
+                row.work_category_id: row
                 for row in db.execute(
-                    select(Task.work_category_id, Task.category, *summary_columns)
+                    select(Task.work_category_id, *summary_columns)
                     .where(*filters)
-                    .group_by(Task.work_category_id, Task.category)
+                    .group_by(Task.work_category_id)
                 )
-                if (row.work_category_id, row.category) in visible_categories
+                if row.work_category_id in visible_categories
+            }
+        visible_team_ids = {task.team_id for task in tasks}
+        team_summaries = {}
+        if cases_enabled and active_grouping == "team" and visible_team_ids:
+            team_summaries = {
+                row.team_id: row
+                for row in db.execute(
+                    select(Task.team_id, *summary_columns)
+                    .where(*filters)
+                    .group_by(Task.team_id)
+                )
+                if row.team_id in visible_team_ids
             }
         task_groups: list[dict[str, object]] = []
         if cases_enabled and active_grouping != "flat":
@@ -5804,8 +6611,10 @@ def clean_tasks_center(
                     if not task.case_id:
                         continue
                     key = ("case", task.case_id)
+                elif active_grouping == "category":
+                    key = ("category", task.work_category_id)
                 else:
-                    key = ("category", task.work_category_id, task.category)
+                    key = ("team", task.team_id)
                 grouped[key].append(task)
             for key, child_tasks in grouped.items():
                 case_id = child_tasks[0].case_id if key[0] == "case" else None
@@ -5815,18 +6624,26 @@ def clean_tasks_center(
                 label = (
                     case_item.title
                     if case_item
+                    else (
+                        teams_by_id[child_tasks[0].team_id].name
+                        if child_tasks[0].team_id in teams_by_id
+                        else "Sem equipa"
+                    )
+                    if key[0] == "team"
                     else work_category_labels.get(
                         child_tasks[0].work_category_id,
-                        child_tasks[0].category or "Por classificar",
+                        "Por classificar",
                     )
                 )
                 summary = (
                     case_summaries.get(case_id)
                     if case_id
                     else category_summaries.get(
-                        (child_tasks[0].work_category_id, child_tasks[0].category)
+                        child_tasks[0].work_category_id
                     )
                     if key[0] == "category"
+                    else team_summaries.get(child_tasks[0].team_id)
+                    if key[0] == "team"
                     else None
                 )
                 task_groups.append({
@@ -6084,9 +6901,12 @@ def clean_tasks_center(
                 "unread_comment_notifications_by_task": unread_comment_notifications_by_task,
                 "task_due_soon_days": TASK_DUE_SOON_DAYS,
                 "task_today": date.today(),
+                "task_default_due_on": date.today() + timedelta(days=1),
                 "task_due_soon_limit": date.today()
                 + timedelta(days=TASK_DUE_SOON_DAYS),
                 "recent_documents": recent_documents,
+                "task_attachment_vehicles": task_attachment_vehicles,
+                "task_attachment_document_types": DOCUMENT_TYPES,
                 "readable_workspaces": readable_workspaces,
                 "writable_workspaces": writable_workspaces,
                 "creatable_workspaces": creatable_workspaces,
@@ -6176,10 +6996,11 @@ def _manual_case_task(
     due_time: str = "",
     priority: str = "normal",
 ) -> Task:
-    parsed_due = parse_iso_or_dmy_date(due_on)
+    requested_due = parse_iso_or_dmy_date(due_on)
     parsed_due_time = parse_optional_time(due_time)
-    if parsed_due_time and not parsed_due:
+    if parsed_due_time and not requested_due:
         raise ValueError("due_date_required")
+    parsed_due = requested_due or date.today() + timedelta(days=1)
     return Task(
         title=title.strip()[:200],
         description=None,
@@ -6970,6 +7791,71 @@ def clean_task_support_targets(request: Request, task_id: int):
         )
 
 
+def _resolve_task_vehicle(
+    db: Session,
+    *,
+    plate: str | None,
+    contract_number: str | None,
+) -> Vehicle | None:
+    """Resolve task context conservatively, never guessing between vehicles."""
+    candidates: list[Vehicle] = []
+    normalized_plate = normalize_identifier(plate)
+    if normalized_plate:
+        vehicle = db.scalar(select(Vehicle).where(Vehicle.plate == normalized_plate))
+        if vehicle:
+            candidates.append(vehicle)
+
+    clean_contract = (contract_number or "").strip()
+    if clean_contract:
+        contract_vehicle_ids = set(
+            db.scalars(
+                select(VehicleFinancialPlan.vehicle_id).where(
+                    func.lower(func.trim(VehicleFinancialPlan.contract_number))
+                    == clean_contract.lower(),
+                    VehicleFinancialPlan.active.is_(True),
+                )
+            ).all()
+        )
+        if len(contract_vehicle_ids) == 1:
+            contract_vehicle = db.get(Vehicle, contract_vehicle_ids.pop())
+            if contract_vehicle:
+                candidates.append(contract_vehicle)
+
+    candidate_ids = {vehicle.id for vehicle in candidates}
+    return candidates[0] if len(candidate_ids) == 1 else None
+
+
+def _apply_task_vehicle_context(db: Session, task: Task) -> Vehicle | None:
+    """Associate a task to a uniquely identified vehicle without replacing other links."""
+    vehicle = _resolve_task_vehicle(
+        db,
+        plate=task.plate,
+        contract_number=task.contract_number,
+    )
+    if not vehicle or (task.entity_type and task.entity_type != "vehicle"):
+        return None
+    task.entity_type = "vehicle"
+    task.entity_id = str(vehicle.id)
+    task.plate = normalize_identifier(vehicle.plate) or task.plate
+    return vehicle
+
+
+def _sync_pending_task_documents(db: Session, task: Task) -> None:
+    """Keep untreated task uploads supplied with the task's matching context."""
+    documents = db.scalars(
+        select(Document).where(
+            Document.task_id == task.id,
+            Document.source == "task",
+            Document.entry_channel == "task_upload",
+            Document.status == "received",
+        )
+    ).all()
+    for document in documents:
+        document.plate = task.plate
+        document.reservation_number = task.reservation_number
+        document.contract_number = task.contract_number
+
+
 @web_router.post("/v2-clean/tasks", response_class=HTMLResponse)
 def clean_tasks_create(
     request: Request,
@@ -7022,13 +7908,14 @@ def clean_tasks_create(
         not workspace.strip() or not clean_category or not clean_subcategory
     ):
         return RedirectResponse("/v2-clean/tasks?create=1&error=missing_classification#new-task", status_code=303)
-    parsed_due = parse_iso_or_dmy_date(due_on)
+    requested_due = parse_iso_or_dmy_date(due_on)
     try:
         parsed_due_time = parse_optional_time(due_time)
     except ValueError:
         return RedirectResponse("/v2-clean/tasks?create=1&error=invalid_due_time#new-task", status_code=303)
-    if parsed_due_time and not parsed_due:
+    if parsed_due_time and not requested_due:
         return RedirectResponse("/v2-clean/tasks?create=1&error=due_date_required#new-task", status_code=303)
+    parsed_due = requested_due or date.today() + timedelta(days=1)
     normalized_plate = normalize_identifier(plate) if plate else None
     now = datetime.now(UTC)
     with SessionLocal() as db:
@@ -7238,6 +8125,7 @@ def clean_tasks_create(
         )
         db.add(task)
         db.flush()
+        _apply_task_vehicle_context(db, task)
         if proposal_selection and (
             proposal_selection.category or proposal_selection.subcategory
         ):
@@ -7312,7 +8200,9 @@ def clean_tasks_create(
                 storage_path=str(stored_path),
                 status="received",
                 task_id=task.id,
-                plate=normalized_plate,
+                plate=task.plate,
+                reservation_number=task.reservation_number,
+                contract_number=task.contract_number,
                 uploaded_by_id=user_id,
             )
             db.add(linked_document)
@@ -7711,6 +8601,8 @@ def clean_tasks_update(
                     new_value=str(new_value) if new_value is not None else None,
                 )
             )
+        _apply_task_vehicle_context(db, task)
+        _sync_pending_task_documents(db, task)
         if hierarchy_selection:
             detach_entity_proposals(db, entity=task, actor_user_id=user_id)
             if proposal_selection and (
@@ -7839,6 +8731,8 @@ def clean_tasks_update_context(
                     new_value=str(new_value) if new_value is not None else None,
                 )
             )
+        _apply_task_vehicle_context(db, task)
+        _sync_pending_task_documents(db, task)
         record_audit(
             db,
             action="task.context.update",
@@ -8004,6 +8898,7 @@ def clean_task_open(
     request: Request,
     task_id: int,
     return_url: str = "",
+    panel: str = "",
 ):
     """Open a task through the same row-level resolver used by the clean list."""
     user_id = get_web_user_id(request)
@@ -8034,8 +8929,9 @@ def clean_task_open(
         query=parsed.query,
         anchor=f"task-{task_id}",
     )
+    panel_query = "&panel=drawer" if panel == "drawer" else ""
     return RedirectResponse(
-        f"/v2-clean/tasks/{task_id}/detail?return_context={quote(return_token)}",
+        f"/v2-clean/tasks/{task_id}/detail?return_context={quote(return_token)}{panel_query}",
         status_code=303,
     )
 
@@ -8452,6 +9348,9 @@ def clean_tasks_comment(
                 return_url, task_id=task_id, flag="forbidden"
             )
         db.add(TaskComment(task_id=task.id, user_id=user_id, comment=clean_comment))
+        mirror_task_comment_to_rows(
+            db, task_id=task.id, actor_id=user_id, comment=clean_comment
+        )
         mark_task_first_response(db, task, actor_user_id=user_id)
         create_task_notifications(
             db, task=task, event_type="task_commented",
@@ -9083,6 +9982,8 @@ def clean_tasks_upload_attachments(
                 status="received",
                 task_id=task.id,
                 plate=task.plate,
+                reservation_number=task.reservation_number,
+                contract_number=task.contract_number,
                 uploaded_by_id=user_id,
             )
             db.add(document)
@@ -9112,6 +10013,56 @@ def clean_tasks_upload_attachments(
         fragment="task-documents",
     )
     return RedirectResponse(destination, status_code=303)
+
+
+@web_router.post(
+    "/v2-clean/tasks/{task_id}/attachments/{document_id}/treat",
+    response_class=HTMLResponse,
+)
+def clean_tasks_treat_attachment(
+    request: Request,
+    task_id: int,
+    document_id: int,
+    vehicle_id: str = Form(""),
+    document_type: str = Form(""),
+    return_url: str = Form(""),
+):
+    user_id = get_web_user_id(request)
+    parsed_vehicle_id = parse_int_from_text(vehicle_id)
+    if not user_id or not parsed_vehicle_id:
+        return clean_task_action_redirect(
+            return_url, task_id=task_id, flag="attachment_treatment_error"
+        )
+    with SessionLocal() as db:
+        task = db.get(Task, task_id)
+        user = db.get(User, user_id)
+        if (
+            not task
+            or not user
+            or not user_can_access_task_workspace(
+                db, user, workspace_for_task_type(task.task_type), action="update"
+            )
+            or not _task_hierarchy_scope_allows(db, user_id, task, action="update")
+        ):
+            return RedirectResponse("/v2-clean/tasks?error=forbidden", status_code=303)
+        try:
+            treat_task_attachment(
+                db,
+                task_id=task_id,
+                document_id=document_id,
+                vehicle_id=parsed_vehicle_id,
+                document_type=document_type,
+                user_id=user_id,
+            )
+        except ValueError:
+            db.rollback()
+            return clean_task_action_redirect(
+                return_url, task_id=task_id, flag="attachment_treatment_error"
+            )
+        db.commit()
+    return clean_task_action_redirect(
+        return_url, task_id=task_id, flag="attachment_treated"
+    )
 
 
 @web_router.get("/v2-clean/admin", response_class=HTMLResponse)
@@ -10965,6 +11916,11 @@ def clean_workshop_substeps(
     phase_key: str,
     process: WorkshopPhasedProcess | None = None,
 ) -> tuple[str, ...]:
+    # The validation workbench now has one visible card. Older template
+    # snapshots still contain the three former substeps; following them would
+    # redirect a save back to an invisible card instead of advancing the phase.
+    if phase_key == "validacao":
+        return ("pedido_orientacao",)
     snapshot = process.template_snapshot_json if process else None
     phases = snapshot.get("config", {}).get("phases", []) if isinstance(snapshot, dict) else []
     for phase in phases:
@@ -11262,9 +12218,9 @@ def clean_workshop_validation_substep_status(
         "pedido": "Guardado"
         if clean_workshop_substep_is_saved(
             saved_substeps,
-            "pedido",
+            "pedido_orientacao",
             legacy_has_data=has_decision or has_history_answer or has_service_data,
-        )
+        ) or clean_workshop_substep_is_saved(saved_substeps, "pedido", legacy_has_data=False)
         else "Por validar",
         "orientacao": "Guardado"
         if clean_workshop_substep_is_saved(
@@ -12780,6 +13736,62 @@ def clean_fleet_documents(
         if not vehicle:
             return RedirectResponse("/v2-clean/fleet", status_code=303)
         context = clean_vehicle_display_context(db, vehicle)
+        official_types = (
+            ("dua", "DUA", False, True),
+            ("dua_authenticated", "DUA autenticado", False, False),
+            ("green_card", "Carta Verde", True, False),
+            ("ipo", "IPO", True, False),
+        )
+        official_rows = db.execute(
+            select(VehicleOfficialDocument, VehicleOfficialDocumentFile, Document)
+            .outerjoin(
+                VehicleOfficialDocumentFile,
+                VehicleOfficialDocumentFile.official_document_id == VehicleOfficialDocument.id,
+            )
+            .outerjoin(Document, Document.id == VehicleOfficialDocumentFile.document_id)
+            .where(VehicleOfficialDocument.vehicle_id == vehicle.id)
+            .order_by(VehicleOfficialDocument.created_at.desc(), VehicleOfficialDocumentFile.page_role)
+        ).all()
+        official_history: dict[str, list[dict[str, Any]]] = defaultdict(list)
+        for bundle, bundle_file, document in official_rows:
+            entry = next(
+                (item for item in official_history[bundle.document_type] if item["id"] == bundle.id),
+                None,
+            )
+            if entry is None:
+                entry = {
+                    "id": bundle.id,
+                    "status": bundle.status,
+                    "valid_until": bundle.valid_until,
+                    "valid_until_display": bundle.valid_until.strftime("%d/%m/%Y") if bundle.valid_until else "Sem validade",
+                    "created_at": bundle.created_at,
+                    "files": [],
+                }
+                official_history[bundle.document_type].append(entry)
+            if document and bundle_file:
+                entry["files"].append(
+                    {
+                        "role": bundle_file.page_role,
+                        "role_label": {"front": "Frente", "back": "Verso", "single": "Documento"}.get(bundle_file.page_role, bundle_file.page_role),
+                        "title": document.original_name or document.title,
+                        "href": f"/v2-clean/documents/{document.id}/file?inline=1",
+                    }
+                )
+        official_documents = []
+        today = date.today()
+        for code, label, expires, two_sided in official_types:
+            history = official_history.get(code, [])
+            current = next((item for item in history if item["status"] == "current"), None)
+            if not current:
+                state, state_label = "missing", "Em falta"
+            elif expires and current["valid_until"] and current["valid_until"] < today:
+                state, state_label = "expired", "Expirado"
+            else:
+                state, state_label = "current", "Válido"
+            official_documents.append(
+                {"code": code, "label": label, "expires": expires, "two_sided": two_sided,
+                 "current": current, "history": history, "state": state, "state_label": state_label}
+            )
         try:
             module_ctx = vehicle_document_module_context(db, vehicle, materialize_sources=False)
         except Exception:
@@ -13109,10 +14121,103 @@ def clean_fleet_documents(
                 "open_item": open_item,
                 "return_to": safe_return_to,
                 "foundation_ui_enabled": settings.visual_foundation_enabled,
+                "official_documents": official_documents,
             },
         )
         db.commit()
         return response
+
+
+@web_router.post("/v2-clean/fleet/{vehicle_id}/official-documents")
+def clean_fleet_official_document_create(
+    request: Request,
+    vehicle_id: int,
+    document_type: str = Form(...),
+    valid_until: str = Form(""),
+    notes: str = Form(""),
+    front_file: UploadFile = File(...),
+    back_file: UploadFile | None = File(None),
+):
+    denied = clean_experience_denied(request)
+    if denied:
+        return denied
+    user_id = get_web_user_id(request)
+    if not user_id or not can_manage_carfast_fleet(request):
+        return RedirectResponse(f"/v2-clean/fleet/{vehicle_id}/documents?official_error=permission", status_code=303)
+    definitions = {
+        "dua": ("DUA", False, True),
+        "dua_authenticated": ("DUA autenticado", False, False),
+        "green_card": ("Carta Verde", True, False),
+        "ipo": ("IPO", True, False),
+    }
+    definition = definitions.get(document_type)
+    if not definition:
+        return RedirectResponse(f"/v2-clean/fleet/{vehicle_id}/documents?official_error=type", status_code=303)
+    label, expires, two_sided = definition
+    expiry = parse_optional_date(valid_until)
+    if expires and not expiry:
+        return RedirectResponse(f"/v2-clean/fleet/{vehicle_id}/documents?official_error=validity", status_code=303)
+    if not expires:
+        expiry = None
+    uploads = [("front" if two_sided else "single", front_file)]
+    if two_sided:
+        if not back_file or not back_file.filename:
+            return RedirectResponse(f"/v2-clean/fleet/{vehicle_id}/documents?official_error=back", status_code=303)
+        uploads.append(("back", back_file))
+    with SessionLocal() as db:
+        vehicle = db.get(Vehicle, vehicle_id)
+        if not vehicle:
+            return RedirectResponse("/v2-clean/fleet", status_code=303)
+        previous = db.scalar(
+            select(VehicleOfficialDocument)
+            .where(VehicleOfficialDocument.vehicle_id == vehicle.id,
+                   VehicleOfficialDocument.document_type == document_type,
+                   VehicleOfficialDocument.status == "current")
+            .order_by(VehicleOfficialDocument.created_at.desc())
+        )
+        bundle = VehicleOfficialDocument(
+            vehicle_id=vehicle.id, document_type=document_type, valid_until=expiry,
+            status="current", replaces_id=previous.id if previous else None,
+            notes=notes.strip() or None, created_by_id=user_id,
+        )
+        db.add(bundle)
+        db.flush()
+        folder_path = f"Frota/{sanitize_archive_component(vehicle.plate or str(vehicle.id), 'viatura')}/Documentos oficiais/{document_type}"
+        storage_dir = local_document_storage_folder(folder_path, plate=vehicle.plate, vin=vehicle.vin)
+        storage_dir.mkdir(parents=True, exist_ok=True)
+        for role, upload in uploads:
+            original_name = Path(upload.filename or f"{document_type}-{role}").name
+            content = upload.file.read()
+            if not content:
+                db.rollback()
+                return RedirectResponse(f"/v2-clean/fleet/{vehicle_id}/documents?official_error=empty", status_code=303)
+            digest = hashlib.sha256(content).hexdigest()
+            suffix = Path(original_name).suffix.lower() or ".bin"
+            file_name = f"{document_type}_{role}_{digest[:12]}{suffix}"
+            stored_path = storage_dir / file_name
+            if not stored_path.exists():
+                stored_path.write_bytes(content)
+            document = Document(
+                title=f"{label} — {role}", document_type=f"vehicle_{document_type}",
+                classification="fleet", source="v2_clean_manual", entry_channel="v2_clean",
+                original_name=original_name[:255], file_name=file_name, file_type=suffix.lstrip("."),
+                file_size=len(content), storage_provider="local", storage_path=str(stored_path),
+                storage_key=digest, file_hash=digest, folder_path=folder_path, status="received",
+                vehicle_id=vehicle.id, plate=vehicle.plate, document_date=date.today(), uploaded_by_id=user_id,
+                archived=False,
+            )
+            db.add(document)
+            db.flush()
+            db.add(VehicleOfficialDocumentFile(official_document_id=bundle.id, document_id=document.id, page_role=role))
+            db.add(DocumentEvent(document_id=document.id, action="vehicle.official_document.added", old_value=None,
+                                 new_value=f"{document_type}:{bundle.id}:{role}", user_id=user_id))
+        if previous:
+            previous.status = "replaced"
+        record_audit(db, action="vehicle.official_document.replace" if previous else "vehicle.official_document.create",
+                     entity_type="vehicle_official_document", entity_id=bundle.id,
+                     detail=f"{label} associado à viatura {vehicle.plate or vehicle.id}", user_id=user_id)
+        db.commit()
+    return RedirectResponse(f"/v2-clean/fleet/{vehicle_id}/documents?official_saved={document_type}", status_code=303)
 
 
 def _diagnostic_extraction_has_data(extraction: DiagnosticExtraction | None) -> bool:
@@ -16410,11 +17515,13 @@ def clean_documentation_treatment(
     if group:
         if clean_family == "invoices":
             conditions.append(
-                or_(
-                    Document.supplier_name == group,
-                    Document.source_sender == group,
-                    Document.source == group,
+                func.coalesce(
+                    func.nullif(func.trim(Document.supplier_name), ""),
+                    func.nullif(func.trim(Document.source_sender), ""),
+                    func.nullif(func.trim(Document.source), ""),
+                    literal("Fornecedor por identificar"),
                 )
+                == group
             )
         elif clean_family == "diagnostics":
             conditions.append(
@@ -16427,6 +17534,33 @@ def clean_documentation_treatment(
                     Document.classification == group,
                     Document.source == group,
                 )
+            )
+        elif clean_family == "rentway":
+            conditions.append(
+                func.coalesce(
+                    func.nullif(func.trim(Document.source_subject), ""),
+                    func.nullif(func.trim(Document.source), ""),
+                    literal("Rentway"),
+                )
+                == group
+            )
+        elif clean_family == "fleet":
+            conditions.append(
+                func.coalesce(
+                    func.nullif(func.trim(Document.document_type), ""),
+                    func.nullif(func.trim(Document.classification), ""),
+                    literal("Documento de frota"),
+                )
+                == group
+            )
+        else:
+            conditions.append(
+                func.coalesce(
+                    func.nullif(func.trim(Document.document_type), ""),
+                    func.nullif(func.trim(Document.classification), ""),
+                    literal("Por classificar"),
+                )
+                == group
             )
     saved_service_exists = select(VehicleDocumentRecordTag.id).where(
         VehicleDocumentRecordTag.document_id == Document.id
@@ -24697,6 +25831,9 @@ def clean_fleet_documents_save_classification_row(
     return_group: str = Form(""),
     classification_action: str = Form("save"),
     open_item: str = Form(""),
+    invoice_service_event_id: list[int] = Form(default=[]),
+    invoice_service_event_decision: list[str] = Form(default=[]),
+    invoice_service_event_reason: list[str] = Form(default=[]),
 ):
     denied = clean_experience_denied(request)
     if denied:
@@ -24760,6 +25897,42 @@ def clean_fleet_documents_save_classification_row(
                     ),
                     plate=vehicle.plate or document.plate or "",
                 )
+            if should_validate:
+                if not (
+                    len(invoice_service_event_id)
+                    == len(invoice_service_event_decision)
+                    == len(invoice_service_event_reason)
+                ):
+                    return RedirectResponse(
+                        f"/v2-clean/fleet/{vehicle_id}/documents?main_group=invoices&error=invoice_service_decision&open_item=document%3A{document_id}",
+                        status_code=303,
+                    )
+                try:
+                    validate_document_invoice_service_events(
+                        db,
+                        document_id=document_id,
+                        vehicle_id=vehicle_id,
+                        decisions=[
+                            {
+                                "event_id": event_id,
+                                "decision": decision,
+                                "reason": reason,
+                            }
+                            for event_id, decision, reason in zip(
+                                invoice_service_event_id,
+                                invoice_service_event_decision,
+                                invoice_service_event_reason,
+                                strict=True,
+                            )
+                        ],
+                        actor_id=user_id,
+                    )
+                except InvoiceServiceImportError:
+                    db.rollback()
+                    return RedirectResponse(
+                        f"/v2-clean/fleet/{vehicle_id}/documents?main_group=invoices&error=invoice_service_decision&open_item=document%3A{document_id}",
+                        status_code=303,
+                    )
             save_service_classifications(
                 db,
                 vehicle_id=vehicle_id,
@@ -25032,6 +26205,14 @@ def clean_fleet_detail(request: Request, vehicle_id: int, return_to: str = ""):
                 ).group_by(Document.classification)
             ).all()
         }
+        official_current_types = set(
+            db.scalars(
+                select(VehicleOfficialDocument.document_type).where(
+                    VehicleOfficialDocument.vehicle_id == vehicle.id,
+                    VehicleOfficialDocument.status == "current",
+                )
+            ).all()
+        )
     return templates.TemplateResponse(
         request,
         "clean_fleet_detail.html",
@@ -25047,6 +26228,12 @@ def clean_fleet_detail(request: Request, vehicle_id: int, return_to: str = ""):
             "maintenance_plan": maintenance_plans[0] if maintenance_plans else None,
             "return_to": safe_return_to,
             "foundation_ui_enabled": settings.visual_foundation_enabled,
+            "official_document_summary": [
+                ("dua", "DUA", "dua" in official_current_types),
+                ("dua_authenticated", "DUA autenticado", "dua_authenticated" in official_current_types),
+                ("green_card", "Carta Verde", "green_card" in official_current_types),
+                ("ipo", "IPO", "ipo" in official_current_types),
+            ],
         },
     )
 
@@ -25921,6 +27108,36 @@ def clean_workshop_print_report(request: Request, process_id: int, report_type: 
                 for phase_code in CLEAN_WORKSHOP_PHASES
             },
         }
+        entry_form = phase_forms.get("entrada", {})
+        historical_date = str(entry_form.get("historical_intervention_date") or "").strip()
+        if process.creation_mode == "historical" and historical_date:
+            try:
+                vehicle_context = {
+                    **vehicle_context,
+                    "entry_date": datetime.fromisoformat(historical_date).strftime("%d/%m/%Y"),
+                }
+            except ValueError:
+                pass
+        elif process.received_at:
+            vehicle_context = {
+                **vehicle_context,
+                "entry_date": process.received_at.strftime("%d/%m/%Y"),
+            }
+
+        report = dict(report_config)
+        if report_type == "diagnostic-order":
+            validation_phase = clean_workshop_get_phase(db, process.id, "validacao")
+            if not validation_phase or validation_phase.status != "completed":
+                report["status"] = "Rascunho - validação pendente"
+        elif report_type == "repair-order":
+            audit_phase = clean_workshop_get_phase(db, process.id, "auditoria")
+            authorization = clean_form_value(phase_forms.get("auditoria", {}), "audit_repair_authorized")
+            if not audit_phase or audit_phase.status != "completed" or authorization not in {"Sim", "Com reserva"}:
+                report["status"] = "Rascunho - autorização pendente"
+            elif authorization == "Com reserva":
+                report["status"] = "Autorizado com reserva"
+        elif report_type == "final-report" and process.status != "closed":
+            report["status"] = "Rascunho - processo aberto"
         reports = db.scalars(
             select(WorkshopPhasedTechnicalReport)
             .where(
@@ -25952,6 +27169,15 @@ def clean_workshop_print_report(request: Request, process_id: int, report_type: 
                 .limit(8)
             ).all()
 
+        from app.services.workshop_historical_evidence import historical_workshop_document_evidence
+
+        historical_evidence = historical_workshop_document_evidence(
+            db,
+            process,
+            intervention_date=historical_date,
+            service_type=next(iter(clean_form_values(phase_forms.get("validacao", {}), "service_type")), ""),
+        )
+
         repair_form = phase_forms.get("reparacao", {})
         material_rows = []
         for index in range(1, 9):
@@ -25969,7 +27195,7 @@ def clean_workshop_print_report(request: Request, process_id: int, report_type: 
             "clean_workshop_print_report.html",
             {
                 "report_type": report_type,
-                "report": report_config,
+                "report": report,
                 "process": process,
                 "vehicle_context": vehicle_context,
                 "entry": phase_forms.get("entrada", {}),
@@ -25985,6 +27211,7 @@ def clean_workshop_print_report(request: Request, process_id: int, report_type: 
                 "process_services": process_services,
                 "history_services": history_services,
                 "material_rows": material_rows,
+                "historical_evidence": historical_evidence,
                 "printed_at": datetime.now().strftime("%d/%m/%Y %H:%M"),
                 "return_url": clean_workshop_process_url(process),
             },
@@ -36679,6 +37906,7 @@ def task_detail(
     feedback_saved: str | None = None,
     error: str | None = None,
     return_context: str = "",
+    panel: str = "",
 ):
     if not get_web_user_id(request):
         return RedirectResponse("/login", status_code=303)
@@ -36990,7 +38218,13 @@ def task_detail(
         )
         return templates.TemplateResponse(
             request,
-            "clean_task_detail.html" if is_clean_detail else "task_detail.html",
+            (
+                "_clean_task_drawer.html"
+                if is_clean_detail and panel == "drawer"
+                else "clean_task_detail.html"
+                if is_clean_detail
+                else "task_detail.html"
+            ),
             {
                 "task": task,
                 "task_workspace": task_workspace,
@@ -37006,6 +38240,11 @@ def task_detail(
                 "task_decision_targets": task_decision_targets,
                 "can_request_decision": can_request_decision,
                 "can_resolve_pending_decision": can_resolve_pending_decision,
+                "can_create_task_case": bool(
+                    settings.task_cases_enabled
+                    and can_update_task
+                    and "cases.create" in detail_permissions
+                ),
                 "history": history,
                 "linked_vehicle": linked_vehicle,
                 "task_case": task_case,
@@ -37696,6 +38935,9 @@ def task_add_comment(
             )
 
         db.add(TaskComment(task_id=task.id, user_id=user_id, comment=clean_comment))
+        mirror_task_comment_to_rows(
+            db, task_id=task.id, actor_id=user_id, comment=clean_comment
+        )
         mark_task_first_response(db, task, actor_user_id=user_id)
         record_audit(
             db,
@@ -38213,7 +39455,6 @@ def clean_vehicle_service_treatment(request: Request, vehicle_id: int, event_id:
         return templates.TemplateResponse(request, "clean_vehicle_service_treatment.html", {
             "vehicle": db.get(Vehicle, vehicle_id), "event": event,
             "document": db.get(Document, event.document_id),
-            "work_orders": db.scalars(select(WorkshopProcess).where(WorkshopProcess.vehicle_id == vehicle_id).order_by(WorkshopProcess.id.desc())).all(),
             "status_labels": INVOICE_SERVICE_STATUS_LABELS,
         })
 
@@ -38232,17 +39473,6 @@ def clean_vehicle_service_treatment_save(
         event = db.get(InvoiceServiceEvent, event_id)
         if not event or event.vehicle_id != vehicle_id:
             return RedirectResponse(f"/v2-clean/fleet/{vehicle_id}/services", status_code=303)
-        try:
-            decide_invoice_service_event(db, event, status=status, service_code=service_code, axle=axle, position=position, actor_id=get_web_user_id(request), reason=reason)
-            if workshop_process_id:
-                process = db.get(WorkshopProcess, workshop_process_id)
-                if not process:
-                    raise InvoiceServiceImportError("Folha de obra inexistente.")
-                link_event_to_work_order(db, event, process, confidence=Decimal(work_order_confidence) if work_order_confidence else None, actor_id=get_web_user_id(request))
-            db.commit()
-        except (InvoiceServiceImportError, InvalidOperation):
-            db.rollback()
-            return RedirectResponse(f"/v2-clean/fleet/{vehicle_id}/services/{event_id}?error=invalid", status_code=303)
     return RedirectResponse(f"/v2-clean/fleet/{vehicle_id}/services", status_code=303)
 
 

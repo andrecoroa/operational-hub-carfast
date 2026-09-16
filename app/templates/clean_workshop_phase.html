@@ -267,10 +267,10 @@
                         <span>{{ row.catalog.requirement }} · {{ row.catalog.family }} · validade {{ row.catalog.validity_days or "-" }} dias</span>
                         <em>{{ row.suggestion.explanation }}</em>
                       </div>
-                      <form method="post" action="/v2-clean/workshop/diagnostic-suggestions/{{ row.suggestion.id }}/confirm">
-                        <button type="submit" name="decision" value="confirmed" {% if row.suggestion.status == "confirmed" %}disabled{% endif %}>Confirmar</button>
-                        <button class="secondary" type="submit" name="decision" value="dismissed" {% if row.suggestion.status == "dismissed" %}disabled{% endif %}>Não aplicar</button>
-                      </form>
+                      <div class="suggestion-actions">
+                        <button type="submit" form="diagnostic-suggestion-{{ row.suggestion.id }}" name="decision" value="confirmed" {% if row.suggestion.status == "confirmed" %}disabled{% endif %}>Confirmar</button>
+                        <button class="secondary" type="submit" form="diagnostic-suggestion-{{ row.suggestion.id }}" name="decision" value="dismissed" {% if row.suggestion.status == "dismissed" %}disabled{% endif %}>Não aplicar</button>
+                      </div>
                     </article>
                   {% endfor %}
                 </div>
@@ -1148,6 +1148,11 @@
         </div>
       </article>
     </form>
+    {% if phase_key == "diagnostico" %}
+      {% for row in diagnostic_suggestions %}
+        <form id="diagnostic-suggestion-{{ row.suggestion.id }}" method="post" action="/v2-clean/workshop/diagnostic-suggestions/{{ row.suggestion.id }}/confirm"></form>
+      {% endfor %}
+    {% endif %}
     {% if foundation_ui_enabled %}<details class="visual-workshop-summary" data-workshop-summary data-stored-open="{{ '1' if workshop_summary_open is true else ('0' if workshop_summary_open is false else '') }}" {% if workshop_summary_open is not false %}open{% endif %}>
       <summary><span><small>Resumo do processo</small><strong>{{ vehicle_context.process_ref }}</strong></span><span class="clean-status-pill ok">{{ phase.title }}</span></summary>
       <dl>

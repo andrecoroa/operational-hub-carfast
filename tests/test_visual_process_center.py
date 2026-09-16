@@ -4,6 +4,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 TEMPLATE = ROOT / "app" / "templates" / "clean_process_center.html"
 CSS = ROOT / "app" / "static" / "css" / "visual-v2.css"
+UI_CONTRACT = ROOT / "app" / "static" / "css" / "ui-contract-v1.css"
 MATRIX = ROOT / "docs" / "evidence" / "visual-route-matrix" / "ROUTE_CONTENT_MATRIX.md"
 
 
@@ -21,10 +22,99 @@ def test_process_center_is_an_operational_workbench_not_a_legacy_catalog() -> No
         'tabindex="0"',
         "Tarefas de gestão",
         "Criar processo",
+        "Notas, ideias e necessidades",
+        "process-inbox-panel",
+        'aria-controls="process-inbox-content"',
+        "Processo de Oficina",
+        "/v2-clean/processes/inbox",
+        "Novo tratamento de dados em lote",
+        "/v2-clean/processes/batches/start",
+        "show_legacy_management_processes",
     ):
         assert contract in source
     assert "Base limpa da nova experiência" not in source
     assert "sem puxar histórico antigo" not in source
+
+
+def test_process_center_hides_legacy_management_workbench_by_default() -> None:
+    source = TEMPLATE.read_text(encoding="utf-8")
+
+    assert '{% if show_legacy_management_processes %}' in source
+    assert 'can_create_process and show_legacy_management_processes' in source
+
+
+def test_batch_process_surfaces_keep_case_lot_task_row_hierarchy() -> None:
+    detail = (ROOT / "app" / "templates" / "clean_process_batch.html").read_text(encoding="utf-8")
+    mapping = (ROOT / "app" / "templates" / "clean_process_batch_mapping.html").read_text(encoding="utf-8")
+
+    for contract in (
+        "Adicionar lote",
+        "Carregar e mapear",
+        "Criar tarefa com linhas selecionadas",
+        "Guardar tratamento",
+        "Novo comentário",
+    ):
+        assert contract in detail
+    assert "Descrição {{ number }}" in mapping
+    assert "Validar e criar lote" in mapping
+
+
+def test_batch_detail_uses_responsive_case_workspace_and_drawers() -> None:
+    detail = (ROOT / "app" / "templates" / "clean_process_batch.html").read_text(
+        encoding="utf-8"
+    )
+    css = CSS.read_text(encoding="utf-8")
+
+    for contract in (
+        "process-case-kpis",
+        "process-case-tabs",
+        "Lotes importados",
+        "Tarefas associadas",
+        "Sem linhas disponíveis.",
+        "process-task-composer",
+        "process-drawer",
+        "process-line-search",
+        "status_labels.get(row.status",
+        "display_description_by_row_id",
+    ):
+        assert contract in detail
+    assert "row-treatment-" not in detail
+    assert "@media(max-width:760px)" in css
+    assert ".process-lines-table tr{display:grid" in css
+
+
+def test_batch_detail_translates_states_and_labels_imported_values() -> None:
+    router = (ROOT / "app" / "web" / "router.py").read_text(encoding="utf-8")
+
+    for contract in (
+        '"active": "Ativo"',
+        '"new": "Nova"',
+        '"in_execution": "Em curso"',
+        'f"Data: {date_match.group(3)}/{date_match.group(2)}/{date_match.group(1)}"',
+        'rendered.append(f"Montante: {formatted} €")',
+        'rendered.append(f"Referência: {part}")',
+        'label = "Detalhe"',
+    ):
+        assert contract in router
+
+    detail = (ROOT / "app" / "templates" / "clean_process_batch.html").read_text(
+        encoding="utf-8"
+    )
+    assert "display_description_by_row_id" in detail
+    assert "row.description or ''" in detail  # o valor original continua no formulário
+
+
+def test_batch_description_formats_dates_references_details_and_euros() -> None:
+    from app.web.router import _format_process_batch_description
+
+    assert _format_process_batch_description(
+        "2026-08-11T00:00:00\n15691\nFornecedor Demo\n1234.5"
+    ) == (
+        "Data: 11/08/2026 · Referência: 15691 · "
+        "Detalhe: Fornecedor Demo · Montante: 1.234,50 €"
+    )
+    assert _format_process_batch_description("Texto livre") == "Detalhe: Texto livre"
+    assert _format_process_batch_description(None) == ""
 
 
 def test_process_center_preserves_rbac_and_uses_local_table_overflow() -> None:
@@ -37,6 +127,18 @@ def test_process_center_preserves_rbac_and_uses_local_table_overflow() -> None:
     assert ".process-command-layout{display:grid" in css
     assert "@media(max-width:1024px)" in css
     assert "@media(max-width:640px)" in css
+
+
+def test_process_center_lists_batch_cases_and_keeps_the_page_scrollable() -> None:
+    source = TEMPLATE.read_text(encoding="utf-8")
+    contract = UI_CONTRACT.read_text(encoding="utf-8")
+
+    assert "Casos de tratamento em lote" in source
+    assert "/v2-clean/processes/batches/{{ item.process.id }}" in source
+    assert ".ui-contract-v1 .process-command-page { height:auto;" in contract
+    assert "max-height:none" in contract
+    assert "overflow:visible" in contract
+    assert ".ui-contract-v1 .process-command-header h2 { margin:0; font-size:18px;" in contract
 
 
 def test_route_content_matrix_covers_every_canonical_surface_once() -> None:

@@ -157,9 +157,15 @@ def test_bootstrap_admin_does_not_gain_operational_process_creation(db):
 def test_sale_process_library_seed_is_idempotent_and_inert(db):
     seed_process_model_library(db); db.flush()
     seed_process_model_library(db); db.flush()
-    assert len(db.scalars(select(ProcessModel)).all()) == 1
+    assert len(db.scalars(select(ProcessModel)).all()) == 2
     versions = db.scalars(select(ProcessModelVersion)).all()
-    assert len(versions) == 1 and versions[0].status == "draft"
+    assert len(versions) == 2
+    versions_by_code = {
+        db.get(ProcessModel, version.model_id).code: version
+        for version in versions
+    }
+    assert versions_by_code["used_vehicle_sale_to_merchant"].status == "draft"
+    assert versions_by_code["batch-data-treatment"].status == "published"
     assert db.scalars(select(Task)).all() == []
 
 
@@ -168,7 +174,7 @@ def test_clean_install_libraries_are_idempotent_and_create_no_instances(db):
     seed_task_template_library(db); seed_process_model_library(db); db.flush()
     assert len(db.scalars(select(TaskTemplate)).all()) == 17
     assert len(db.scalars(select(TaskTemplateVersion)).all()) == 17
-    assert len(db.scalars(select(ProcessModel)).all()) == 1
+    assert len(db.scalars(select(ProcessModel)).all()) == 2
     assert db.scalars(select(Task)).all() == []
 
 

@@ -36,7 +36,7 @@
       {% if can_nav_home %}<a href="/v2-clean" {% if active_menu == "clean" %}class="active"{% endif %}>Início</a>{% endif %}
       {% if "dashboard.read" in nav_perms or can_nav_tasks or can_nav_processes or can_nav_email %}<span class="nav-section-label" data-nav-section="operation">Operação</span>{% endif %}
       {% if "dashboard.read" in nav_perms %}
-        <a href="/alerts" {% if active_menu == "alerts" %}class="active"{% endif %}>Alertas</a>
+        <a href="/v2-clean/tasks/notifications" {% if active_menu == "alerts" %}class="active"{% endif %}>Alertas</a>
       {% endif %}
       {% if can_nav_tasks %}<a href="/v2-clean/tasks" {% if active_menu == "clean_tasks" %}class="active" aria-current="page"{% endif %}>Tarefas</a>{% endif %}
       {% if can_nav_processes %}<a href="/v2-clean/processes" {% if active_menu == "clean_processes" %}class="active" aria-current="page"{% endif %}>Processos</a>{% endif %}
@@ -56,7 +56,7 @@
         <summary data-nav-icon="fleet" {% if fleet_menu_open %}class="group-current"{% endif %}>Frota</summary>
         <div class="sidebar-nav-children">
           {% if nav_has_permission(request, "vehicles.read", "vehicles.write", "admin.manage") %}<a class="sidebar-sub-link {% if fleet_vehicles_current %}active{% endif %}" href="/v2-clean/fleet"{% if fleet_vehicles_current %} aria-current="page"{% endif %}>Viaturas</a>{% endif %}
-          {% if nav_has_permission(request, "vehicles.read", "vehicles.write", "admin.manage") %}<a class="sidebar-sub-link" href="/alerts">Alertas</a>{% endif %}
+          {% if nav_has_permission(request, "vehicles.read", "vehicles.write", "admin.manage") %}<a class="sidebar-sub-link" href="/v2-clean/tasks/notifications">Alertas</a>{% endif %}
           {% if nav_has_permission(request, "tasks.read", "tasks.operational.read", "tasks.operational.write", "admin.manage") %}<a class="sidebar-sub-link" href="/v2-clean/tasks?workspace=fleet">Ocorrências</a>{% endif %}
           {% if nav_has_permission(request, "documents.read", "documents.write", "admin.manage") and nav_has_permission(request, "vehicles.read", "vehicles.write", "admin.manage") %}<a class="sidebar-sub-link" href="/v2-clean/documentation/by-vehicle">Documentos</a>{% endif %}
           {% if can_nav_sales %}

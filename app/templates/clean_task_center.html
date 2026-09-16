@@ -24,6 +24,10 @@
 
     {% if created or request.query_params.get("task_created") %}
       <div class="clean-alert-success">Tarefa criada com sucesso.</div>
+    {% elif request.query_params.get("attachment_treatment_error") %}
+      <div class="doc-arch-notice danger">Não foi possível tratar o anexo. Confirma a viatura e a tipologia.</div>
+    {% elif request.query_params.get("attachment_treated") %}
+      <div class="doc-arch-notice success">Documento tratado com o ficheiro original, associação e auditoria preservadas.</div>
     {% elif updated or request.query_params.get("commented") or request.query_params.get("participant_added") or request.query_params.get("document_linked") %}
       <div class="clean-alert-success">Tarefa atualizada.</div>
     {% elif closed %}
@@ -301,6 +305,13 @@
 </div>
 {% endif %}
 
+{% if foundation_ui_enabled %}
+<section class="task-drawer-shell" data-task-drawer-shell hidden aria-hidden="true">
+  <button type="button" class="task-drawer-backdrop" data-task-drawer-close aria-label="Fechar painel da tarefa"></button>
+  <div class="task-drawer-mount" data-task-drawer-mount aria-live="polite"></div>
+</section>
+{% endif %}
+
 {# Workbenches are loaded on demand through the authorized /open resolver. #}
 {% if false %}{% for task in tasks %}
   {% set task_workspace = "audit" if task.task_type in ["audit_task", "workshop_audit"] else "workshop" if task.task_type == "workshop_task" else "management" if task.task_type == "management_task" else "administration" if task.task_type == "administration_task" else "operational" %}
@@ -475,7 +486,33 @@
           </section>
           <section {% if not documents_by_task.get(task.id) %}hidden{% endif %}>
             <h3>Documentos</h3>
-            {% for document in documents_by_task.get(task.id, []) %}<a href="/v2-clean/documents/{{ document.id }}?return_to={{ (request.url.path ~ '?' ~ request.url.query)|urlencode }}">{{ document.title or document.original_name }}</a>{% else %}<p>Sem documentos associados.</p>{% endfor %}
+            {% for document in documents_by_task.get(task.id, []) %}
+              <div class="clean-task-document-row">
+                <a href="/v2-clean/documents/{{ document.id }}?return_to={{ (request.url.path ~ '?' ~ request.url.query)|urlencode }}">{{ document.title or document.original_name }}</a>
+                {% if document.task_link_category == "attachment" %}<details>
+                  <summary>Tratar documento</summary>
+                  <form method="post" action="/v2-clean/tasks/{{ task.id }}/attachments/{{ document.id }}/treat" class="clean-task-side-form">
+                    <input type="hidden" name="return_url" value="{{ request.url.path }}?{{ request.url.query }}">
+                    <label>Viatura
+                      <select name="vehicle_id" required>
+                        <option value="">Escolher viatura</option>
+                        {% for vehicle in task_attachment_vehicles %}
+                          <option value="{{ vehicle.id }}" {% if document.vehicle_id == vehicle.id %}selected{% endif %}>{{ vehicle.plate or "Sem matrícula" }}{% if vehicle.vin %} · {{ vehicle.vin }}{% endif %}</option>
+                        {% endfor %}
+                      </select>
+                    </label>
+                    <label>Tipologia
+                      <select name="document_type" required>
+                        <option value="">Escolher tipologia</option>
+                        {% for code, label in task_attachment_document_types %}<option value="{{ code }}" {% if document.document_type == code %}selected{% endif %}>{{ label }}</option>{% endfor %}
+                      </select>
+                    </label>
+                    <p class="muted">O ficheiro atual será reutilizado; não será criada uma cópia.</p>
+                    <button>Confirmar tratamento</button>
+                  </form>
+                </details>{% endif %}
+              </div>
+            {% else %}<p>Sem documentos associados.</p>{% endfor %}
           </section>
           {% if can_write %}
           <section>
@@ -629,11 +666,54 @@
     history.replaceState(null, "", `#${id}`);
     (taskPreviewFocusable(preview)[0] || preview).focus();
   };
-  const openTaskWorkbenchOnDemand = (taskId) => {
+  const drawerShell = document.querySelector('[data-task-drawer-shell]');
+  const drawerMount = document.querySelector('[data-task-drawer-mount]');
+  let drawerAbort = null;
+  const closeDrawer = () => {
+    drawerAbort?.abort(); drawerAbort = null;
+    drawerShell?.setAttribute('aria-hidden', 'true');
+    if (drawerShell) drawerShell.hidden = true;
+    if (drawerMount) drawerMount.replaceChildren();
+    document.body.classList.remove('task-drawer-open');
+    if (taskPreviewTrigger?.isConnected) taskPreviewTrigger.focus();
+  };
+  const drawerForward = (selector) => {
+    const target = document.querySelector(selector);
+    if (target) target.click();
+  };
+  const initialiseDrawer = (taskId) => {
+    const drawer = drawerMount?.querySelector('[data-task-drawer]'); if (!drawer) return;
+    drawer.querySelectorAll('[data-task-drawer-close]').forEach(button => button.addEventListener('click', closeDrawer));
+    drawer.querySelectorAll('[data-task-drawer-case]').forEach(button => button.addEventListener('click', () => drawerForward('[data-case-flow="related"]')));
+    drawer.querySelectorAll('[data-task-drawer-decision]').forEach(button => button.addEventListener('click', () => drawerForward('[data-task-preview-action="decision"]')));
+    drawer.querySelectorAll('[data-task-drawer-support]').forEach(button => button.addEventListener('click', () => drawerForward('[data-task-preview-action="support"]')));
+    drawer.querySelector('[data-task-copy-link]')?.addEventListener('click', async (event) => { await navigator.clipboard.writeText(`${location.origin}/v2-clean/tasks/${taskId}/open`); event.currentTarget.textContent = 'Ligação copiada'; });
+    drawer.querySelector('[data-task-drawer-history]')?.addEventListener('click', () => { const panel = drawer.querySelector('[data-task-drawer-history-panel]'); if (panel) { panel.open = true; panel.scrollIntoView({behavior:'smooth', block:'start'}); } });
+  };
+  const openTaskWorkbenchOnDemand = async (taskId) => {
+    if (!drawerShell || !drawerMount) {
+      const returnUrl = `${location.pathname}${location.search}${location.hash}`;
+      location.assign(`/v2-clean/tasks/${taskId}/open?return_url=${encodeURIComponent(returnUrl)}`); return;
+    }
+    taskPreviewTrigger = document.querySelector(`[data-task-row][data-task-id="${taskId}"]`) || document.activeElement;
     const returnUrl = `${location.pathname}${location.search}${location.hash}`;
-    location.assign(`/v2-clean/tasks/${taskId}/open?return_url=${encodeURIComponent(returnUrl)}`);
+    drawerAbort?.abort(); drawerAbort = new AbortController();
+    drawerShell.hidden = false; drawerShell.setAttribute('aria-hidden', 'false'); document.body.classList.add('task-drawer-open');
+    drawerMount.innerHTML = '<div class="task-drawer-loading">A carregar tarefa…</div>';
+    try {
+      const response = await fetch(`/v2-clean/tasks/${taskId}/open?panel=drawer&return_url=${encodeURIComponent(returnUrl)}`, {signal: drawerAbort.signal, headers:{Accept:'text/html'}});
+      if (!response.ok) throw new Error('drawer_load_failed');
+      drawerMount.innerHTML = await response.text(); initialiseDrawer(taskId);
+    } catch (error) {
+      if (error.name !== 'AbortError') drawerMount.innerHTML = '<div class="task-drawer-loading" role="alert">Não foi possível abrir a tarefa. Atualize a página e tente novamente.</div>';
+    }
   };
   window.openTaskWorkbench = (taskId) => openTaskWorkbenchOnDemand(taskId);
+  if (window.pendingTaskWorkbenchId) {
+    const pendingTaskWorkbenchId = window.pendingTaskWorkbenchId;
+    window.pendingTaskWorkbenchId = null;
+    openTaskWorkbenchOnDemand(pendingTaskWorkbenchId);
+  }
   document.querySelectorAll("[data-task-open]").forEach((row) => {
     const taskId = row.dataset.taskOpen.replace("task-preview-", "");
     row.addEventListener("click", (event) => { if (!event.target.closest("a,button,input,select,textarea")) openTaskWorkbenchOnDemand(taskId); });
@@ -642,6 +722,7 @@
   });
   document.querySelectorAll("[data-task-close]").forEach((button) => button.addEventListener("click", () => closeTaskPreview(button.closest(".clean-task-preview"))));
   document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && drawerShell && !drawerShell.hidden) { event.preventDefault(); closeDrawer(); return; }
     const preview = document.querySelector(".clean-task-preview.is-open"); if (!preview) return;
     if (event.key === "Escape") { event.preventDefault(); closeTaskPreview(preview); return; }
     if (event.key !== "Tab") return;
@@ -650,8 +731,7 @@
     if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
     else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
   });
-  const requested = new URLSearchParams(location.search).get("open_task");
-  if (requested) openTaskWorkbenchOnDemand(requested);
+  drawerShell?.querySelector('[data-task-drawer-close]')?.addEventListener('click', closeDrawer);
 })();
 </script>
 {% endblock %}

@@ -2,7 +2,7 @@ from pathlib import Path
 import json
 import re
 from html import unescape
-from datetime import date, time, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 
 from app.models.tasks import Task, TaskComment, TaskEmailOrigin
 from app.models.admin import User
@@ -31,10 +31,10 @@ NOTIFICATION_PAGE = (ROOT / "app/templates/clean_task_notifications.html").read_
 )
 
 
-def test_approved_task_center_has_five_contractual_keyboard_counters() -> None:
+def test_approved_task_center_has_six_contractual_keyboard_counters() -> None:
     assert 'class="task-center-approved-metrics"' in TEMPLATE
-    assert TEMPLATE.count('data-task-counter=') == 5
-    for label in ("Por tratar", "Novas", "Por assumir", "Atrasadas", "Em risco"):
+    assert TEMPLATE.count('data-task-counter=') == 6
+    for label in ("Por tratar", "Novas", "Por assumir", "Atrasadas", "Em risco", "Pedidos de suporte"):
         assert label in TEMPLATE
     assert '<button' in TEMPLATE
 
@@ -112,9 +112,42 @@ def test_primary_filters_use_operational_views_and_persisted_queues() -> None:
     assert 'class="task-filter-operational-row"' in TEMPLATE
     assert "form.querySelector('[data-task-scope]')" in TEMPLATE
     assert 'data-task-queue' in TEMPLATE
+    assert 'class="task-center-queue-chips"' in TEMPLATE
+    assert 'data-task-queue-option="{{ division.code }}"' in TEMPLATE
+    assert "Todas as filas" not in TEMPLATE
+    assert ".task-center-approved-navigation{display:flex" in CSS
+    assert ".task-center-queue-chips{display:flex" in CSS
+    assert "order:2;flex-wrap:wrap" in CSS
     assert 'name="category" value="all"' in TEMPLATE
     assert 'Categoria de foco' not in TEMPLATE
     assert "grid-template-columns:minmax(0,62fr) minmax(360px,38fr)" in CSS
+
+
+def test_queue_chips_belong_to_tab_row_not_action_bar() -> None:
+    tab_row = TEMPLATE.split(
+        '<div class="task-center-approved-navigation">', 1
+    )[1].split('<div class="task-center-approved-toolbar-actions">', 1)[0]
+    action_bar = TEMPLATE.split(
+        '<div class="task-center-approved-toolbar-actions">', 1
+    )[1].split("</header>", 1)[0]
+
+    assert 'class="task-center-approved-tabs"' in tab_row
+    assert 'class="task-center-queue-chips"' in tab_row
+    assert 'class="task-center-queue-chips"' not in action_bar
+    assert "border-bottom:1px solid #dfe6ee" in CSS
+    assert ".task-center-approved-navigation{flex:1 0 100%;order:2" in CSS
+    assert ".task-center-approved-toolbar-actions{order:1}" in CSS
+
+
+def test_mobile_toolbar_contains_navigation_and_actions_at_373px() -> None:
+    mobile_css = CSS.split("@media(max-width:560px){", 1)[1].split(
+        "/* Email mock-up fidelity pass", 1
+    )[0]
+
+    assert ".task-center-approved-toolbar{display:grid;grid-template-columns:minmax(0,1fr)" in mobile_css
+    assert ".task-center-approved-navigation,.task-center-approved-toolbar-actions,.task-center-queue-chips{width:100%;max-width:100%;min-width:0" in mobile_css
+    assert ".task-center-approved-toolbar-actions{justify-content:flex-end;flex-wrap:wrap" in mobile_css
+    assert ".task-center-queue-chips{flex-wrap:wrap" in mobile_css
 
 
 def test_creation_offers_case_in_the_same_progressive_selector() -> None:
@@ -182,7 +215,7 @@ def test_finishing_pass_prioritizes_subject_summary_and_primary_action() -> None
 def test_final_filters_and_actions_keep_the_approved_hierarchy() -> None:
     assert "Pesquisa<input" in TEMPLATE
     assert "Referência, assunto ou contexto" in TEMPLATE
-    assert "('flat','Lista'),('case','Por caso'),('category','Por categoria')" in TEMPLATE
+    assert "('flat','Lista'),('case','Por caso'),('category','Por categoria'),('team','Por equipa')" in TEMPLATE
     assert TEMPLATE.index('data-case-flow="related"') < TEMPLATE.index(
         'data-task-preview-action="decision"'
     )
@@ -257,19 +290,18 @@ def test_preview_renders_only_persisted_non_empty_context_without_plate_heuristi
     assert "find_vehicle_by_plate" not in ROUTER[ROUTER.index("task_context_items_by_id") : ROUTER.index("task_claim_allowed_by_id")]
 
 
-def test_inline_preview_toggles_single_selection_and_restores_keyboard_focus() -> None:
+def test_row_selection_opens_the_authorized_drawer_and_keeps_keyboard_support() -> None:
     assert "const toggleSelection=(row,groupButton=null)" in TEMPLATE
-    assert "selectedRow===row&&!preview.classList.contains('is-empty')" in TEMPLATE
+    assert "window.openTaskWorkbench(row.dataset.taskId,row)" in TEMPLATE
     assert "selectedTrigger=groupButton||row" in TEMPLATE
-    assert "selectedRow=null;selectedTrigger=null" in TEMPLATE
     assert "trigger?.isConnected)trigger.focus()" in TEMPLATE
-    assert "event.key!=='Escape'" in TEMPLATE
-    assert "document.querySelector('dialog[open]')" in TEMPLATE
+    assert 'event.key === "Escape" && drawerShell && !drawerShell.hidden' in TEMPLATE
     assert "row.addEventListener('click',()=>toggleSelection(row))" in TEMPLATE
     assert "if(row)toggleSelection(row,button)" in TEMPLATE
     assert "groupButtons.find(button=>button.dataset.groupTask===id)" in TEMPLATE
     assert "if(!row||(grouped&&!groupButton))continue" in TEMPLATE
-    assert "select(row,groupButton||null);break" in TEMPLATE
+    assert "toggleSelection(row,groupButton||null);break" in TEMPLATE
+    assert "select(row,groupButton||null);break" not in TEMPLATE
     assert ".task-center-approved-workspace{display:block" in CSS
 
 
@@ -451,6 +483,7 @@ def test_final_task_density_polish_preserves_legibility_and_responsiveness() -> 
     assert ".task-preview-context{height:24px;max-height:24px" in CSS
     assert ".task-center-detail-approved #task-state dl{display:grid" in CSS
     assert ".task-center-detail-actions a{" in CSS
+    assert ".task-center-approved-metrics{height:auto!important;flex-wrap:wrap;overflow-x:visible}" in CSS
 
 
 def test_queue_and_state_controls_explain_their_distinct_contracts() -> None:
@@ -504,7 +537,8 @@ def test_approved_selection_preserves_return_context() -> None:
     assert 'carfast.taskScroll:' in TEMPLATE
     assert "const restoreIds=" in TEMPLATE
     assert "grouped&&!groupButton" in TEMPLATE
-    assert "get('open_task')" not in TEMPLATE
+    assert "rawSearch.get('open_task')" in TEMPLATE
+    assert "window.pendingTaskWorkbenchId" in TEMPLATE
     assert "if(key==='open_task')return" in TEMPLATE
     assert "['updated','case_updated'].includes(key)" in TEMPLATE
 
@@ -658,6 +692,7 @@ def test_counter_values_reconcile_with_authorized_server_filters(
         "risk": authenticated_client.get("/v2-clean/tasks?workspace=mine&status=open&category=all&due=due_soon"),
         "late": authenticated_client.get("/v2-clean/tasks?workspace=mine&status=open&category=all&due=overdue"),
         "unassigned": unassigned,
+        "support": authenticated_client.get("/v2-clean/tasks?workspace=mine&status=support_requested&category=all"),
     }
     for counter, destination in destinations.items():
         page_count = int(
@@ -674,6 +709,8 @@ def test_counter_values_reconcile_with_authorized_server_filters(
             ).group(1)
         )
         assert page_count == result_count, counter
+
+
 
 
 def test_legacy_focus_cookie_is_ignored_and_invalid_category_falls_back_to_all(
@@ -843,7 +880,8 @@ def test_list_detail_visibility_uses_one_canonical_resolver() -> None:
     assert "user_can_view_task(db, user_id=user_id, task=task)" in ROUTER
     assert '@web_router.get("/v2-clean/tasks/{task_id}/open")' in ROUTER
     assert 'issue_return_context(' in ROUTER
-    assert 'f"/v2-clean/tasks/{task_id}/detail?return_context={quote(return_token)}"' in ROUTER
+    assert 'f"/v2-clean/tasks/{task_id}/detail?return_context={quote(return_token)}{panel_query}"' in ROUTER
+    assert 'panel_query = "&panel=drawer" if panel == "drawer" else ""' in ROUTER
     assert "task_return_url" in ROUTER
     assert 'href="{{ task_return_url }}"' in (ROOT / "app/templates/task_detail.html").read_text(encoding="utf-8")
 
@@ -962,3 +1000,54 @@ def test_guardrails_keep_owner_executor_support_and_sla_concepts_distinct() -> N
     assert "task_sla_labels_by_id" in ROUTER
     assert "data-preview-sla" in TEMPLATE
     assert 'data-sla="{{ task_sla_labels_by_id.get' in TEMPLATE
+
+
+def test_active_work_excludes_resolved_tasks_and_closed_view_keeps_them(
+    authenticated_client, db_session, monkeypatch
+) -> None:
+    monkeypatch.setattr(task_router.settings, "visual_foundation_enabled", True)
+    actor = db_session.scalar(select(User).where(User.email == "admin.tests@carfast.local"))
+    resolved = Task(
+        title="Fixture sanitizada resolvida",
+        task_type="operational_task",
+        status="resolved",
+        priority="normal",
+        assigned_to_id=actor.id,
+        assignment_state="assigned_user",
+        resolved_at=datetime.now(UTC),
+    )
+    db_session.add(resolved)
+    db_session.commit()
+
+    active = authenticated_client.get("/v2-clean/tasks?task_scope_view=mine&status=open")
+    closed = authenticated_client.get("/v2-clean/tasks?task_scope_view=mine&status=closed")
+
+    assert resolved.title not in active.text
+    assert resolved.title in closed.text
+
+
+def test_missing_task_deadline_explains_independent_overdue_sla(
+    authenticated_client, db_session, monkeypatch
+) -> None:
+    monkeypatch.setattr(task_router.settings, "visual_foundation_enabled", True)
+    actor = db_session.scalar(select(User).where(User.email == "admin.tests@carfast.local"))
+    task = Task(
+        title="Fixture sanitizada SLA independente",
+        task_type="operational_task",
+        status="new",
+        priority="normal",
+        assigned_to_id=actor.id,
+        assignment_state="assigned_user",
+        due_on=None,
+        resolution_due_at=datetime.now(UTC) - timedelta(hours=1),
+    )
+    db_session.add(task)
+    db_session.commit()
+
+    page = authenticated_client.get("/v2-clean/tasks?task_scope_view=mine&status=open")
+
+    row = re.search(
+        rf'<tr[^>]+data-title="{re.escape(task.title)}"[^>]+>', page.text
+    ).group(0)
+    assert 'data-due="Sem prazo"' in row
+    assert 'data-sla="SLA calculado ultrapassado"' in row

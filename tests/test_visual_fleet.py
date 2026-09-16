@@ -62,7 +62,7 @@ def test_fleet_sidebar_exposes_approved_operational_structure():
         assert label in sidebar
     for path in (
         "/v2-clean/fleet",
-        "/alerts",
+        "/v2-clean/tasks/notifications",
         "/v2-clean/tasks?workspace=fleet",
         "/v2-clean/documentation/by-vehicle",
     ):

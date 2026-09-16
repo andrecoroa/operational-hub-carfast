@@ -23,6 +23,117 @@ microsoft365_router = APIRouter()
 CALLBACK_PATH = "/v2-clean/integrations/microsoft/callback"
 
 
+# Canonical Microsoft 365 mailboxes prepared for the controlled multi-box
+# rollout. Creating a transport never enables it; activation remains a
+# separate, explicit operational decision per mailbox.
+MICROSOFT365_MULTIBOX_CHANNELS = {
+    "hub@carfast.pt": ("test", "Caixa geral"),
+    "central@carfast.pt": ("central", "Central"),
+    "frota@carfast.pt": ("frota", "Frota"),
+    "multas@carfast.pt": ("multas", "Multas"),
+    "oficina@carfast.pt": ("oficina", "Oficina"),
+    "sinistros@carfast.pt": ("sinistros", "Sinistros"),
+    "vvp@carfast.pt": ("vvp", "VVP"),
+    "reports@carfast.pt": ("reports", "Reports"),
+    "suporte@carfast.pt": ("suporte", "Suporte"),
+    "backoffice@carfast.pt": ("administrativo", "Administrativo"),
+    "contratos@carfast.pt": ("administrativo", "Administrativo"),
+    "reservas.allianz@carfast.pt": ("seguradoras", "Seguradoras"),
+    "anyrent@carfast.pt": ("outros", "Outros"),
+}
+
+# Preserve the original single-mailbox pilot contract while the controlled
+# multi-box rollout is prepared.
+MICROSOFT365_LEGACY_PILOT_CHANNELS = {
+    "email@carfast.pt": ("microsoft365_email", "Email CarFast"),
+}
+
+MICROSOFT365_FUNCTIONAL_CHANNELS = {"administrativo", "seguradoras", "outros"}
+
+
+def _configure_disabled_transport(
+    db,
+    *,
+    mailbox: str,
+    tenant_id: str,
+    client_id: str,
+    delegated_user_principal_name: str,
+    user_id: int,
+) -> EmailChannelTransport:
+    definitions = {
+        **MICROSOFT365_MULTIBOX_CHANNELS,
+        **MICROSOFT365_LEGACY_PILOT_CHANNELS,
+    }
+    code, name = definitions[mailbox]
+    channel = db.scalar(select(EmailChannel).where(EmailChannel.code == code))
+    if channel is None:
+        channel = db.scalar(select(EmailChannel).where(EmailChannel.address == mailbox))
+    if channel is None:
+        channel = EmailChannel(
+            code=code,
+            name=name,
+            address=mailbox,
+            default_reply_address=mailbox,
+            from_address=mailbox,
+            from_name=f"CarFast — {name}"[:160],
+            reply_to_address=mailbox,
+            active=False,
+            approval_required=True,
+            assignment_mode="manual",
+        )
+        db.add(channel)
+        db.flush()
+    elif code not in MICROSOFT365_FUNCTIONAL_CHANNELS:
+        # Complete only missing identities. Existing administrator choices and
+        # the channel's operational active state are deliberately preserved.
+        if not channel.address:
+            channel.address = mailbox
+        if not channel.default_reply_address:
+            channel.default_reply_address = mailbox
+        if not channel.from_address:
+            channel.from_address = mailbox
+        if not channel.from_name:
+            channel.from_name = f"CarFast — {name}"[:160]
+        if not channel.reply_to_address:
+            channel.reply_to_address = mailbox
+
+    transport = db.scalar(
+        select(EmailChannelTransport).where(
+            EmailChannelTransport.channel_id == channel.id,
+            EmailChannelTransport.mailbox_address == mailbox,
+        )
+    )
+    if transport is None:
+        transport = EmailChannelTransport(channel_id=channel.id)
+        db.add(transport)
+        db.flush()
+    transport.provider = "microsoft365"
+    transport.enabled = False
+    transport.mailbox_address = mailbox
+    transport.tenant_id = tenant_id.strip()
+    transport.client_id = client_id.strip()
+    transport.client_credential_reference = "env://MICROSOFT365_CLIENT_SECRET"
+    transport.token_reference = f"db://microsoft365/transport/{transport.id}/tokens"
+    transport.delegated_user_principal_name = delegated_user_principal_name.strip().lower()
+    transport.initial_sync_days = 5
+    record_audit(
+        db,
+        "microsoft365.transport.configured_disabled",
+        "email_channel_transport",
+        transport.id,
+        user_id=user_id,
+        after_json={
+            "mailbox": mailbox,
+            "provider": "microsoft365",
+            "enabled": False,
+            "initial_sync_days": 5,
+            "credential_reference": transport.client_credential_reference,
+            "token_reference": transport.token_reference,
+        },
+    )
+    return transport
+
+
 def _integration_manager(request: Request) -> int | None:
     raw_user_id = request.session.get("user_id")
     if not raw_user_id:
@@ -125,55 +236,19 @@ def configure_disabled_microsoft365_transport(
     if not user_id:
         return RedirectResponse("/login", status_code=303)
     mailbox = mailbox_address.strip().lower()
-    if mailbox != "email@carfast.pt":
+    if mailbox not in {
+        **MICROSOFT365_MULTIBOX_CHANNELS,
+        **MICROSOFT365_LEGACY_PILOT_CHANNELS,
+    }:
         return JSONResponse({"error": "mailbox_not_allowed"}, status_code=400)
     with SessionLocal() as db:
-        channel = db.scalar(select(EmailChannel).where(EmailChannel.address == mailbox))
-        if channel is None:
-            channel = EmailChannel(
-                code="microsoft365_email",
-                name="Email CarFast",
-                address=mailbox,
-                default_reply_address=mailbox,
-                from_address=mailbox,
-                from_name="CarFast",
-                reply_to_address=mailbox,
-                active=False,
-                approval_required=True,
-                assignment_mode="manual",
-            )
-            db.add(channel)
-            db.flush()
-        transport = db.scalar(
-            select(EmailChannelTransport).where(EmailChannelTransport.channel_id == channel.id)
-        )
-        if transport is None:
-            transport = EmailChannelTransport(channel_id=channel.id)
-            db.add(transport)
-            db.flush()
-        transport.provider = "microsoft365"
-        transport.enabled = False
-        transport.mailbox_address = mailbox
-        transport.tenant_id = tenant_id.strip()
-        transport.client_id = client_id.strip()
-        transport.client_credential_reference = "env://MICROSOFT365_CLIENT_SECRET"
-        transport.token_reference = f"db://microsoft365/transport/{transport.id}/tokens"
-        transport.delegated_user_principal_name = delegated_user_principal_name.strip().lower()
-        transport.initial_sync_days = 5
-        record_audit(
+        transport = _configure_disabled_transport(
             db,
-            "microsoft365.transport.configured_disabled",
-            "email_channel_transport",
-            transport.id,
+            mailbox=mailbox,
+            tenant_id=tenant_id,
+            client_id=client_id,
+            delegated_user_principal_name=delegated_user_principal_name,
             user_id=user_id,
-            after_json={
-                "mailbox": mailbox,
-                "provider": "microsoft365",
-                "enabled": False,
-                "initial_sync_days": 5,
-                "credential_reference": transport.client_credential_reference,
-                "token_reference": transport.token_reference,
-            },
         )
         db.commit()
         transport_id = transport.id
@@ -184,3 +259,41 @@ def configure_disabled_microsoft365_transport(
             "connect_path": f"/v2-clean/integrations/microsoft/connect/{transport_id}",
         }
     )
+
+
+@microsoft365_router.post("/v2-clean/integrations/microsoft/configure-disabled-set")
+def configure_disabled_microsoft365_transport_set(
+    request: Request,
+    tenant_id: str = Form(...),
+    client_id: str = Form(...),
+    delegated_user_principal_name: str = Form(...),
+):
+    """Prepare the approved mailbox set without enabling or connecting it."""
+    user_id = _integration_manager(request)
+    if not user_id:
+        return RedirectResponse("/login", status_code=303)
+    with SessionLocal() as db:
+        transports = [
+            _configure_disabled_transport(
+                db,
+                mailbox=mailbox,
+                tenant_id=tenant_id,
+                client_id=client_id,
+                delegated_user_principal_name=delegated_user_principal_name,
+                user_id=user_id,
+            )
+            for mailbox in MICROSOFT365_MULTIBOX_CHANNELS
+        ]
+        db.commit()
+        prepared = [
+            {
+                "mailbox": str(transport.mailbox_address),
+                "transport_id": transport.id,
+                "enabled": bool(transport.enabled),
+                "connect_path": (
+                    f"/v2-clean/integrations/microsoft/connect/{transport.id}"
+                ),
+            }
+            for transport in transports
+        ]
+    return JSONResponse({"status": "configured_disabled", "mailboxes": prepared})

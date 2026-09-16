@@ -137,6 +137,46 @@ class VehicleDocumentRecord(TimestampMixin, Base):
     updated_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
 
 
+class VehicleOfficialDocument(TimestampMixin, Base):
+    """Current/replaced official document bundle owned by a vehicle.
+
+    Physical files stay in the generic ``documents`` archive and are connected
+    through ``VehicleOfficialDocumentFile``. This keeps task links referential:
+    tasks may point at this bundle, but never own or duplicate its files.
+    """
+
+    __tablename__ = "vehicle_official_documents"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    vehicle_id: Mapped[int] = mapped_column(
+        ForeignKey("vehicles.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    document_type: Mapped[str] = mapped_column(String(40), nullable=False, index=True)
+    valid_until: Mapped[date | None] = mapped_column(Date, index=True)
+    status: Mapped[str] = mapped_column(String(40), default="current", nullable=False, index=True)
+    replaces_id: Mapped[int | None] = mapped_column(
+        ForeignKey("vehicle_official_documents.id", ondelete="SET NULL"), index=True
+    )
+    notes: Mapped[str | None] = mapped_column(Text)
+    created_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+
+
+class VehicleOfficialDocumentFile(TimestampMixin, Base):
+    __tablename__ = "vehicle_official_document_files"
+    __table_args__ = (
+        UniqueConstraint("official_document_id", "page_role", name="uq_vehicle_official_document_page"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    official_document_id: Mapped[int] = mapped_column(
+        ForeignKey("vehicle_official_documents.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    document_id: Mapped[int] = mapped_column(
+        ForeignKey("documents.id", ondelete="RESTRICT"), nullable=False, unique=True, index=True
+    )
+    page_role: Mapped[str] = mapped_column(String(20), default="single", nullable=False)
+
+
 class VehicleDocumentRecordTag(TimestampMixin, Base):
     __tablename__ = "vehicle_document_record_tags"
 

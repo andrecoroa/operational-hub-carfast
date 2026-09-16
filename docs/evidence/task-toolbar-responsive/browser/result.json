@@ -1,0 +1,58 @@
+{
+  "desktop": {
+    "viewportWidth": 1440,
+    "documentWidth": 1440,
+    "toolbar": {
+      "left": 232,
+      "right": 1416,
+      "top": 80,
+      "bottom": 122
+    },
+    "navigation": {
+      "left": 232,
+      "right": 1238.078125,
+      "top": 79.5,
+      "bottom": 122.5
+    },
+    "actions": {
+      "left": 1254.078125,
+      "right": 1416,
+      "top": 85,
+      "bottom": 117
+    },
+    "queues": {
+      "left": 1023.953125,
+      "right": 1238.078125,
+      "top": 84.5,
+      "bottom": 116.5
+    }
+  },
+  "mobile": {
+    "viewportWidth": 373,
+    "documentWidth": 373,
+    "toolbar": {
+      "left": 16,
+      "right": 357,
+      "top": 92,
+      "bottom": 207
+    },
+    "navigation": {
+      "left": 16,
+      "right": 357,
+      "top": 130,
+      "bottom": 207
+    },
+    "actions": {
+      "left": 16,
+      "right": 357,
+      "top": 92,
+      "bottom": 124
+    },
+    "queues": {
+      "left": 16,
+      "right": 357,
+      "top": 170,
+      "bottom": 202
+    }
+  }
+}

@@ -1,0 +1,45 @@
+<article class="task-workbench-drawer" data-task-drawer data-task-id="{{ task.id }}" aria-labelledby="task-drawer-title">
+  <header class="task-drawer-header">
+    <div><small>CF-{{ "%05d"|format(task.id) }}</small><h2 id="task-drawer-title">{{ task.title }}</h2><p><span>{{ task_status_labels.get(task.status, task.status) }}</span><span>{{ priority_labels.get(task.priority, task.priority) }}</span></p></div>
+    <button type="button" class="task-drawer-close" data-task-drawer-close aria-label="Fechar painel">×</button>
+  </header>
+
+  <section data-task-drawer-mode="preview">
+    <nav class="task-drawer-actions" aria-label="Ações da tarefa">
+      {% if can_update_task %}<a class="primary" data-task-full-page-edit href="/v2-clean/tasks/{{ task.id }}/detail{% if return_context %}?return_context={{ return_context|urlencode }}{% endif %}#task-edit">Editar</a>{% endif %}
+      {% if can_create_task_case and not task_case %}<button type="button" data-task-drawer-case>Criar caso</button>{% endif %}
+      {% if can_request_decision and not pending_decision %}<button type="button" data-task-drawer-decision>Pedir decisão</button>{% endif %}
+      <details class="task-drawer-more"><summary>Mais</summary><div>
+        {% if can_update_task %}<a href="/v2-clean/tasks?create=1&amp;title={{ task.title|urlencode }}&amp;description={{ (task.description or '')|urlencode }}">Duplicar tarefa</a>{% endif %}
+        <button type="button" data-task-copy-link>Copiar ligação</button>
+        {% if can_update_task %}<a href="/v2-clean/tasks/{{ task.id }}/detail{% if return_context %}?return_context={{ return_context|urlencode }}{% endif %}#task-edit">Mover para outra categoria <span>›</span></a><a href="/v2-clean/tasks/{{ task.id }}/detail{% if return_context %}?return_context={{ return_context|urlencode }}{% endif %}#task-edit">Transferir responsabilidade <span>›</span></a>{% endif %}
+        {% if task_case %}<a href="/v2-clean/tasks?grouping=case&amp;q={{ task_case.title|urlencode }}">Ver relação com o caso</a>{% elif can_create_task_case %}<button type="button" data-task-drawer-case>Adicionar relação</button>{% endif %}
+        <button type="button" data-task-drawer-history>Ver histórico completo</button>
+        {% if can_close_task and not task.closed_at and task.status not in ['closed','resolved','cancelled'] %}<form method="post" action="/v2-clean/tasks/{{ task.id }}/close"><input type="hidden" name="return_url" value="{{ task_return_url }}"><button type="submit">Arquivar tarefa</button></form>{% endif %}
+      </div></details>
+    </nav>
+
+    <div class="task-drawer-scroll">
+      <dl class="task-drawer-facts">
+        <div><dt>Categoria</dt><dd>{{ task_work_category.name if task_work_category else task_category_labels.get(task.category, task.category or 'Por classificar') }}</dd></div>
+        <div><dt>Responsável</dt><dd>{{ assigned_user.name if assigned_user else ('Equipa · ' ~ assigned_team.name if assigned_team else 'Por assumir') }}</dd></div>
+        <div><dt>Prazo</dt><dd>{% if task.due_on %}{{ task.due_on.strftime('%d/%m/%Y') }}{% if task.due_time %} {{ task.due_time.strftime('%H:%M') }}{% endif %}{% else %}Sem prazo{% endif %}</dd></div>
+        <div><dt>Estado</dt><dd>{{ task_status_labels.get(task.status, task.status) }}</dd></div>
+      </dl>
+      <section class="task-drawer-section"><h3>Descrição / contexto</h3><p class="task-drawer-description">{{ task.description or 'Sem descrição.' }}</p>{% if task.plate or task.reservation_number or task.contract_number %}<p class="task-drawer-context">{% if task.plate %}<span>Matrícula · {{ task.plate }}</span>{% endif %}{% if task.reservation_number %}<span>Reserva · {{ task.reservation_number }}</span>{% endif %}{% if task.contract_number %}<span>Contrato · {{ task.contract_number }}</span>{% endif %}</p>{% endif %}</section>
+
+      <section class="task-drawer-section"><div class="task-drawer-section-title"><h3>Pedido de suporte</h3>{% if task_support_targets %}<button type="button" data-task-drawer-support>Solicitar suporte</button>{% endif %}</div>
+        {% set pending_help = help_requests|selectattr('status', 'equalto', 'pending')|list %}
+        {% for help in pending_help %}<article class="task-drawer-support-item"><strong>{% if help.requested_team_id %}Equipa · {{ team_by_id.get(help.requested_team_id).name if team_by_id.get(help.requested_team_id) else 'Equipa' }}{% else %}{{ user_by_id.get(help.requested_user_id).name if user_by_id.get(help.requested_user_id) else 'Utilizador' }}{% endif %}</strong><span>Suporte solicitado</span><p>{{ help.message or 'Sem motivo registado.' }}</p>{% set can_answer_help = help.requested_user_id == current_user.id or (help.requested_team_id and help.requested_team_id in current_user_team_ids) %}{% if can_answer_help %}{% set return_options = support_return_options_by_help_id.get(help.id, []) %}{% if return_options %}<form method="post" action="/v2-clean/tasks/{{ task.id }}/help/{{ help.id }}"><input type="hidden" name="return_url" value="{{ task_return_url }}"><input type="hidden" name="response" value="responded"><input type="hidden" name="comment" value="Suporte assumido no painel da tarefa."><select name="next_status" required>{% for code,label in return_options %}<option value="{{ code }}">{{ label }}</option>{% endfor %}</select><button type="submit">Assumir suporte</button></form>{% endif %}{% endif %}</article>{% else %}<p class="muted">Sem pedidos de suporte pendentes.</p>{% endfor %}
+        <p class="task-drawer-info">Uma equipa pode prestar suporte sem ficar disponível para atribuição normal.</p>
+      </section>
+
+      <section class="task-drawer-section"><h3>Relações</h3><dl class="task-drawer-relations"><div><dt>Caso</dt><dd>{% if task_case %}<a href="/v2-clean/tasks?grouping=case&amp;q={{ task_case.title|urlencode }}">{{ task_case.title }}</a>{% else %}Nenhum{% if can_create_task_case %} <button type="button" data-task-drawer-case>Criar caso</button>{% endif %}{% endif %}</dd></div><div><dt>Decisão</dt><dd>{% if pending_decision %}{{ pending_decision.decision_needed }}{% elif can_request_decision %}Nenhuma <button type="button" data-task-drawer-decision>Pedir decisão</button>{% else %}Nenhuma{% endif %}</dd></div></dl></section>
+
+      <section class="task-drawer-section"><h3>Comentários e atividade</h3><div class="task-drawer-comments">{% for item in comments[:6] %}<article><strong>{{ user_by_id.get(item.user_id).name if user_by_id.get(item.user_id) else 'Utilizador' }}</strong><time>{{ (item.created_at|lisbon_datetime).strftime('%d/%m/%Y %H:%M') }}</time><p>{{ item.comment }}</p></article>{% else %}<p class="muted">Sem comentários.</p>{% endfor %}</div>{% if can_respond_task %}<form method="post" action="/v2-clean/tasks/{{ task.id }}/comments" class="task-drawer-comment-form"><input type="hidden" name="return_url" value="{{ task_return_url }}"><textarea name="comment" required maxlength="4000" placeholder="Adicionar comentário…"></textarea><button type="submit">Comentar</button></form>{% endif %}</section>
+      {% if history %}<details class="task-drawer-section task-drawer-history" data-task-drawer-history-panel><summary>Histórico ({{ history|length }})</summary>{% for item in history[:20] %}<p><strong>{{ task_history_field_labels.get(item.field_name, item.field_name) }}</strong><span>{{ item.new_value or '-' }}</span><time>{{ (item.changed_at|lisbon_datetime).strftime('%d/%m/%Y %H:%M') }}</time></p>{% endfor %}</details>{% endif %}
+    </div>
+    <footer class="task-drawer-footer">{% if task_transition_options %}<form method="post" action="/v2-clean/tasks/{{ task.id }}/transition"><input type="hidden" name="return_url" value="{{ task_return_url }}"><select name="status" aria-label="Novo estado">{% for code in task_transition_options %}<option value="{{ code }}">{{ task_status_labels.get(code, code) }}</option>{% endfor %}</select><button type="submit">Alterar estado</button></form>{% endif %}</footer>
+  </section>
+
+</article>

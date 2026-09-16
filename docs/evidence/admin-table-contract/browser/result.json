@@ -1,0 +1,1790 @@
+[
+  {
+    "name": "overview",
+    "width": 1440,
+    "height": 900,
+    "viewportWidth": 1440,
+    "documentWidth": 1440,
+    "tables": [
+      {
+        "columns": 5,
+        "region": true,
+        "role": "region",
+        "tabIndex": 0,
+        "overflowX": "auto",
+        "left": 475,
+        "right": 1395,
+        "clientWidth": 903,
+        "scrollWidth": 903,
+        "hintVisible": false,
+        "firstCellPosition": "static"
+      }
+    ]
+  },
+  {
+    "name": "setup",
+    "width": 1440,
+    "height": 900,
+    "viewportWidth": 1440,
+    "documentWidth": 1440,
+    "tables": []
+  },
+  {
+    "name": "organization",
+    "width": 1440,
+    "height": 900,
+    "viewportWidth": 1440,
+    "documentWidth": 1440,
+    "tables": []
+  },
+  {
+    "name": "users",
+    "width": 1440,
+    "height": 900,
+    "viewportWidth": 1440,
+    "documentWidth": 1440,
+    "tables": [
+      {
+        "columns": 7,
+        "region": true,
+        "role": "region",
+        "tabIndex": 0,
+        "overflowX": "auto",
+        "left": 475,
+        "right": 1395,
+        "clientWidth": 903,
+        "scrollWidth": 1040,
+        "hintVisible": false,
+        "firstCellPosition": "static"
+      }
+    ]
+  },
+  {
+    "name": "roles",
+    "width": 1440,
+    "height": 900,
+    "viewportWidth": 1440,
+    "documentWidth": 1440,
+    "tables": [
+      {
+        "columns": 5,
+        "region": true,
+        "role": "region",
+        "tabIndex": 0,
+        "overflowX": "auto",
+        "left": 475,
+        "right": 1395,
+        "clientWidth": 903,
+        "scrollWidth": 903,
+        "hintVisible": false,
+        "firstCellPosition": "static"
+      }
+    ]
+  },
+  {
+    "name": "settings",
+    "width": 1440,
+    "height": 900,
+    "viewportWidth": 1440,
+    "documentWidth": 1440,
+    "tables": []
+  },
+  {
+    "name": "operations",
+    "width": 1440,
+    "height": 900,
+    "viewportWidth": 1440,
+    "documentWidth": 1440,
+    "tables": []
+  },
+  {
+    "name": "task-process-models",
+    "width": 1440,
+    "height": 900,
+    "viewportWidth": 1440,
+    "documentWidth": 1440,
+    "tables": []
+  },
+  {
+    "name": "workshop-models",
+    "width": 1440,
+    "height": 900,
+    "viewportWidth": 1440,
+    "documentWidth": 1440,
+    "tables": [
+      {
+        "columns": 7,
+        "region": true,
+        "role": "region",
+        "tabIndex": 0,
+        "overflowX": "auto",
+        "left": 253,
+        "right": 1395,
+        "clientWidth": 1125,
+        "scrollWidth": 1256,
+        "hintVisible": false,
+        "firstCellPosition": "static"
+      }
+    ]
+  },
+  {
+    "name": "integrations",
+    "width": 1440,
+    "height": 900,
+    "viewportWidth": 1440,
+    "documentWidth": 1440,
+    "tables": [
+      {
+        "columns": 6,
+        "region": true,
+        "role": "region",
+        "tabIndex": 0,
+        "overflowX": "auto",
+        "left": 475,
+        "right": 1395,
+        "clientWidth": 903,
+        "scrollWidth": 903,
+        "hintVisible": false,
+        "firstCellPosition": "static"
+      }
+    ]
+  },
+  {
+    "name": "security",
+    "width": 1440,
+    "height": 900,
+    "viewportWidth": 1440,
+    "documentWidth": 1440,
+    "tables": []
+  },
+  {
+    "name": "audit",
+    "width": 1440,
+    "height": 900,
+    "viewportWidth": 1440,
+    "documentWidth": 1440,
+    "tables": [
+      {
+        "columns": 6,
+        "region": true,
+        "role": "region",
+        "tabIndex": 0,
+        "overflowX": "auto",
+        "left": 475,
+        "right": 1395,
+        "clientWidth": 903,
+        "scrollWidth": 903,
+        "hintVisible": false,
+        "firstCellPosition": "static"
+      }
+    ]
+  },
+  {
+    "name": "evolution",
+    "width": 1440,
+    "height": 900,
+    "viewportWidth": 1440,
+    "documentWidth": 1440,
+    "tables": [
+      {
+        "columns": 8,
+        "region": true,
+        "role": "region",
+        "tabIndex": 0,
+        "overflowX": "auto",
+        "left": 475,
+        "right": 1395,
+        "clientWidth": 903,
+        "scrollWidth": 903,
+        "hintVisible": false,
+        "firstCellPosition": "static"
+      }
+    ]
+  },
+  {
+    "name": "classification-desk",
+    "width": 1440,
+    "height": 900,
+    "viewportWidth": 1440,
+    "documentWidth": 1440,
+    "tables": [
+      {
+        "columns": 5,
+        "region": true,
+        "role": "region",
+        "tabIndex": 0,
+        "overflowX": "auto",
+        "left": 471,
+        "right": 1399,
+        "clientWidth": 913,
+        "scrollWidth": 913,
+        "hintVisible": false,
+        "firstCellPosition": "static"
+      },
+      {
+        "columns": 8,
+        "region": true,
+        "role": "region",
+        "tabIndex": 0,
+        "overflowX": "auto",
+        "left": 471,
+        "right": 1399,
+        "clientWidth": 913,
+        "scrollWidth": 913,
+        "hintVisible": false,
+        "firstCellPosition": "static"
+      },
+      {
+        "columns": 5,
+        "region": true,
+        "role": "region",
+        "tabIndex": 0,
+        "overflowX": "auto",
+        "left": 471,
+        "right": 1399,
+        "clientWidth": 913,
+        "scrollWidth": 913,
+        "hintVisible": false,
+        "firstCellPosition": null
+      }
+    ]
+  },
+  {
+    "name": "classification-structure",
+    "width": 1440,
+    "height": 900,
+    "viewportWidth": 1440,
+    "documentWidth": 1440,
+    "tables": [
+      {
+        "columns": 8,
+        "region": true,
+        "role": "region",
+        "tabIndex": 0,
+        "overflowX": "auto",
+        "left": 471,
+        "right": 1399,
+        "clientWidth": 911,
+        "scrollWidth": 911,
+        "hintVisible": false,
+        "firstCellPosition": "static"
+      }
+    ]
+  },
+  {
+    "name": "classification-proposals",
+    "width": 1440,
+    "height": 900,
+    "viewportWidth": 1440,
+    "documentWidth": 1440,
+    "tables": [
+      {
+        "columns": 7,
+        "region": true,
+        "role": "region",
+        "tabIndex": 0,
+        "overflowX": "auto",
+        "left": 471,
+        "right": 1399,
+        "clientWidth": 913,
+        "scrollWidth": 913,
+        "hintVisible": false,
+        "firstCellPosition": "static"
+      }
+    ]
+  },
+  {
+    "name": "classification-permissions",
+    "width": 1440,
+    "height": 900,
+    "viewportWidth": 1440,
+    "documentWidth": 1440,
+    "tables": [
+      {
+        "columns": 5,
+        "region": true,
+        "role": "region",
+        "tabIndex": 0,
+        "overflowX": "auto",
+        "left": 471,
+        "right": 1399,
+        "clientWidth": 913,
+        "scrollWidth": 913,
+        "hintVisible": false,
+        "firstCellPosition": "static"
+      }
+    ]
+  },
+  {
+    "name": "classification-sources",
+    "width": 1440,
+    "height": 900,
+    "viewportWidth": 1440,
+    "documentWidth": 1440,
+    "tables": [
+      {
+        "columns": 7,
+        "region": true,
+        "role": "region",
+        "tabIndex": 0,
+        "overflowX": "auto",
+        "left": 471,
+        "right": 1399,
+        "clientWidth": 913,
+        "scrollWidth": 913,
+        "hintVisible": false,
+        "firstCellPosition": "static"
+      }
+    ]
+  },
+  {
+    "name": "classification-channels",
+    "width": 1440,
+    "height": 900,
+    "viewportWidth": 1440,
+    "documentWidth": 1440,
+    "tables": [
+      {
+        "columns": 14,
+        "region": true,
+        "role": "region",
+        "tabIndex": 0,
+        "overflowX": "auto",
+        "left": 471,
+        "right": 1399,
+        "clientWidth": 913,
+        "scrollWidth": 913,
+        "hintVisible": false,
+        "firstCellPosition": "static"
+      },
+      {
+        "columns": 8,
+        "region": true,
+        "role": "region",
+        "tabIndex": 0,
+        "overflowX": "auto",
+        "left": 471,
+        "right": 1399,
+        "clientWidth": 913,
+        "scrollWidth": 913,
+        "hintVisible": false,
+        "firstCellPosition": "static"
+      },
+      {
+        "columns": 5,
+        "region": true,
+        "role": "region",
+        "tabIndex": 0,
+        "overflowX": "auto",
+        "left": 471,
+        "right": 1399,
+        "clientWidth": 913,
+        "scrollWidth": 913,
+        "hintVisible": false,
+        "firstCellPosition": "static"
+      },
+      {
+        "columns": 8,
+        "region": true,
+        "role": "region",
+        "tabIndex": 0,
+        "overflowX": "auto",
+        "left": 471,
+        "right": 1399,
+        "clientWidth": 913,
+        "scrollWidth": 913,
+        "hintVisible": false,
+        "firstCellPosition": "static"
+      },
+      {
+        "columns": 8,
+        "region": true,
+        "role": "region",
+        "tabIndex": 0,
+        "overflowX": "auto",
+        "left": 471,
+        "right": 1399,
+        "clientWidth": 913,
+        "scrollWidth": 913,
+        "hintVisible": false,
+        "firstCellPosition": "static"
+      },
+      {
+        "columns": 5,
+        "region": true,
+        "role": "region",
+        "tabIndex": 0,
+        "overflowX": "auto",
+        "left": 471,
+        "right": 1399,
+        "clientWidth": 913,
+        "scrollWidth": 913,
+        "hintVisible": false,
+        "firstCellPosition": "static"
+      }
+    ]
+  },
+  {
+    "name": "classification-templates",
+    "width": 1440,
+    "height": 900,
+    "viewportWidth": 1440,
+    "documentWidth": 1440,
+    "tables": [
+      {
+        "columns": 7,
+        "region": true,
+        "role": "region",
+        "tabIndex": 0,
+        "overflowX": "auto",
+        "left": 471,
+        "right": 1399,
+        "clientWidth": 913,
+        "scrollWidth": 913,
+        "hintVisible": false,
+        "firstCellPosition": "static"
+      }
+    ]
+  },
+  {
+    "name": "overview",
+    "width": 1024,
+    "height": 768,
+    "viewportWidth": 1024,
+    "documentWidth": 1024,
+    "tables": [
+      {
+        "columns": 5,
+        "region": true,
+        "role": "region",
+        "tabIndex": 0,
+        "overflowX": "auto",
+        "left": 101,
+        "right": 979,
+        "clientWidth": 861,
+        "scrollWidth": 861,
+        "hintVisible": true,
+        "firstCellPosition": "sticky"
+      }
+    ]
+  },
+  {
+    "name": "setup",
+    "width": 1024,
+    "height": 768,
+    "viewportWidth": 1024,
+    "documentWidth": 1024,
+    "tables": []
+  },
+  {
+    "name": "organization",
+    "width": 1024,
+    "height": 768,
+    "viewportWidth": 1024,
+    "documentWidth": 1024,
+    "tables": []
+  },
+  {
+    "name": "users",
+    "width": 1024,
+    "height": 768,
+    "viewportWidth": 1024,
+    "documentWidth": 1024,
+    "tables": [
+      {
+        "columns": 7,
+        "region": true,
+        "role": "region",
+        "tabIndex": 0,
+        "overflowX": "auto",
+        "left": 101,
+        "right": 979,
+        "clientWidth": 861,
+        "scrollWidth": 1040,
+        "hintVisible": true,
+        "firstCellPosition": "sticky"
+      }
+    ]
+  },
+  {
+    "name": "roles",
+    "width": 1024,
+    "height": 768,
+    "viewportWidth": 1024,
+    "documentWidth": 1024,
+    "tables": [
+      {
+        "columns": 5,
+        "region": true,
+        "role": "region",
+        "tabIndex": 0,
+        "overflowX": "auto",
+        "left": 101,
+        "right": 979,
+        "clientWidth": 861,
+        "scrollWidth": 861,
+        "hintVisible": true,
+        "firstCellPosition": "sticky"
+      }
+    ]
+  },
+  {
+    "name": "settings",
+    "width": 1024,
+    "height": 768,
+    "viewportWidth": 1024,
+    "documentWidth": 1024,
+    "tables": []
+  },
+  {
+    "name": "operations",
+    "width": 1024,
+    "height": 768,
+    "viewportWidth": 1024,
+    "documentWidth": 1024,
+    "tables": []
+  },
+  {
+    "name": "task-process-models",
+    "width": 1024,
+    "height": 768,
+    "viewportWidth": 1024,
+    "documentWidth": 1024,
+    "tables": []
+  },
+  {
+    "name": "workshop-models",
+    "width": 1024,
+    "height": 768,
+    "viewportWidth": 1024,
+    "documentWidth": 1024,
+    "tables": [
+      {
+        "columns": 7,
+        "region": true,
+        "role": "region",
+        "tabIndex": 0,
+        "overflowX": "auto",
+        "left": 101,
+        "right": 979,
+        "clientWidth": 861,
+        "scrollWidth": 1030,
+        "hintVisible": true,
+        "firstCellPosition": "sticky"
+      }
+    ]
+  },
+  {
+    "name": "integrations",
+    "width": 1024,
+    "height": 768,
+    "viewportWidth": 1024,
+    "documentWidth": 1024,
+    "tables": [
+      {
+        "columns": 6,
+        "region": true,
+        "role": "region",
+        "tabIndex": 0,
+        "overflowX": "auto",
+        "left": 101,
+        "right": 979,
+        "clientWidth": 861,
+        "scrollWidth": 861,
+        "hintVisible": true,
+        "firstCellPosition": "sticky"
+      }
+    ]
+  },
+  {
+    "name": "security",
+    "width": 1024,
+    "height": 768,
+    "viewportWidth": 1024,
+    "documentWidth": 1024,
+    "tables": []
+  },
+  {
+    "name": "audit",
+    "width": 1024,
+    "height": 768,
+    "viewportWidth": 1024,
+    "documentWidth": 1024,
+    "tables": [
+      {
+        "columns": 6,
+        "region": true,
+        "role": "region",
+        "tabIndex": 0,
+        "overflowX": "auto",
+        "left": 101,
+        "right": 979,
+        "clientWidth": 861,
+        "scrollWidth": 861,
+        "hintVisible": true,
+        "firstCellPosition": "sticky"
+      }
+    ]
+  },
+  {
+    "name": "evolution",
+    "width": 1024,
+    "height": 768,
+    "viewportWidth": 1024,
+    "documentWidth": 1024,
+    "tables": [
+      {
+        "columns": 8,
+        "region": true,
+        "role": "region",
+        "tabIndex": 0,
+        "overflowX": "auto",
+        "left": 101,
+        "right": 979,
+        "clientWidth": 861,
+        "scrollWidth": 861,
+        "hintVisible": true,
+        "firstCellPosition": "sticky"
+      }
+    ]
+  },
+  {
+    "name": "classification-desk",
+    "width": 1024,
+    "height": 768,
+    "viewportWidth": 1024,
+    "documentWidth": 1024,
+    "tables": [
+      {
+        "columns": 5,
+        "region": true,
+        "role": "region",
+        "tabIndex": 0,
+        "overflowX": "auto",
+        "left": 97,
+        "right": 983,
+        "clientWidth": 871,
+        "scrollWidth": 900,
+        "hintVisible": true,
+        "firstCellPosition": "sticky"
+      },
+      {
+        "columns": 8,
+        "region": true,
+        "role": "region",
+        "tabIndex": 0,
+        "overflowX": "auto",
+        "left": 97,
+        "right": 983,
+        "clientWidth": 871,
+        "scrollWidth": 900,
+        "hintVisible": true,
+        "firstCellPosition": "sticky"
+      },
+      {
+        "columns": 5,
+        "region": true,
+        "role": "region",
+        "tabIndex": 0,
+        "overflowX": "auto",
+        "left": 97,
+        "right": 983,
+        "clientWidth": 871,
+        "scrollWidth": 900,
+        "hintVisible": true,
+        "firstCellPosition": null
+      }
+    ]
+  },
+  {
+    "name": "classification-structure",
+    "width": 1024,
+    "height": 768,
+    "viewportWidth": 1024,
+    "documentWidth": 1024,
+    "tables": [
+      {
+        "columns": 8,
+        "region": true,
+        "role": "region",
+        "tabIndex": 0,
+        "overflowX": "auto",
+        "left": 97,
+        "right": 983,
+        "clientWidth": 869,
+        "scrollWidth": 900,
+        "hintVisible": true,
+        "firstCellPosition": "sticky"
+      }
+    ]
+  },
+  {
+    "name": "classification-proposals",
+    "width": 1024,
+    "height": 768,
+    "viewportWidth": 1024,
+    "documentWidth": 1024,
+    "tables": [
+      {
+        "columns": 7,
+        "region": true,
+        "role": "region",
+        "tabIndex": 0,
+        "overflowX": "auto",
+        "left": 97,
+        "right": 983,
+        "clientWidth": 871,
+        "scrollWidth": 871,
+        "hintVisible": true,
+        "firstCellPosition": "sticky"
+      }
+    ]
+  },
+  {
+    "name": "classification-permissions",
+    "width": 1024,
+    "height": 768,
+    "viewportWidth": 1024,
+    "documentWidth": 1024,
+    "tables": [
+      {
+        "columns": 5,
+        "region": true,
+        "role": "region",
+        "tabIndex": 0,
+        "overflowX": "auto",
+        "left": 97,
+        "right": 983,
+        "clientWidth": 871,
+        "scrollWidth": 900,
+        "hintVisible": true,
+        "firstCellPosition": "sticky"
+      }
+    ]
+  },
+  {
+    "name": "classification-sources",
+    "width": 1024,
+    "height": 768,
+    "viewportWidth": 1024,
+    "documentWidth": 1024,
+    "tables": [
+      {
+        "columns": 7,
+        "region": true,
+        "role": "region",
+        "tabIndex": 0,
+        "overflowX": "auto",
+        "left": 97,
+        "right": 983,
+        "clientWidth": 871,
+        "scrollWidth": 900,
+        "hintVisible": true,
+        "firstCellPosition": "sticky"
+      }
+    ]
+  },
+  {
+    "name": "classification-channels",
+    "width": 1024,
+    "height": 768,
+    "viewportWidth": 1024,
+    "documentWidth": 1024,
+    "tables": [
+      {
+        "columns": 14,
+        "region": true,
+        "role": "region",
+        "tabIndex": 0,
+        "overflowX": "auto",
+        "left": 97,
+        "right": 983,
+        "clientWidth": 871,
+        "scrollWidth": 900,
+        "hintVisible": true,
+        "firstCellPosition": "sticky"
+      },
+      {
+        "columns": 8,
+        "region": true,
+        "role": "region",
+        "tabIndex": 0,
+        "overflowX": "auto",
+        "left": 97,
+        "right": 983,
+        "clientWidth": 871,
+        "scrollWidth": 900,
+        "hintVisible": true,
+        "firstCellPosition": "sticky"
+      },
+      {
+        "columns": 5,
+        "region": true,
+        "role": "region",
+        "tabIndex": 0,
+        "overflowX": "auto",
+        "left": 97,
+        "right": 983,
+        "clientWidth": 871,
+        "scrollWidth": 900,
+        "hintVisible": true,
+        "firstCellPosition": "sticky"
+      },
+      {
+        "columns": 8,
+        "region": true,
+        "role": "region",
+        "tabIndex": 0,
+        "overflowX": "auto",
+        "left": 97,
+        "right": 983,
+        "clientWidth": 871,
+        "scrollWidth": 900,
+        "hintVisible": true,
+        "firstCellPosition": "sticky"
+      },
+      {
+        "columns": 8,
+        "region": true,
+        "role": "region",
+        "tabIndex": 0,
+        "overflowX": "auto",
+        "left": 97,
+        "right": 983,
+        "clientWidth": 871,
+        "scrollWidth": 900,
+        "hintVisible": true,
+        "firstCellPosition": "sticky"
+      },
+      {
+        "columns": 5,
+        "region": true,
+        "role": "region",
+        "tabIndex": 0,
+        "overflowX": "auto",
+        "left": 97,
+        "right": 983,
+        "clientWidth": 871,
+        "scrollWidth": 900,
+        "hintVisible": true,
+        "firstCellPosition": "sticky"
+      }
+    ]
+  },
+  {
+    "name": "classification-templates",
+    "width": 1024,
+    "height": 768,
+    "viewportWidth": 1024,
+    "documentWidth": 1024,
+    "tables": [
+      {
+        "columns": 7,
+        "region": true,
+        "role": "region",
+        "tabIndex": 0,
+        "overflowX": "auto",
+        "left": 97,
+        "right": 983,
+        "clientWidth": 871,
+        "scrollWidth": 900,
+        "hintVisible": true,
+        "firstCellPosition": "sticky"
+      }
+    ]
+  },
+  {
+    "name": "overview",
+    "width": 678,
+    "height": 812,
+    "viewportWidth": 678,
+    "documentWidth": 678,
+    "tables": [
+      {
+        "columns": 5,
+        "region": true,
+        "role": "region",
+        "tabIndex": 0,
+        "overflowX": "auto",
+        "left": 37,
+        "right": 641,
+        "clientWidth": 587,
+        "scrollWidth": 760,
+        "hintVisible": true,
+        "firstCellPosition": "sticky"
+      }
+    ]
+  },
+  {
+    "name": "setup",
+    "width": 678,
+    "height": 812,
+    "viewportWidth": 678,
+    "documentWidth": 678,
+    "tables": []
+  },
+  {
+    "name": "organization",
+    "width": 678,
+    "height": 812,
+    "viewportWidth": 678,
+    "documentWidth": 678,
+    "tables": []
+  },
+  {
+    "name": "users",
+    "width": 678,
+    "height": 812,
+    "viewportWidth": 678,
+    "documentWidth": 678,
+    "tables": [
+      {
+        "columns": 7,
+        "region": true,
+        "role": "region",
+        "tabIndex": 0,
+        "overflowX": "auto",
+        "left": 37,
+        "right": 641,
+        "clientWidth": 587,
+        "scrollWidth": 587,
+        "hintVisible": true,
+        "firstCellPosition": "sticky"
+      }
+    ]
+  },
+  {
+    "name": "roles",
+    "width": 678,
+    "height": 812,
+    "viewportWidth": 678,
+    "documentWidth": 678,
+    "tables": [
+      {
+        "columns": 5,
+        "region": true,
+        "role": "region",
+        "tabIndex": 0,
+        "overflowX": "auto",
+        "left": 37,
+        "right": 641,
+        "clientWidth": 587,
+        "scrollWidth": 760,
+        "hintVisible": true,
+        "firstCellPosition": "sticky"
+      }
+    ]
+  },
+  {
+    "name": "settings",
+    "width": 678,
+    "height": 812,
+    "viewportWidth": 678,
+    "documentWidth": 678,
+    "tables": []
+  },
+  {
+    "name": "operations",
+    "width": 678,
+    "height": 812,
+    "viewportWidth": 678,
+    "documentWidth": 678,
+    "tables": []
+  },
+  {
+    "name": "task-process-models",
+    "width": 678,
+    "height": 812,
+    "viewportWidth": 678,
+    "documentWidth": 678,
+    "tables": []
+  },
+  {
+    "name": "workshop-models",
+    "width": 678,
+    "height": 812,
+    "viewportWidth": 678,
+    "documentWidth": 678,
+    "tables": [
+      {
+        "columns": 7,
+        "region": true,
+        "role": "region",
+        "tabIndex": 0,
+        "overflowX": "auto",
+        "left": 37,
+        "right": 641,
+        "clientWidth": 587,
+        "scrollWidth": 943,
+        "hintVisible": true,
+        "firstCellPosition": "sticky"
+      }
+    ]
+  },
+  {
+    "name": "integrations",
+    "width": 678,
+    "height": 812,
+    "viewportWidth": 678,
+    "documentWidth": 678,
+    "tables": [
+      {
+        "columns": 6,
+        "region": true,
+        "role": "region",
+        "tabIndex": 0,
+        "overflowX": "auto",
+        "left": 37,
+        "right": 641,
+        "clientWidth": 587,
+        "scrollWidth": 760,
+        "hintVisible": true,
+        "firstCellPosition": "sticky"
+      }
+    ]
+  },
+  {
+    "name": "security",
+    "width": 678,
+    "height": 812,
+    "viewportWidth": 678,
+    "documentWidth": 678,
+    "tables": []
+  },
+  {
+    "name": "audit",
+    "width": 678,
+    "height": 812,
+    "viewportWidth": 678,
+    "documentWidth": 678,
+    "tables": [
+      {
+        "columns": 6,
+        "region": true,
+        "role": "region",
+        "tabIndex": 0,
+        "overflowX": "auto",
+        "left": 37,
+        "right": 641,
+        "clientWidth": 587,
+        "scrollWidth": 760,
+        "hintVisible": true,
+        "firstCellPosition": "sticky"
+      }
+    ]
+  },
+  {
+    "name": "evolution",
+    "width": 678,
+    "height": 812,
+    "viewportWidth": 678,
+    "documentWidth": 678,
+    "tables": [
+      {
+        "columns": 8,
+        "region": true,
+        "role": "region",
+        "tabIndex": 0,
+        "overflowX": "auto",
+        "left": 37,
+        "right": 641,
+        "clientWidth": 587,
+        "scrollWidth": 720,
+        "hintVisible": true,
+        "firstCellPosition": "sticky"
+      }
+    ]
+  },
+  {
+    "name": "classification-desk",
+    "width": 678,
+    "height": 812,
+    "viewportWidth": 678,
+    "documentWidth": 678,
+    "tables": [
+      {
+        "columns": 5,
+        "region": true,
+        "role": "region",
+        "tabIndex": 0,
+        "overflowX": "auto",
+        "left": 33,
+        "right": 645,
+        "clientWidth": 597,
+        "scrollWidth": 900,
+        "hintVisible": true,
+        "firstCellPosition": "sticky"
+      },
+      {
+        "columns": 8,
+        "region": true,
+        "role": "region",
+        "tabIndex": 0,
+        "overflowX": "auto",
+        "left": 33,
+        "right": 645,
+        "clientWidth": 597,
+        "scrollWidth": 900,
+        "hintVisible": true,
+        "firstCellPosition": "sticky"
+      },
+      {
+        "columns": 5,
+        "region": true,
+        "role": "region",
+        "tabIndex": 0,
+        "overflowX": "auto",
+        "left": 33,
+        "right": 645,
+        "clientWidth": 597,
+        "scrollWidth": 900,
+        "hintVisible": true,
+        "firstCellPosition": null
+      }
+    ]
+  },
+  {
+    "name": "classification-structure",
+    "width": 678,
+    "height": 812,
+    "viewportWidth": 678,
+    "documentWidth": 678,
+    "tables": [
+      {
+        "columns": 8,
+        "region": true,
+        "role": "region",
+        "tabIndex": 0,
+        "overflowX": "auto",
+        "left": 33,
+        "right": 645,
+        "clientWidth": 595,
+        "scrollWidth": 900,
+        "hintVisible": true,
+        "firstCellPosition": "sticky"
+      }
+    ]
+  },
+  {
+    "name": "classification-proposals",
+    "width": 678,
+    "height": 812,
+    "viewportWidth": 678,
+    "documentWidth": 678,
+    "tables": [
+      {
+        "columns": 7,
+        "region": true,
+        "role": "region",
+        "tabIndex": 0,
+        "overflowX": "auto",
+        "left": 33,
+        "right": 645,
+        "clientWidth": 597,
+        "scrollWidth": 760,
+        "hintVisible": true,
+        "firstCellPosition": "sticky"
+      }
+    ]
+  },
+  {
+    "name": "classification-permissions",
+    "width": 678,
+    "height": 812,
+    "viewportWidth": 678,
+    "documentWidth": 678,
+    "tables": [
+      {
+        "columns": 5,
+        "region": true,
+        "role": "region",
+        "tabIndex": 0,
+        "overflowX": "auto",
+        "left": 33,
+        "right": 645,
+        "clientWidth": 597,
+        "scrollWidth": 900,
+        "hintVisible": true,
+        "firstCellPosition": "sticky"
+      }
+    ]
+  },
+  {
+    "name": "classification-sources",
+    "width": 678,
+    "height": 812,
+    "viewportWidth": 678,
+    "documentWidth": 678,
+    "tables": [
+      {
+        "columns": 7,
+        "region": true,
+        "role": "region",
+        "tabIndex": 0,
+        "overflowX": "auto",
+        "left": 33,
+        "right": 645,
+        "clientWidth": 597,
+        "scrollWidth": 900,
+        "hintVisible": true,
+        "firstCellPosition": "sticky"
+      }
+    ]
+  },
+  {
+    "name": "classification-channels",
+    "width": 678,
+    "height": 812,
+    "viewportWidth": 678,
+    "documentWidth": 678,
+    "tables": [
+      {
+        "columns": 14,
+        "region": true,
+        "role": "region",
+        "tabIndex": 0,
+        "overflowX": "auto",
+        "left": 33,
+        "right": 645,
+        "clientWidth": 597,
+        "scrollWidth": 900,
+        "hintVisible": true,
+        "firstCellPosition": "sticky"
+      },
+      {
+        "columns": 8,
+        "region": true,
+        "role": "region",
+        "tabIndex": 0,
+        "overflowX": "auto",
+        "left": 33,
+        "right": 645,
+        "clientWidth": 597,
+        "scrollWidth": 900,
+        "hintVisible": true,
+        "firstCellPosition": "sticky"
+      },
+      {
+        "columns": 5,
+        "region": true,
+        "role": "region",
+        "tabIndex": 0,
+        "overflowX": "auto",
+        "left": 33,
+        "right": 645,
+        "clientWidth": 597,
+        "scrollWidth": 900,
+        "hintVisible": true,
+        "firstCellPosition": "sticky"
+      },
+      {
+        "columns": 8,
+        "region": true,
+        "role": "region",
+        "tabIndex": 0,
+        "overflowX": "auto",
+        "left": 33,
+        "right": 645,
+        "clientWidth": 597,
+        "scrollWidth": 900,
+        "hintVisible": true,
+        "firstCellPosition": "sticky"
+      },
+      {
+        "columns": 8,
+        "region": true,
+        "role": "region",
+        "tabIndex": 0,
+        "overflowX": "auto",
+        "left": 33,
+        "right": 645,
+        "clientWidth": 597,
+        "scrollWidth": 900,
+        "hintVisible": true,
+        "firstCellPosition": "sticky"
+      },
+      {
+        "columns": 5,
+        "region": true,
+        "role": "region",
+        "tabIndex": 0,
+        "overflowX": "auto",
+        "left": 33,
+        "right": 645,
+        "clientWidth": 597,
+        "scrollWidth": 900,
+        "hintVisible": true,
+        "firstCellPosition": "sticky"
+      }
+    ]
+  },
+  {
+    "name": "classification-templates",
+    "width": 678,
+    "height": 812,
+    "viewportWidth": 678,
+    "documentWidth": 678,
+    "tables": [
+      {
+        "columns": 7,
+        "region": true,
+        "role": "region",
+        "tabIndex": 0,
+        "overflowX": "auto",
+        "left": 33,
+        "right": 645,
+        "clientWidth": 597,
+        "scrollWidth": 900,
+        "hintVisible": true,
+        "firstCellPosition": "sticky"
+      }
+    ]
+  },
+  {
+    "name": "overview",
+    "width": 390,
+    "height": 844,
+    "viewportWidth": 390,
+    "documentWidth": 390,
+    "tables": [
+      {
+        "columns": 5,
+        "region": true,
+        "role": "region",
+        "tabIndex": 0,
+        "overflowX": "auto",
+        "left": 37,
+        "right": 353,
+        "clientWidth": 299,
+        "scrollWidth": 760,
+        "hintVisible": true,
+        "firstCellPosition": "sticky"
+      }
+    ]
+  },
+  {
+    "name": "setup",
+    "width": 390,
+    "height": 844,
+    "viewportWidth": 390,
+    "documentWidth": 390,
+    "tables": []
+  },
+  {
+    "name": "organization",
+    "width": 390,
+    "height": 844,
+    "viewportWidth": 390,
+    "documentWidth": 390,
+    "tables": []
+  },
+  {
+    "name": "users",
+    "width": 390,
+    "height": 844,
+    "viewportWidth": 390,
+    "documentWidth": 390,
+    "tables": [
+      {
+        "columns": 7,
+        "region": true,
+        "role": "region",
+        "tabIndex": 0,
+        "overflowX": "auto",
+        "left": 37,
+        "right": 353,
+        "clientWidth": 299,
+        "scrollWidth": 299,
+        "hintVisible": true,
+        "firstCellPosition": "sticky"
+      }
+    ]
+  },
+  {
+    "name": "roles",
+    "width": 390,
+    "height": 844,
+    "viewportWidth": 390,
+    "documentWidth": 390,
+    "tables": [
+      {
+        "columns": 5,
+        "region": true,
+        "role": "region",
+        "tabIndex": 0,
+        "overflowX": "auto",
+        "left": 37,
+        "right": 353,
+        "clientWidth": 299,
+        "scrollWidth": 760,
+        "hintVisible": true,
+        "firstCellPosition": "sticky"
+      }
+    ]
+  },
+  {
+    "name": "settings",
+    "width": 390,
+    "height": 844,
+    "viewportWidth": 390,
+    "documentWidth": 390,
+    "tables": []
+  },
+  {
+    "name": "operations",
+    "width": 390,
+    "height": 844,
+    "viewportWidth": 390,
+    "documentWidth": 390,
+    "tables": []
+  },
+  {
+    "name": "task-process-models",
+    "width": 390,
+    "height": 844,
+    "viewportWidth": 390,
+    "documentWidth": 390,
+    "tables": []
+  },
+  {
+    "name": "workshop-models",
+    "width": 390,
+    "height": 844,
+    "viewportWidth": 390,
+    "documentWidth": 390,
+    "tables": [
+      {
+        "columns": 7,
+        "region": true,
+        "role": "region",
+        "tabIndex": 0,
+        "overflowX": "auto",
+        "left": 37,
+        "right": 353,
+        "clientWidth": 299,
+        "scrollWidth": 943,
+        "hintVisible": true,
+        "firstCellPosition": "sticky"
+      }
+    ]
+  },
+  {
+    "name": "integrations",
+    "width": 390,
+    "height": 844,
+    "viewportWidth": 390,
+    "documentWidth": 390,
+    "tables": [
+      {
+        "columns": 6,
+        "region": true,
+        "role": "region",
+        "tabIndex": 0,
+        "overflowX": "auto",
+        "left": 37,
+        "right": 353,
+        "clientWidth": 299,
+        "scrollWidth": 760,
+        "hintVisible": true,
+        "firstCellPosition": "sticky"
+      }
+    ]
+  },
+  {
+    "name": "security",
+    "width": 390,
+    "height": 844,
+    "viewportWidth": 390,
+    "documentWidth": 390,
+    "tables": []
+  },
+  {
+    "name": "audit",
+    "width": 390,
+    "height": 844,
+    "viewportWidth": 390,
+    "documentWidth": 390,
+    "tables": [
+      {
+        "columns": 6,
+        "region": true,
+        "role": "region",
+        "tabIndex": 0,
+        "overflowX": "auto",
+        "left": 37,
+        "right": 353,
+        "clientWidth": 299,
+        "scrollWidth": 760,
+        "hintVisible": true,
+        "firstCellPosition": "sticky"
+      }
+    ]
+  },
+  {
+    "name": "evolution",
+    "width": 390,
+    "height": 844,
+    "viewportWidth": 390,
+    "documentWidth": 390,
+    "tables": [
+      {
+        "columns": 8,
+        "region": true,
+        "role": "region",
+        "tabIndex": 0,
+        "overflowX": "auto",
+        "left": 37,
+        "right": 353,
+        "clientWidth": 299,
+        "scrollWidth": 720,
+        "hintVisible": true,
+        "firstCellPosition": "sticky"
+      }
+    ]
+  },
+  {
+    "name": "classification-desk",
+    "width": 390,
+    "height": 844,
+    "viewportWidth": 390,
+    "documentWidth": 390,
+    "tables": [
+      {
+        "columns": 5,
+        "region": true,
+        "role": "region",
+        "tabIndex": 0,
+        "overflowX": "auto",
+        "left": 29,
+        "right": 361,
+        "clientWidth": 317,
+        "scrollWidth": 900,
+        "hintVisible": true,
+        "firstCellPosition": "sticky"
+      },
+      {
+        "columns": 8,
+        "region": true,
+        "role": "region",
+        "tabIndex": 0,
+        "overflowX": "auto",
+        "left": 29,
+        "right": 361,
+        "clientWidth": 317,
+        "scrollWidth": 900,
+        "hintVisible": true,
+        "firstCellPosition": "sticky"
+      },
+      {
+        "columns": 5,
+        "region": true,
+        "role": "region",
+        "tabIndex": 0,
+        "overflowX": "auto",
+        "left": 29,
+        "right": 361,
+        "clientWidth": 317,
+        "scrollWidth": 900,
+        "hintVisible": true,
+        "firstCellPosition": null
+      }
+    ]
+  },
+  {
+    "name": "classification-structure",
+    "width": 390,
+    "height": 844,
+    "viewportWidth": 390,
+    "documentWidth": 390,
+    "tables": [
+      {
+        "columns": 8,
+        "region": true,
+        "role": "region",
+        "tabIndex": 0,
+        "overflowX": "auto",
+        "left": 29,
+        "right": 361,
+        "clientWidth": 315,
+        "scrollWidth": 900,
+        "hintVisible": true,
+        "firstCellPosition": "sticky"
+      }
+    ]
+  },
+  {
+    "name": "classification-proposals",
+    "width": 390,
+    "height": 844,
+    "viewportWidth": 390,
+    "documentWidth": 390,
+    "tables": [
+      {
+        "columns": 7,
+        "region": true,
+        "role": "region",
+        "tabIndex": 0,
+        "overflowX": "auto",
+        "left": 29,
+        "right": 361,
+        "clientWidth": 317,
+        "scrollWidth": 760,
+        "hintVisible": true,
+        "firstCellPosition": "sticky"
+      }
+    ]
+  },
+  {
+    "name": "classification-permissions",
+    "width": 390,
+    "height": 844,
+    "viewportWidth": 390,
+    "documentWidth": 390,
+    "tables": [
+      {
+        "columns": 5,
+        "region": true,
+        "role": "region",
+        "tabIndex": 0,
+        "overflowX": "auto",
+        "left": 29,
+        "right": 361,
+        "clientWidth": 317,
+        "scrollWidth": 900,
+        "hintVisible": true,
+        "firstCellPosition": "sticky"
+      }
+    ]
+  },
+  {
+    "name": "classification-sources",
+    "width": 390,
+    "height": 844,
+    "viewportWidth": 390,
+    "documentWidth": 390,
+    "tables": [
+      {
+        "columns": 7,
+        "region": true,
+        "role": "region",
+        "tabIndex": 0,
+        "overflowX": "auto",
+        "left": 29,
+        "right": 361,
+        "clientWidth": 317,
+        "scrollWidth": 900,
+        "hintVisible": true,
+        "firstCellPosition": "sticky"
+      }
+    ]
+  },
+  {
+    "name": "classification-channels",
+    "width": 390,
+    "height": 844,
+    "viewportWidth": 390,
+    "documentWidth": 390,
+    "tables": [
+      {
+        "columns": 14,
+        "region": true,
+        "role": "region",
+        "tabIndex": 0,
+        "overflowX": "auto",
+        "left": 29,
+        "right": 361,
+        "clientWidth": 317,
+        "scrollWidth": 900,
+        "hintVisible": true,
+        "firstCellPosition": "sticky"
+      },
+      {
+        "columns": 8,
+        "region": true,
+        "role": "region",
+        "tabIndex": 0,
+        "overflowX": "auto",
+        "left": 29,
+        "right": 361,
+        "clientWidth": 317,
+        "scrollWidth": 900,
+        "hintVisible": true,
+        "firstCellPosition": "sticky"
+      },
+      {
+        "columns": 5,
+        "region": true,
+        "role": "region",
+        "tabIndex": 0,
+        "overflowX": "auto",
+        "left": 29,
+        "right": 361,
+        "clientWidth": 317,
+        "scrollWidth": 900,
+        "hintVisible": true,
+        "firstCellPosition": "sticky"
+      },
+      {
+        "columns": 8,
+        "region": true,
+        "role": "region",
+        "tabIndex": 0,
+        "overflowX": "auto",
+        "left": 29,
+        "right": 361,
+        "clientWidth": 317,
+        "scrollWidth": 900,
+        "hintVisible": true,
+        "firstCellPosition": "sticky"
+      },
+      {
+        "columns": 8,
+        "region": true,
+        "role": "region",
+        "tabIndex": 0,
+        "overflowX": "auto",
+        "left": 29,
+        "right": 361,
+        "clientWidth": 317,
+        "scrollWidth": 900,
+        "hintVisible": true,
+        "firstCellPosition": "sticky"
+      },
+      {
+        "columns": 5,
+        "region": true,
+        "role": "region",
+        "tabIndex": 0,
+        "overflowX": "auto",
+        "left": 29,
+        "right": 361,
+        "clientWidth": 317,
+        "scrollWidth": 900,
+        "hintVisible": true,
+        "firstCellPosition": "sticky"
+      }
+    ]
+  },
+  {
+    "name": "classification-templates",
+    "width": 390,
+    "height": 844,
+    "viewportWidth": 390,
+    "documentWidth": 390,
+    "tables": [
+      {
+        "columns": 7,
+        "region": true,
+        "role": "region",
+        "tabIndex": 0,
+        "overflowX": "auto",
+        "left": 29,
+        "right": 361,
+        "clientWidth": 317,
+        "scrollWidth": 900,
+        "hintVisible": true,
+        "firstCellPosition": "sticky"
+      }
+    ]
+  }
+]

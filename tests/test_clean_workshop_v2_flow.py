@@ -560,6 +560,11 @@ def test_workshop_dashboard_shows_operational_context_and_updates_situation(
     token = parse_qs(urlsplit(workbench_url).query)["return_context"][0]
     workbench = authenticated_client.get(workbench_url)
     assert workbench.status_code == 200
+    assert "Mostrar mais detalhes" in workbench.text
+    assert f'/v2-clean/workshop/{process.id}/print/process-dossier' in workbench.text
+    legacy_dossier = authenticated_client.get(f"/v2-clean/workshop/{process.id}/print/process-dossier")
+    assert legacy_dossier.status_code == 200
+    assert "Oficina Parceira" in legacy_dossier.text
     expected_return = (
         f"/v2-clean/workshop?scope=open&amp;location=all&amp;phase=all&amp;"
         f"situation=all&amp;q=WX-10-AA&amp;sort=age&amp;preview={process.id}"

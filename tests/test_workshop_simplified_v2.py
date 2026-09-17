@@ -33,6 +33,16 @@ def test_entry_permission_only_opens_own_new_entry(authenticated_client, db_sess
     ))
     assert process is not None
     assert authenticated_client.get(f"/v2-clean/workshop-entry?process_id={process.id}").status_code == 200
+    assert authenticated_client.get(
+        f"/v2-clean/workshop/validacao?process_id={process.id}", follow_redirects=False,
+    ).status_code == 403
+    assert authenticated_client.post(
+        "/v2-clean/workshop/validacao/save",
+        data={"process_id": process.id, "action": "save"}, follow_redirects=False,
+    ).status_code == 403
+    assert authenticated_client.get(
+        f"/v2-clean/workshop/{process.id}/print/process-dossier", follow_redirects=False,
+    ).status_code == 403
     legacy = authenticated_client.post(
         "/v2-clean/workshop-entry", data={"plate": "SV-26-OLD", "action": "save"},
         follow_redirects=False,
@@ -198,7 +208,7 @@ def test_v2_repair_requires_current_authorization_and_invalidates_on_revision(au
     assert "Imprimir processo" in page.text
     dossier = authenticated_client.get(f"/v2-clean/workshop/{process.id}/print/process-dossier")
     assert dossier.status_code == 200
-    assert "Processo completo de Oficina" in dossier.text
+    assert "Dossiê do processo de Oficina" in dossier.text
     assert "PAD-001" in dossier.text
 
     blocked = authenticated_client.post(
@@ -310,6 +320,135 @@ def test_v2_stock_request_is_allowed_but_direct_usage_is_not(authenticated_clien
     applied_order = authenticated_client.get(f"/v2-clean/workshop/{process.id}/print/repair-order")
     assert "Aplicado" in applied_order.text
     assert applied_order.text.count("PAD-001") == 1
+
+
+def test_v2_external_repair_is_visible_in_external_dashboard(authenticated_client, db_session):
+    process = _v2_repair_process(db_session)
+    authorization_url = f"/v2-clean/workshop/{process.id}/repair-authorization"
+    authenticated_client.post(authorization_url, data={"action": "request"}, follow_redirects=False)
+    approved = authenticated_client.post(
+        authorization_url,
+        data={"action": "approve", "approval_reference": "AUT-EXT-1"},
+        follow_redirects=False,
+    )
+    assert approved.status_code == 303
+    saved = authenticated_client.post(
+        "/v2-clean/workshop/reparacao/save",
+        data={
+            "process_id": process.id, "action": "save",
+            "repair_summary": "Reparação externa em curso",
+            "repair_external": "yes", "repair_external_partner": "Oficina Parceira",
+            "repair_external_reference": "EXT-001", "repair_external_status": "Enviada",
+        },
+        follow_redirects=False,
+    )
+    assert saved.status_code == 303
+    db_session.expire_all()
+    repair = db_session.scalar(select(WorkshopPhasedProcessPhase).where(
+        WorkshopPhasedProcessPhase.process_id == process.id,
+        WorkshopPhasedProcessPhase.phase_code == "reparacao",
+    ))
+    assert repair.data_json["form_snapshot"]["repair_external"] == "yes"
+    external = authenticated_client.get("/v2-clean/workshop?location=external&q=SV-26-AA")
+    assert external.status_code == 200
+    assert "<strong>SV-26-AA</strong>" in external.text
+    assert "Oficina Parceira" in external.text
+    internal = authenticated_client.get("/v2-clean/workshop?location=internal&q=SV-26-AA")
+    assert "<strong>SV-26-AA</strong>" not in internal.text
+
+
+def test_v2_external_repair_quote_followup_print_and_close(authenticated_client, db_session):
+    process = _v2_repair_process(db_session)
+    analysis = db_session.scalar(select(WorkshopPhasedProcessPhase).where(
+        WorkshopPhasedProcessPhase.process_id == process.id,
+        WorkshopPhasedProcessPhase.phase_code == "validacao",
+    ))
+    analysis_data = dict(analysis.data_json)
+    analysis_data["form_snapshot"] = {
+        **analysis_data["form_snapshot"], "quote_needed": "yes", "quote_status": "requested",
+    }
+    analysis.data_json = analysis_data
+    db_session.commit()
+
+    authorization_url = f"/v2-clean/workshop/{process.id}/repair-authorization"
+    authenticated_client.post(authorization_url, data={"action": "request"}, follow_redirects=False)
+    premature = authenticated_client.post(
+        authorization_url, data={"action": "approve", "approval_reference": "AUT-EXT-2"},
+        follow_redirects=False,
+    )
+    assert "error=quote_pending" in premature.headers["location"]
+    quote = authenticated_client.post(
+        f"/v2-clean/workshop/{process.id}/quote-update",
+        data={"quote_status": "approved", "quote_reference": "ORC-EXT-1", "quote_amount": "225,00"},
+        files={"quote_file": (
+            "orcamento-teste.pdf", b"%PDF-1.4\nsynthetic test\n%%EOF", "application/pdf",
+        )},
+        follow_redirects=False,
+    )
+    assert quote.status_code == 303
+    db_session.expire_all()
+    assert analysis.data_json["form_snapshot"]["quote_reference"] == "ORC-EXT-1"
+    assert any(item["field"] == "quote_file" for item in analysis.data_json["uploads"])
+
+    authenticated_client.post(authorization_url, data={"action": "request"}, follow_redirects=False)
+    approved = authenticated_client.post(
+        authorization_url, data={"action": "approve", "approval_reference": "AUT-EXT-2"},
+        follow_redirects=False,
+    )
+    assert approved.status_code == 303
+    execution = {
+        "process_id": process.id, "repair_summary": "Pastilhas substituídas na oficina parceira",
+        "repair_external": "yes", "repair_external_partner": "Oficina Parceira",
+        "repair_external_reference": "EXT-002", "repair_external_status": "Em execução",
+        "repair_external_eta": "2026-10-02", "repair_execution_status": "Em curso",
+    }
+    saved = authenticated_client.post(
+        "/v2-clean/workshop/reparacao/save", data={**execution, "action": "save"},
+        follow_redirects=False,
+    )
+    assert saved.status_code == 303
+    db_session.expire_all()
+    repair = db_session.scalar(select(WorkshopPhasedProcessPhase).where(
+        WorkshopPhasedProcessPhase.process_id == process.id,
+        WorkshopPhasedProcessPhase.phase_code == "reparacao",
+    ))
+    assert repair.data_json["form_snapshot"]["repair_external_status"] == "Em execução"
+    dossier = authenticated_client.get(f"/v2-clean/workshop/{process.id}/print/process-dossier")
+    assert dossier.status_code == 200
+    assert "Oficina Parceira" in dossier.text
+    assert "ORC-EXT-1" in dossier.text
+    assert "orcamento-teste.pdf" in dossier.text
+
+    advanced = authenticated_client.post(
+        "/v2-clean/workshop/reparacao/save",
+        data={**execution, "action": "advance", "repair_execution_status": "Concluída",
+              "repair_external_status": "Devolvida"},
+        follow_redirects=False,
+    )
+    assert advanced.headers["location"] == f"/v2-clean/workshop/fecho?process_id={process.id}"
+    closed = authenticated_client.post(
+        "/v2-clean/workshop/fecho/save",
+        data={"process_id": process.id, "action": "close_process",
+              "closure_final_summary": "Viatura entregue após reparação externa",
+              "closure_vehicle_validated": "yes", "closure_history_updated": "yes",
+              "closure_fleet_state_defined": "yes", "closure_min_docs_attached": "yes"},
+        follow_redirects=False,
+    )
+    assert closed.status_code == 303
+    db_session.expire_all()
+    assert process.status == "closed"
+    final_report = authenticated_client.get(f"/v2-clean/workshop/{process.id}/print/final-report")
+    assert final_report.status_code == 200
+    assert "Viatura entregue após reparação externa" in final_report.text
+    closed_dossier = authenticated_client.get(
+        f"/v2-clean/workshop/{process.id}/print/process-dossier"
+    )
+    assert "Oficina Parceira" in closed_dossier.text
+    assert "Devolvida" in closed_dossier.text
+    closed_external = authenticated_client.get(
+        "/v2-clean/workshop?scope=closed&location=external&q=SV-26-AA"
+    )
+    assert "<strong>SV-26-AA</strong>" in closed_external.text
 
 
 def test_v2_close_requires_assigned_pending_diagnostic(authenticated_client, db_session):

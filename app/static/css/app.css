@@ -30492,7 +30492,6 @@ body:has(.email-preview-dialog[open]) { overflow: hidden; }
 }
 @media (max-width: 900px) {
   .workshop-v2-analysis-layout { grid-template-columns: minmax(0, 1fr); }
-  .workshop-v2-side { grid-row: 1; }
   .workshop-v2-side details:not([open]) > *:not(summary) { display: none; }
 }
 @media (max-width: 600px) {

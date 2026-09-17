@@ -10654,6 +10654,20 @@ def clean_workshop_dashboard(
             ).strip()
             external_repair = str(entry_data.get("external_repair") or "no").lower() == "yes"
             external_name = str(entry_data.get("historical_supplier") or "").strip()
+            if metadata.get("workshop_flow_version") == 2:
+                repair_phase = clean_workshop_get_phase(db, process.id, "reparacao")
+                repair_data = (
+                    repair_phase.data_json
+                    if repair_phase and isinstance(repair_phase.data_json, dict)
+                    else {}
+                )
+                repair_snapshot = repair_data.get("form_snapshot")
+                if (
+                    isinstance(repair_snapshot, dict)
+                    and repair_snapshot.get("repair_external") in {"yes", "no"}
+                ):
+                    external_repair = repair_snapshot["repair_external"] == "yes"
+                    external_name = str(repair_snapshot.get("repair_external_partner") or "").strip()
             operational_situation = str(metadata.get("operational_situation") or "in_progress")
             if process.status == "closed":
                 operational_situation = "closed"
@@ -27365,7 +27379,7 @@ def clean_workshop_phase(
 CLEAN_WORKSHOP_PRINT_REPORTS = {
     "process-dossier": {
         "document_number": "D",
-        "title": "Processo completo de Oficina",
+        "title": "Dossiê do processo de Oficina",
         "stage": "Dossiê operacional",
         "status": "Em curso",
     },

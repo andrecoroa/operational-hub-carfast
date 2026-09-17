@@ -42,12 +42,11 @@
         </div>
         <div class="clean-context-action-row">
           {% if workshop_process and not workshop_admin.is_cancelled and not workshop_admin.is_closed %}
-            <a class="button-link secondary-link" href="/v2-clean/tasks?workspace=workshop&record_type=task&entity_type=workshop_phased_process&entity_id={{ workshop_process.id }}&phase={{ phase_key }}&plate={{ workshop_process.plate_snapshot or '' }}&category=Oficina&return_url={{ request.url.path }}%3Fprocess_id%3D{{ workshop_process.id }}">Criar tarefa</a>
-            {% if phase_key == "reparacao" %}<button type="button" class="button-link" onclick="document.getElementById('workshop-stock-request').showModal()">Pedido ao Stock</button>{% endif %}
+            {% if phase_key == "reparacao" %}<button type="button" class="button-link" onclick="document.getElementById('workshop-stock-request').showModal()">Solicitar material</button>{% endif %}
           {% else %}
             <span class="clean-context-action-empty">Sem ações operacionais disponíveis nesta fase.</span>
           {% endif %}
-          <a class="button-link secondary-link" href="{{ vehicle_detail_href }}">Ficha da viatura</a>
+          {% include "_clean_workshop_primary_actions.html" %}
         </div>
       </article>
     </section>
@@ -652,14 +651,17 @@
         <section class="clean-panel clean-card-wide clean-workshop-simplified-phase">
           <div class="table-heading flat-heading"><div><p class="eyebrow">Execução da reparação</p><h3>Trabalho, evidências e pendências</h3><p>Regista apenas factos da execução. A decisão de fecho é feita na fase seguinte.</p></div></div>
           <div class="clean-workshop-summary-grid">
-            <section>
-              <h4>Trabalho autorizado e executado</h4>
+            <details class="clean-workshop-focus-section">
+              <summary><strong>Trabalho autorizado e executado</strong><span>Consultar ou alterar</span></summary>
+              <div class="clean-workshop-focus-body">
               <label>Serviços autorizados<textarea name="repair_authorized_services" rows="3" placeholder="Trabalho autorizado...">{{ phase_form.get("repair_authorized_services", "") }}</textarea></label>
               <label>Trabalho executado / ponto de situação<textarea name="repair_summary" rows="4" placeholder="O que foi efetivamente executado...">{{ phase_form.get("repair_summary", "") }}</textarea></label>
               <label>Fora da autorização<textarea name="repair_outside_authorization" rows="3" placeholder="Material ou trabalhos que exigem nova autorização...">{{ phase_form.get("repair_outside_authorization", "") }}</textarea></label>
-            </section>
-            <section>
-              <h4>Execução</h4>
+              </div>
+            </details>
+            <details class="clean-workshop-focus-section clean-workshop-focus-primary" open>
+              <summary><strong>Estado atual da execução</strong><span>A informação necessária agora</span></summary>
+              <div class="clean-workshop-focus-body">
               <div class="clean-phase-field-grid">
                 <label>Estado<select name="repair_execution_status">{% for option in ["Em curso", "A aguardar peças", "A aguardar orçamento", "Concluída", "Bloqueada"] %}<option{% if phase_form.get("repair_execution_status", "Em curso") == option %} selected{% endif %}>{{ option }}</option>{% endfor %}</select></label>
                 <label>Responsável / oficina<input name="repair_responsible" value="{{ phase_form.get('repair_responsible', '') }}"></label>
@@ -670,9 +672,11 @@
                 <label>Tempo real<input name="repair_actual_duration" value="{{ phase_form.get('repair_actual_duration', '') }}" placeholder="Ex.: 3 h 10 min"></label>
               </div>
               <label>Observação<textarea name="repair_execution_note" rows="3" placeholder="Atrasos, dependências ou estado atual...">{{ phase_form.get("repair_execution_note", "") }}</textarea></label>
-            </section>
-            <section>
-              <h4>Evidências</h4>
+              </div>
+            </details>
+            <details class="clean-workshop-focus-section">
+              <summary><strong>Evidências</strong><span>FO, fotografias e relatório</span></summary>
+              <div class="clean-workshop-focus-body">
               <div class="clean-phase-field-grid">
                 <label>Folha de obra<select name="repair_fo_status">{% for option in ["Em falta", "Recebida", "Validada"] %}<option{% if phase_form.get("repair_fo_status", "Em falta") == option %} selected{% endif %}>{{ option }}</option>{% endfor %}</select></label>
                 <label>Fotos<select name="repair_photos_status">{% for option in ["Em falta", "Parcial", "Recebidas"] %}<option{% if phase_form.get("repair_photos_status", "Em falta") == option %} selected{% endif %}>{{ option }}</option>{% endfor %}</select></label>
@@ -684,20 +688,38 @@
                 <label class="clean-file-button">Anexar fotos<input name="repair_photos_files" type="file" accept="image/*" multiple></label>
                 <label class="clean-file-button">Anexar relatório<input name="repair_post_report_file" type="file" accept="application/pdf,image/*"></label>
               </div>
-            </section>
-            <section>
-              <h4>Desvios, custos e pendências</h4>
+              </div>
+            </details>
+            <details class="clean-workshop-focus-section">
+              <summary><strong>Desvios, custos e pendências</strong><span>Abrir apenas quando necessário</span></summary>
+              <div class="clean-workshop-focus-body">
               <div class="clean-phase-field-grid">
                 <label>Houve desvio?<select name="repair_deviation_exists">{% for option in ["Não", "Sim", "Por confirmar"] %}<option{% if phase_form.get("repair_deviation_exists", "Não") == option %} selected{% endif %}>{{ option }}</option>{% endfor %}</select></label>
                 <label>Impacto financeiro<input name="repair_financial_impact" value="{{ phase_form.get('repair_financial_impact', '') }}" placeholder="0,00 €"></label>
               </div>
               <label>Motivo / ação necessária<textarea name="repair_deviation_reason" rows="3" placeholder="Desvio, custo, responsável e decisão necessária...">{{ phase_form.get("repair_deviation_reason", "") }}</textarea></label>
               <label>Pendência para validação<textarea name="repair_reserve_reason" rows="3" placeholder="O que fica pendente, se aplicável...">{{ phase_form.get("repair_reserve_reason", "") }}</textarea></label>
-            </section>
+              </div>
+            </details>
           </div>
-          <details class="clean-workshop-materials" id="workshop-materials">
-            <summary>Material e pedidos ao Stock</summary>
-            <p>Consulta o material previsto, regista referências e abre pedidos ao Stock quando necessário.</p>
+          <section class="clean-workshop-material-request" id="workshop-materials" aria-label="Material e pedidos ao Stock">
+            <div class="clean-workshop-material-request-heading">
+              <div><p class="eyebrow">Material da reparação</p><h3>Pedidos ao Stock</h3><p>O pedido fica pendente até o Stock confirmar a entrega.</p></div>
+              {% if workshop_process and not workshop_admin.is_cancelled and not workshop_admin.is_closed %}<button type="button" class="button-link" onclick="document.getElementById('workshop-stock-request').showModal()">Solicitar material</button>{% endif %}
+            </div>
+            {% if material_needs %}
+              <div class="clean-stock-needs-list">
+                {% for need in material_needs %}
+                  <article><div><b>{{ need.material_description }}</b><span>{{ need.requested_quantity or "-" }} · {{ need.material_code or "Sem referência" }}{% if need.stock_request_reference %} · Pedido {{ need.stock_request_reference }}{% endif %}</span></div><em>{{ {"requested":"Pendente no Stock","usage_reported":"Utilização comunicada","delivered":"Entregue","applied":"Aplicado"}.get(need.stock_status, need.stock_status) }}</em></article>
+                {% endfor %}
+              </div>
+            {% else %}
+              <p class="clean-workshop-material-request-empty">Ainda sem pedidos de material neste processo.</p>
+            {% endif %}
+          </section>
+          <details class="clean-workshop-materials">
+            <summary>Referências e material previsto</summary>
+            <p>Consulta e regista as referências previstas para a reparação.</p>
             <div class="clean-repair-material-table">
               <div class="clean-repair-material-row clean-repair-material-head"><b>Material</b><b>Referência</b><b>Quantidade</b><b>Estado / origem</b></div>
               {% for index in range(1, 9) %}
@@ -709,14 +731,6 @@
                 </div>
               {% endfor %}
             </div>
-            {% if material_needs %}
-              <div class="clean-stock-needs-list">
-                {% for need in material_needs %}
-                  <article><div><b>{{ need.material_description }}</b><span>{{ need.requested_quantity or "-" }} · {{ need.operation_label }}</span></div><em>{{ {"requested":"Pendente no Stock","usage_reported":"Utilização comunicada","delivered":"Entregue","applied":"Aplicado"}.get(need.stock_status, need.stock_status) }}</em></article>
-                {% endfor %}
-              </div>
-            {% endif %}
-            <button type="button" class="secondary" onclick="document.getElementById('workshop-stock-request').showModal()">Abrir pedidos ao Stock</button>
           </details>
           <dialog id="workshop-stock-request" class="stock-dialog clean-workshop-stock-dialog">
             <div class="stock-card-heading"><div><h3>Material da reparação</h3><p>{{ vehicle_context.plate or '' }} · Processo #{{ workshop_process.id }}</p></div><button type="button" class="secondary" onclick="this.closest('dialog').close()">Fechar</button></div>
@@ -934,8 +948,9 @@
         <section class="clean-panel clean-card-wide clean-workshop-simplified-phase clean-workshop-closure">
           <div class="table-heading flat-heading"><div><p class="eyebrow">Validação e fecho</p><h3>Decisão final do processo</h3><p>Resumo consolidado, verificações mínimas e uma única decisão.</p></div></div>
           <div class="clean-workshop-closure-layout">
-            <section class="clean-workshop-closure-summary">
-              <h4>Resumo do processo</h4>
+            <details class="clean-workshop-closure-summary clean-workshop-focus-section clean-workshop-focus-primary" open>
+              <summary><strong>Resumo do processo</strong><span>O essencial para decidir</span></summary>
+              <div class="clean-workshop-focus-body">
               <dl>
                 <div><dt>Entrada</dt><dd>{{ entry_summary }}</dd></div>
                 <div><dt>KM entrada</dt><dd>{{ workshop_process.initial_km or '-' }}</dd></div>
@@ -945,24 +960,29 @@
                 <div><dt>Tarefas abertas</dt><dd>{{ workshop_admin.open_task_count }}</dd></div>
               </dl>
               <label>Nota do validador<textarea name="closure_summary" rows="5" placeholder="Decisão, observações de saída e informação relevante...">{{ phase_form.get("closure_summary", "") }}</textarea></label>
-            </section>
-            <section class="clean-workshop-closure-checks">
-              <h4>Verificações</h4>
+              </div>
+            </details>
+            <details class="clean-workshop-closure-checks clean-workshop-focus-section clean-workshop-focus-primary" open>
+              <summary><strong>Verificações para fechar</strong><span>4 confirmações</span></summary>
+              <div class="clean-workshop-focus-body">
               <label><input type="checkbox" name="closure_vehicle_validated" value="yes"{% if phase_form.get("closure_vehicle_validated") %} checked{% endif %}> Viatura validada e apta para a decisão selecionada</label>
               <label><input type="checkbox" name="closure_min_docs_attached" value="yes"{% if phase_form.get("closure_min_docs_attached") %} checked{% endif %}> Documentos mínimos associados ou justificados</label>
               <label><input type="checkbox" name="closure_history_updated" value="yes"{% if phase_form.get("closure_history_updated") %} checked{% endif %}> Histórico técnico atualizado</label>
               <label><input type="checkbox" name="closure_fleet_state_defined" value="yes"{% if phase_form.get("closure_fleet_state_defined") %} checked{% endif %}> Estado de regresso à frota definido</label>
               <label>Estado final<select name="closure_final_status">{% for option in ["Normal", "Com reserva", "Imobilizada"] %}<option{% if phase_form.get("closure_final_status", "Normal") == option %} selected{% endif %}>{{ option }}</option>{% endfor %}</select></label>
-            </section>
-            <section class="clean-workshop-closure-pending">
-              <h4>Pendência após fecho</h4>
+              </div>
+            </details>
+            <details class="clean-workshop-closure-pending clean-workshop-focus-section">
+              <summary><strong>Pendência após fecho</strong><span>Preencher apenas se existir</span></summary>
+              <div class="clean-workshop-focus-body">
               <p>Preencher apenas quando o processo fecha com algo ainda por resolver.</p>
               <div class="clean-phase-field-grid">
                 <label>Responsável<input name="closure_pending_owner" value="{{ phase_form.get('closure_pending_owner', '') }}" placeholder="Responsável"></label>
                 <label>Prazo<input type="date" name="closure_pending_due" value="{{ phase_form.get('closure_pending_due', '') }}"></label>
               </div>
               <label>Descrição<textarea name="closure_pending_description" rows="3" placeholder="O que falta e qual a ação esperada...">{{ phase_form.get("closure_pending_description", "") }}</textarea></label>
-            </section>
+              </div>
+            </details>
           </div>
           <div class="clean-closure-decision-actions">
             <button type="submit" name="action" value="return_to_repair" class="secondary">Devolver à reparação</button>
@@ -1135,6 +1155,16 @@
         </div>
       </article>
     </form>
+    {% if legacy_readonly_rows %}
+      <details class="clean-panel clean-card-wide clean-workshop-legacy-records" aria-label="Dados guardados desta fase">
+        <summary><strong>Dados guardados desta fase</strong><small>Só leitura · inclui campos antigos que não aparecem no formulário simplificado</small></summary>
+        <dl class="clean-workshop-legacy-record-list">
+          {% for row in legacy_readonly_rows %}
+            <div><dt>{{ row.label }} <small>{{ row.key }}</small></dt><dd>{{ row.value }}</dd></div>
+          {% endfor %}
+        </dl>
+      </details>
+    {% endif %}
     {% if phase_key == "diagnostico" %}
       {% for row in diagnostic_suggestions %}
         <form id="diagnostic-suggestion-{{ row.suggestion.id }}" method="post" action="/v2-clean/workshop/diagnostic-suggestions/{{ row.suggestion.id }}/confirm"></form>
@@ -1180,6 +1210,7 @@
   document.querySelectorAll(".clean-workshop-final-grid").forEach((form) => {
     form.addEventListener("submit", (event) => {
       const snapshot = {};
+      const checkableNames = new Set();
       const action = event.submitter?.value || "save";
       const activePanel = form.querySelector(".clean-substep-panel.active");
       const fields = ["save_substep"].includes(action) && activePanel
@@ -1195,8 +1226,9 @@
         if (field.disabled || field.type === "file" || field.type === "submit" || field.type === "button") {
           return;
         }
-        if ((field.type === "checkbox" || field.type === "radio") && !field.checked) {
-          return;
+        if (field.type === "checkbox" || field.type === "radio") {
+          checkableNames.add(field.name);
+          if (!field.checked) return;
         }
         const value = field.type === "checkbox" ? (field.value || "yes") : field.value;
         if (Object.prototype.hasOwnProperty.call(snapshot, field.name)) {
@@ -1205,6 +1237,9 @@
         } else {
           snapshot[field.name] = value;
         }
+      });
+      checkableNames.forEach((name) => {
+        if (!Object.prototype.hasOwnProperty.call(snapshot, name)) snapshot[name] = "";
       });
       const target = form.querySelector('input[name="form_state_json"]');
       if (target) {

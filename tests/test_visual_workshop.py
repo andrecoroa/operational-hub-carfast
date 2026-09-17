@@ -88,6 +88,35 @@ def test_workshop_asset_is_cache_busted():
     assert "/static/css/visual-v2.css?v={{ visual_asset_version }}" in base
 
 
+def test_workshop_defaults_to_a_progressive_disclosure_view():
+    stage_nav = _read("app/templates/_clean_workshop_stage_nav.html")
+    actions = _read("app/templates/_clean_workshop_primary_actions.html")
+    phase = _read("app/templates/clean_workshop_phase.html")
+    css = _read("app/static/css/app.css")
+
+    assert "data-workshop-view-toggle" in stage_nav
+    assert "Mostrar mais detalhes" in stage_nav
+    assert "workshop-simple-view" in stage_nav
+    assert 'class="clean-workshop-phase-picker"' in stage_nav
+    assert 'class="clean-context-more-actions"' in actions
+    assert "clean-workshop-focus-section" in phase
+    assert "clean-workshop-focus-primary" in phase
+    assert ".workshop-simple-view .clean-vehicle-quick-facts" in css
+
+
+def test_simplified_workshop_keeps_work_before_context_on_small_screens():
+    css = _read("app/static/css/app.css")
+    assert ".workshop-v2-analysis-layout { grid-template-columns: minmax(0, 1fr); }" in css
+    assert ".workshop-v2-side { grid-row: 1; }" not in css
+
+
+def test_legacy_readonly_records_do_not_hide_unchecked_changes():
+    phase = _read("app/templates/clean_workshop_phase.html")
+    assert "clean-workshop-legacy-records" in phase
+    assert "const checkableNames = new Set();" in phase
+    assert 'if (!Object.prototype.hasOwnProperty.call(snapshot, name)) snapshot[name] = "";' in phase
+
+
 def test_workshop_summary_preference_is_server_side_and_user_scoped():
     router = _read("app/web/router.py")
     assert '@web_router.post("/v2-clean/workshop/preferences/summary")' in router

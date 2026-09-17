@@ -16,16 +16,16 @@
   "permissions": {
     "legacy_alias_roots": 14,
     "legacy_aliases_sha256": "834782c0abf9dc45c6f16cfeb58bccad57a1907d2d1f0d9e23a4e7b8dc34cd24",
-    "web_rule_groups": 21,
-    "web_rules_sha256": "a351cae7bcd33e116649d92030325687d282d67ced53bbfbaa39045677b9c213"
+    "web_rule_groups": 22,
+    "web_rules_sha256": "50c840a8caf355c65501ccacef3aa2769490f675c6f36bd4707d409fba452393"
   },
   "post_actions": {
-    "form_action_count": 608,
-    "form_action_occurrence_count": 837,
-    "form_actions_sha256": "941cd8f6d134e3e1ea0ff05e894de8b8caf1390dacbbdda58de98665f06598ba",
-    "redirect_destination_count": 449,
-    "redirect_destinations_sha256": "86ab9110c755c1c324dad1ea7fa8eb04963ebf0cdc1000edb71b77ca004d4b68",
-    "redirect_occurrence_count": 1013
+    "form_action_count": 627,
+    "form_action_occurrence_count": 863,
+    "form_actions_sha256": "9fbd7404c453b4bb2adefbc7c5be607baa23b5a5c5a3c218d4f2b4845d2bae4b",
+    "redirect_destination_count": 475,
+    "redirect_destinations_sha256": "0b007f7f1e99d17317dbefbffbf1f0e064ed88809b6351e03b88597f17ed9666",
+    "redirect_occurrence_count": 1045
   },
   "routes": {
     "by_method": {

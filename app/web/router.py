@@ -407,6 +407,7 @@ from app.services.workshop_configuration import (
     normalize_workshop_reasons,
     suggest_workshop_template,
     validate_workshop_template_config,
+    workshop_template_snapshot,
 )
 from app.services.workshop_history_importer import (
     TECHNICAL_HISTORY_IMPORT_COLUMNS,
@@ -4009,6 +4010,7 @@ def clean_experience_denied(request: Request) -> RedirectResponse | None:
         "dashboard.read",
         "vehicles.read",
         "workshop.read",
+        "workshop.entry.create",
         "tasks.read",
         "tasks.management.read",
         "tasks.management.create",
@@ -10652,6 +10654,20 @@ def clean_workshop_dashboard(
             ).strip()
             external_repair = str(entry_data.get("external_repair") or "no").lower() == "yes"
             external_name = str(entry_data.get("historical_supplier") or "").strip()
+            if metadata.get("workshop_flow_version") == 2:
+                repair_phase = clean_workshop_get_phase(db, process.id, "reparacao")
+                repair_data = (
+                    repair_phase.data_json
+                    if repair_phase and isinstance(repair_phase.data_json, dict)
+                    else {}
+                )
+                repair_snapshot = repair_data.get("form_snapshot")
+                if (
+                    isinstance(repair_snapshot, dict)
+                    and repair_snapshot.get("repair_external") in {"yes", "no"}
+                ):
+                    external_repair = repair_snapshot["repair_external"] == "yes"
+                    external_name = str(repair_snapshot.get("repair_external_partner") or "").strip()
             operational_situation = str(metadata.get("operational_situation") or "in_progress")
             if process.status == "closed":
                 operational_situation = "closed"
@@ -10746,6 +10762,7 @@ async def clean_workshop_operational_situation_save(request: Request, process_id
     form = await request.form()
     action = str(form.get("action") or "").strip().lower()
     waiting_reason = str(form.get("waiting_reason") or "").strip()
+    requested_return_url = str(form.get("return_url") or "").strip()
     return_scope = str(form.get("scope") or "open").strip().lower()
     if return_scope not in {"open", "closed", "cancelled", "all"}:
         return_scope = "open"
@@ -10760,15 +10777,21 @@ async def clean_workshop_operational_situation_save(request: Request, process_id
         else "updated",
     }
     return_query = urlencode(return_filters)
+    dashboard_return_url = f"/v2-clean/workshop?{return_query}"
+    safe_return_url = (
+        _clean_v2_return_url(requested_return_url, dashboard_return_url)
+        if requested_return_url
+        else dashboard_return_url
+    )
     if action not in {"wait", "resume"} or (action == "wait" and not waiting_reason):
         return RedirectResponse(
-            f"/v2-clean/workshop?{return_query}&situation_error=invalid",
+            _append_query_flag(safe_return_url, situation_error="invalid"),
             status_code=303,
         )
     with SessionLocal() as db:
         process = db.get(WorkshopPhasedProcess, process_id)
         if not process or process.status in {"closed", "cancelled"}:
-            return RedirectResponse(f"/v2-clean/workshop?{return_query}", status_code=303)
+            return RedirectResponse(safe_return_url, status_code=303)
         metadata = dict(process.metadata_json or {}) if isinstance(process.metadata_json, dict) else {}
         before = {
             "operational_situation": metadata.get("operational_situation"),
@@ -10797,6 +10820,11 @@ async def clean_workshop_operational_situation_save(request: Request, process_id
             user_id=get_web_user_id(request),
         )
         db.commit()
+    if requested_return_url:
+        return RedirectResponse(
+            _append_query_flag(safe_return_url, operational_updated=action),
+            status_code=303,
+        )
     return RedirectResponse(
         f"/v2-clean/workshop?{return_query}#workshop-process-{process_id}",
         status_code=303,
@@ -10883,6 +10911,17 @@ CLEAN_WORKSHOP_ENTRY_REASONS = [
     "IPO",
     "Outro",
 ]
+CLEAN_WORKSHOP_ENTRY_REASONS_V2 = [
+    "Revisão",
+    "Degradação óleo",
+    "Verificação de rotina",
+    "Pneus",
+    "Travões",
+    "Danos / sinistro",
+    "Avaria",
+    "IPO",
+    "Outro",
+]
 
 CLEAN_WORKSHOP_ENTRY_PHYSICAL_CHECKS = [
     "visible_damage",
@@ -10905,6 +10944,9 @@ CLEAN_WORKSHOP_ENTRY_MINIMUM_CHECKS = [
 ]
 
 CLEAN_WORKSHOP_PHASE_UPLOADS = {
+    "validacao": {
+        "quote_file": ("workshop_quote", "Orçamento da intervenção"),
+    },
     "inspecao": {
         "inspection_lights_photo": ("inspection_lights", "Foto inspeção - luzes"),
         "inspection_battery_photo": ("inspection_battery", "Foto inspeção - bateria"),
@@ -11209,6 +11251,9 @@ def clean_workshop_admin_context(
     cancellation = (
         metadata.get("cancellation") if isinstance(metadata.get("cancellation"), dict) else {}
     )
+    operational_situation = str(metadata.get("operational_situation") or "in_progress")
+    if process and process.status in {"closed", "cancelled"}:
+        operational_situation = process.status
     creator = db.get(User, process.created_by_id) if process and process.created_by_id else None
     open_task_count = 0
     if process:
@@ -11227,8 +11272,13 @@ def clean_workshop_admin_context(
         )
     return {
         "can_manage": can_manage_admin(db, current_user),
+        "can_update_operational": has_any_web_permission(
+            request, "workshop.write", "admin.manage"
+        ),
         "is_cancelled": bool(process and process.status == "cancelled"),
         "is_closed": bool(process and process.status == "closed"),
+        "operational_situation": operational_situation,
+        "waiting_reason": str(metadata.get("operational_waiting_reason") or "").strip(),
         "cancellation": cancellation,
         "open_task_count": int(open_task_count),
         "creator_name": (creator.name or creator.email) if creator else "-",
@@ -11241,6 +11291,32 @@ def clean_workshop_admin_context(
 
 def clean_workshop_process_is_readonly(process: WorkshopPhasedProcess | None) -> bool:
     return bool(process and process.status in {"closed", "cancelled"})
+
+
+def clean_workshop_v2_late_diagnostic_upload_allowed(
+    db: Session, process: WorkshopPhasedProcess | None
+) -> bool:
+    if not process or process.status != "closed":
+        return False
+    if not isinstance(process.metadata_json, dict) or process.metadata_json.get("workshop_flow_version") != 2:
+        return False
+    phase = clean_workshop_get_phase(db, process.id, "diagnostico")
+    return bool(phase and phase.status == "pending_documents")
+
+
+def clean_workshop_entry_edit_allowed(
+    request: Request,
+    process: WorkshopPhasedProcess,
+) -> bool:
+    if has_any_web_permission(request, "workshop.write", "admin.manage"):
+        return True
+    return bool(
+        has_any_web_permission(request, "workshop.entry.create")
+        and process.created_by_id == get_web_user_id(request)
+        and process.current_phase_code == "entrada"
+        and isinstance(process.metadata_json, dict)
+        and process.metadata_json.get("workshop_flow_version") == 2
+    )
 
 
 def clean_workshop_find_vehicle(
@@ -11266,6 +11342,7 @@ def clean_workshop_create_process(
     entry_reasons: list[str] | None = None,
     external_repair: bool = False,
     template_code: str | None = None,
+    flow_version: int = 1,
 ) -> WorkshopPhasedProcess:
     user_id = get_web_user_id(request)
     vehicle = clean_workshop_find_vehicle(db, vehicle_id=vehicle_id, plate=plate)
@@ -11321,6 +11398,7 @@ def clean_workshop_create_process(
         received_at=now,
         metadata_json={
             "v2_clean": True,
+            "workshop_flow_version": 2 if flow_version == 2 else 1,
             "historical": historical,
             "source": "v2_clean_workshop_entry",
             "template_suggestion_explanation": template_explanation,
@@ -11498,6 +11576,66 @@ async def clean_workshop_store_entry_uploads(
     return stored
 
 
+WORKSHOP_V2_ENTRY_PHOTO_FIELDS = {
+    "dashboard_photo": ("dashboard", "selected"),
+    "dashboard_photo_camera": ("dashboard", "camera_requested"),
+    "vehicle_front_photo": ("front", "selected"),
+    "vehicle_front_photo_camera": ("front", "camera_requested"),
+    "vehicle_rear_photo": ("rear", "selected"),
+    "vehicle_rear_photo_camera": ("rear", "camera_requested"),
+    "vehicle_left_photo": ("left", "selected"),
+    "vehicle_left_photo_camera": ("left", "camera_requested"),
+    "vehicle_right_photo": ("right", "selected"),
+    "vehicle_right_photo_camera": ("right", "camera_requested"),
+    "entry_photos": ("support", "selected"),
+    "entry_photos_camera": ("support", "camera_requested"),
+}
+WORKSHOP_V2_REQUIRED_PHOTO_SLOTS = ("dashboard", "front", "rear", "left", "right")
+
+
+async def clean_workshop_store_entry_uploads_v2(
+    process_id: int,
+    form,
+) -> list[dict[str, str]]:
+    """Validate provenance before using the existing, append-only entry archive."""
+
+    from PIL import Image  # type: ignore[import-not-found]
+
+    upload_count = 0
+    for field, (slot, source) in WORKSHOP_V2_ENTRY_PHOTO_FIELDS.items():
+        reason = str(form.get(f"upload_reason_{slot}") or "").strip()
+        for upload in form.getlist(field):
+            if not hasattr(upload, "filename") or not upload.filename:
+                continue
+            upload_count += 1
+            if upload_count > 12:
+                raise ValueError("photo_limit")
+            if source == "selected" and len(reason) < 5:
+                raise ValueError("photo_reason_required")
+            content = await upload.read()
+            await upload.seek(0)
+            if not content or len(content) > 10 * 1024 * 1024:
+                raise ValueError("photo_invalid")
+            try:
+                with Image.open(io.BytesIO(content)) as image:
+                    if image.format not in {"JPEG", "PNG", "WEBP"}:
+                        raise ValueError("photo_invalid")
+                    image.verify()
+            except (OSError, ValueError) as exc:
+                raise ValueError("photo_invalid") from exc
+
+    stored = await clean_workshop_store_entry_uploads(process_id, form)
+    for item in stored:
+        slot, source = WORKSHOP_V2_ENTRY_PHOTO_FIELDS[str(item["field"])]
+        item["capture_source"] = source
+        item["source_reason"] = (
+            str(form.get(f"upload_reason_{slot}") or "").strip()
+            if source == "selected"
+            else ""
+        )
+    return stored
+
+
 async def clean_workshop_store_phase_uploads(
     db: Session,
     process: WorkshopPhasedProcess,
@@ -11611,6 +11749,11 @@ def clean_workshop_entry_upload_file(request: Request, process_id: int, stored_n
         process = db.get(WorkshopPhasedProcess, process_id)
         if not process:
             return RedirectResponse("/v2-clean/workshop", status_code=303)
+        if not (
+            has_any_web_permission(request, "workshop.read", "workshop.write", "admin.manage")
+            or clean_workshop_entry_edit_allowed(request, process)
+        ):
+            return Response(status_code=404)
         entry_phase = clean_workshop_get_phase(db, process.id, "entrada")
         entry_data = entry_phase.data_json if entry_phase and isinstance(entry_phase.data_json, dict) else {}
         uploads = entry_data.get("uploads")
@@ -11731,6 +11874,15 @@ def clean_workshop_entry_substep_status(entry_data: dict[str, object]) -> dict[s
 def clean_workshop_step_defs_for_process(
     process: WorkshopPhasedProcess | None,
 ) -> list[dict[str, str | int]]:
+    if process and isinstance(process.metadata_json, dict) and process.metadata_json.get("workshop_flow_version") == 2:
+        visible_codes = {"entrada", "validacao", "reparacao", "fecho"}
+        return [
+            {**step, "number": number}
+            for number, step in enumerate(
+                (step for step in CLEAN_WORKSHOP_STEP_DEFS if step["key"] in visible_codes),
+                start=1,
+            )
+        ]
     snapshot = process.template_snapshot_json if process else None
     phases = snapshot.get("config", {}).get("phases", []) if isinstance(snapshot, dict) else []
     if not phases:
@@ -12060,6 +12212,23 @@ def clean_form_values(snapshot: dict[str, object], key: str) -> list[str]:
     if value is None or value == "":
         return []
     return [str(value)]
+
+
+def clean_workshop_readonly_rows(snapshot: dict[str, object]) -> list[dict[str, str]]:
+    rows: list[dict[str, str]] = []
+    for key, value in sorted(snapshot.items()):
+        if isinstance(value, (dict, list, tuple)):
+            display = json.dumps(value, ensure_ascii=False, default=str)
+        elif value is None or value == "":
+            display = "—"
+        else:
+            display = str(value)
+        rows.append({
+            "key": key,
+            "label": key.replace("_", " ").capitalize(),
+            "value": display,
+        })
+    return rows
 
 
 def clean_workshop_saved_substeps(phase_data: dict[str, object]) -> set[str]:
@@ -12469,6 +12638,19 @@ def clean_workshop_technical_reading_rows(
                 "open_url": report_open_url,
             }
         )
+    report_by_id = {str(item.id): item for item in sorted_reports}
+    for row in rows:
+        source = report_by_id.get(row["report_id"])
+        if source is None:
+            continue
+        field_definition = next(
+            (item for item in stellantis_report_fields(source.report_code)
+             if str(item.get("code")) == row["field_code"]),
+            {},
+        )
+        row["unit"] = str(field_definition.get("unit") or "")
+        row["source"] = str(source.reading_origin_detail or source.reading_origin or "")
+        row["reading_date"] = source.added_at.strftime("%d/%m/%Y") if source.added_at else ""
     return rows
 
 
@@ -26288,6 +26470,18 @@ async def clean_workshop_entry_save(request: Request):
         )
     process_id = parse_int_from_text(str(form.get("process_id") or ""))
     action = str(form.get("action") or "save")
+    flow_version = 2 if str(form.get("workshop_flow_version") or "") == "2" else 1
+    if process_id:
+        with SessionLocal() as db:
+            existing_process = db.get(WorkshopPhasedProcess, process_id)
+            if existing_process:
+                flow_version = (
+                    2 if isinstance(existing_process.metadata_json, dict)
+                    and existing_process.metadata_json.get("workshop_flow_version") == 2
+                    else 1
+                )
+    if not has_any_web_permission(request, "workshop.write", "admin.manage") and flow_version != 2:
+        return Response(status_code=403)
     if action not in {"save", "advance"}:
         suffix = f"?process_id={process_id}" if process_id else ""
         separator = "&" if suffix else "?"
@@ -26299,6 +26493,18 @@ async def clean_workshop_entry_save(request: Request):
     is_historical = str(form.get("process_mode") or "").strip().lower() == "historical"
     submitted_plate = normalize_identifier(str(form.get("plate") or ""))
     entry_reasons = [str(value) for value in form.getlist("entry_reasons") if str(value).strip()]
+    if flow_version == 2:
+        entry_reasons = list(dict.fromkeys(
+            value for value in entry_reasons if value in CLEAN_WORKSHOP_ENTRY_REASONS_V2
+        ))
+    breakdowns = [
+        str(value).strip()[:1000]
+        for value in form.getlist("breakdown_description")
+        if str(value).strip()
+    ][:12]
+    other_reason = str(form.get("other_reason") or "").strip()[:1000]
+    reported_by = str(form.get("reported_by") or "Operador").strip()
+    reported_by_detail = str(form.get("reported_by_detail") or "").strip()[:180]
     external_repair = str(form.get("external_repair") or "no").strip()
     template_code = str(form.get("template_code") or "").strip() or None
     entry_mode = str(form.get("entry_mode") or "Entrada").strip()
@@ -26308,6 +26514,30 @@ async def clean_workshop_entry_save(request: Request):
     historical_intervention_date = str(
         form.get("historical_intervention_date") or ""
     ).strip()
+
+    if flow_version == 2 and action == "advance":
+        entry_error = ""
+        if not entry_reasons:
+            entry_error = "reason_required"
+        elif "Avaria" in entry_reasons and not breakdowns:
+            entry_error = "breakdown_required"
+        elif "Outro" in entry_reasons and not other_reason:
+            entry_error = "other_reason_required"
+        elif reported_by == "Operador" and not reported_by_detail:
+            entry_error = "reporter_required"
+        if entry_error:
+            suffix = clean_workshop_query_suffix(
+                process_id=process_id,
+                plate=submitted_plate,
+                new_entry=True,
+            )
+            separator = "&" if suffix else "?"
+            return redirect_with_context(
+                f"/v2-clean/workshop-entry{suffix}{separator}flow=2&error={entry_error}"
+            )
+    if flow_version == 2:
+        template_code = None
+        external_repair = "pending"
 
     if not process_id and not submitted_plate:
         suffix = clean_workshop_query_suffix(historical=is_historical, new_entry=True)
@@ -26349,6 +26579,10 @@ async def clean_workshop_entry_save(request: Request):
             if not process:
                 suffix = clean_workshop_query_suffix(historical=is_historical, new_entry=True)
                 return redirect_with_context(f"/v2-clean/workshop-entry{suffix}")
+            if not clean_workshop_entry_edit_allowed(request, process):
+                return Response(status_code=404)
+            if isinstance(process.metadata_json, dict) and process.metadata_json.get("workshop_flow_version") == 2:
+                flow_version = 2
             if clean_workshop_process_is_readonly(process):
                 return redirect_with_context(
                     f"{clean_workshop_process_url(process)}&readonly=1"
@@ -26366,6 +26600,7 @@ async def clean_workshop_entry_save(request: Request):
                 entry_reasons=entry_reasons,
                 external_repair=external_repair == "yes",
                 template_code=template_code,
+                flow_version=flow_version,
             )
             process_id = process.id
 
@@ -26397,14 +26632,28 @@ async def clean_workshop_entry_save(request: Request):
             code: str(form.get(code) or "not_checked")
             for code in CLEAN_WORKSHOP_ENTRY_MINIMUM_CHECKS
         }
-        stored_uploads = await clean_workshop_store_entry_uploads(process.id, form)
+        try:
+            stored_uploads = (
+                await clean_workshop_store_entry_uploads_v2(process.id, form)
+                if flow_version == 2
+                else await clean_workshop_store_entry_uploads(process.id, form)
+            )
+        except ValueError as exc:
+            db.rollback()
+            return redirect_with_context(
+                f"/v2-clean/workshop-entry?process_id={process.id}&error={str(exc)}"
+            )
         entry_data = dict(phase.data_json or {})
         existing_uploads = entry_data.get("uploads")
         if not isinstance(existing_uploads, list):
             existing_uploads = []
+        reporter_user = db.get(User, user_id) if user_id else None
+        reporter_name = (reporter_user.name or reporter_user.email) if reporter_user else ""
         entry_data.update(
             {
                 "entry_reasons": entry_reasons,
+                "breakdowns": breakdowns if flow_version == 2 else entry_data.get("breakdowns", []),
+                "other_reason": other_reason if flow_version == 2 else entry_data.get("other_reason", ""),
                 "short_description": str(form.get("short_description") or "").strip(),
                 "requested_service": str(form.get("requested_service") or "").strip(),
                 "entry_mode": entry_mode,
@@ -26413,7 +26662,14 @@ async def clean_workshop_entry_save(request: Request):
                 "travel_assistance_complaint": assistance_complaint,
                 "entry_km": str(form.get("entry_km") or "").strip(),
                 "entry_km_source": "manual" if str(form.get("entry_km") or "").strip() else "",
-                "reported_by": str(form.get("reported_by") or "").strip(),
+                "reported_by": reported_by,
+                "reported_by_detail": reported_by_detail if flow_version == 2 else entry_data.get("reported_by_detail", ""),
+                "reported_by_user_id": (
+                    user_id
+                    if flow_version == 2 and reported_by == "Operador"
+                    and reported_by_detail.casefold() == reporter_name.casefold()
+                    else None
+                ),
                 "priority": str(form.get("priority") or "").strip(),
                 "can_drive": str(form.get("can_drive") or "").strip(),
                 "historical_intervention_date": historical_intervention_date,
@@ -26428,6 +26684,10 @@ async def clean_workshop_entry_save(request: Request):
                 "external_repair": external_repair,
                 "minimum_checks": minimum_checks,
                 "uploads": [*existing_uploads, *stored_uploads],
+                "photo_absence_reasons": {
+                    slot: str(form.get(f"absence_reason_{slot}") or "").strip()[:500]
+                    for slot in WORKSHOP_V2_REQUIRED_PHOTO_SLOTS
+                } if flow_version == 2 else entry_data.get("photo_absence_reasons", {}),
                 "saved_at": now.isoformat(),
                 "saved_by_id": user_id,
             }
@@ -26441,7 +26701,25 @@ async def clean_workshop_entry_save(request: Request):
                 f"/v2-clean/workshop-entry?process_id={process_id}&error=missing_km"
             )
         if action == "advance":
-            photo_blockers = required_photo_blockers(
+            if flow_version == 2:
+                uploaded_slots = {
+                    str(item.get("slot"))
+                    for item in entry_data["uploads"]
+                    if isinstance(item, dict)
+                }
+                absent = [
+                    slot for slot in WORKSHOP_V2_REQUIRED_PHOTO_SLOTS
+                    if slot not in uploaded_slots
+                    and len(str(entry_data["photo_absence_reasons"].get(slot) or "").strip()) < 5
+                ]
+                if absent:
+                    phase.data_json = entry_data
+                    phase.status = "in_progress"
+                    db.commit()
+                    return redirect_with_context(
+                        f"/v2-clean/workshop-entry?process_id={process.id}&error=photo_absence_required"
+                    )
+            photo_blockers = [] if flow_version == 2 else required_photo_blockers(
                 db, phased_process_id=process.id, phase_id=phase.id
             )
             if photo_blockers:
@@ -26502,6 +26780,10 @@ async def clean_workshop_entry_save(request: Request):
         db.commit()
 
     if action == "advance":
+        if flow_version == 2 and not has_any_web_permission(
+            request, "workshop.read", "workshop.write", "admin.manage"
+        ):
+            return RedirectResponse("/v2-clean?workshop_entry_submitted=1", status_code=303)
         return redirect_with_context(
             f"/v2-clean/workshop/validacao?process_id={process_id}"
         )
@@ -26522,6 +26804,7 @@ def clean_workshop_entry(
     saved: bool = False,
     error: str | None = None,
     return_context: str = "",
+    flow: int | None = None,
 ):
     denied = clean_experience_denied(request)
     if denied:
@@ -26533,7 +26816,11 @@ def clean_workshop_entry(
         max_age_seconds=8 * 60 * 60,
     ) if return_context else None
     valid_return_context = return_context if resolved_return else ""
-    workshop_return_url = resolved_return.url if resolved_return else "/v2-clean/workshop"
+    workshop_return_url = resolved_return.url if resolved_return else (
+        "/v2-clean/workshop"
+        if has_any_web_permission(request, "workshop.read", "workshop.write", "admin.manage")
+        else "/v2-clean"
+    )
     user_name = "Utilizador atual"
     current_entry_timestamp = datetime.now().strftime("%d/%m/%Y %H:%M")
     user_id = get_web_user_id(request)
@@ -26546,6 +26833,19 @@ def clean_workshop_entry(
         ensure_workshop_configuration_defaults(db)
         db.commit()
         process = db.get(WorkshopPhasedProcess, process_id) if process_id else None
+        if process and not (
+            has_any_web_permission(request, "workshop.read", "workshop.write", "admin.manage")
+            or clean_workshop_entry_edit_allowed(request, process)
+        ):
+            return Response(status_code=404)
+        if not process and not has_any_web_permission(
+            request, "workshop.entry.create", "workshop.write", "admin.manage"
+        ):
+            return Response(status_code=403)
+        simplified_new_flow = bool(
+            process and isinstance(process.metadata_json, dict)
+            and process.metadata_json.get("workshop_flow_version") == 2
+        ) or (process is None and flow == 2)
         template_options = db.scalars(
             select(WorkshopTemplate)
             .where(WorkshopTemplate.active.is_(True))
@@ -26629,9 +26929,14 @@ def clean_workshop_entry(
         workshop_admin = clean_workshop_admin_context(db, request, process)
     return templates.TemplateResponse(
         request,
-        "clean_workshop_entry.html",
+        "clean_workshop_entry_v2.html" if simplified_new_flow else "clean_workshop_entry.html",
         {
-            "entry_reasons": CLEAN_WORKSHOP_ENTRY_REASONS,
+            "entry_reasons": (
+                CLEAN_WORKSHOP_ENTRY_REASONS_V2
+                if simplified_new_flow
+                else CLEAN_WORKSHOP_ENTRY_REASONS
+            ),
+            "simplified_new_flow": simplified_new_flow,
             "current_entry_timestamp": current_entry_timestamp,
             "current_user_name": user_name,
             "workshop_steps": clean_workshop_steps(query_suffix, process),
@@ -26658,6 +26963,7 @@ def clean_workshop_entry(
             "saved": saved,
             "error": error,
             "workshop_return_url": workshop_return_url,
+            "workshop_action_return_url": f"{request.url.path}{query_suffix}" if process else "",
             "return_context": valid_return_context,
         },
     )
@@ -26779,9 +27085,26 @@ def clean_workshop_phase(
     stock_request_categories: list[StockCategory] = []
     stock_request_locations: list[StockLocation] = []
     workshop_summary_open: bool | None = None
+    simplified_new_flow = False
+    analysis_template_options: list[WorkshopTemplate] = []
+    analysis_proposed_materials: list[dict[str, str]] = []
+    v2_analysis_form: dict[str, object] = {}
+    v2_repair_authorization: dict[str, object] = {}
+    v2_repair_proposal: dict[str, object] = {}
+    v2_repair_authorized = False
+    v2_diagnostic_pending = False
     with SessionLocal() as db:
         process = db.get(WorkshopPhasedProcess, process_id) if process_id else None
         if process:
+            simplified_new_flow = bool(
+                isinstance(process.metadata_json, dict)
+                and process.metadata_json.get("workshop_flow_version") == 2
+            )
+            if simplified_new_flow and phase in {"diagnostico", "inspecao", "auditoria"}:
+                return RedirectResponse(
+                    f"/v2-clean/workshop/validacao?process_id={process.id}#workshop-v2-diagnostic",
+                    status_code=303,
+                )
             historical = process.creation_mode == "historical"
             query_suffix = clean_workshop_query_suffix(
                 process_id=process.id,
@@ -26858,6 +27181,37 @@ def clean_workshop_phase(
                 .where(WorkshopMaterialNeed.process_id == process.id)
                 .order_by(WorkshopMaterialNeed.created_at.desc())
             ).all()
+            if simplified_new_flow:
+                diagnostic_row = clean_workshop_get_phase(db, process.id, "diagnostico")
+                v2_diagnostic_pending = bool(diagnostic_row and diagnostic_row.status == "pending_documents")
+                validation_row = clean_workshop_get_phase(db, process.id, "validacao")
+                validation_data = (
+                    dict(validation_row.data_json or {}) if validation_row else {}
+                )
+                raw_analysis_form = validation_data.get("form_snapshot")
+                v2_analysis_form = (
+                    dict(raw_analysis_form) if isinstance(raw_analysis_form, dict) else {}
+                )
+                raw_materials = validation_data.get("proposed_materials")
+                analysis_proposed_materials = (
+                    [dict(item) for item in raw_materials if isinstance(item, dict)]
+                    if isinstance(raw_materials, list) else []
+                )
+                raw_authorization = (process.metadata_json or {}).get("repair_authorization")
+                v2_repair_authorization = (
+                    dict(raw_authorization) if isinstance(raw_authorization, dict) else {}
+                )
+                if phase == "reparacao":
+                    v2_repair_proposal = clean_workshop_v2_proposal(db, process)
+                    v2_repair_authorized = clean_workshop_v2_authorization_valid(
+                        process, v2_repair_proposal
+                    )
+                if phase == "validacao":
+                    analysis_template_options = db.scalars(
+                        select(WorkshopTemplate)
+                        .where(WorkshopTemplate.active.is_(True))
+                        .order_by(WorkshopTemplate.name)
+                    ).all()
             if phase == "reparacao":
                 articles = db.scalars(
                     select(StockArticle)
@@ -26950,9 +27304,23 @@ def clean_workshop_phase(
     )
     return templates.TemplateResponse(
         request,
-        "clean_workshop_phase.html",
+        (
+            "clean_workshop_analysis_v2.html" if simplified_new_flow and phase == "validacao"
+            else "clean_workshop_repair_v2.html" if simplified_new_flow and phase == "reparacao"
+            else "clean_workshop_close_v2.html" if simplified_new_flow and phase == "fecho"
+            else "clean_workshop_phase.html"
+        ),
         {
             "phase_key": phase,
+            "simplified_new_flow": simplified_new_flow,
+            "analysis_template_options": analysis_template_options,
+            "analysis_proposed_materials": analysis_proposed_materials,
+            "v2_analysis_form": v2_analysis_form,
+            "v2_repair_authorization": v2_repair_authorization,
+            "v2_repair_proposal": v2_repair_proposal,
+            "v2_repair_authorized": v2_repair_authorized,
+            "v2_diagnostic_pending": v2_diagnostic_pending,
+            "report_code_options": CLEAN_WORKSHOP_REPORT_LABELS,
             "phase": phase_config,
             "workshop_steps": clean_workshop_steps(query_suffix, process),
             "workshop_stages": clean_workshop_stages(query_suffix, process, phase),
@@ -26966,7 +27334,9 @@ def clean_workshop_phase(
             "phase_data": phase_data,
             "photo_phase_row": phase_row,
             "phase_form": phase_form,
+            "legacy_readonly_rows": clean_workshop_readonly_rows(phase_form),
             "entry_summary": entry_summary,
+            "entry_form": entry_form,
             "repair_summary": repair_summary,
             "phase_uploads": phase_uploads,
             "validation_service_rows": clean_workshop_validation_rows(phase_form, entry_form),
@@ -27010,6 +27380,7 @@ def clean_workshop_phase(
             "workshop_stock_statuses": WORKSHOP_STOCK_STATUSES,
             "phase_error": CLEAN_WORKSHOP_PHASE_ERROR_MESSAGES.get(error or ""),
             "workshop_return_url": workshop_return_url,
+            "workshop_action_return_url": f"{request.url.path}{query_suffix}" if process else "",
             "return_context": valid_return_context,
             "phase_print_report": {
                 "validacao": ("diagnostic-order", "Imprimir ordem de diagnóstico"),
@@ -27024,6 +27395,12 @@ def clean_workshop_phase(
 
 
 CLEAN_WORKSHOP_PRINT_REPORTS = {
+    "process-dossier": {
+        "document_number": "D",
+        "title": "Dossiê do processo de Oficina",
+        "stage": "Dossiê operacional",
+        "status": "Em curso",
+    },
     "diagnostic-order": {
         "document_number": "1/4",
         "title": "Ordem de Diagnóstico Técnico",
@@ -27103,6 +27480,12 @@ def clean_workshop_print_report(request: Request, process_id: int, report_type: 
             }
 
         report = dict(report_config)
+        simplified_new_flow = bool(
+            isinstance(process.metadata_json, dict)
+            and process.metadata_json.get("workshop_flow_version") == 2
+        )
+        v2_proposal = clean_workshop_v2_proposal(db, process) if simplified_new_flow else {}
+        v2_authorized = clean_workshop_v2_authorization_valid(process, v2_proposal) if simplified_new_flow else False
         if report_type == "diagnostic-order":
             validation_phase = clean_workshop_get_phase(db, process.id, "validacao")
             if not validation_phase or validation_phase.status != "completed":
@@ -27110,12 +27493,16 @@ def clean_workshop_print_report(request: Request, process_id: int, report_type: 
         elif report_type == "repair-order":
             audit_phase = clean_workshop_get_phase(db, process.id, "auditoria")
             authorization = clean_form_value(phase_forms.get("auditoria", {}), "audit_repair_authorized")
-            if not audit_phase or audit_phase.status != "completed" or authorization not in {"Sim", "Com reserva"}:
+            if simplified_new_flow and not v2_authorized:
                 report["status"] = "Rascunho - autorização pendente"
-            elif authorization == "Com reserva":
+            elif not simplified_new_flow and (not audit_phase or audit_phase.status != "completed" or authorization not in {"Sim", "Com reserva"}):
+                report["status"] = "Rascunho - autorização pendente"
+            elif not simplified_new_flow and authorization == "Com reserva":
                 report["status"] = "Autorizado com reserva"
         elif report_type == "final-report" and process.status != "closed":
             report["status"] = "Rascunho - processo aberto"
+        elif report_type == "process-dossier" and process.status == "closed":
+            report["status"] = "Fechado"
         reports = db.scalars(
             select(WorkshopPhasedTechnicalReport)
             .where(
@@ -27167,10 +27554,68 @@ def clean_workshop_print_report(request: Request, process_id: int, report_type: 
                     "origin": clean_form_value(repair_form, f"repair_material_{index}_origin"),
                 }
             )
+        if simplified_new_flow:
+            material_rows = []
+            stock_rows = list(v2_proposal.get("stock_requests", []))
+            matched_stock_ids: set[int] = set()
+            for item in v2_proposal.get("materials", []):
+                reference = str(item.get("reference") or "").strip()
+                quantity = str(item.get("quantity") or "").strip()
+                matching = next(
+                    (row for row in stock_rows
+                     if row.get("id") not in matched_stock_ids
+                     and str(row.get("reference") or "").strip().casefold() == reference.casefold()
+                     and str(row.get("quantity") or "").strip() == quantity),
+                    None,
+                )
+                if matching:
+                    matched_stock_ids.add(matching["id"])
+                stock_state = str(matching.get("stock_status") or "") if matching else ""
+                row_state = (
+                    "Aplicado" if stock_state == "applied" else
+                    "Entregue" if stock_state == "delivered" else
+                    "Autorizado · pedido ao Stock" if v2_authorized and matching else
+                    "Autorizado" if v2_authorized else "Proposto · por autorizar"
+                )
+                material_rows.append({"material": str(item.get("description") or ""),
+                                      "reference": reference, "quantity": quantity, "origin": row_state})
+            for item in stock_rows:
+                if item.get("id") in matched_stock_ids:
+                    continue
+                stock_state = str(item.get("stock_status") or "")
+                row_state = (
+                    "Aplicado" if stock_state == "applied" else
+                    "Entregue" if stock_state == "delivered" else
+                    "Autorizado · pedido ao Stock" if v2_authorized else "Proposto · por autorizar"
+                )
+                material_rows.append({"material": str(item.get("description") or ""),
+                                      "reference": str(item.get("reference") or ""),
+                                      "quantity": str(item.get("quantity") or ""), "origin": row_state})
+            repair_form = {**repair_form,
+                           "repair_authorized_services": v2_proposal.get("services", "") if v2_authorized else ""}
+        phase_documents = []
+        for phase_code in ("entrada", "validacao", "diagnostico", "inspecao", "reparacao", "fecho"):
+            phase_row = clean_workshop_get_phase(db, process.id, phase_code)
+            phase_data = phase_row.data_json if phase_row and isinstance(phase_row.data_json, dict) else {}
+            uploads = phase_data.get("uploads")
+            for item in uploads if isinstance(uploads, list) else []:
+                if not isinstance(item, dict):
+                    continue
+                phase_documents.append({
+                    "phase": phase_code,
+                    "label": str(item.get("label") or item.get("category") or "Documento"),
+                    "name": str(item.get("original_name") or item.get("stored_name") or ""),
+                    "url": (
+                        f"/v2-clean/workshop-entry/{process.id}/uploads/{item.get('stored_name')}"
+                        if phase_code == "entrada" and item.get("stored_name") else
+                        f"/v2-clean/documents/{item.get('document_id')}"
+                        if item.get("document_id") else ""
+                    ),
+                })
 
         return templates.TemplateResponse(
             request,
-            "clean_workshop_print_report.html",
+            "clean_workshop_print_dossier.html" if report_type == "process-dossier" else "clean_workshop_print_report.html",
             {
                 "report_type": report_type,
                 "report": report,
@@ -27182,6 +27627,9 @@ def clean_workshop_print_report(request: Request, process_id: int, report_type: 
                 "inspection": phase_forms.get("inspecao", {}),
                 "audit": phase_forms.get("auditoria", {}),
                 "repair": repair_form,
+                "simplified_new_flow": simplified_new_flow,
+                "v2_proposal": v2_proposal,
+                "v2_authorized": v2_authorized,
                 "closure": phase_forms.get("fecho", {}),
                 "technical_reports": reports,
                 "technical_readings": clean_workshop_technical_reading_rows(reports),
@@ -27189,6 +27637,7 @@ def clean_workshop_print_report(request: Request, process_id: int, report_type: 
                 "process_services": process_services,
                 "history_services": history_services,
                 "material_rows": material_rows,
+                "phase_documents": phase_documents,
                 "historical_evidence": historical_evidence,
                 "printed_at": datetime.now().strftime("%d/%m/%Y %H:%M"),
                 "return_url": clean_workshop_process_url(process),
@@ -27462,6 +27911,13 @@ async def clean_workshop_create_material_need(request: Request, process_id: int)
             return RedirectResponse(
                 f"{clean_workshop_process_url(process)}&readonly=1", status_code=303
             )
+        v2_flow = isinstance(process.metadata_json, dict) and process.metadata_json.get("workshop_flow_version") == 2
+        if v2_flow and (process.current_phase_code != "reparacao" or request_mode == "direct_usage"):
+            return RedirectResponse(
+                f"/v2-clean/workshop/reparacao?process_id={process.id}&error=material_request_only",
+                status_code=303,
+            )
+        before_proposal = clean_workshop_v2_proposal(db, process) if v2_flow else None
         vehicle = db.get(Vehicle, process.vehicle_id) if process.vehicle_id else None
         request_reference = f"OF-{process.id}-{uuid.uuid4().hex[:8].upper()}"
         selected_articles = {
@@ -27472,7 +27928,11 @@ async def clean_workshop_create_material_need(request: Request, process_id: int)
         if article_ids:
             for article_id in article_ids:
                 article = selected_articles.get(article_id)
-                quantity = str(form.get(f"quantity_{article_id}") or "").strip()
+                quantity = str(
+                    form.get(f"quantity_{article_id}")
+                    or (form.get("requested_quantity") if len(article_ids) == 1 else "")
+                    or ""
+                ).strip()
                 if not article or not quantity:
                     continue
                 lines.append((article, quantity))
@@ -27512,6 +27972,26 @@ async def clean_workshop_create_material_need(request: Request, process_id: int)
             )
             db.add(need)
         db.flush()
+        if v2_flow and before_proposal is not None:
+            after_proposal = clean_workshop_v2_proposal(db, process)
+            if clean_workshop_v2_proposal_digest(before_proposal) != clean_workshop_v2_proposal_digest(after_proposal):
+                metadata = dict(process.metadata_json)
+                authorization = metadata.get("repair_authorization")
+                if isinstance(authorization, dict):
+                    metadata["repair_authorization_history"] = [
+                        *(metadata.get("repair_authorization_history") or []), authorization
+                    ]
+                    metadata["repair_authorization"] = {
+                        **authorization, "status": "stale", "invalidated_at": datetime.now(UTC).isoformat(),
+                        "invalidated_by_id": user_id, "invalidated_reason": "Novo pedido de material",
+                    }
+                    process.metadata_json = metadata
+                    audit_phase = clean_workshop_v2_ensure_phase(db, process, "auditoria")
+                    audit_data = dict(audit_phase.data_json or {})
+                    audit_snapshot = dict(audit_data.get("form_snapshot") or {})
+                    audit_snapshot["audit_repair_authorized"] = "Por confirmar"
+                    audit_data["form_snapshot"] = audit_snapshot
+                    audit_phase.data_json = audit_data
         record_audit(
             db,
             action="workshop.material_need.created",
@@ -27530,7 +28010,7 @@ async def clean_workshop_create_material_need(request: Request, process_id: int)
         )
         db.commit()
     return RedirectResponse(
-        f"/v2-clean/workshop/reparacao?process_id={process_id}&material_saved=1#ordem-reparacao",
+        f"/v2-clean/workshop/reparacao?process_id={process_id}&material_saved=1#workshop-materials",
         status_code=303,
     )
 
@@ -27610,6 +28090,14 @@ def clean_workshop_confirm_material_applied(request: Request, need_id: int):
         process = db.get(WorkshopPhasedProcess, need.process_id)
         if not process or clean_workshop_process_is_readonly(process):
             return RedirectResponse("/v2-clean/workshop", status_code=303)
+        if isinstance(process.metadata_json, dict) and process.metadata_json.get("workshop_flow_version") == 2:
+            if process.current_phase_code != "reparacao" or not clean_workshop_v2_authorization_valid(
+                process, clean_workshop_v2_proposal(db, process)
+            ):
+                return RedirectResponse(
+                    f"/v2-clean/workshop/reparacao?process_id={process.id}&error=authorization_required",
+                    status_code=303,
+                )
         if need.stock_status != "delivered":
             return RedirectResponse(
                 f"/v2-clean/workshop/reparacao?process_id={process.id}&stock_error=not_delivered",
@@ -27624,6 +28112,718 @@ def clean_workshop_confirm_material_applied(request: Request, need_id: int):
         f"/v2-clean/workshop/reparacao?process_id={process_id}&material_applied=1",
         status_code=303,
     )
+
+
+def clean_workshop_v2_ensure_phase(
+    db: Session, process: WorkshopPhasedProcess, code: str
+) -> WorkshopPhasedProcessPhase:
+    phase = clean_workshop_get_phase(db, process.id, code)
+    if phase:
+        return phase
+    phase = WorkshopPhasedProcessPhase(
+        process_id=process.id,
+        phase_code=code,
+        name=str(CLEAN_WORKSHOP_PHASES.get(code, {}).get("title") or code.title()),
+        status="not_started",
+        sort_order={"entrada": 1, "validacao": 2, "diagnostico": 3, "inspecao": 4,
+                    "auditoria": 5, "reparacao": 6, "fecho": 7}.get(code, 8),
+        data_json={},
+    )
+    db.add(phase)
+    db.flush()
+    return phase
+
+
+def clean_workshop_v2_proposal(
+    db: Session, process: WorkshopPhasedProcess
+) -> dict[str, object]:
+    validation_phase = clean_workshop_get_phase(db, process.id, "validacao")
+    validation_data = dict(validation_phase.data_json or {}) if validation_phase else {}
+    analysis = validation_data.get("form_snapshot")
+    analysis = dict(analysis) if isinstance(analysis, dict) else {}
+    base_materials = validation_data.get("proposed_materials")
+    base_materials = [dict(item) for item in base_materials if isinstance(item, dict)] if isinstance(base_materials, list) else []
+    repair_phase = clean_workshop_get_phase(db, process.id, "reparacao")
+    repair_data = dict(repair_phase.data_json or {}) if repair_phase else {}
+    override = repair_data.get("proposal_override")
+    if isinstance(override, dict):
+        services = str(override.get("services") or analysis.get("services_proposed") or "")
+        raw_materials = override.get("materials")
+        materials = [dict(item) for item in raw_materials if isinstance(item, dict)] if isinstance(raw_materials, list) else base_materials
+    else:
+        services = str(analysis.get("services_proposed") or "")
+        materials = base_materials
+    needs = db.scalars(select(WorkshopMaterialNeed).where(
+        WorkshopMaterialNeed.process_id == process.id
+    ).order_by(WorkshopMaterialNeed.id)).all()
+    return {
+        "problem": str(analysis.get("problem_conclusion") or ""),
+        "services": services.strip(),
+        "materials": materials,
+        "stock_requests": [
+            {"id": need.id, "reference": need.material_code or "",
+             "description": need.material_description, "quantity": need.requested_quantity or "",
+             "stock_status": need.stock_status}
+            for need in needs
+        ],
+        "quote_needed": str(analysis.get("quote_needed") or "no") == "yes",
+        "quote_status": str(analysis.get("quote_status") or "pending"),
+        "quote_amount": str(analysis.get("quote_amount") or ""),
+        "quote_reference": str(analysis.get("quote_reference") or ""),
+        "quote_documents": [
+            {"document_id": item.get("document_id"), "sha256": item.get("sha256")}
+            for item in (validation_data.get("uploads") or [])
+            if isinstance(item, dict) and item.get("field") == "quote_file"
+        ],
+    }
+
+
+def clean_workshop_v2_proposal_digest(proposal: dict[str, object]) -> str:
+    effective = dict(proposal)
+    effective["materials"] = [
+        {key: str(item.get(key) or "").strip() for key in ("reference", "description", "quantity")}
+        for item in (proposal.get("materials") or []) if isinstance(item, dict)
+    ]
+    effective["stock_requests"] = [
+        {key: item.get(key) for key in ("id", "reference", "description", "quantity")}
+        for item in (proposal.get("stock_requests") or []) if isinstance(item, dict)
+    ]
+    return hashlib.sha256(
+        json.dumps(effective, ensure_ascii=False, sort_keys=True).encode("utf-8")
+    ).hexdigest()
+
+
+def clean_workshop_v2_authorization_valid(
+    process: WorkshopPhasedProcess, proposal: dict[str, object]
+) -> bool:
+    metadata = process.metadata_json if isinstance(process.metadata_json, dict) else {}
+    authorization = metadata.get("repair_authorization")
+    return bool(
+        isinstance(authorization, dict)
+        and authorization.get("status") == "approved"
+        and authorization.get("proposal_digest") == clean_workshop_v2_proposal_digest(proposal)
+    )
+
+
+@web_router.post("/v2-clean/workshop/{process_id}/repair-authorization")
+async def clean_workshop_v2_repair_authorization(request: Request, process_id: int):
+    denied = require_any_web_permission(request, "workshop.write", "admin.manage")
+    if denied:
+        return denied
+    form = await request.form()
+    action = str(form.get("action") or "").strip()
+    if action not in {"request", "approve", "reject"}:
+        return Response(status_code=400)
+    user_id = get_web_user_id(request)
+    now = datetime.now(UTC)
+    with SessionLocal() as db:
+        process = db.get(WorkshopPhasedProcess, process_id)
+        if not process or clean_workshop_process_is_readonly(process):
+            return Response(status_code=404)
+        if not isinstance(process.metadata_json, dict) or process.metadata_json.get("workshop_flow_version") != 2:
+            return Response(status_code=404)
+        if process.current_phase_code != "reparacao":
+            return Response(status_code=409)
+        proposal = clean_workshop_v2_proposal(db, process)
+        digest = clean_workshop_v2_proposal_digest(proposal)
+        metadata = dict(process.metadata_json)
+        before = metadata.get("repair_authorization")
+        before = dict(before) if isinstance(before, dict) else {}
+        if action == "request":
+            if not proposal["services"]:
+                return RedirectResponse(f"/v2-clean/workshop/reparacao?process_id={process_id}&error=services_required", status_code=303)
+            authorization = {
+                "status": "requested", "proposal_digest": digest,
+                "proposal_snapshot": proposal, "requested_by_id": user_id,
+                "requested_at": now.isoformat(),
+                "request_note": str(form.get("note") or "").strip()[:1000],
+            }
+        else:
+            if before.get("status") != "requested" or before.get("proposal_digest") != digest:
+                return RedirectResponse(f"/v2-clean/workshop/reparacao?process_id={process_id}&error=authorization_stale", status_code=303)
+            authorization = dict(before)
+            if action == "approve":
+                if proposal["quote_needed"] and proposal["quote_status"] != "approved":
+                    return RedirectResponse(f"/v2-clean/workshop/reparacao?process_id={process_id}&error=quote_pending", status_code=303)
+                if proposal["quote_needed"] and not proposal["quote_reference"]:
+                    return RedirectResponse(f"/v2-clean/workshop/reparacao?process_id={process_id}&error=quote_reference_required", status_code=303)
+                material_rows = [*proposal["materials"], *proposal["stock_requests"]]
+                for row in material_rows:
+                    try:
+                        positive_quantity = Decimal(str(row.get("quantity") or "").replace(",", ".")) > 0
+                    except InvalidOperation:
+                        positive_quantity = False
+                    if not row.get("reference") or not row.get("description") or not positive_quantity:
+                        return RedirectResponse(f"/v2-clean/workshop/reparacao?process_id={process_id}&error=material_unconfirmed", status_code=303)
+                approval_reference = str(form.get("approval_reference") or "").strip()[:240]
+                if not approval_reference:
+                    return RedirectResponse(f"/v2-clean/workshop/reparacao?process_id={process_id}&error=approval_reference_required", status_code=303)
+                authorization.update({"status": "approved", "approved_by_id": user_id,
+                                      "approved_at": now.isoformat(), "approval_reference": approval_reference})
+                audit_action = "workshop.v2.repair_authorized"
+            else:
+                rejection_reason = str(form.get("rejection_reason") or "").strip()[:1000]
+                if not rejection_reason:
+                    return RedirectResponse(f"/v2-clean/workshop/reparacao?process_id={process_id}&error=rejection_reason_required", status_code=303)
+                authorization.update({"status": "rejected", "rejected_by_id": user_id,
+                                      "rejected_at": now.isoformat(), "rejection_reason": rejection_reason})
+                audit_action = "workshop.v2.repair_rejected"
+        metadata["repair_authorization"] = authorization
+        process.metadata_json = metadata
+        if action in {"request", "approve", "reject"}:
+            audit_phase = clean_workshop_v2_ensure_phase(db, process, "auditoria")
+            audit_data = dict(audit_phase.data_json or {})
+            audit_snapshot = dict(audit_data.get("form_snapshot") or {})
+            audit_snapshot["audit_repair_authorized"] = "Sim" if action == "approve" else "Por confirmar"
+            if action == "approve":
+                audit_snapshot["audit_authorized_by_id"] = user_id
+                audit_snapshot["audit_authorized_at"] = now.isoformat()
+                audit_snapshot["audit_authorization_reference"] = authorization["approval_reference"]
+            audit_data["form_snapshot"] = audit_snapshot
+            audit_phase.data_json = audit_data
+        record_audit(db, action=audit_action if action != "request" else "workshop.v2.repair_authorization_requested",
+                     entity_type="workshop_phased_process", entity_id=process.id,
+                     user_id=user_id, before_json=before,
+                     after_json={"status": authorization["status"], "proposal_digest": digest})
+        db.commit()
+    return RedirectResponse(f"/v2-clean/workshop/reparacao?process_id={process_id}&authorization_updated=1", status_code=303)
+
+
+@web_router.post("/v2-clean/workshop/{process_id}/quote-update")
+async def clean_workshop_v2_quote_update(request: Request, process_id: int):
+    denied = require_any_web_permission(request, "workshop.write", "admin.manage")
+    if denied:
+        return denied
+    form = await request.form()
+    status = str(form.get("quote_status") or "").strip()
+    if status not in {"pending", "requested", "received", "approved", "rejected"}:
+        return Response(status_code=400)
+    reference = str(form.get("quote_reference") or "").strip()[:160]
+    amount = str(form.get("quote_amount") or "").strip()[:80]
+    if status == "approved" and not reference:
+        return RedirectResponse(
+            f"/v2-clean/workshop/reparacao?process_id={process_id}&error=quote_reference_required",
+            status_code=303,
+        )
+    user_id = get_web_user_id(request)
+    now = datetime.now(UTC)
+    with SessionLocal() as db:
+        process = db.get(WorkshopPhasedProcess, process_id)
+        if not process or clean_workshop_process_is_readonly(process):
+            return Response(status_code=404)
+        if not isinstance(process.metadata_json, dict) or process.metadata_json.get("workshop_flow_version") != 2:
+            return Response(status_code=404)
+        if process.current_phase_code != "reparacao":
+            return Response(status_code=409)
+        validation = clean_workshop_get_phase(db, process.id, "validacao")
+        if validation is None:
+            return Response(status_code=409)
+        data = dict(validation.data_json or {})
+        snapshot = dict(data.get("form_snapshot") or {})
+        if snapshot.get("quote_needed") != "yes":
+            return Response(status_code=409)
+        before = clean_workshop_v2_proposal(db, process)
+        old_status = snapshot.get("quote_status")
+        snapshot.update({"quote_status": status, "quote_reference": reference,
+                         "quote_amount": amount, "quote_updated_at": now.isoformat(),
+                         "quote_updated_by_id": user_id})
+        data["form_snapshot"] = snapshot
+        uploads = await clean_workshop_store_phase_uploads(db, process, "validacao", form, user_id)
+        previous_uploads = data.get("uploads")
+        data["uploads"] = [*(previous_uploads if isinstance(previous_uploads, list) else []), *uploads]
+        validation.data_json = data
+        after = clean_workshop_v2_proposal(db, process)
+        if clean_workshop_v2_proposal_digest(before) != clean_workshop_v2_proposal_digest(after):
+            metadata = dict(process.metadata_json)
+            authorization = metadata.get("repair_authorization")
+            if isinstance(authorization, dict):
+                metadata["repair_authorization_history"] = [
+                    *(metadata.get("repair_authorization_history") or []), authorization
+                ]
+                metadata["repair_authorization"] = {
+                    **authorization, "status": "stale", "invalidated_at": now.isoformat(),
+                    "invalidated_by_id": user_id, "invalidated_reason": "Estado do orçamento alterado",
+                }
+                process.metadata_json = metadata
+                audit_phase = clean_workshop_v2_ensure_phase(db, process, "auditoria")
+                audit_data = dict(audit_phase.data_json or {})
+                audit_snapshot = dict(audit_data.get("form_snapshot") or {})
+                audit_snapshot["audit_repair_authorized"] = "Por confirmar"
+                audit_data["form_snapshot"] = audit_snapshot
+                audit_phase.data_json = audit_data
+        record_audit(db, action="workshop.v2.quote_updated",
+                     entity_type="workshop_phased_process", entity_id=process.id,
+                     user_id=user_id, before_json={"status": old_status},
+                     after_json={"status": status, "reference": reference,
+                                 "uploaded_document_count": len(uploads)})
+        db.commit()
+    return RedirectResponse(
+        f"/v2-clean/workshop/reparacao?process_id={process_id}&quote_updated=1", status_code=303
+    )
+
+
+@web_router.post("/v2-clean/workshop/{process_id}/repair-proposal")
+async def clean_workshop_v2_repair_proposal(request: Request, process_id: int):
+    denied = require_any_web_permission(request, "workshop.write", "admin.manage")
+    if denied:
+        return denied
+    form = await request.form()
+    user_id = get_web_user_id(request)
+    now = datetime.now(UTC)
+    with SessionLocal() as db:
+        process = db.get(WorkshopPhasedProcess, process_id)
+        if not process or clean_workshop_process_is_readonly(process):
+            return Response(status_code=404)
+        if not isinstance(process.metadata_json, dict) or process.metadata_json.get("workshop_flow_version") != 2:
+            return Response(status_code=404)
+        if process.current_phase_code != "reparacao":
+            return Response(status_code=409)
+        services = "\n".join(
+            line.strip()[:240]
+            for line in str(form.get("services") or "").splitlines()
+            if line.strip()
+        )[:4000]
+        if not services:
+            return RedirectResponse(f"/v2-clean/workshop/reparacao?process_id={process_id}&error=services_required", status_code=303)
+        references = form.getlist("material_reference")[:12]
+        descriptions = form.getlist("material_description")[:12]
+        quantities = form.getlist("material_quantity")[:12]
+        materials = []
+        for index in range(max(len(references), len(descriptions), len(quantities))):
+            reference = str(references[index] if index < len(references) else "").strip()[:160]
+            description = str(descriptions[index] if index < len(descriptions) else "").strip()[:240]
+            quantity = str(quantities[index] if index < len(quantities) else "").strip()[:80]
+            if reference or description or quantity:
+                materials.append({"reference": reference, "description": description,
+                                  "quantity": quantity, "status": "proposed" if reference and description and quantity else "unconfirmed",
+                                  "source": "manual_repair_revision"})
+        before_proposal = clean_workshop_v2_proposal(db, process)
+        phase = clean_workshop_v2_ensure_phase(db, process, "reparacao")
+        phase_data = dict(phase.data_json or {})
+        phase_data["proposal_override"] = {"services": services, "materials": materials,
+                                            "revised_at": now.isoformat(), "revised_by_id": user_id}
+        phase.data_json = phase_data
+        new_proposal = clean_workshop_v2_proposal(db, process)
+        if clean_workshop_v2_proposal_digest(before_proposal) != clean_workshop_v2_proposal_digest(new_proposal):
+            metadata = dict(process.metadata_json)
+            old_authorization = metadata.get("repair_authorization")
+            if isinstance(old_authorization, dict):
+                history = list(metadata.get("repair_authorization_history") or [])
+                history.append(old_authorization)
+                metadata["repair_authorization_history"] = history
+                metadata["repair_authorization"] = {**old_authorization, "status": "stale",
+                                                    "invalidated_at": now.isoformat(),
+                                                    "invalidated_by_id": user_id,
+                                                    "invalidated_reason": "Proposta de trabalho/material revista"}
+                process.metadata_json = metadata
+                audit_phase = clean_workshop_v2_ensure_phase(db, process, "auditoria")
+                audit_data = dict(audit_phase.data_json or {})
+                audit_snapshot = dict(audit_data.get("form_snapshot") or {})
+                audit_snapshot["audit_repair_authorized"] = "Por confirmar"
+                audit_data["form_snapshot"] = audit_snapshot
+                audit_phase.data_json = audit_data
+        record_audit(db, action="workshop.v2.repair_proposal_revised",
+                     entity_type="workshop_phased_process", entity_id=process.id,
+                     user_id=user_id,
+                     before_json={"digest": clean_workshop_v2_proposal_digest(before_proposal)},
+                     after_json={"digest": clean_workshop_v2_proposal_digest(new_proposal)})
+        db.commit()
+    return RedirectResponse(f"/v2-clean/workshop/reparacao?process_id={process_id}&proposal_updated=1", status_code=303)
+
+
+async def clean_workshop_v2_analysis_save(
+    db: Session,
+    request: Request,
+    form,
+    process: WorkshopPhasedProcess,
+    user_id: int | None,
+    action: str,
+) -> RedirectResponse:
+    base_url = f"/v2-clean/workshop/validacao?process_id={process.id}"
+    if process.current_phase_code != "validacao" or action not in {"save", "advance"}:
+        return RedirectResponse(f"{base_url}&error=invalid_phase_order", status_code=303)
+
+    now = datetime.now(UTC)
+    original_template_code = str((process.template_snapshot_json or {}).get("template_code") or "")
+    chosen_template_code = str(form.get("analysis_template_code") or original_template_code).strip()
+    template = db.scalar(select(WorkshopTemplate).where(
+        WorkshopTemplate.code == chosen_template_code,
+        WorkshopTemplate.active.is_(True),
+    ))
+    version = latest_published_template_version(db, template) if template else None
+    if not template or not version:
+        return RedirectResponse(f"{base_url}&error=invalid_template", status_code=303)
+
+    decision = str(form.get("analysis_decision") or "Reparar").strip()
+    if decision not in {"Reparar", "Fechar sem reparação"}:
+        return RedirectResponse(f"{base_url}&error=invalid_decision", status_code=303)
+    diagnosis_mode = str(form.get("diagnostic_mode") or "").strip()
+    if diagnosis_mode not in {"perform", "waived", "late_authorized"}:
+        diagnosis_mode = ""
+    inspection_needed = str(form.get("inspection_needed") or "no") == "yes"
+    quote_needed = str(form.get("quote_needed") or "no") == "yes"
+    quote_status = str(form.get("quote_status") or "pending").strip()
+    if quote_status not in {"pending", "requested", "received", "approved", "rejected"}:
+        quote_status = "pending"
+    services = [line.strip()[:240] for line in str(form.get("services_proposed") or "").splitlines() if line.strip()][:20]
+    conclusion = str(form.get("problem_conclusion") or "").strip()[:4000]
+    diagnostic_conclusion = str(form.get("diagnostic_conclusion") or "").strip()[:4000]
+    waiver_reason = str(form.get("diagnostic_waiver_reason") or "").strip()[:1000]
+    decision_reason = str(form.get("analysis_decision_reason") or "").strip()[:2000]
+    reserve_reason = str(form.get("analysis_reserve_reason") or "").strip()[:1000]
+    inspection_summary = str(form.get("inspection_summary") or "").strip()[:2000]
+    inspection_codes = ("lights", "battery", "leaks", "noises", "road_test")
+    inspection_values = {
+        code: str(form.get(f"inspection_check_{code}") or "review")
+        for code in inspection_codes
+    }
+
+    references = form.getlist("proposed_material_reference")[:12]
+    descriptions = form.getlist("proposed_material_description")[:12]
+    quantities = form.getlist("proposed_material_quantity")[:12]
+    proposed_materials = []
+    for index in range(max(len(references), len(descriptions), len(quantities))):
+        reference = str(references[index] if index < len(references) else "").strip()[:160]
+        description = str(descriptions[index] if index < len(descriptions) else "").strip()[:240]
+        quantity = str(quantities[index] if index < len(quantities) else "").strip()[:80]
+        if not (reference or description or quantity):
+            continue
+        proposed_materials.append({
+            "reference": reference, "description": description, "quantity": quantity,
+            "status": "proposed" if reference and description and quantity else "unconfirmed",
+            "source": "manual_analysis",
+        })
+
+    active_reports = db.scalars(select(WorkshopPhasedTechnicalReport).where(
+        WorkshopPhasedTechnicalReport.process_id == process.id,
+        ~WorkshopPhasedTechnicalReport.status.in_({"voided", "superseded"}),
+    )).all()
+    if action == "advance":
+        error = ""
+        if not conclusion or (decision == "Reparar" and not services):
+            error = "analysis_incomplete"
+        elif not diagnosis_mode:
+            error = "diagnostic_choice_required"
+        elif diagnosis_mode == "waived" and not waiver_reason:
+            error = "diagnostic_waiver_required"
+        elif diagnosis_mode == "late_authorized" and str(form.get("diagnostic_late_authorization_confirmed") or "") != "yes":
+            error = "diagnostic_late_authorization_required"
+        elif diagnosis_mode == "perform" and not diagnostic_conclusion:
+            error = "diagnostic_conclusion_required"
+        elif diagnosis_mode == "perform" and any(not clean_workshop_report_is_complete(report) for report in active_reports):
+            error = "reports_pending"
+        elif inspection_needed and any(value not in {"ok", "nc", "na"} for value in inspection_values.values()):
+            error = "inspection_incomplete"
+        elif inspection_needed and "nc" in inspection_values.values() and not inspection_summary:
+            error = "inspection_note_required"
+        elif quote_needed and quote_status == "approved" and not str(form.get("quote_reference") or "").strip():
+            error = "quote_reference_required"
+        if error:
+            return RedirectResponse(f"{base_url}&error={error}", status_code=303)
+
+    validation_phase = clean_workshop_v2_ensure_phase(db, process, "validacao")
+    diagnostic_phase = clean_workshop_v2_ensure_phase(db, process, "diagnostico")
+    inspection_phase = clean_workshop_v2_ensure_phase(db, process, "inspecao")
+    audit_phase = clean_workshop_v2_ensure_phase(db, process, "auditoria")
+    if decision == "Reparar":
+        clean_workshop_v2_ensure_phase(db, process, "reparacao")
+
+    quote_uploads = await clean_workshop_store_phase_uploads(
+        db, process, "validacao", form, user_id
+    )
+    inspection_uploads = await clean_workshop_store_phase_uploads(
+        db, process, "inspecao", form, user_id
+    ) if inspection_needed else []
+
+    validation_snapshot = {
+        "analysis_template_code": chosen_template_code,
+        "analysis_decision": decision,
+        "services_proposed": "\n".join(services),
+        "problem_conclusion": conclusion,
+        "analysis_decision_reason": decision_reason,
+        "analysis_reserve_reason": reserve_reason,
+        "diagnostic_mode": diagnosis_mode,
+        "diagnostic_waiver_reason": waiver_reason,
+        "diagnostic_conclusion": diagnostic_conclusion,
+        "inspection_needed": "yes" if inspection_needed else "no",
+        "inspection_summary": inspection_summary,
+        **{f"inspection_check_{code}": value for code, value in inspection_values.items()},
+        "quote_needed": "yes" if quote_needed else "no",
+        "quote_status": quote_status,
+        "quote_amount": str(form.get("quote_amount") or "").strip()[:80],
+        "quote_reference": str(form.get("quote_reference") or "").strip()[:160],
+        "validation_diagnostic_focus": str(form.get("diagnostic_orientation") or "").strip()[:2000],
+        "validation_closed": "Sim" if action == "advance" else "Por confirmar",
+        "service_decision": ["Autorizar" for _ in services],
+    }
+    validation_data = dict(validation_phase.data_json or {})
+    validation_data["uploads"] = [
+        *(validation_data.get("uploads") or []), *quote_uploads
+    ]
+    validation_data.update({"form_snapshot": validation_snapshot, "proposed_materials": proposed_materials,
+                            "saved_at": now.isoformat(), "saved_by_id": user_id})
+    validation_phase.data_json = validation_data
+    validation_phase.status = "completed" if action == "advance" else "in_progress"
+    if action == "advance":
+        validation_phase.completed_at = now
+        validation_phase.completed_by_id = user_id
+
+    diagnostic_data = dict(diagnostic_phase.data_json or {})
+    diagnostic_data["form_snapshot"] = {
+        "diagnostic_mode": diagnosis_mode,
+        "diagnostic_closed": (
+            "Sim" if diagnosis_mode == "perform" and action == "advance"
+            else "Dispensado" if diagnosis_mode == "waived" and action == "advance"
+            else "Pendente" if diagnosis_mode == "late_authorized" and action == "advance"
+            else "Por confirmar"
+        ),
+        "diagnostic_conclusion": diagnostic_conclusion,
+        "diagnostic_reserve_reason": waiver_reason,
+        "diagnostic_late_authorized_by_id": user_id if diagnosis_mode == "late_authorized" and action == "advance" else None,
+        "diagnostic_late_authorized_at": now.isoformat() if diagnosis_mode == "late_authorized" and action == "advance" else None,
+    }
+    diagnostic_phase.data_json = diagnostic_data
+    if action == "advance":
+        diagnostic_phase.status = {"perform": "completed", "waived": "waived", "late_authorized": "pending_documents"}[diagnosis_mode]
+        if diagnosis_mode == "perform":
+            diagnostic_phase.completed_at = now
+            diagnostic_phase.completed_by_id = user_id
+
+    inspection_data = dict(inspection_phase.data_json or {})
+    inspection_data["uploads"] = [
+        *(inspection_data.get("uploads") or []), *inspection_uploads
+    ]
+    inspection_data["form_snapshot"] = {
+        "inspection_closed": "Sim" if inspection_needed and action == "advance" else "Não aplicável" if action == "advance" else "Por confirmar",
+        "inspection_summary": inspection_summary,
+        **{f"inspection_check_{code}": str(form.get(f"inspection_check_{code}") or "review")
+           for code in inspection_codes},
+    }
+    inspection_phase.data_json = inspection_data
+    if action == "advance":
+        inspection_phase.status = "completed" if inspection_needed else "not_applicable"
+        if inspection_needed:
+            inspection_phase.completed_at = now
+            inspection_phase.completed_by_id = user_id
+
+    audit_data = dict(audit_phase.data_json or {})
+    audit_data["form_snapshot"] = {
+        "audit_closed": "Sim" if action == "advance" else "Por confirmar",
+        "audit_decision_main": decision,
+        "audit_decision_reason": decision_reason or conclusion,
+        "audit_summary": conclusion,
+        "audit_quote_needed": "Sim" if quote_needed else "Não",
+        "audit_estimated_value": str(form.get("quote_amount") or "").strip()[:80],
+        "audit_repair_authorized": "Por confirmar",
+        "audit_reserve_reason": reserve_reason,
+    }
+    audit_phase.data_json = audit_data
+    audit_phase.status = "completed" if action == "advance" else "in_progress"
+    if action == "advance":
+        audit_phase.completed_at = now
+        audit_phase.completed_by_id = user_id
+
+    metadata = dict(process.metadata_json or {})
+    active_snapshot = metadata.get("effective_template_snapshot")
+    active_code = str(active_snapshot.get("template_code") or "") if isinstance(active_snapshot, dict) else original_template_code
+    if chosen_template_code != active_code:
+        revised = workshop_template_snapshot(template, version, explanation="Plano revisto na Análise e decisão.")
+        metadata["effective_template_snapshot"] = revised
+        history = list(metadata.get("plan_revisions") or [])
+        history.append({"from": active_code, "to": chosen_template_code, "version_id": version.id,
+                        "at": now.isoformat(), "by_id": user_id})
+        metadata["plan_revisions"] = history
+    metadata["diagnostic_mode"] = diagnosis_mode
+    metadata["quote_status"] = quote_status
+    process.metadata_json = metadata
+    if action == "advance":
+        process.current_phase_code = "reparacao" if decision == "Reparar" else "fecho"
+        next_phase = clean_workshop_v2_ensure_phase(db, process, process.current_phase_code)
+        if next_phase.status == "not_started":
+            next_phase.status = "pending_review"
+            next_phase.started_at = now
+    record_audit(db, action="workshop.v2.analysis.advanced" if action == "advance" else "workshop.v2.analysis.saved",
+                 entity_type="workshop_phased_process", entity_id=process.id, user_id=user_id,
+                 before_json={"phase": "validacao", "template_code": active_code},
+                 after_json={"phase": process.current_phase_code, "template_code": chosen_template_code,
+                             "diagnostic_mode": diagnosis_mode, "decision": decision})
+    db.commit()
+    destination = (
+        f"/v2-clean/workshop/{process.current_phase_code}?process_id={process.id}"
+        if action == "advance" else f"{base_url}&saved=1"
+    )
+    return RedirectResponse(destination, status_code=303)
+
+
+async def clean_workshop_v2_repair_save(
+    db: Session,
+    form,
+    process: WorkshopPhasedProcess,
+    user_id: int | None,
+    action: str,
+) -> RedirectResponse:
+    base_url = f"/v2-clean/workshop/reparacao?process_id={process.id}"
+    if process.current_phase_code != "reparacao" or action not in {"save", "advance"}:
+        return RedirectResponse(f"{base_url}&error=invalid_phase_order", status_code=303)
+    proposal = clean_workshop_v2_proposal(db, process)
+    if not clean_workshop_v2_authorization_valid(process, proposal):
+        return RedirectResponse(f"{base_url}&error=authorization_required", status_code=303)
+    now = datetime.now(UTC)
+    status = str(form.get("repair_execution_status") or "Em curso").strip()
+    if status not in {"Em curso", "A aguardar peças", "A aguardar orçamento", "Concluída", "Bloqueada"}:
+        return RedirectResponse(f"{base_url}&error=invalid_status", status_code=303)
+    summary = str(form.get("repair_summary") or "").strip()[:4000]
+    reserve = str(form.get("repair_reserve_reason") or "").strip()[:2000]
+    external = str(form.get("repair_external") or "no") == "yes"
+    external_partner = str(form.get("repair_external_partner") or "").strip()[:240]
+    external_reference = str(form.get("repair_external_reference") or "").strip()[:240]
+    if action == "advance":
+        if not summary or (status != "Concluída" and not reserve):
+            return RedirectResponse(f"{base_url}&error=repair_incomplete", status_code=303)
+        if external and (not external_partner or not external_reference):
+            return RedirectResponse(f"{base_url}&error=external_incomplete", status_code=303)
+    phase = clean_workshop_v2_ensure_phase(db, process, "reparacao")
+    phase_data = dict(phase.data_json or {})
+    snapshot = {
+        "repair_authorized_services": str(proposal["services"]),
+        "repair_summary": summary,
+        "repair_execution_status": status,
+        "repair_responsible": str(form.get("repair_responsible") or "").strip()[:240],
+        "repair_started_on": str(form.get("repair_started_on") or "").strip()[:40],
+        "repair_finished_on": str(form.get("repair_finished_on") or "").strip()[:40],
+        "repair_actual_duration": str(form.get("repair_actual_duration") or "").strip()[:80],
+        "repair_reserve_reason": reserve,
+        "repair_outside_authorization": str(form.get("repair_outside_authorization") or "").strip()[:2000],
+        "repair_external": "yes" if external else "no",
+        "repair_external_partner": external_partner,
+        "repair_external_reference": external_reference,
+        "repair_external_status": str(form.get("repair_external_status") or "").strip()[:120],
+        "repair_external_eta": str(form.get("repair_external_eta") or "").strip()[:40],
+        "repair_closed": "Sim" if status == "Concluída" and action == "advance" else "Com reservas" if action == "advance" else "Por confirmar",
+    }
+    uploads = await clean_workshop_store_phase_uploads(db, process, "reparacao", form, user_id)
+    for upload in uploads:
+        update = CLEAN_WORKSHOP_UPLOAD_STATUS_UPDATES.get(str(upload.get("field") or ""))
+        if update:
+            snapshot[update[0]] = update[1]
+    old_snapshot = phase_data.get("form_snapshot")
+    if isinstance(old_snapshot, dict):
+        snapshot = {**old_snapshot, **snapshot}
+    old_uploads = phase_data.get("uploads")
+    phase_data["uploads"] = [*(old_uploads if isinstance(old_uploads, list) else []), *uploads]
+    phase_data.update({"form_snapshot": snapshot, "saved_at": now.isoformat(),
+                       "saved_by_id": user_id, "last_action": action})
+    phase.data_json = phase_data
+    phase.status = "completed" if action == "advance" else "in_progress"
+    phase.started_at = phase.started_at or now
+    if action == "advance":
+        phase.completed_at = now
+        phase.completed_by_id = user_id
+        process.current_phase_code = "fecho"
+        close_phase = clean_workshop_v2_ensure_phase(db, process, "fecho")
+        if close_phase.status == "not_started":
+            close_phase.status = "pending_review"
+            close_phase.started_at = now
+    record_audit(db, action="workshop.v2.repair.advanced" if action == "advance" else "workshop.v2.repair.saved",
+                 entity_type="workshop_phased_process", entity_id=process.id,
+                 user_id=user_id, after_json={"status": status, "phase": process.current_phase_code,
+                                               "authorization_digest": clean_workshop_v2_proposal_digest(proposal)})
+    db.commit()
+    return RedirectResponse(
+        f"/v2-clean/workshop/fecho?process_id={process.id}" if action == "advance" else f"{base_url}&saved=1",
+        status_code=303,
+    )
+
+
+async def clean_workshop_v2_close_save(
+    db: Session,
+    form,
+    process: WorkshopPhasedProcess,
+    user_id: int | None,
+    action: str,
+) -> RedirectResponse:
+    base_url = f"/v2-clean/workshop/fecho?process_id={process.id}"
+    if process.current_phase_code != "fecho" or action not in {
+        "save", "close_process", "close_with_pending", "return_to_repair"
+    }:
+        return RedirectResponse(f"{base_url}&error=invalid_phase_order", status_code=303)
+    now = datetime.now(UTC)
+    repair = clean_workshop_get_phase(db, process.id, "reparacao")
+    if repair and repair.status == "completed":
+        proposal = clean_workshop_v2_proposal(db, process)
+        if not clean_workshop_v2_authorization_valid(process, proposal):
+            return RedirectResponse(f"{base_url}&error=authorization_required", status_code=303)
+    diagnostic = clean_workshop_get_phase(db, process.id, "diagnostico")
+    diagnostic_pending = bool(diagnostic and diagnostic.status == "pending_documents")
+    if action == "return_to_repair":
+        if not repair or repair.status != "completed":
+            return RedirectResponse(f"{base_url}&error=invalid_phase_order", status_code=303)
+        process.current_phase_code = "reparacao"
+        repair.status = "in_progress"
+        repair.completed_at = None
+        repair.completed_by_id = None
+        record_audit(db, action="workshop.v2.returned_to_repair",
+                     entity_type="workshop_phased_process", entity_id=process.id, user_id=user_id)
+        db.commit()
+        return RedirectResponse(f"/v2-clean/workshop/reparacao?process_id={process.id}&returned=1", status_code=303)
+    result = "Fechado com reserva" if action == "close_with_pending" else (
+        "Fechado sem reparação" if not repair or repair.status != "completed" else "Fechado com reparação"
+    )
+    summary = str(form.get("closure_final_summary") or "").strip()[:4000]
+    pending_description = str(form.get("closure_pending_description") or "").strip()[:2000]
+    pending_owner = str(form.get("closure_pending_owner") or "").strip()[:240]
+    pending_due = str(form.get("closure_pending_due") or "").strip()[:40]
+    if action != "save":
+        if not summary or str(form.get("closure_vehicle_validated") or "") != "yes" or str(form.get("closure_history_updated") or "") != "yes" or str(form.get("closure_fleet_state_defined") or "") != "yes":
+            return RedirectResponse(f"{base_url}&error=closure_incomplete", status_code=303)
+        if action == "close_process" and diagnostic_pending:
+            return RedirectResponse(f"{base_url}&error=diagnostic_pending", status_code=303)
+        if action == "close_process" and str(form.get("closure_min_docs_attached") or "") != "yes":
+            return RedirectResponse(f"{base_url}&error=closure_documents_required", status_code=303)
+        if action == "close_with_pending" and (not pending_description or not pending_owner or not pending_due):
+            return RedirectResponse(f"{base_url}&error=closure_pending_required", status_code=303)
+    phase = clean_workshop_v2_ensure_phase(db, process, "fecho")
+    data = dict(phase.data_json or {})
+    snapshot = {
+        "closure_result": result if action != "save" else "Não fechar",
+        "closure_final_summary": summary,
+        "closure_summary": str(form.get("closure_summary") or "").strip()[:2000],
+        "closure_exit_km": str(form.get("closure_exit_km") or "").strip()[:80],
+        "closure_exit_observation": str(form.get("closure_exit_observation") or "").strip()[:2000],
+        "closure_final_status": str(form.get("closure_final_status") or "Normal").strip()[:80],
+        "closure_vehicle_validated": str(form.get("closure_vehicle_validated") or ""),
+        "closure_history_updated": str(form.get("closure_history_updated") or ""),
+        "closure_fleet_state_defined": str(form.get("closure_fleet_state_defined") or ""),
+        "closure_min_docs_attached": str(form.get("closure_min_docs_attached") or ""),
+        "closure_pending_exists": "Sim" if action == "close_with_pending" else "Não",
+        "closure_pending_assigned": "yes" if action == "close_with_pending" else "",
+        "closure_pending_description": pending_description,
+        "closure_pending_owner": pending_owner,
+        "closure_pending_due": pending_due,
+        "closure_diagnostic_pending": "yes" if diagnostic_pending else "no",
+    }
+    old_snapshot = data.get("form_snapshot")
+    if isinstance(old_snapshot, dict):
+        snapshot = {**old_snapshot, **snapshot}
+    uploads = await clean_workshop_store_phase_uploads(db, process, "fecho", form, user_id)
+    old_uploads = data.get("uploads")
+    data["uploads"] = [*(old_uploads if isinstance(old_uploads, list) else []), *uploads]
+    data.update({"form_snapshot": snapshot, "saved_at": now.isoformat(), "saved_by_id": user_id,
+                 "last_action": action})
+    phase.data_json = data
+    phase.status = "completed" if action != "save" else "in_progress"
+    phase.started_at = phase.started_at or now
+    if action != "save":
+        phase.completed_at = now
+        phase.completed_by_id = user_id
+        process.status = "closed"
+        process.closed_at = now
+    record_audit(db, action="workshop.v2.closed" if action != "save" else "workshop.v2.closure.saved",
+                 entity_type="workshop_phased_process", entity_id=process.id, user_id=user_id,
+                 after_json={"result": snapshot["closure_result"], "diagnostic_pending": diagnostic_pending,
+                             "pending_owner": pending_owner if action == "close_with_pending" else None})
+    db.commit()
+    return RedirectResponse(f"{base_url}&saved=1", status_code=303)
 
 @web_router.post("/v2-clean/workshop/{phase}/save", response_class=HTMLResponse)
 async def clean_workshop_phase_save(request: Request, phase: str):
@@ -27678,6 +28878,26 @@ async def clean_workshop_phase_save(request: Request, phase: str):
             return redirect_with_context(
                 f"{clean_workshop_process_url(process)}&readonly=1"
             )
+        if (
+            phase == "validacao"
+            and isinstance(process.metadata_json, dict)
+            and process.metadata_json.get("workshop_flow_version") == 2
+        ):
+            return await clean_workshop_v2_analysis_save(
+                db, request, form, process, user_id, action
+            )
+        if (
+            phase == "reparacao"
+            and isinstance(process.metadata_json, dict)
+            and process.metadata_json.get("workshop_flow_version") == 2
+        ):
+            return await clean_workshop_v2_repair_save(db, form, process, user_id, action)
+        if (
+            phase == "fecho"
+            and isinstance(process.metadata_json, dict)
+            and process.metadata_json.get("workshop_flow_version") == 2
+        ):
+            return await clean_workshop_v2_close_save(db, form, process, user_id, action)
         if process.current_phase_code != phase:
             return redirect_with_context(
                 f"{clean_workshop_phase_path(phase)}?process_id={process.id}&error=invalid_phase_order"
@@ -27797,9 +29017,8 @@ async def clean_workshop_phase_save(request: Request, phase: str):
             if isinstance(phase_data.get("form_snapshot"), dict)
             else {}
         )
-        if action in {"save_substep", "advance_substep"}:
-            existing_snapshot.update(form_snapshot)
-            form_snapshot = existing_snapshot
+        existing_snapshot.update(form_snapshot)
+        form_snapshot = existing_snapshot
 
         saved_substeps = clean_workshop_saved_substeps(phase_data)
         if current_substep and action in {"save", "save_substep", "advance_substep", "advance"}:
@@ -28038,7 +29257,7 @@ async def clean_workshop_technical_report_upload(
         process = db.get(WorkshopPhasedProcess, process_id)
         if not process:
             return RedirectResponse("/v2-clean/workshop", status_code=303)
-        if clean_workshop_process_is_readonly(process):
+        if clean_workshop_process_is_readonly(process) and not clean_workshop_v2_late_diagnostic_upload_allowed(db, process):
             return RedirectResponse(f"{clean_workshop_process_url(process)}&readonly=1", status_code=303)
         vehicle = db.get(Vehicle, process.vehicle_id) if process.vehicle_id else None
 
@@ -28201,11 +29420,26 @@ async def clean_workshop_technical_report_upload(
                 user_id=user_id,
             )
         )
-        process.current_phase_code = "diagnostico"
+        simplified_new_flow = bool(
+            isinstance(process.metadata_json, dict)
+            and process.metadata_json.get("workshop_flow_version") == 2
+        )
+        if simplified_new_flow:
+            diagnostic_phase = clean_workshop_v2_ensure_phase(db, process, "diagnostico")
+            if (process.metadata_json or {}).get("diagnostic_mode") == "late_authorized":
+                diagnostic_phase.status = "pending_documents"
+                diagnostic_phase.completed_at = None
+                diagnostic_phase.completed_by_id = None
+        else:
+            process.current_phase_code = "diagnostico"
         db.commit()
 
     return RedirectResponse(
-        f"/v2-clean/workshop/diagnostico?process_id={process_id}&report_uploaded=1&selected_report_id={uploaded_report_id or ''}#leituras",
+        (
+            f"/v2-clean/workshop/validacao?process_id={process_id}&report_uploaded=1#workshop-v2-diagnostic"
+            if simplified_new_flow else
+            f"/v2-clean/workshop/diagnostico?process_id={process_id}&report_uploaded=1&selected_report_id={uploaded_report_id or ''}#leituras"
+        ),
         status_code=303,
     )
 
@@ -28251,7 +29485,7 @@ async def clean_workshop_technical_report_validate(request: Request, report_id: 
         if not report:
             return RedirectResponse("/v2-clean/workshop", status_code=303)
         process = db.get(WorkshopPhasedProcess, report.process_id)
-        if clean_workshop_process_is_readonly(process):
+        if clean_workshop_process_is_readonly(process) and not clean_workshop_v2_late_diagnostic_upload_allowed(db, process):
             return RedirectResponse(f"{clean_workshop_process_url(process)}&readonly=1", status_code=303)
         selected_report_id = report.id
 
@@ -28331,13 +29565,52 @@ async def clean_workshop_technical_report_validate(request: Request, report_id: 
             report.status = "validated_manually"
 
         process = db.get(WorkshopPhasedProcess, report.process_id)
-        if process:
+        simplified_new_flow = bool(
+            process and isinstance(process.metadata_json, dict)
+            and process.metadata_json.get("workshop_flow_version") == 2
+        )
+        if process and simplified_new_flow:
+            active_reports = db.scalars(select(WorkshopPhasedTechnicalReport).where(
+                WorkshopPhasedTechnicalReport.process_id == process.id,
+                ~WorkshopPhasedTechnicalReport.status.in_({"voided", "superseded"}),
+            )).all()
+            if (process.metadata_json or {}).get("diagnostic_mode") == "late_authorized":
+                diagnostic_phase = clean_workshop_v2_ensure_phase(db, process, "diagnostico")
+                all_complete = bool(active_reports) and all(
+                    clean_workshop_report_is_complete(item) for item in active_reports
+                )
+                diagnostic_phase.status = "completed" if all_complete else "pending_documents"
+                diagnostic_data = dict(diagnostic_phase.data_json or {})
+                diagnostic_snapshot = dict(diagnostic_data.get("form_snapshot") or {})
+                diagnostic_snapshot["diagnostic_closed"] = "Sim" if all_complete else "Pendente"
+                diagnostic_data["form_snapshot"] = diagnostic_snapshot
+                diagnostic_phase.data_json = diagnostic_data
+                if all_complete:
+                    diagnostic_phase.completed_at = now
+                    diagnostic_phase.completed_by_id = user_id
+                    if process.status == "closed":
+                        closure_phase = clean_workshop_get_phase(db, process.id, "fecho")
+                        if closure_phase:
+                            closure_data = dict(closure_phase.data_json or {})
+                            closure_snapshot = dict(closure_data.get("form_snapshot") or {})
+                            closure_snapshot["closure_diagnostic_pending"] = "no"
+                            closure_snapshot["closure_diagnostic_completed_at"] = now.isoformat()
+                            closure_data["form_snapshot"] = closure_snapshot
+                            closure_phase.data_json = closure_data
+                    record_audit(db, action="workshop.v2.diagnostic_documents.completed",
+                                 entity_type="workshop_phased_process", entity_id=process.id,
+                                 user_id=user_id, after_json={"report_count": len(active_reports)})
+        elif process:
             process.current_phase_code = "diagnostico"
         db.commit()
         process_id = report.process_id
 
     return RedirectResponse(
-        f"/v2-clean/workshop/diagnostico?process_id={process_id}&report_validated=1&selected_report_id={selected_report_id or ''}#leituras",
+        (
+            f"/v2-clean/workshop/validacao?process_id={process_id}&report_validated=1#workshop-v2-diagnostic"
+            if simplified_new_flow else
+            f"/v2-clean/workshop/diagnostico?process_id={process_id}&report_validated=1&selected_report_id={selected_report_id or ''}#leituras"
+        ),
         status_code=303,
     )
 

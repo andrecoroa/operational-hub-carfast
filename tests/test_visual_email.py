@@ -81,7 +81,19 @@ def test_email_workspace_assets_have_matching_cache_versions() -> None:
         source = (ROOT / "app" / "templates" / page).read_text(encoding="utf-8")
         assert f"email.js?v={version}" in source
     base = (ROOT / "app" / "templates" / "base.html").read_text(encoding="utf-8")
-    assert f"ui-contract-v1.css?v={version}" in base
+    assert "ui-contract-v1.css?v=20260917-email-task-actions" in base
+
+
+def test_email_task_creation_has_two_direct_outcome_actions() -> None:
+    template = THREAD.read_text(encoding="utf-8")
+    css = CONTRACT_CSS.read_text(encoding="utf-8")
+
+    assert 'name="task_outcome" value="complete"' in template
+    assert 'name="task_outcome" value="wait"' in template
+    assert "Criar tarefa e tratar email" in template
+    assert "Criar tarefa e aguardar conclusão" in template
+    assert 'type="radio" name="task_outcome"' not in template
+    assert ".email-create-task-wait" in css
 
 
 def test_email_responsive_contract_uses_local_overflow_and_full_screen_preview() -> None:
@@ -123,7 +135,7 @@ def test_email_thread_uses_full_width_reader_drawer_navigation_and_spam() -> Non
     script = JS.read_text(encoding="utf-8")
     router = ROUTER.read_text(encoding="utf-8")
 
-    for text in ("Voltar à caixa", "Anterior", "Próximo", "Confirmar classificação", "Guardar gestão", "Ligações", "Marcar email como tratado", "Aguardar conclusão da tarefa", "Abrir tarefa", "Spam"):
+    for text in ("Voltar à caixa", "Anterior", "Próximo", "Confirmar classificação", "Guardar gestão", "Ligações", "Criar tarefa e tratar email", "Criar tarefa e aguardar conclusão", "Abrir tarefa", "Spam"):
         assert text in source
     assert "email-treatment-drawer" in source
     assert ".visual-email-thread-page .email-treatment-drawer{position:relative" in css

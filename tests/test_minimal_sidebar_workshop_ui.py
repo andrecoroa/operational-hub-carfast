@@ -83,11 +83,12 @@ def test_workshop_rows_open_directly_and_wait_uses_dialog() -> None:
     assert ".clean-workshop-table-scroll .clean-workshop-list-head" in css
 
 
-def test_workshop_change_does_not_add_waiting_note_or_stock_behavior() -> None:
+def test_workshop_wait_other_has_note_without_stock_behavior() -> None:
     template = _read("app/templates/clean_workshop_dashboard.html")
 
     assert 'name="waiting_reason"' in template
-    assert 'name="waiting_note"' not in template
+    assert 'name="waiting_note"' in template
+    assert 'data-workshop-wait-form' in template
     assert "/v2-clean/stock" not in template
 
 

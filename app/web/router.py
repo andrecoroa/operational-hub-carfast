@@ -10745,6 +10745,7 @@ async def clean_workshop_operational_situation_save(request: Request, process_id
     form = await request.form()
     action = str(form.get("action") or "").strip().lower()
     waiting_reason = str(form.get("waiting_reason") or "").strip()
+    waiting_note = " ".join(str(form.get("waiting_note") or "").split())
     requested_return_url = str(form.get("return_url") or "").strip()
     return_scope = str(form.get("scope") or "open").strip().lower()
     if return_scope not in {"open", "closed", "cancelled", "all"}:
@@ -10766,7 +10767,11 @@ async def clean_workshop_operational_situation_save(request: Request, process_id
         if requested_return_url
         else dashboard_return_url
     )
-    if action not in {"wait", "resume"} or (action == "wait" and not waiting_reason):
+    if (
+        action not in {"wait", "resume"}
+        or (action == "wait" and not waiting_reason)
+        or (action == "wait" and waiting_reason == "Outro" and (not waiting_note or len(waiting_note) > 300))
+    ):
         return RedirectResponse(
             _append_query_flag(safe_return_url, situation_error="invalid"),
             status_code=303,
@@ -10779,14 +10784,21 @@ async def clean_workshop_operational_situation_save(request: Request, process_id
         before = {
             "operational_situation": metadata.get("operational_situation"),
             "operational_waiting_reason": metadata.get("operational_waiting_reason"),
+            "operational_waiting_note": metadata.get("operational_waiting_note"),
         }
         if action == "wait":
             metadata["operational_situation"] = "waiting"
-            metadata["operational_waiting_reason"] = waiting_reason
-            audit_detail = f"Processo colocado em espera: {waiting_reason}"
+            display_reason = f"Outro: {waiting_note}" if waiting_reason == "Outro" else waiting_reason
+            metadata["operational_waiting_reason"] = display_reason
+            if waiting_reason == "Outro":
+                metadata["operational_waiting_note"] = waiting_note
+            else:
+                metadata.pop("operational_waiting_note", None)
+            audit_detail = f"Processo colocado em espera: {display_reason}"
         else:
             metadata["operational_situation"] = "in_progress"
             metadata.pop("operational_waiting_reason", None)
+            metadata.pop("operational_waiting_note", None)
             audit_detail = "Processo retomado"
         process.metadata_json = metadata
         record_audit(
@@ -10799,6 +10811,7 @@ async def clean_workshop_operational_situation_save(request: Request, process_id
             after_json={
                 "operational_situation": metadata.get("operational_situation"),
                 "operational_waiting_reason": metadata.get("operational_waiting_reason"),
+                "operational_waiting_note": metadata.get("operational_waiting_note"),
             },
             user_id=get_web_user_id(request),
         )

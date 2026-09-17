@@ -11328,7 +11328,20 @@ def clean_workshop_find_vehicle(
     if vehicle_id:
         return db.get(Vehicle, vehicle_id)
     if plate:
-        return db.scalar(select(Vehicle).where(Vehicle.plate == normalize_identifier(plate)))
+        normalized_plate = normalize_identifier(plate)
+        if not normalized_plate:
+            return None
+        vehicle = db.scalar(select(Vehicle).where(Vehicle.plate == normalized_plate))
+        if vehicle:
+            return vehicle
+        compact_plate = normalized_plate.replace("-", "")
+        if compact_plate:
+            stored_plate = func.replace(func.replace(func.upper(Vehicle.plate), "-", ""), " ", "")
+            candidates = db.scalars(
+                select(Vehicle).where(stored_plate == compact_plate).limit(2)
+            ).all()
+            if len(candidates) == 1:
+                return candidates[0]
     return None
 
 
@@ -11434,6 +11447,9 @@ def clean_workshop_context_for_process(db: Session, process: WorkshopPhasedProce
     )
     context["process_ref"] = clean_workshop_process_reference(process)
     context["process_id"] = process.id
+    if process.plate_snapshot and context.get("plate") == CLEAN_WORKSHOP_CONTEXT["plate"]:
+        context["plate"] = process.plate_snapshot
+        context["vehicle"] = "Viatura não associada"
     return context
 
 
@@ -26604,11 +26620,11 @@ async def clean_workshop_entry_save(request: Request):
             )
             process_id = process.id
 
-        if submitted_plate and submitted_plate != (process.plate_snapshot or ""):
+        if submitted_plate and (submitted_plate != (process.plate_snapshot or "") or not process.vehicle_id):
             vehicle = clean_workshop_find_vehicle(db, plate=submitted_plate)
             process.vehicle_id = vehicle.id if vehicle else None
-            process.plate_snapshot = submitted_plate
-            process.title = f"{clean_workshop_process_reference(process)} · {submitted_plate}"
+            process.plate_snapshot = vehicle.plate if vehicle and vehicle.plate else submitted_plate
+            process.title = f"{clean_workshop_process_reference(process)} · {process.plate_snapshot}"
 
         phase = clean_workshop_get_phase(db, process.id, "entrada")
         if not phase:
@@ -38278,73 +38294,109 @@ def task_new_form(
         )
 
 
+def vehicle_search_items(
+    db: Session, raw_query: str, *, workshop_only: bool, include_workshop_context: bool = False
+) -> list[dict[str, object]]:
+    query = normalize_identifier(raw_query) or ""
+    compact_query = query.replace("-", "")
+    statement = select(Vehicle).where(Vehicle.plate.is_not(None), Vehicle.plate != "")
+    if workshop_only:
+        statement = statement.where(
+            or_(
+                Vehicle.lifecycle_status.is_(None),
+                ~func.lower(Vehicle.lifecycle_status).in_(WORKSHOP_BLOCKED_VEHICLE_STATUSES),
+            ),
+            or_(
+                Vehicle.operational_status.is_(None),
+                ~func.lower(Vehicle.operational_status).in_(WORKSHOP_BLOCKED_VEHICLE_STATUSES),
+            ),
+        )
+    if query:
+        compact_plate = func.replace(func.replace(func.upper(Vehicle.plate), "-", ""), " ", "")
+        statement = statement.where(
+            or_(
+                compact_plate.ilike(f"{compact_query}%"),
+                Vehicle.vin.ilike(f"{query}%"),
+                Vehicle.rentway_unit_nr.ilike(f"{query}%"),
+                Vehicle.brand.ilike(f"%{raw_query}%"),
+                Vehicle.model.ilike(f"%{raw_query}%"),
+            )
+        )
+    vehicles = db.scalars(statement.order_by(Vehicle.plate).limit(12)).all()
+    workshop_contexts = (
+        {
+            vehicle.id: clean_workshop_vehicle_context(db, vehicle_id=vehicle.id)
+            for vehicle in vehicles
+        }
+        if workshop_only and include_workshop_context else {}
+    )
+    return [
+        {
+            "id": vehicle.id,
+            "plate": vehicle.plate,
+            "brand": vehicle.brand,
+            "model": vehicle.model,
+            "version": vehicle.version,
+            "vin": vehicle.vin,
+            "rentway_unit_nr": vehicle.rentway_unit_nr,
+            "lifecycle_status": vehicle.lifecycle_status,
+            "operational_status": vehicle.operational_status,
+            "workshop_context": workshop_contexts.get(vehicle.id, {}),
+            "label": " · ".join(
+                item
+                for item in [
+                    vehicle.plate or "",
+                    f"Unit {vehicle.rentway_unit_nr}" if vehicle.rentway_unit_nr else "",
+                    " ".join(part for part in [vehicle.brand, vehicle.model] if part).strip(),
+                ]
+                if item
+            ),
+        }
+        for vehicle in vehicles
+        if vehicle.plate
+    ]
+
+
+@web_router.get("/v2-clean/workshop-entry/vehicle-search")
+def clean_workshop_entry_vehicle_search(request: Request):
+    denied = clean_experience_denied(request)
+    if denied:
+        return denied
+    if not has_any_web_permission(
+        request, "workshop.entry.create", "workshop.read", "workshop.write", "admin.manage"
+    ):
+        return Response(status_code=403)
+    raw_query = (request.query_params.get("q") or "").strip()
+    if len(re.sub(r"[^A-Z0-9]", "", raw_query.upper())) < 2:
+        return {"items": []}
+    with SessionLocal() as db:
+        matches = vehicle_search_items(db, raw_query, workshop_only=True)
+        return {"items": [
+            {
+                "plate": item["plate"],
+                "label": " · ".join(
+                    part for part in (
+                        str(item["plate"]),
+                        " ".join(str(item[key]) for key in ("brand", "model") if item[key]),
+                    ) if part
+                ),
+            }
+            for item in matches
+        ]}
+
+
 @web_router.get("/task-board/vehicle-search")
 def task_vehicle_search(request: Request):
     if not get_web_user_id(request):
         return JSONResponse({"items": []}, status_code=401)
-
     raw_query = (request.query_params.get("q") or "").strip()
-    query = raw_query.upper().replace(" ", "")
     context = (request.query_params.get("context") or "").strip().lower()
     with SessionLocal() as db:
-        statement = select(Vehicle).where(Vehicle.plate.is_not(None), Vehicle.plate != "")
-        if context == "workshop":
-            statement = statement.where(
-                or_(
-                    Vehicle.lifecycle_status.is_(None),
-                    ~func.lower(Vehicle.lifecycle_status).in_(WORKSHOP_BLOCKED_VEHICLE_STATUSES),
-                ),
-                or_(
-                    Vehicle.operational_status.is_(None),
-                    ~func.lower(Vehicle.operational_status).in_(WORKSHOP_BLOCKED_VEHICLE_STATUSES),
-                ),
-            )
-        if query:
-            statement = statement.where(
-                or_(
-                    Vehicle.plate.ilike(f"{query}%"),
-                    Vehicle.vin.ilike(f"{query}%"),
-                    Vehicle.rentway_unit_nr.ilike(f"{query}%"),
-                    Vehicle.brand.ilike(f"%{raw_query}%"),
-                    Vehicle.model.ilike(f"%{raw_query}%"),
-                )
-            )
-        vehicles = db.scalars(statement.order_by(Vehicle.plate).limit(12)).all()
-        workshop_contexts: dict[int, dict[str, object]] = {}
-        if context == "workshop":
-            workshop_contexts = {
-                vehicle.id: clean_workshop_vehicle_context(db, vehicle_id=vehicle.id)
-                for vehicle in vehicles
-            }
-        return {
-            "items": [
-                {
-                    "id": vehicle.id,
-                    "plate": vehicle.plate,
-                    "brand": vehicle.brand,
-                    "model": vehicle.model,
-                    "version": vehicle.version,
-                    "vin": vehicle.vin,
-                    "rentway_unit_nr": vehicle.rentway_unit_nr,
-                    "lifecycle_status": vehicle.lifecycle_status,
-                    "operational_status": vehicle.operational_status,
-                    "workshop_context": workshop_contexts.get(vehicle.id, {}),
-                    "label": " · ".join(
-                        item
-                        for item in [
-                            vehicle.plate or "",
-                            f"Unit {vehicle.rentway_unit_nr}" if vehicle.rentway_unit_nr else "",
-                            " ".join(
-                                part for part in [vehicle.brand, vehicle.model] if part
-                            ).strip(),
-                        ]
-                        if item
-                    ),
-                }
-                for vehicle in vehicles
-                if vehicle.plate
-            ]
-        }
+        return {"items": vehicle_search_items(
+            db, raw_query,
+            workshop_only=context == "workshop",
+            include_workshop_context=context == "workshop",
+        )}
 
 
 @web_router.post("/task-board/quick/new", response_class=HTMLResponse)

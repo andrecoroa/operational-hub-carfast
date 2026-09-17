@@ -35,11 +35,12 @@
       {% if return_context %}<input type="hidden" name="return_context" value="{{ return_context }}">{% endif %}
       <div class="table-heading flat-heading"><div><p class="eyebrow">01 · Identificação</p><h3>Viatura e ocorrência</h3></div></div>
       <div class="clean-phase-field-grid">
-        <label>Matrícula<input name="plate" autocomplete="off" required value="{{ workshop_process.plate_snapshot if workshop_process else request.query_params.get('plate', '') }}" placeholder="Ex.: AA-00-AA"></label>
+        <label>Matrícula<input id="workshop-v2-plate" name="plate" list="workshop-v2-plate-suggestions" aria-describedby="workshop-v2-vehicle-status" autocomplete="off" required value="{{ workshop_process.plate_snapshot if workshop_process else request.query_params.get('plate', '') }}" placeholder="Ex.: AA-00-AA"><datalist id="workshop-v2-plate-suggestions"></datalist></label>
         <label>KM de entrada<input name="entry_km" inputmode="numeric" value="{{ saved_entry.entry_km or '' }}" placeholder="Km no quadrante"></label>
         <label>Tipo de registo<select name="entry_mode" id="workshop-v2-entry-mode">{% for option in ["Entrada", "Marcação", "Entrada em assistência em viagem"] %}<option{% if (saved_entry.entry_mode or "Entrada") == option %} selected{% endif %}>{{ option }}</option>{% endfor %}</select></label>
         <label>Viatura pode circular?<select name="can_drive">{% for option in ["Por confirmar", "Sim", "Não"] %}<option{% if (saved_entry.can_drive or "Por confirmar") == option %} selected{% endif %}>{{ option }}</option>{% endfor %}</select></label>
       </div>
+      <p class="workshop-v2-vehicle-status" id="workshop-v2-vehicle-status" role="status" aria-live="polite">{% if workshop_process and not workshop_process.vehicle_id %}Matrícula registada, mas sem viatura associada à Frota. Confirma a matrícula antes de avançar.{% endif %}</p>
       <fieldset class="workshop-v2-reasons"><legend>Porque entrou?</legend><div class="clean-chip-grid clean-chip-grid-final">
         {% for reason in entry_reasons %}<label><input type="checkbox" name="entry_reasons" value="{{ reason }}"{% if reason in saved_reasons %} checked{% endif %}><span>{{ reason }}</span></label>{% endfor %}
       </div></fieldset>
@@ -124,6 +125,43 @@
 (() => {
   const root = document.querySelector('.workshop-v2-entry');
   if (!root) return;
+  const plateInput = root.querySelector('#workshop-v2-plate');
+  const plateSuggestions = root.querySelector('#workshop-v2-plate-suggestions');
+  const vehicleStatus = root.querySelector('#workshop-v2-vehicle-status');
+  let plateSearchTimer;
+  let plateSearchSequence = 0;
+  const compactPlate = value => String(value || '').toUpperCase().replace(/[\s-]/g, '');
+  plateInput.addEventListener('input', () => {
+    clearTimeout(plateSearchTimer);
+    const sequence = ++plateSearchSequence;
+    const query = plateInput.value.trim();
+    plateSuggestions.replaceChildren();
+    if (query.length < 2) { vehicleStatus.textContent = ''; return; }
+    vehicleStatus.textContent = 'A procurar a viatura na Frota…';
+    plateSearchTimer = setTimeout(async () => {
+      try {
+        const response = await fetch(`/v2-clean/workshop-entry/vehicle-search?q=${encodeURIComponent(query)}`);
+        if (!response.ok) throw new Error('Pesquisa indisponível');
+        const payload = await response.json();
+        if (sequence !== plateSearchSequence) return;
+        const items = payload.items || [];
+        items.forEach(item => {
+          if (!item.plate) return;
+          const option = document.createElement('option');
+          option.value = item.plate;
+          option.label = item.label || item.plate;
+          plateSuggestions.appendChild(option);
+        });
+        const exact = items.find(item => compactPlate(item.plate) === compactPlate(query));
+        vehicleStatus.textContent = exact
+          ? `Viatura encontrada na Frota: ${exact.label || exact.plate}.`
+          : items.length ? 'Escolhe uma das matrículas sugeridas para associar a viatura.'
+            : 'Matrícula não encontrada na Frota. O processo ficará sem viatura associada.';
+      } catch (error) {
+        if (sequence === plateSearchSequence) vehicleStatus.textContent = 'Não foi possível confirmar a viatura na Frota. Verifica antes de avançar.';
+      }
+    }, 180);
+  });
   const sync = () => {
     const selected = new Set([...root.querySelectorAll('input[name="entry_reasons"]:checked')].map(el => el.value));
     root.querySelector('#workshop-v2-breakdowns').hidden = !selected.has('Avaria');

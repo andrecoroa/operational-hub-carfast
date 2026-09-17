@@ -30547,6 +30547,12 @@ body:has(.email-preview-dialog[open]) { overflow: hidden; }
   gap: 20px;
   margin-top: 18px;
 }
+.workshop-v2-vehicle-status {
+  margin: -10px 0 0;
+  color: #80531d;
+  font-size: 0.88rem;
+}
+.workshop-v2-vehicle-status:empty { display: none; }
 .workshop-v2-entry-form fieldset {
   border: 0;
   margin: 0;

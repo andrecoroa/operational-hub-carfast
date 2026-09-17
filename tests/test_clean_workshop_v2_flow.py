@@ -565,6 +565,9 @@ def test_workshop_dashboard_shows_operational_context_and_updates_situation(
     legacy_dossier = authenticated_client.get(f"/v2-clean/workshop/{process.id}/print/process-dossier")
     assert legacy_dossier.status_code == 200
     assert "Oficina Parceira" in legacy_dossier.text
+    legacy_report = authenticated_client.get(f"/v2-clean/workshop/{process.id}/print/final-report")
+    assert legacy_report.status_code == 200
+    assert "Oficina Parceira" in legacy_report.text
     expected_return = (
         f"/v2-clean/workshop?scope=open&amp;location=all&amp;phase=all&amp;"
         f"situation=all&amp;q=WX-10-AA&amp;sort=age&amp;preview={process.id}"

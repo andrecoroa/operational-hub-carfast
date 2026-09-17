@@ -440,6 +440,9 @@ def test_v2_external_repair_quote_followup_print_and_close(authenticated_client,
     final_report = authenticated_client.get(f"/v2-clean/workshop/{process.id}/print/final-report")
     assert final_report.status_code == 200
     assert "Viatura entregue após reparação externa" in final_report.text
+    assert "Oficina Parceira" in final_report.text
+    assert "EXT-002" in final_report.text
+    assert "ORC-EXT-1" in final_report.text
     closed_dossier = authenticated_client.get(
         f"/v2-clean/workshop/{process.id}/print/process-dossier"
     )

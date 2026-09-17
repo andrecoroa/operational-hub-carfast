@@ -14,6 +14,7 @@ from app.services.bootstrap import seed_initial_data
 from app.services.users import create_user
 import app.web.clean_admin as clean_admin
 import app.web.router as web_router
+import app.web.supplier_audits as supplier_audits
 
 
 TEST_ADMIN_EMAIL = "admin.tests@carfast.local"
@@ -33,9 +34,11 @@ def db_session() -> Generator[Session]:
     original_web_session_local = web_router.SessionLocal
     original_clean_admin_session_local = clean_admin.SessionLocal
     original_main_session_local = app_main.SessionLocal
+    original_supplier_audit_session_local = supplier_audits.SessionLocal
     web_router.SessionLocal = TestingSessionLocal
     clean_admin.SessionLocal = TestingSessionLocal
     app_main.SessionLocal = TestingSessionLocal
+    supplier_audits.SessionLocal = TestingSessionLocal
 
     def override_get_db():
         with TestingSessionLocal() as db:
@@ -63,6 +66,7 @@ def db_session() -> Generator[Session]:
         web_router.SessionLocal = original_web_session_local
         clean_admin.SessionLocal = original_clean_admin_session_local
         app_main.SessionLocal = original_main_session_local
+        supplier_audits.SessionLocal = original_supplier_audit_session_local
 
 
 @pytest.fixture()

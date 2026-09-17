@@ -11896,6 +11896,11 @@ def clean_workshop_substeps(
     phase_key: str,
     process: WorkshopPhasedProcess | None = None,
 ) -> tuple[str, ...]:
+    # The validation workbench now has one visible card. Older template
+    # snapshots still contain the three former substeps; following them would
+    # redirect a save back to an invisible card instead of advancing the phase.
+    if phase_key == "validacao":
+        return ("pedido_orientacao",)
     snapshot = process.template_snapshot_json if process else None
     phases = snapshot.get("config", {}).get("phases", []) if isinstance(snapshot, dict) else []
     for phase in phases:
@@ -12193,9 +12198,9 @@ def clean_workshop_validation_substep_status(
         "pedido": "Guardado"
         if clean_workshop_substep_is_saved(
             saved_substeps,
-            "pedido",
+            "pedido_orientacao",
             legacy_has_data=has_decision or has_history_answer or has_service_data,
-        )
+        ) or clean_workshop_substep_is_saved(saved_substeps, "pedido", legacy_has_data=False)
         else "Por validar",
         "orientacao": "Guardado"
         if clean_workshop_substep_is_saved(
@@ -27081,6 +27086,36 @@ def clean_workshop_print_report(request: Request, process_id: int, report_type: 
                 for phase_code in CLEAN_WORKSHOP_PHASES
             },
         }
+        entry_form = phase_forms.get("entrada", {})
+        historical_date = str(entry_form.get("historical_intervention_date") or "").strip()
+        if process.creation_mode == "historical" and historical_date:
+            try:
+                vehicle_context = {
+                    **vehicle_context,
+                    "entry_date": datetime.fromisoformat(historical_date).strftime("%d/%m/%Y"),
+                }
+            except ValueError:
+                pass
+        elif process.received_at:
+            vehicle_context = {
+                **vehicle_context,
+                "entry_date": process.received_at.strftime("%d/%m/%Y"),
+            }
+
+        report = dict(report_config)
+        if report_type == "diagnostic-order":
+            validation_phase = clean_workshop_get_phase(db, process.id, "validacao")
+            if not validation_phase or validation_phase.status != "completed":
+                report["status"] = "Rascunho - validação pendente"
+        elif report_type == "repair-order":
+            audit_phase = clean_workshop_get_phase(db, process.id, "auditoria")
+            authorization = clean_form_value(phase_forms.get("auditoria", {}), "audit_repair_authorized")
+            if not audit_phase or audit_phase.status != "completed" or authorization not in {"Sim", "Com reserva"}:
+                report["status"] = "Rascunho - autorização pendente"
+            elif authorization == "Com reserva":
+                report["status"] = "Autorizado com reserva"
+        elif report_type == "final-report" and process.status != "closed":
+            report["status"] = "Rascunho - processo aberto"
         reports = db.scalars(
             select(WorkshopPhasedTechnicalReport)
             .where(
@@ -27112,6 +27147,15 @@ def clean_workshop_print_report(request: Request, process_id: int, report_type: 
                 .limit(8)
             ).all()
 
+        from app.services.workshop_historical_evidence import historical_workshop_document_evidence
+
+        historical_evidence = historical_workshop_document_evidence(
+            db,
+            process,
+            intervention_date=historical_date,
+            service_type=next(iter(clean_form_values(phase_forms.get("validacao", {}), "service_type")), ""),
+        )
+
         repair_form = phase_forms.get("reparacao", {})
         material_rows = []
         for index in range(1, 9):
@@ -27129,7 +27173,7 @@ def clean_workshop_print_report(request: Request, process_id: int, report_type: 
             "clean_workshop_print_report.html",
             {
                 "report_type": report_type,
-                "report": report_config,
+                "report": report,
                 "process": process,
                 "vehicle_context": vehicle_context,
                 "entry": phase_forms.get("entrada", {}),
@@ -27145,6 +27189,7 @@ def clean_workshop_print_report(request: Request, process_id: int, report_type: 
                 "process_services": process_services,
                 "history_services": history_services,
                 "material_rows": material_rows,
+                "historical_evidence": historical_evidence,
                 "printed_at": datetime.now().strftime("%d/%m/%Y %H:%M"),
                 "return_url": clean_workshop_process_url(process),
             },

@@ -70,23 +70,17 @@ def test_sidebar_scroll_keeps_stock_as_a_primary_destination() -> None:
     assert "overflow-y: auto" in css
 
 
-def test_workshop_preview_is_inline_and_wait_panel_is_not_overlaid() -> None:
+def test_workshop_rows_open_directly_and_wait_uses_dialog() -> None:
     template = _read("app/templates/clean_workshop_dashboard.html")
     css = _read("app/static/css/app.css")
 
-    assert "data-workshop-preview" in template
-    assert "data-workshop-preview-close" in template
+    assert "data-workshop-preview" not in template
+    assert 'class="clean-workshop-open-link" href="{{ row.workbench_url }}"' in template
     assert 'aria-label="Abrir navegação" aria-controls="visual-sidebar"' in template
-    assert "data-workshop-wait-panel" in template
-    assert 'event.key !== "Escape"' in template
-    assert "history.replaceState" in template
-    assert ".clean-workshop-process-preview" in css
+    assert 'class="clean-workshop-wait-dialog" id="workshop-wait-' in template
+    assert "history.replaceState" not in template
+    assert ".clean-workshop-wait-dialog" in css
     assert ".clean-workshop-table-scroll .clean-workshop-list-head" in css
-    assert ".clean-workshop-wait-control form" not in css
-    preview_css = css[
-        css.index(".clean-workshop-process-preview") : css.index(".clean-task-classification-row")
-    ]
-    assert "position: absolute" not in preview_css
 
 
 def test_workshop_change_does_not_add_waiting_note_or_stock_behavior() -> None:

@@ -218,6 +218,14 @@
     const conversation = shell.querySelector(".email-conversation");
     const footer = shell.querySelector(".email-modal-footer");
     if (conversation && footer) conversation.append(footer);
+    const shortcuts = document.createElement("div");
+    shortcuts.className = "email-workspace-shortcuts";
+    shortcuts.setAttribute("aria-label", "Ações de leitura");
+    const headerActions = shell.querySelector(".email-header-actions");
+    const readAction = headerActions?.querySelector("form, .email-read-state");
+    if (readAction) shortcuts.append(readAction);
+    shell.querySelectorAll('.email-thread-navigation [rel="prev"], .email-thread-navigation [rel="next"], .email-thread-navigation .is-disabled').forEach((action) => shortcuts.append(action));
+    tabs.append(shortcuts);
     const triage = shell.querySelector('[data-email-panel="triage"]');
     const composer = shell.querySelector('[data-email-panel="composer"]');
     const drawer = shell.querySelector("[data-email-treatment-drawer]");

@@ -65,6 +65,8 @@ def test_full_email_workspace_keeps_all_actions_in_tabbed_layout() -> None:
         assert f'data-email-workspace-section="{section}"' in template
     assert "if (!tabs) return;" in script  # Embedded preview keeps its drawer behaviour.
     assert "conversation.append(footer)" in script  # Actions follow the email body.
+    assert 'shortcuts.className = "email-workspace-shortcuts"' in script
+    assert 'tabs.append(shortcuts)' in script
     assert 'activate("conversation")' in script
     assert ".email-workspace-tabs button[aria-current=\"page\"]" in css
     assert ".email-reader-grid{order:2;flex:1 1 auto;overflow-y:auto!important" in css

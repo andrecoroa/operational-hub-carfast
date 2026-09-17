@@ -406,6 +406,8 @@
 .ui-contract-v1 .clean-workshop-dashboard-filters { min-height: 44px; padding: 4px 8px; gap: 7px; }
 .ui-contract-v1 .clean-workshop-dashboard-filters label { gap: 2px; }
 .ui-contract-v1 .clean-workshop-dashboard-filters :is(select,button) { min-height: 32px; height: 32px; }
+.ui-contract-v1 .clean-workshop-dashboard-filters select { box-sizing: border-box; min-height: 38px; height: 38px; padding: 6px 30px 6px 10px; background-color: #fff; color: #172033; font-size: 13px; font-weight: 750; line-height: 20px; }
+.ui-contract-v1 .clean-workshop-dashboard-filters select:focus-visible { outline: 2px solid #235bd7; outline-offset: 2px; }
 .ui-contract-v1 .clean-workshop-dashboard-filters > a { min-height: 32px; height: 32px; }
 .ui-contract-v1 .clean-workshop-list-head { min-height: 32px; padding-block: 4px; }
 .ui-contract-v1 .clean-workshop-process-list { gap: 4px; }

@@ -10595,33 +10595,16 @@ def clean_workshop_dashboard(
                 250 if q or sort != "updated" or location != "all" or situation != "all" else 40
             )
         ).all()
-        process_ids = [process.id for process in recent_processes]
-        responsible_ids = {
-            process.responsible_user_id
-            for process in recent_processes
-            if process.responsible_user_id
-        }
-        responsible_by_id = {
-            user.id: user.name
-            for user in db.scalars(select(User).where(User.id.in_(responsible_ids))).all()
-        } if responsible_ids else {}
-        recent_phases_by_process: dict[int, list[WorkshopPhasedProcessPhase]] = {}
-        if process_ids:
-            for phase_row in db.scalars(
-                select(WorkshopPhasedProcessPhase)
-                .where(WorkshopPhasedProcessPhase.process_id.in_(process_ids))
-                .order_by(
-                    WorkshopPhasedProcessPhase.process_id,
-                    WorkshopPhasedProcessPhase.updated_at.desc(),
-                    WorkshopPhasedProcessPhase.id.desc(),
-                )
-            ).all():
-                history = recent_phases_by_process.setdefault(phase_row.process_id, [])
-                if len(history) < 3:
-                    history.append(phase_row)
+        vehicle_ids = {process.vehicle_id for process in recent_processes if process.vehicle_id}
+        vehicles_by_id = {
+            vehicle.id: vehicle
+            for vehicle in db.scalars(select(Vehicle).where(Vehicle.id.in_(vehicle_ids))).all()
+        } if vehicle_ids else {}
         process_rows: list[dict[str, object]] = []
         now = datetime.now(UTC)
         for process in recent_processes:
+            vehicle = vehicles_by_id.get(process.vehicle_id)
+            vehicle_group = str(vehicle.rentway_group or "").strip() if vehicle else ""
             entry_phase = clean_workshop_get_phase(db, process.id, "entrada")
             entry_data = (
                 dict(entry_phase.data_json or {})
@@ -10675,6 +10658,11 @@ def clean_workshop_dashboard(
                 operational_situation = "cancelled"
             row = {
                     "process": process,
+                    "vehicle_brand_model": (
+                        " ".join(part for part in (vehicle.brand, vehicle.model) if part).strip()
+                        or "Marca/modelo não informados"
+                    ) if vehicle else "Viatura não associada",
+                    "vehicle_group": vehicle_group or "Grupo não informado",
                     "opened_at": opened_at,
                     "elapsed_days": elapsed_days,
                     "entry_reason": " · ".join(entry_reasons) or "Por classificar",
@@ -10683,13 +10671,6 @@ def clean_workshop_dashboard(
                     "location_detail": external_name if external_repair and external_name else ("Oficina externa" if external_repair else "Oficina Carfast"),
                     "operational_situation": operational_situation,
                     "waiting_reason": str(metadata.get("operational_waiting_reason") or "").strip(),
-                    "responsible_name": responsible_by_id.get(process.responsible_user_id or 0, "Sem responsável"),
-                    "recent_phases": recent_phases_by_process.get(process.id, []),
-                    "next_action": (
-                        "Retomar o processo"
-                        if operational_situation == "waiting"
-                        else f"Continuar em {str(process.current_phase_code or 'entrada').replace('_', ' ').title()}"
-                    ),
                 }
             return_query = urlencode(
                 {
@@ -10699,7 +10680,6 @@ def clean_workshop_dashboard(
                     "situation": situation,
                     "q": q,
                     "sort": sort,
-                    "preview": str(process.id),
                 }
             )
             return_context = issue_return_context(
@@ -10748,6 +10728,9 @@ def clean_workshop_dashboard(
                 "sort": sort,
                 "phase_options": phase_options,
                 "filter_query": filter_query,
+                "can_update_operational": has_any_web_permission(
+                    request, "workshop.write", "admin.manage"
+                ),
             },
         )
 

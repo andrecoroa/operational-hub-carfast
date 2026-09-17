@@ -496,6 +496,7 @@ def test_workshop_dashboard_shows_operational_context_and_updates_situation(
         vin="VINWX10AA123456789",
         brand="PEUGEOT",
         model="208",
+        rentway_group="B1",
         active=True,
     )
     db_session.add(vehicle)
@@ -539,8 +540,10 @@ def test_workshop_dashboard_shows_operational_context_and_updates_situation(
     assert "Colocar em espera" in dashboard.text
     assert "Fase atual" in dashboard.text
     assert "Em espera" in dashboard.text
-    assert 'data-workshop-preview-toggle' in dashboard.text
-    assert 'id="workshop-preview-' in dashboard.text
+    assert 'data-workshop-preview-toggle' not in dashboard.text
+    assert 'id="workshop-wait-' in dashboard.text
+    assert "PEUGEOT 208" in dashboard.text
+    assert "B1" in dashboard.text
     assert "Fase atual</strong> indica onde o processo está no percurso técnico" in dashboard.text
 
     searched = authenticated_client.get("/v2-clean/workshop?q=WX-10-AA&sort=age")
@@ -549,7 +552,7 @@ def test_workshop_dashboard_shows_operational_context_and_updates_situation(
     assert 'name="q" value="WX-10-AA"' in searched.text
     assert 'value="age" selected' in searched.text
     assert "Ruído ao travar" in searched.text
-    assert "Histórico recente" in searched.text
+    assert "Abrir e trabalhar" in searched.text
 
     workbench_match = re.search(
         r'href="([^"]+return_context=[^"]+)">Abrir e trabalhar</a>',
@@ -570,7 +573,7 @@ def test_workshop_dashboard_shows_operational_context_and_updates_situation(
     assert "Oficina Parceira" in legacy_report.text
     expected_return = (
         f"/v2-clean/workshop?scope=open&amp;location=all&amp;phase=all&amp;"
-        f"situation=all&amp;q=WX-10-AA&amp;sort=age&amp;preview={process.id}"
+        f"situation=all&amp;q=WX-10-AA&amp;sort=age"
         f"#workshop-process-{process.id}"
     )
     assert f'href="{expected_return}">Voltar à Oficina</a>' in workbench.text
@@ -639,6 +642,31 @@ def test_workshop_dashboard_shows_operational_context_and_updates_situation(
     db_session.refresh(process)
     assert process.metadata_json["operational_situation"] == "in_progress"
     assert "operational_waiting_reason" not in process.metadata_json
+
+
+def test_workshop_dashboard_labels_unlinked_vehicle_without_guessing(
+    authenticated_client, db_session
+):
+    process = WorkshopPhasedProcess(
+        process_type="workshop",
+        title="Viatura ainda por associar",
+        creation_mode="operational",
+        status="open",
+        plate_snapshot="AA-11-BB",
+        current_phase_code="entrada",
+        priority="normal",
+        metadata_json={},
+    )
+    db_session.add(process)
+    db_session.commit()
+
+    dashboard = authenticated_client.get("/v2-clean/workshop?q=AA-11-BB")
+
+    assert dashboard.status_code == 200
+    assert "Viatura não associada" in dashboard.text
+    assert "Grupo não informado" in dashboard.text
+    assert 'data-workshop-preview' not in dashboard.text
+    assert 'class="clean-workshop-open-link"' in dashboard.text
 
 
 def test_repair_material_request_is_direct_and_uses_existing_stock_contract(

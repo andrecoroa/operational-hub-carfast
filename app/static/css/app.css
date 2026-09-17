@@ -20955,7 +20955,7 @@ body.clean-doc-modal-open {
 
 .clean-workshop-list-head {
   display: grid;
-  grid-template-columns: minmax(150px, .9fr) minmax(145px, .9fr) minmax(120px, .7fr) minmax(210px, 1.35fr) minmax(95px, .6fr) minmax(90px, .55fr) minmax(150px, .9fr);
+  grid-template-columns: minmax(230px, 1.2fr) minmax(145px, .9fr) minmax(120px, .7fr) minmax(210px, 1.35fr) minmax(95px, .6fr) minmax(90px, .55fr) minmax(150px, .9fr);
   gap: 10px;
   padding: 0 12px;
   color: #667085;
@@ -20988,7 +20988,7 @@ body.clean-doc-modal-open {
 }
 
 .clean-workshop-process-item {
-  grid-template-columns: minmax(150px, .9fr) minmax(145px, .9fr) minmax(120px, .7fr) minmax(210px, 1.35fr) minmax(95px, .6fr) minmax(90px, .55fr) minmax(150px, .9fr);
+  grid-template-columns: minmax(230px, 1.2fr) minmax(145px, .9fr) minmax(120px, .7fr) minmax(210px, 1.35fr) minmax(95px, .6fr) minmax(90px, .55fr) minmax(150px, .9fr);
   align-items: center;
 }
 
@@ -21008,6 +21008,34 @@ body.clean-doc-modal-open {
 .clean-workshop-process-link:hover {
   background: transparent;
   color: #1749af;
+}
+
+.clean-workshop-vehicle-cell {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.clean-workshop-vehicle-cell .clean-workshop-vehicle-name,
+.clean-workshop-vehicle-cell .clean-workshop-vehicle-group {
+  margin: 0;
+  overflow-wrap: anywhere;
+  line-height: 1.3;
+}
+
+.clean-workshop-vehicle-cell .clean-workshop-vehicle-name {
+  color: #344054;
+  font-weight: 800;
+}
+
+.clean-workshop-open-link {
+  width: fit-content;
+  margin-top: 3px;
+  color: #1749af;
+  font-size: var(--clean-font-xs);
+  font-weight: 900;
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 
 .clean-workshop-process-fact strong {
@@ -21038,8 +21066,7 @@ body.clean-doc-modal-open {
   color: #b54708;
 }
 
-.clean-workshop-situation-action,
-.clean-workshop-wait-panel button {
+.clean-workshop-situation-action {
   border: 0;
   background: transparent;
   color: #b42318;
@@ -21052,101 +21079,12 @@ body.clean-doc-modal-open {
 @media (max-width: 1100px) {
   .clean-workshop-list-head,
   .clean-workshop-process-item {
-    min-width: 1080px;
+    min-width: 1200px;
   }
-}
-
-.clean-workshop-process-preview {
-  position: sticky;
-  left: 0;
-  width: min(920px, calc(100vw - 280px));
-  min-width: 0;
-  display: grid;
-  gap: 12px;
-  margin: 0 0 8px;
-  padding: 14px 16px;
-  border: 1px solid #b8c9e6;
-  border-radius: 8px;
-  background: #f8fbff;
-  box-shadow: inset 3px 0 0 #2875e8;
-}
-
-.clean-workshop-process-preview[hidden],
-.clean-workshop-wait-panel[hidden] {
-  display: none;
-}
-
-.clean-workshop-process-preview > header,
-.clean-workshop-preview-actions,
-.clean-workshop-wait-panel,
-.clean-workshop-wait-panel form {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.clean-workshop-process-preview > header {
-  justify-content: space-between;
-}
-
-.clean-workshop-process-preview span,
-.clean-workshop-wait-panel label {
-  color: #667085;
-  font-size: var(--clean-font-xs);
-  font-weight: 800;
-}
-
-.clean-workshop-preview-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0,1fr));
-  gap: 12px;
-}
-
-.clean-workshop-preview-grid > div {
-  min-width: 0;
-  padding: 10px;
-  border: 1px solid #dbe4f1;
-  border-radius: 6px;
-  background: #fff;
-}
-
-.clean-workshop-preview-grid p {
-  margin: 4px 0 0;
-  color: #475467;
-  font-size: var(--clean-font-xs);
-}
-
-.clean-workshop-wait-panel {
-  flex: 1;
-  justify-content: space-between;
-  padding: 10px;
-  border: 1px solid #fedf89;
-  border-radius: 6px;
-  background: #fffaeb;
-}
-
-.clean-workshop-wait-panel > div,
-.clean-workshop-wait-panel label {
-  display: grid;
-  gap: 3px;
-}
-
-.clean-workshop-wait-panel form {
-  margin: 0;
-}
-
-.clean-workshop-wait-panel button {
-  min-height: 36px;
-  padding: 7px 12px;
 }
 
 @media (max-width: 900px) {
   .clean-workshop-dashboard-filters { position: static; }
-  .clean-workshop-process-preview { width: calc(100vw - 48px); }
-  .clean-workshop-preview-grid { grid-template-columns: 1fr 1fr; }
-  .clean-workshop-preview-actions,
-  .clean-workshop-wait-panel,
-  .clean-workshop-wait-panel form { align-items: stretch; flex-direction: column; }
 }
 
 .clean-task-classification-row,

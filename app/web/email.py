@@ -104,6 +104,13 @@ templates = configure_visual_template_runtime(Jinja2Templates(directory="app/tem
 templates.env.filters["lisbon_datetime"] = local_datetime
 
 
+def _send_error_code(exc: RuntimeError) -> str:
+    """Expose an authorization failure without leaking the provider response body."""
+    if re.search(r"Microsoft Graph devolveu HTTP 403\b", str(exc)):
+        return "microsoft365_forbidden"
+    return "send_disabled"
+
+
 def _reopen_threads_after_linked_task_completion(db) -> None:
     rows = db.execute(
         select(EmailThread, Task).join(Task, Task.id == EmailThread.task_id).where(
@@ -1830,9 +1837,10 @@ def email_new_message(
                 message.postmark_error = str(exc)
                 db.commit()
                 return RedirectResponse(
-                    f"/v2-clean/email/{thread.id}?error=send_disabled", status_code=303
+                    f"/v2-clean/email/{thread.id}?error={_send_error_code(exc)}", status_code=303
                 )
             message.state = "sent"
+            message.postmark_error = None
             message.sent_at = now
             message.approved_by_id = user_id
             message.approved_at = now
@@ -3225,10 +3233,11 @@ def email_reply(
                 message.postmark_error = str(exc)
                 db.commit()
                 return RedirectResponse(
-                    f"/v2-clean/email/{thread_id}?error=send_disabled", status_code=303
+                    f"/v2-clean/email/{thread_id}?error={_send_error_code(exc)}", status_code=303
                 )
             now = datetime.now(UTC)
             message.state = "sent"
+            message.postmark_error = None
             message.sent_at = now
             message.approved_by_id = user_id
             message.approved_at = now
@@ -3456,6 +3465,7 @@ def email_approve(request: Request, thread_id: int, message_id: int):
                 user_id,
                 datetime.now(UTC),
             )
+            message.postmark_error = None
             message.external_message_id = result.get("MessageID") or message.external_message_id
             message.approved_revision = message.content_revision
             thread.status = "waiting_reply"
@@ -3471,7 +3481,7 @@ def email_approve(request: Request, thread_id: int, message_id: int):
             message.postmark_error = str(exc)
             db.commit()
             return RedirectResponse(
-                f"/v2-clean/email/{thread_id}?error=send_disabled", status_code=303
+                f"/v2-clean/email/{thread_id}?error={_send_error_code(exc)}", status_code=303
             )
         db.add(
             EmailAuditEvent(

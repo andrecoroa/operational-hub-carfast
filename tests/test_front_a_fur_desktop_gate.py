@@ -70,7 +70,7 @@ def test_fur_workshop_first_fold_contract_is_compact_and_keeps_one_primary_actio
     template = _read("app/templates/clean_workshop_dashboard.html")
     css = _read("app/static/css/ui-contract-v1.css")
     assert 'class="clean-header-shell clean-card-wide clean-header-shell-dashboard fur-workshop-header"' in template
-    assert template.count('class="button-link" href="/v2-clean/workshop-entry"') == 1
+    assert template.count('class="button-link" href="/v2-clean/workshop-entry?flow=2"') == 1
     assert 'class="fur-secondary-actions"' in template
     assert "clean-workshop-filter-title" not in template
     for marker in (

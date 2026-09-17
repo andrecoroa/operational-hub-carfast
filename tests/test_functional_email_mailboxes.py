@@ -47,6 +47,14 @@ FUNCTIONAL_CODES = {
 }
 
 
+def test_send_error_code_distinguishes_graph_authorization_from_disabled_transport():
+    assert (
+        email_web._send_error_code(RuntimeError("Microsoft Graph devolveu HTTP 403."))
+        == "microsoft365_forbidden"
+    )
+    assert email_web._send_error_code(RuntimeError("O envio externo está desligado")) == "send_disabled"
+
+
 def _identity_channel(db_session, code: str, *, policy: str = "original") -> EmailChannel:
     channel = EmailChannel(
         code=code,
@@ -311,14 +319,29 @@ def test_reply_route_persists_original_alias_and_blocks_arbitrary_sender(
         )
         .order_by(EmailMessage.id.desc())
     )
+    pending.postmark_error = "Falha anterior"
+    db_session.commit()
     sent = []
+
+    def forbidden_send(*args, **kwargs):
+        raise RuntimeError("Microsoft Graph devolveu HTTP 403.")
+
+    monkeypatch.setattr(email_web, "send_channel_message", forbidden_send)
+    monkeypatch.setattr(email_web, "outbound_enabled_for_channel", lambda *args: True)
+    response = authenticated_client.post(
+        f"/v2-clean/email/{thread.id}/messages/{pending.id}/approve",
+        follow_redirects=False,
+    )
+    assert response.headers["location"].endswith("error=microsoft365_forbidden")
+    db_session.refresh(pending)
+    assert pending.state == "pending_approval"
+    assert pending.postmark_error == "Microsoft Graph devolveu HTTP 403."
 
     def fake_send_channel_message(*args, **kwargs):
         sent.append((args[3], kwargs["reply_to"]))
         return {"MessageID": "test-message-id"}
 
     monkeypatch.setattr(email_web, "send_channel_message", fake_send_channel_message)
-    monkeypatch.setattr(email_web, "outbound_enabled_for_channel", lambda *args: True)
     response = authenticated_client.post(
         f"/v2-clean/email/{thread.id}/messages/{pending.id}/approve",
         follow_redirects=False,
@@ -327,6 +350,8 @@ def test_reply_route_persists_original_alias_and_blocks_arbitrary_sender(
     assert len(sent) == 1
     assert sent[0][0].endswith("<multas@carfast.pt>")
     assert sent[0][1] == "multas@carfast.pt"
+    db_session.refresh(pending)
+    assert pending.postmark_error is None
 
 
 def test_new_message_is_blocked_for_original_alias_policy(

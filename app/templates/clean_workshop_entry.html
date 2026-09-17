@@ -419,7 +419,7 @@
       }
       vehicleSearchTimer = setTimeout(async () => {
         try {
-          const response = await fetch(`/task-board/vehicle-search?context=workshop&q=${encodeURIComponent(query)}`);
+          const response = await fetch(`/v2-clean/workshop-entry/vehicle-search?q=${encodeURIComponent(query)}`);
           if (!response.ok) return;
           const payload = await response.json();
           vehicleSuggestionCache.clear();

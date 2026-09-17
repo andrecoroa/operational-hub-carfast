@@ -7,7 +7,11 @@ from app.models.workshop_phased import (
     WorkshopMaterialNeed, WorkshopPhasedProcess, WorkshopPhasedProcessPhase,
     WorkshopPhasedTechnicalReport,
 )
-from app.web.router import clean_workshop_v2_authorization_valid, clean_workshop_v2_proposal
+from app.web.router import (
+    clean_workshop_find_vehicle,
+    clean_workshop_v2_authorization_valid,
+    clean_workshop_v2_proposal,
+)
 
 
 def test_entry_permission_only_opens_own_new_entry(authenticated_client, db_session, monkeypatch):
@@ -21,6 +25,10 @@ def test_entry_permission_only_opens_own_new_entry(authenticated_client, db_sess
     entry = authenticated_client.get("/v2-clean/workshop-entry?flow=2")
     assert entry.status_code == 200
     assert "Fotografias da entrada" in entry.text
+    assert authenticated_client.get(
+        "/v2-clean/workshop-entry/vehicle-search?q=SV",
+        follow_redirects=False,
+    ).status_code == 200
     dashboard = authenticated_client.get("/v2-clean/workshop", follow_redirects=False)
     assert dashboard.status_code == 403
     created = authenticated_client.post(
@@ -48,6 +56,92 @@ def test_entry_permission_only_opens_own_new_entry(authenticated_client, db_sess
         follow_redirects=False,
     )
     assert legacy.status_code == 403
+
+
+def test_entry_vehicle_suggestions_use_clean_route(authenticated_client, db_session):
+    vehicle = Vehicle(
+        plate="RT-89-AB",
+        vin="VINRT89AB123456789",
+        brand="RENAULT",
+        model="CLIO",
+        active=True,
+    )
+    db_session.add(vehicle)
+    db_session.commit()
+
+    page = authenticated_client.get("/v2-clean/workshop-entry?flow=2")
+    assert page.status_code == 200
+    assert "/v2-clean/workshop-entry/vehicle-search" in page.text
+    assert "/task-board/vehicle-search" not in page.text
+
+    suggestions = authenticated_client.get(
+        "/v2-clean/workshop-entry/vehicle-search?q=RT89AB",
+        follow_redirects=False,
+    )
+    assert suggestions.status_code == 200
+    assert suggestions.json()["items"][0]["plate"] == vehicle.plate
+    assert set(suggestions.json()["items"][0]) == {"plate", "label"}
+    assert authenticated_client.get(
+        "/v2-clean/workshop-entry/vehicle-search?q=R"
+    ).json() == {"items": []}
+
+
+def test_unlinked_entry_dossier_shows_plate_without_fake_vehicle(authenticated_client, db_session):
+    response = authenticated_client.post(
+        "/v2-clean/workshop-entry",
+        data={"workshop_flow_version": "2", "plate": "ZZ-49-XF", "action": "save"},
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    process = db_session.scalar(
+        select(WorkshopPhasedProcess).where(WorkshopPhasedProcess.plate_snapshot == "ZZ-49-XF")
+    )
+    assert process is not None
+    assert process.vehicle_id is None
+
+    dossier = authenticated_client.get(
+        f"/v2-clean/workshop/{process.id}/print/process-dossier"
+    )
+    assert dossier.status_code == 200
+    assert "ZZ-49-XF" in dossier.text
+    assert "Viatura não associada" in dossier.text
+    assert "Selecionar viatura" not in dossier.text
+
+
+def test_unlinked_draft_can_link_on_explicit_save_after_vehicle_exists(authenticated_client, db_session):
+    created = authenticated_client.post(
+        "/v2-clean/workshop-entry",
+        data={"workshop_flow_version": "2", "plate": "RT89AB", "action": "save"},
+        follow_redirects=False,
+    )
+    assert created.status_code == 303
+    process = db_session.scalar(
+        select(WorkshopPhasedProcess).where(WorkshopPhasedProcess.plate_snapshot == "RT89AB")
+    )
+    assert process is not None
+    assert process.vehicle_id is None
+
+    vehicle = Vehicle(plate="RT-89-AB", active=True)
+    db_session.add(vehicle)
+    db_session.commit()
+    saved = authenticated_client.post(
+        "/v2-clean/workshop-entry",
+        data={"process_id": str(process.id), "workshop_flow_version": "2", "plate": "RT89AB", "action": "save"},
+        follow_redirects=False,
+    )
+    assert saved.status_code == 303
+    db_session.refresh(process)
+    assert process.vehicle_id == vehicle.id
+    assert process.plate_snapshot == vehicle.plate
+
+
+def test_normalized_plate_does_not_guess_between_two_vehicles(db_session):
+    db_session.add_all([
+        Vehicle(plate="RT-89-AB", active=True),
+        Vehicle(plate="RT89-AB", active=True),
+    ])
+    db_session.commit()
+    assert clean_workshop_find_vehicle(db_session, plate="R-T89-AB") is None
 
 
 def test_v2_entry_can_advance_with_documented_missing_photos(authenticated_client, db_session):

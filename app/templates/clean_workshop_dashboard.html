@@ -101,6 +101,7 @@
           <a href="/v2-clean/workshop?scope={{ scope }}">Limpar</a>
         </form>
         <p class="clean-workshop-filter-help"><strong>Fase atual</strong> indica onde o processo está no percurso técnico. <strong>Situação</strong> indica se o trabalho está em curso ou temporariamente em espera.</p>
+        {% if request.query_params.get('situation_error') %}<p class="clean-phase-error" role="alert">Indica um motivo válido. Se escolheres «Outro», descreve-o antes de confirmar.</p>{% endif %}
         <div class="clean-workshop-table-scroll" data-workshop-table-scroll>
         <div class="clean-workshop-list-head">
           <span>Viatura / processo</span>
@@ -163,7 +164,7 @@
             </div>
             {% if can_update_operational and process.status not in ['closed', 'cancelled'] and row.operational_situation != 'waiting' %}
               <dialog class="clean-workshop-wait-dialog" id="workshop-wait-{{ process.id }}">
-                <form method="post" action="/v2-clean/workshop/{{ process.id }}/operational-situation">
+                <form method="post" action="/v2-clean/workshop/{{ process.id }}/operational-situation" data-workshop-wait-form>
                   <div class="clean-workshop-wait-dialog-heading">
                     <div><p class="eyebrow">Situação operacional</p><h3>Colocar em espera</h3><span>{{ process.public_reference or ('#' ~ process.id) }} · {{ process.plate_snapshot or 'Sem matrícula' }}</span></div>
                     <button type="button" class="secondary" onclick="this.closest('dialog').close()">Fechar</button>
@@ -175,6 +176,7 @@
                   <input type="hidden" name="q" value="{{ q }}">
                   <input type="hidden" name="sort" value="{{ sort }}">
                   <label>Motivo<select name="waiting_reason" required><option value="">Selecionar motivo</option><option>A aguardar peças</option><option>A aguardar orçamento</option><option>A aguardar aprovação</option><option>A aguardar oficina externa</option><option>Outro</option></select></label>
+                  <label data-workshop-wait-other hidden>Especifica o motivo<textarea name="waiting_note" maxlength="300" disabled placeholder="Descreve o motivo da espera"></textarea></label>
                   <div class="clean-workshop-wait-dialog-actions">
                     <button type="button" class="secondary" onclick="this.closest('dialog').close()">Cancelar</button>
                     <button type="submit" name="action" value="wait">Confirmar espera</button>

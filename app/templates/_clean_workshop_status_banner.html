@@ -55,6 +55,13 @@
   </section>
 {% endif %}
 
+{% if request.query_params.get("situation_error") %}
+  <section class="clean-panel clean-card-wide clean-phase-error" role="alert">
+    <strong>Não foi possível colocar o processo em espera.</strong>
+    <span>Indica um motivo válido. Se escolheres «Outro», descreve-o antes de confirmar.</span>
+  </section>
+{% endif %}
+
 {% if request.query_params.get("readonly") %}
   <section class="clean-panel clean-card-wide clean-phase-error" role="alert">
     <strong>Processo em modo de consulta.</strong>

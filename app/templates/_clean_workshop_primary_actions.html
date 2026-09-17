@@ -30,7 +30,7 @@
   </details>
   {% if workshop_admin.can_update_operational and not workshop_admin.is_cancelled and not workshop_admin.is_closed and workshop_admin.operational_situation != "waiting" %}
     <dialog class="clean-workshop-wait-dialog" id="clean-workshop-wait-dialog">
-      <form method="post" action="/v2-clean/workshop/{{ workshop_process.id }}/operational-situation">
+      <form method="post" action="/v2-clean/workshop/{{ workshop_process.id }}/operational-situation" data-workshop-wait-form>
         <div class="clean-workshop-wait-dialog-heading">
           <div><p class="eyebrow">Situação operacional</p><h3>Colocar processo em espera</h3></div>
           <button class="secondary" type="button" onclick="this.closest('dialog').close()">Fechar</button>
@@ -46,6 +46,9 @@
             <option>A aguardar oficina externa</option>
             <option>Outro</option>
           </select>
+        </label>
+        <label data-workshop-wait-other hidden>Especifica o motivo
+          <textarea name="waiting_note" maxlength="300" disabled placeholder="Descreve o motivo da espera"></textarea>
         </label>
         <p>O motivo fica visível no processo e registado no histórico de auditoria.</p>
         <div class="clean-workshop-wait-dialog-actions">

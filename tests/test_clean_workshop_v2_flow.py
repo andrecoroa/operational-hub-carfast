@@ -669,6 +669,67 @@ def test_workshop_dashboard_labels_unlinked_vehicle_without_guessing(
     assert 'class="clean-workshop-open-link"' in dashboard.text
 
 
+def test_workshop_wait_other_requires_note_and_keeps_auditable_reason(
+    authenticated_client, db_session
+):
+    process = WorkshopPhasedProcess(
+        process_type="workshop",
+        title="Espera com outro motivo",
+        creation_mode="operational",
+        status="open",
+        plate_snapshot="OT-12-AA",
+        current_phase_code="entrada",
+        priority="normal",
+        metadata_json={},
+    )
+    db_session.add(process)
+    db_session.commit()
+    action_url = f"/v2-clean/workshop/{process.id}/operational-situation"
+
+    dashboard = authenticated_client.get("/v2-clean/workshop?q=OT-12-AA")
+    assert 'data-workshop-wait-form' in dashboard.text
+    assert 'name="waiting_note"' in dashboard.text
+    phase = authenticated_client.get(f"/v2-clean/workshop-entry?process_id={process.id}")
+    assert 'data-workshop-wait-form' in phase.text
+    assert 'name="waiting_note"' in phase.text
+
+    for note in ("", "  ", "x" * 301):
+        invalid = authenticated_client.post(
+            action_url,
+            data={"action": "wait", "waiting_reason": "Outro", "waiting_note": note},
+            follow_redirects=False,
+        )
+        assert invalid.status_code == 303
+        assert "situation_error=invalid" in invalid.headers["location"]
+        db_session.refresh(process)
+        assert process.metadata_json == {}
+
+    valid = authenticated_client.post(
+        action_url,
+        data={"action": "wait", "waiting_reason": "Outro", "waiting_note": "  Aguarda  resposta   do cliente ", "q": "OT-12-AA"},
+        follow_redirects=False,
+    )
+    assert valid.status_code == 303
+    db_session.refresh(process)
+    assert process.metadata_json["operational_waiting_reason"] == "Outro: Aguarda resposta do cliente"
+    assert process.metadata_json["operational_waiting_note"] == "Aguarda resposta do cliente"
+    assert "Outro: Aguarda resposta do cliente" in authenticated_client.get("/v2-clean/workshop?q=OT-12-AA").text
+    audit = db_session.scalar(
+        select(AuditLog).where(
+            AuditLog.entity_type == "workshop_phased_process",
+            AuditLog.entity_id == str(process.id),
+            AuditLog.action == "workshop.operational_situation.updated",
+        ).order_by(AuditLog.id.desc())
+    )
+    assert "Outro: Aguarda resposta do cliente" in audit.detail
+    assert audit.after_json["operational_waiting_note"] == "Aguarda resposta do cliente"
+
+    authenticated_client.post(action_url, data={"action": "resume"}, follow_redirects=False)
+    db_session.refresh(process)
+    assert "operational_waiting_reason" not in process.metadata_json
+    assert "operational_waiting_note" not in process.metadata_json
+
+
 def test_repair_material_request_is_direct_and_uses_existing_stock_contract(
     authenticated_client, db_session
 ):

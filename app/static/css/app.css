@@ -21083,6 +21083,22 @@ body.clean-doc-modal-open {
   }
 }
 
+.clean-workshop-wait-dialog [data-workshop-wait-other][hidden] {
+  display: none;
+}
+
+.clean-workshop-wait-dialog textarea {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 84px;
+  border: 1px solid #ccd5e2;
+  border-radius: 8px;
+  background: #fff;
+  color: #172033;
+  font: inherit;
+  padding: 9px 10px;
+  resize: vertical;
+}
 @media (max-width: 900px) {
   .clean-workshop-dashboard-filters { position: static; }
 }

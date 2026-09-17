@@ -31,6 +31,7 @@ from app.models.email import (
     EmailChannelUser,
     EmailExecutorEligibility,
     EmailInboxRule,
+    EmailThread,
     EmailTemplate,
 )
 from app.models.evolution import (
@@ -62,8 +63,8 @@ from app.models.work_hierarchy import (
     WorkSubcategory,
 )
 from app.models.workshop_phased import WorkshopTemplate
-from app.services.audit import record_audit
 from app.services.authorization import get_user_permission_codes
+from app.services.audit import record_audit
 from app.services.classification_proposals import (
     approve_proposal,
     archive_proposal,
@@ -79,7 +80,12 @@ from app.services.email_access_admin import (
     grant_snapshot,
     plan_email_role_batch,
 )
-from app.services.email_postmark import outbound_identity
+from app.services.email_postmark import (
+    deterministic_rule_close_allowed,
+    inbox_rule_matches,
+    outbound_identity,
+)
+from app.services.email_rule_catalog import REVIEWED_EMAIL_RULE_PRESETS
 from app.services.service_desk import (
     ASSIGNMENT_MODES,
     assignment_target_user_allowed,
@@ -2199,6 +2205,7 @@ def clean_admin_work_classification(request: Request):
             email_channel_roles=channel_roles,
             email_channel_users=channel_users,
             email_inbox_rules=inbox_rules,
+            reviewed_email_rule_presets=REVIEWED_EMAIL_RULE_PRESETS,
             email_templates=email_templates,
             active_users=users,
             active_teams=teams,
@@ -3494,8 +3501,12 @@ def clean_admin_update_email_channel(
             return _redirect("/v2-clean/admin/work-classification", "error", "missing_executor")
         if assignment_mode in {"auto_team", "team_claim"} and not default_team_id:
             return _redirect("/v2-clean/admin/work-classification", "error", "missing_executor")
-        clean_from = from_address.strip().lower() or None
-        clean_reply = default_reply_address.strip().lower() or None
+        clean_from = from_address.strip().lower() or channel.from_address
+        clean_reply = (
+            default_reply_address.strip().lower()
+            or channel.default_reply_address
+            or channel.reply_to_address
+        )
         supplied_from_name = from_name.strip()
         if len(supplied_from_name) > 160:
             return _redirect(
@@ -3504,22 +3515,21 @@ def clean_admin_update_email_channel(
         clean_from_name = supplied_from_name or channel.from_name or (
             f"CarFast — {channel.name}"[:160]
         )
-        try:
-            outbound_identity(clean_from_name, clean_from, clean_reply)
-        except ValueError:
-            return _redirect(
-                "/v2-clean/admin/work-classification", "error", "invalid_email"
-            )
         if (
-            not clean_from
-            or not EMAIL_PATTERN.fullmatch(clean_from)
-            or not clean_reply
-            or not EMAIL_PATTERN.fullmatch(clean_reply)
+            clean_from and not EMAIL_PATTERN.fullmatch(clean_from)
+            or clean_reply and not EMAIL_PATTERN.fullmatch(clean_reply)
         ):
             return _redirect(
                 "/v2-clean/admin/work-classification", "error", "invalid_email"
             )
-        if clean_reply and db.scalar(
+        if clean_from and clean_reply:
+            try:
+                outbound_identity(clean_from_name, clean_from, clean_reply)
+            except ValueError:
+                return _redirect(
+                    "/v2-clean/admin/work-classification", "error", "invalid_email"
+                )
+        if clean_reply and clean_reply != channel.default_reply_address and db.scalar(
             select(EmailChannel).where(
                 EmailChannel.id != channel.id,
                 or_(
@@ -3594,7 +3604,7 @@ def clean_admin_update_email_channel(
 def clean_admin_create_email_channel_alias(
     request: Request,
     channel_id: int = Form(...),
-    address: str = Form(...),
+    address: str = Form(""),
     label: str = Form(""),
     inbound_hash: str = Form(""),
     inbound_forward_address: str = Form(""),
@@ -3604,6 +3614,8 @@ def clean_admin_create_email_channel_alias(
     if not access:
         return _denied(request)
     clean_address = address.strip().lower()
+    if not clean_address:
+        return _redirect("/v2-clean/admin/work-classification", "saved")
     clean_hash = inbound_hash.strip().casefold() or None
     clean_forward = inbound_forward_address.strip().lower() or None
     if (
@@ -4157,6 +4169,11 @@ def _save_email_inbox_rule(
     name: str,
     subject_match: str,
     match_type: str,
+    sender_match: str,
+    sender_match_type: str,
+    condition_operator: str,
+    status_action: str,
+    deterministic: str,
     default_queue_id: int | None,
     default_department_id: int | None,
     default_category_id: int | None,
@@ -4180,6 +4197,11 @@ def _save_email_inbox_rule(
     rule.name = name.strip()
     rule.subject_match = subject_match.strip()
     rule.match_type = match_type
+    rule.sender_match = sender_match.strip() or None
+    rule.sender_match_type = sender_match_type
+    rule.condition_operator = condition_operator
+    rule.status_action = status_action
+    rule.deterministic = deterministic == "on"
     rule.default_queue_id = default_queue_id
     rule.default_department_id = default_department_id
     rule.default_category_id = default_category_id
@@ -4201,6 +4223,108 @@ def _save_email_inbox_rule(
     rule.notes = notes.strip() or None
 
 
+def _email_rule_audit_snapshot(rule: EmailInboxRule) -> dict:
+    return {
+        "channel_id": rule.channel_id,
+        "name": rule.name,
+        "subject_match": rule.subject_match,
+        "match_type": rule.match_type,
+        "sender_match": rule.sender_match,
+        "sender_match_type": rule.sender_match_type,
+        "condition_operator": rule.condition_operator,
+        "auto_task_mode": rule.auto_task_mode,
+        "status_action": rule.status_action,
+        "deterministic": rule.deterministic,
+        "active": rule.active,
+    }
+
+
+def _auto_close_form_safe(
+    *,
+    status_action: str,
+    deterministic: str,
+    match_type: str,
+    sender_match: str,
+    sender_match_type: str,
+    condition_operator: str,
+    active: str,
+    preview_confirmed: str,
+) -> bool:
+    if status_action not in {"resolved", "archived"}:
+        return True
+    if deterministic != "on":
+        return False
+    if active != "on":
+        return True
+    candidate = EmailInboxRule(
+        channel_id=0,
+        name="validation",
+        subject_match="validation",
+        match_type=match_type,
+        sender_match=sender_match.strip() or None,
+        sender_match_type=sender_match_type,
+        condition_operator=condition_operator,
+        deterministic=True,
+    )
+    return preview_confirmed == "on" and deterministic_rule_close_allowed(candidate)
+
+
+@clean_admin_router.post("/v2-clean/admin/work-classification/email-inbox-rules/preview")
+def clean_admin_preview_email_inbox_rule(
+    request: Request,
+    channel_id: int = Form(...),
+    subject_match: str = Form(""),
+    match_type: str = Form("contains"),
+    sender_match: str = Form(""),
+    sender_match_type: str = Form("contains"),
+    condition_operator: str = Form("and"),
+):
+    """Read-only impact preview over the 100 most recent threads in the mailbox."""
+    if not _work_classification_manage_access(request):
+        return _denied(request)
+    if (
+        not subject_match.strip()
+        or match_type not in {"contains", "exact"}
+        or sender_match_type not in {"contains", "exact", "domain"}
+        or condition_operator not in {"and", "or"}
+    ):
+        return JSONResponse({"error": "invalid_rule"}, status_code=422)
+    candidate = EmailInboxRule(
+        channel_id=channel_id,
+        name="preview",
+        subject_match=subject_match,
+        match_type=match_type,
+        sender_match=sender_match.strip() or None,
+        sender_match_type=sender_match_type,
+        condition_operator=condition_operator,
+    )
+    with SessionLocal() as db:
+        threads = db.scalars(
+            select(EmailThread)
+            .where(EmailThread.channel_id == channel_id)
+            .order_by(EmailThread.last_message_at.desc(), EmailThread.id.desc())
+            .limit(100)
+        ).all()
+        matches = [
+            item
+            for item in threads
+            if inbox_rule_matches(
+                candidate, subject=item.subject, sender=item.sender_email or ""
+            )
+        ]
+    return JSONResponse(
+        {
+            "evaluated": len(threads),
+            "matched": len(matches),
+            "samples": [
+                {"thread_id": item.id, "subject": item.subject, "sender": item.sender_email}
+                for item in matches[:20]
+            ],
+            "read_only": True,
+        }
+    )
+
+
 @clean_admin_router.post("/v2-clean/admin/work-classification/email-inbox-rules")
 def clean_admin_create_email_inbox_rule(
     request: Request,
@@ -4208,6 +4332,12 @@ def clean_admin_create_email_inbox_rule(
     name: str = Form(""),
     subject_match: str = Form(""),
     match_type: str = Form("contains"),
+    sender_match: str = Form(""),
+    sender_match_type: str = Form("contains"),
+    condition_operator: str = Form("and"),
+    status_action: str = Form("none"),
+    deterministic: str = Form(""),
+    preview_confirmed: str = Form(""),
     default_queue_id: int | None = Form(None),
     default_department_id: int | None = Form(None),
     default_category_id: int | None = Form(None),
@@ -4237,6 +4367,19 @@ def clean_admin_create_email_inbox_rule(
         not name.strip()
         or not subject_match.strip()
         or match_type not in {"contains", "exact"}
+        or sender_match_type not in {"contains", "exact", "domain"}
+        or condition_operator not in {"and", "or"}
+        or status_action not in {"none", "in_progress", "resolved", "archived"}
+        or not _auto_close_form_safe(
+            status_action=status_action,
+            deterministic=deterministic,
+            match_type=match_type,
+            sender_match=sender_match,
+            sender_match_type=sender_match_type,
+            condition_operator=condition_operator,
+            active=active,
+            preview_confirmed=preview_confirmed,
+        )
         or auto_task_mode not in {"", "none", "open", "complete"}
         or assignment_mode not in {"", *ASSIGNMENT_MODES}
         or first_response_unit not in {"minutes", "days"}
@@ -4318,6 +4461,11 @@ def clean_admin_create_email_inbox_rule(
             name=name,
             subject_match=subject_match,
             match_type=match_type,
+            sender_match=sender_match,
+            sender_match_type=sender_match_type,
+            condition_operator=condition_operator,
+            status_action=status_action,
+            deterministic=deterministic,
             default_queue_id=default_queue_id,
             default_department_id=default_department_id,
             default_category_id=default_category_id,
@@ -4347,6 +4495,15 @@ def clean_admin_create_email_inbox_rule(
             notes=notes,
         )
         db.add(rule)
+        db.flush()
+        record_audit(
+            db,
+            action="clean_admin.email.inbox_rule_created",
+            entity_type="email_inbox_rule",
+            entity_id=rule.id,
+            user_id=access[0],
+            after_json=_email_rule_audit_snapshot(rule),
+        )
         db.commit()
     return _redirect("/v2-clean/admin/work-classification", "saved")
 
@@ -4358,6 +4515,12 @@ def clean_admin_update_email_inbox_rule(
     name: str = Form(""),
     subject_match: str = Form(""),
     match_type: str = Form("contains"),
+    sender_match: str = Form(""),
+    sender_match_type: str = Form("contains"),
+    condition_operator: str = Form("and"),
+    status_action: str = Form("none"),
+    deterministic: str = Form(""),
+    preview_confirmed: str = Form(""),
     default_queue_id: int | None = Form(None),
     default_department_id: int | None = Form(None),
     default_category_id: int | None = Form(None),
@@ -4387,6 +4550,19 @@ def clean_admin_update_email_inbox_rule(
         not name.strip()
         or not subject_match.strip()
         or match_type not in {"contains", "exact"}
+        or sender_match_type not in {"contains", "exact", "domain"}
+        or condition_operator not in {"and", "or"}
+        or status_action not in {"none", "in_progress", "resolved", "archived"}
+        or not _auto_close_form_safe(
+            status_action=status_action,
+            deterministic=deterministic,
+            match_type=match_type,
+            sender_match=sender_match,
+            sender_match_type=sender_match_type,
+            condition_operator=condition_operator,
+            active=active,
+            preview_confirmed=preview_confirmed,
+        )
         or auto_task_mode not in {"", "none", "open", "complete"}
         or assignment_mode not in {"", *ASSIGNMENT_MODES}
         or first_response_unit not in {"minutes", "days"}
@@ -4461,11 +4637,17 @@ def clean_admin_update_email_inbox_rule(
             return _redirect("/v2-clean/admin/work-classification", "error", "missing_executor")
         if assignment_mode in {"auto_team", "team_claim"} and not default_team_id:
             return _redirect("/v2-clean/admin/work-classification", "error", "missing_executor")
+        before = _email_rule_audit_snapshot(rule)
         _save_email_inbox_rule(
             rule,
             name=name,
             subject_match=subject_match,
             match_type=match_type,
+            sender_match=sender_match,
+            sender_match_type=sender_match_type,
+            condition_operator=condition_operator,
+            status_action=status_action,
+            deterministic=deterministic,
             default_queue_id=default_queue_id,
             default_department_id=default_department_id,
             default_category_id=default_category_id,
@@ -4493,6 +4675,15 @@ def clean_admin_update_email_inbox_rule(
             sort_order=sort_order,
             active=active,
             notes=notes,
+        )
+        record_audit(
+            db,
+            action="clean_admin.email.inbox_rule_updated",
+            entity_type="email_inbox_rule",
+            entity_id=rule.id,
+            user_id=access[0],
+            before_json=before,
+            after_json=_email_rule_audit_snapshot(rule),
         )
         db.commit()
     return _redirect("/v2-clean/admin/work-classification", "saved")

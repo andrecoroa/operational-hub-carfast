@@ -30609,6 +30609,7 @@ body:has(.email-preview-dialog[open]) { overflow: hidden; }
   padding: 14px;
 }
 .workshop-v2-photo-card.is-active { border-color: #a7bed7; background: #fbfdff; }
+.workshop-v2-photo-card[data-photo-slot="dashboard"] { grid-column: 1 / -1; }
 .workshop-v2-photo-card-support { grid-column: 1 / -1; background: #f9fbfe; }
 .workshop-v2-photo-heading { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
 .workshop-v2-photo-heading > div { display: grid; gap: 3px; }

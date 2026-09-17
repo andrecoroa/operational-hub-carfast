@@ -1084,3 +1084,9 @@ body.email-treatment-drawer-open{overflow:auto}
 .ui-contract-v1 .email-modal-footer .email-create-task-wait{color:#155eef;background:#fff;border-color:#8bb8ff}
 .ui-contract-v1 .email-modal-footer .email-create-task-wait:hover{background:#eaf2ff;border-color:#155eef}
 @media(max-width:600px){.ui-contract-v1 .email-modal-footer form.email-create-task-form{grid-column:1/-1;grid-template-columns:1fr}}
+
+/* In the full-page reader, action buttons belong above the scrolling message. */
+.ui-contract-v1 .visual-email-thread-page .email-modal-footer{position:relative!important;z-index:28;order:2;flex:0 0 auto;display:flex!important;align-items:stretch;flex-wrap:wrap;gap:8px;margin:0!important;padding:8px 16px!important;border-top:0;border-bottom:1px solid var(--ui-color-border);background:#f8fafc;box-shadow:none}
+.ui-contract-v1 .visual-email-thread-page .email-modal-footer [data-email-open-composer]{display:none}
+.ui-contract-v1 .visual-email-thread-page .email-reader-grid{order:3}
+@media(max-width:600px){.ui-contract-v1 .visual-email-thread-page .email-modal-footer{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr));padding:8px!important;max-height:190px;overflow-y:auto}}

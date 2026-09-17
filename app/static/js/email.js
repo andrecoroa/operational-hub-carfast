@@ -215,9 +215,8 @@
     const shell = root.querySelector("[data-email-thread-id]");
     const tabs = shell?.querySelector("[data-email-workspace-tabs]");
     if (!tabs) return;
-    const conversation = shell.querySelector(".email-conversation");
     const footer = shell.querySelector(".email-modal-footer");
-    if (conversation && footer) conversation.append(footer);
+    if (footer) tabs.after(footer);
     const shortcuts = document.createElement("div");
     shortcuts.className = "email-workspace-shortcuts";
     shortcuts.setAttribute("aria-label", "Ações de leitura");

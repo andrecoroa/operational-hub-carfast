@@ -241,6 +241,32 @@
     });
     activate("conversation");
   };
+  const bindReadableBodies = (root) => {
+    const shell = root.querySelector("[data-email-thread-id]");
+    if (!shell?.querySelector("[data-email-workspace-tabs]")) return;
+    shell.querySelectorAll(".email-body-frame").forEach((frame) => {
+      let observer;
+      const resize = () => {
+        try {
+          const document = frame.contentDocument;
+          if (!document?.documentElement) return;
+          const height = Math.max(document.documentElement.scrollHeight, document.body?.scrollHeight || 0);
+          frame.style.setProperty("height", `${Math.max(420, Math.min(height + 8, 16000))}px`, "important");
+        } catch (_) {
+          // Keep the default frame size if browser isolation prevents measurement.
+        }
+      };
+      frame.addEventListener("load", () => {
+        observer?.disconnect();
+        resize();
+        if (window.ResizeObserver && frame.contentDocument?.body) {
+          observer = new ResizeObserver(resize);
+          observer.observe(frame.contentDocument.body);
+        }
+      });
+      if (frame.contentDocument?.readyState === "complete") resize();
+    });
+  };
   const bindDraftActions = (root) => {
     const addresses = (items) => (items || []).map((item) => typeof item === "string" ? item : item.Email).filter(Boolean).join(", ");
     root.querySelectorAll("[data-email-edit-draft]").forEach((button) => button.addEventListener("click", () => {
@@ -284,6 +310,7 @@
     bindPanelSwitch(root);
     bindTreatmentDrawer(root);
     bindWorkspaceTabs(root);
+    bindReadableBodies(root);
     bindDraftActions(root);
     bindLinkKinds(root);
     root.querySelectorAll("[data-email-spam-form]").forEach((form) => form.addEventListener("submit", (event) => {

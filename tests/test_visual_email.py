@@ -68,6 +68,9 @@ def test_full_email_workspace_keeps_all_actions_in_tabbed_layout() -> None:
     assert 'activate("conversation")' in script
     assert ".email-workspace-tabs button[aria-current=\"page\"]" in css
     assert ".email-reader-grid{order:2;flex:1 1 auto;overflow-y:auto!important" in css
+    assert "const bindReadableBodies = (root) =>" in script
+    assert "document.documentElement.scrollHeight" in script
+    assert ".email-body-frame{max-height:none!important;overflow:hidden}" in css
 
 
 def test_email_responsive_contract_uses_local_overflow_and_full_screen_preview() -> None:

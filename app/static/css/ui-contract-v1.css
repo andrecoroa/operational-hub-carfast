@@ -1050,6 +1050,7 @@ body.email-treatment-drawer-open{overflow:auto}
 .ui-contract-v1 .visual-email-thread-page .email-workspace-tabs button[aria-current="page"]{border-color:#b8cbf6;background:#edf3ff;color:#1644b8}
 .ui-contract-v1 .visual-email-thread-page .email-workspace-tabs button:focus-visible{outline:3px solid #8bb8ff;outline-offset:2px}
 .ui-contract-v1 .visual-email-thread-page .email-reader-grid{order:2;flex:1 1 auto;overflow-y:auto!important;overflow-x:hidden!important;scrollbar-gutter:stable}
+.ui-contract-v1 .visual-email-thread-page .email-body-frame{max-height:none!important;overflow:hidden}
 .ui-contract-v1 .visual-email-thread-page .email-treatment-drawer{position:static;display:block;width:100%;max-height:none;padding:20px clamp(12px,2vw,28px) 40px;overflow:visible;background:#fff;box-shadow:none;transform:none}
 .ui-contract-v1 .visual-email-thread-page .email-treatment-drawer.is-open{display:block}
 .ui-contract-v1 .visual-email-thread-page .email-conversation{order:1;padding-top:18px}

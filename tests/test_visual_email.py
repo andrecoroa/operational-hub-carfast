@@ -81,7 +81,7 @@ def test_email_workspace_assets_have_matching_cache_versions() -> None:
         source = (ROOT / "app" / "templates" / page).read_text(encoding="utf-8")
         assert f"email.js?v={version}" in source
     base = (ROOT / "app" / "templates" / "base.html").read_text(encoding="utf-8")
-    assert "ui-contract-v1.css?v=20260917-email-task-actions" in base
+    assert "ui-contract-v1.css?v=20260917-email-task-actions-v2" in base
 
 
 def test_email_task_creation_has_two_direct_outcome_actions() -> None:
@@ -93,7 +93,8 @@ def test_email_task_creation_has_two_direct_outcome_actions() -> None:
     assert "Criar tarefa e tratar email" in template
     assert "Criar tarefa e aguardar conclusão" in template
     assert 'type="radio" name="task_outcome"' not in template
-    assert ".email-create-task-wait" in css
+    assert ".email-modal-footer form.email-create-task-form{display:grid" in css
+    assert ".email-modal-footer .email-create-task-action{width:100%;height:auto;min-height:44px" in css
 
 
 def test_email_responsive_contract_uses_local_overflow_and_full_screen_preview() -> None:

@@ -54,6 +54,27 @@ def test_email_center_keeps_triage_preview_and_actions() -> None:
         assert contract in source
 
 
+def test_full_email_workspace_keeps_all_actions_in_tabbed_layout() -> None:
+    template = THREAD.read_text(encoding="utf-8")
+    script = JS.read_text(encoding="utf-8")
+    css = CONTRACT_CSS.read_text(encoding="utf-8")
+
+    for section in ("conversation", "classification", "management", "attachments", "links", "composer"):
+        assert f'data-email-workspace-target="{section}"' in template
+    for section in ("classification", "management", "attachments", "links"):
+        assert f'data-email-workspace-section="{section}"' in template
+    assert "if (!tabs) return;" in script  # Embedded preview keeps its drawer behaviour.
+    assert "conversation.append(footer)" in script  # Actions follow the email body.
+    assert 'shortcuts.className = "email-workspace-shortcuts"' in script
+    assert 'tabs.append(shortcuts)' in script
+    assert 'activate("conversation")' in script
+    assert ".email-workspace-tabs button[aria-current=\"page\"]" in css
+    assert ".email-reader-grid{order:2;flex:1 1 auto;overflow-y:auto!important" in css
+    assert "const bindReadableBodies = (root) =>" in script
+    assert "document.documentElement.scrollHeight" in script
+    assert ".email-body-frame{max-height:none!important;overflow:hidden}" in css
+
+
 def test_email_responsive_contract_uses_local_overflow_and_full_screen_preview() -> None:
     css = CSS.read_text(encoding="utf-8")
 

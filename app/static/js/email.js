@@ -167,6 +167,11 @@
     const composer = root.querySelector('[data-email-panel="composer"]');
     const showComposer = (visible) => {
       if (!triage || !composer) return;
+      if (shell?.querySelector("[data-email-workspace-tabs]")) {
+        shell.querySelector(`[data-email-workspace-target="${visible ? "composer" : "conversation"}"]`)?.click();
+        if (visible) composer.querySelector("[data-email-html-editor]")?.focus();
+        return;
+      }
       triage.hidden = visible;
       composer.hidden = !visible;
       shell?.classList.toggle("is-composing", visible);
@@ -187,6 +192,11 @@
     const drawer = root.querySelector("[data-email-treatment-drawer]");
     if (!drawer) return;
     const setOpen = (open) => {
+      const workspace = drawer.closest("[data-email-thread-id]");
+      if (workspace?.querySelector("[data-email-workspace-tabs]")) {
+        workspace.querySelector(`[data-email-workspace-target="${open ? "classification" : "conversation"}"]`)?.click();
+        return;
+      }
       drawer.classList.toggle("is-open", open);
       drawer.setAttribute("aria-hidden", String(!open));
       document.body.classList.toggle("email-treatment-drawer-open", open);
@@ -200,6 +210,36 @@
       if (!section.open) return;
       sections.forEach((other) => { if (other !== section) other.open = false; });
     }));
+  };
+  const bindWorkspaceTabs = (root) => {
+    const shell = root.querySelector("[data-email-thread-id]");
+    const tabs = shell?.querySelector("[data-email-workspace-tabs]");
+    if (!tabs) return;
+    const conversation = shell.querySelector(".email-conversation");
+    const footer = shell.querySelector(".email-modal-footer");
+    if (conversation && footer) conversation.append(footer);
+    const triage = shell.querySelector('[data-email-panel="triage"]');
+    const composer = shell.querySelector('[data-email-panel="composer"]');
+    const drawer = shell.querySelector("[data-email-treatment-drawer]");
+    const activate = (name) => {
+      shell.dataset.emailWorkspace = name;
+      tabs.querySelectorAll("[data-email-workspace-target]").forEach((button) => {
+        if (button.dataset.emailWorkspaceTarget === name) button.setAttribute("aria-current", "page");
+        else button.removeAttribute("aria-current");
+      });
+      if (triage) triage.hidden = name === "composer";
+      if (composer) composer.hidden = name !== "composer";
+      shell.classList.toggle("is-composing", name === "composer");
+      if (drawer) drawer.setAttribute("aria-hidden", String(name === "conversation"));
+      shell.querySelectorAll("[data-email-workspace-section]").forEach((section) => {
+        if (section.matches("details") && section.dataset.emailWorkspaceSection === name) section.open = true;
+      });
+      shell.querySelector(".email-reader-grid")?.scrollTo(0, 0);
+    };
+    tabs.querySelectorAll("[data-email-workspace-target]").forEach((button) => {
+      button.addEventListener("click", () => activate(button.dataset.emailWorkspaceTarget));
+    });
+    activate("conversation");
   };
   const bindDraftActions = (root) => {
     const addresses = (items) => (items || []).map((item) => typeof item === "string" ? item : item.Email).filter(Boolean).join(", ");
@@ -243,6 +283,7 @@
     bindHtmlEditors(root);
     bindPanelSwitch(root);
     bindTreatmentDrawer(root);
+    bindWorkspaceTabs(root);
     bindDraftActions(root);
     bindLinkKinds(root);
     root.querySelectorAll("[data-email-spam-form]").forEach((form) => form.addEventListener("submit", (event) => {

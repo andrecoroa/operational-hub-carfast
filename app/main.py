@@ -227,7 +227,14 @@ WEB_PERMISSION_RULES = (
         },
     ),
     (
-        ("/v2-clean/workshop", "/v2-clean/workshop-entry"),
+        ("/v2-clean/workshop-entry",),
+        {
+            "GET": {"workshop.entry.create", "workshop.read", "workshop.write", "admin.manage"},
+            "POST": {"workshop.entry.create", "workshop.write", "admin.manage"},
+        },
+    ),
+    (
+        ("/v2-clean/workshop",),
         {
             "GET": {"workshop.read", "workshop.write", "admin.manage"},
             "POST": {"workshop.write", "admin.manage"},
@@ -277,6 +284,7 @@ WEB_PERMISSION_RULES = (
                 "dashboard.read",
                 "vehicles.read",
                 "workshop.read",
+                "workshop.entry.create",
                 "tasks.read",
                 "tasks.management.read",
                 "tasks.management.create",
@@ -492,8 +500,20 @@ def create_app() -> FastAPI:
                     )
                     db.commit()
                 request.session["carfast_experience"] = "current"
+        if (
+            path == "/v2-clean"
+            and request.session.get("user_id")
+            and has_required_permission(request, {"workshop.entry.create"})
+            and not has_required_permission(request, {"navigation.home.access"})
+        ):
+            return RedirectResponse("/v2-clean/workshop-entry?flow=2", status_code=303)
         navigation_permission = navigation_permission_for_path(path)
-        if navigation_permission and not has_required_permission(
+        entry_only_navigation = (
+            navigation_permission == "navigation.workshop.access"
+            and (path == "/v2-clean/workshop-entry" or path.startswith("/v2-clean/workshop-entry/"))
+            and has_required_permission(request, {"workshop.entry.create"})
+        )
+        if navigation_permission and not entry_only_navigation and not has_required_permission(
             request, {navigation_permission}
         ):
             if not request.session.get("user_id"):

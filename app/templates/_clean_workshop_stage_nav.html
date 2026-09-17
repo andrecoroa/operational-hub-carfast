@@ -1,7 +1,9 @@
 <section class="clean-workshop-stage-shell clean-card-wide" aria-label="Etapas do processo">
   <div class="clean-workshop-stage-heading">
     <div><span>Fluxo simplificado</span><strong>4 etapas visíveis · fases e dados preservados</strong></div>
-    <button type="button" class="secondary clean-workshop-view-toggle" data-workshop-view-toggle aria-pressed="false">Ver processo completo</button>
+    <div class="clean-workshop-stage-actions">
+      {% if workshop_process and workshop_process.metadata_json and workshop_process.metadata_json.get('workshop_flow_version') == 2 %}<a class="button-link secondary-link" href="/v2-clean/workshop/{{ workshop_process.id }}/print/process-dossier" target="_blank" rel="noopener">Imprimir processo</a>{% else %}<button type="button" class="secondary clean-workshop-view-toggle" data-workshop-view-toggle aria-pressed="false">Ver processo completo</button>{% endif %}
+    </div>
   </div>
   <nav class="clean-stepper clean-stepper-four {{ workshop_stage_nav_class|default('') }}" aria-label="Etapas principais da Oficina">
     {% for stage in workshop_stages %}

@@ -8,6 +8,7 @@
   {% set home_can_processes = "navigation.processes.access" in home_nav_perms and nav_has_permission(request, "management_center.read", "management_center.write") %}
   {% set home_can_workshop = "navigation.workshop.access" in home_nav_perms and nav_has_permission(request, "workshop.read", "workshop.write", "admin.manage") %}
   {% set home_can_workshop_write = home_can_workshop and nav_has_permission(request, "workshop.write", "admin.manage") %}
+  {% set home_can_workshop_entry = nav_has_permission(request, "workshop.entry.create", "workshop.write", "admin.manage") %}
   {% set home_can_fleet = "navigation.fleet.access" in home_nav_perms and nav_has_permission(request, "vehicles.read", "vehicles.write", "fleet.commerce.manage", "admin.manage") %}
   {% set home_can_documentation = "navigation.documentation.access" in home_nav_perms and nav_has_permission(request, "documents.read", "documents.write", "admin.manage") %}
   <main class="content clean-content{% if foundation_ui_enabled %} visual-dashboard{% endif %}">
@@ -20,7 +21,7 @@
       <div><p class="visual-kicker">Operação</p><h1>Visão geral</h1><p>Acompanhe a operação, identifique prioridades e avance diretamente para o trabalho em curso.</p></div>
       <div class="visual-dashboard-actions">
         {% if home_can_tasks %}<a class="visual-button secondary" href="/v2-clean/tasks#new-task">Nova tarefa</a>{% endif %}
-        {% if home_can_workshop_write %}<a class="visual-button primary" href="/v2-clean/workshop-entry">Nova entrada</a>{% endif %}
+        {% if home_can_workshop_entry %}<a class="visual-button primary" href="/v2-clean/workshop-entry?flow=2">Recolher viatura</a>{% endif %}
       </div>
     </header>
     <section class="visual-dashboard-metrics" aria-label="Indicadores principais">
@@ -86,7 +87,7 @@
     {% else %}
     <header class="clean-hero clean-home-hero clean-home-operational-hero">
       <div><p class="eyebrow">Operação</p><h2>Visão geral</h2><p>Trabalho em curso, prioridades e acessos principais da operação CarFast.</p></div>
-      <div class="button-row">{% if home_can_workshop_write %}<a class="button-link" href="/v2-clean/workshop-entry">Nova entrada</a>{% endif %}{% if home_can_tasks %}<a class="button-link secondary-link" href="/v2-clean/tasks#new-task">Nova tarefa</a>{% endif %}</div>
+      <div class="button-row">{% if home_can_workshop_entry %}<a class="button-link" href="/v2-clean/workshop-entry?flow=2">Recolher viatura</a>{% endif %}{% if home_can_tasks %}<a class="button-link secondary-link" href="/v2-clean/tasks#new-task">Nova tarefa</a>{% endif %}</div>
     </header>
     <section class="clean-home-metrics" aria-label="Indicadores principais">
       <article><span>Viaturas</span><strong>{{ quick_metrics.vehicles }}</strong><em>na frota</em></article><article><span>Tarefas</span><strong>{{ quick_metrics.tasks }}</strong><em>abertas</em></article><article><span>Oficina</span><strong>{{ quick_metrics.workshop_alerts }}</strong><em>alertas</em></article><article><span>Auditorias</span><strong>{{ quick_metrics.audits }}</strong><em>abertas</em></article>

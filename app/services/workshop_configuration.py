@@ -245,6 +245,8 @@ DEFAULT_DIAGNOSTIC_CATALOG = [
 
 REASON_ALIASES = {
     "revisão / degradação óleo": "maintenance",
+    "revisão": "maintenance",
+    "degradação óleo": "maintenance",
     "verificação de rotina": "maintenance",
     "pneus": "tires",
     "travões": "brakes",

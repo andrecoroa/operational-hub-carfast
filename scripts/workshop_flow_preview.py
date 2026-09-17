@@ -42,6 +42,7 @@ PREVIEW_EMAIL = "preview.oficina@carfast.local"
 PREVIEW_PASSWORD = "Preview123!"
 PREVIEW_PLATE = "QA-26-OF"
 PREVIEW_REPAIR_PLATE = "QA-27-OF"
+PREVIEW_SIMPLIFIED_PLATE = "QA-28-OF"
 PHASES = (
     ("entrada", "Entrada", "completed"),
     ("validacao", "Validação Administrativa", "completed"),
@@ -53,8 +54,8 @@ PHASES = (
 )
 
 
-def prepare_fixture() -> tuple[int, int]:
-    """Create or refresh two deterministic processes containing no real data."""
+def prepare_fixture() -> tuple[int, int, int]:
+    """Create synthetic legacy and simplified processes without real data."""
 
     Base.metadata.create_all(bind=engine)
     with SessionLocal() as db:
@@ -264,11 +265,82 @@ def prepare_fixture() -> tuple[int, int]:
                     detail_json={"synthetic": True},
                 )
             )
+        simplified_vehicle = db.scalar(select(Vehicle).where(Vehicle.plate == PREVIEW_SIMPLIFIED_PLATE))
+        if not simplified_vehicle:
+            simplified_vehicle = Vehicle(
+                plate=PREVIEW_SIMPLIFIED_PLATE,
+                vin="SYNTHETICWORKSHOPPREVIEW28",
+                brand="CarFast",
+                model="Carrinha de demonstração simplificada",
+                year=2026,
+                lifecycle_status="active",
+                operational_status="in_workshop",
+                rentway_km=56120,
+                active=True,
+                notes="Apenas dados sintéticos para validação do novo fluxo.",
+            )
+            db.add(simplified_vehicle)
+            db.flush()
+        simplified_process = db.scalar(select(WorkshopPhasedProcess).where(
+            WorkshopPhasedProcess.creation_mode == "synthetic_workshop_preview_simplified"
+        ))
+        if not simplified_process:
+            simplified_process = WorkshopPhasedProcess(
+                public_reference="OF-PREVIEW-2028",
+                opened_at=datetime.now(UTC),
+                process_type="general",
+                title="Travagem — novo fluxo de demonstração",
+                creation_mode="synthetic_workshop_preview_simplified",
+                status="active",
+                vehicle_id=simplified_vehicle.id,
+                plate_snapshot=simplified_vehicle.plate,
+                current_phase_code="reparacao",
+                priority="normal",
+                origin="v2_clean",
+                origin_detail="Ambiente sintético e isolado",
+                initial_km=56120,
+                initial_observation="Ruído nas travagens, sem dados reais.",
+                responsible_user_id=user.id,
+                created_by_id=user.id,
+                received_at=datetime.now(UTC),
+                metadata_json={"workshop_flow_version": 2, "operational_situation": "in_progress"},
+            )
+            db.add(simplified_process)
+            db.flush()
+            phase_data = {
+                "entrada": {"entry_km": "56120", "entry_reasons": ["Avaria"],
+                            "breakdowns": ["Ruído ao travar"], "short_description": "Ruído ao travar",
+                            "can_drive": "Com reserva"},
+                "validacao": {"form_snapshot": {
+                    "analysis_decision": "Reparar", "problem_conclusion": "Desgaste das pastilhas dianteiras",
+                    "services_proposed": "Verificar e substituir pastilhas dianteiras",
+                    "diagnostic_mode": "late_authorized", "quote_needed": "no", "quote_status": "pending",
+                }, "proposed_materials": [{"reference": "SYN-PAD-28", "description": "Pastilhas dianteiras sintéticas",
+                                         "quantity": "1", "status": "proposed", "source": "manual_analysis"}]},
+                "diagnostico": {"form_snapshot": {"diagnostic_mode": "late_authorized",
+                                                   "diagnostic_closed": "Pendente"}},
+                "auditoria": {"form_snapshot": {"audit_decision_main": "Reparar",
+                                                 "audit_repair_authorized": "Por confirmar"}},
+                "reparacao": {"form_snapshot": {}},
+                "fecho": {"form_snapshot": {}},
+            }
+            for sort_order, (code, name, status) in enumerate((
+                ("entrada", "Entrada", "completed"),
+                ("validacao", "Análise e decisão", "completed"),
+                ("diagnostico", "Diagnóstico", "pending_documents"),
+                ("auditoria", "Auditoria", "completed"),
+                ("reparacao", "Execução", "in_progress"),
+                ("fecho", "Fecho", "not_started"),
+            ), start=1):
+                db.add(WorkshopPhasedProcessPhase(
+                    process_id=simplified_process.id, phase_code=code, name=name,
+                    status=status, sort_order=sort_order, data_json=phase_data[code],
+                ))
         db.commit()
-        return process.id, repair_process.id
+        return process.id, repair_process.id, simplified_process.id
 
 
-DIAGNOSTIC_PROCESS_ID, REPAIR_PROCESS_ID = prepare_fixture()
+DIAGNOSTIC_PROCESS_ID, REPAIR_PROCESS_ID, SIMPLIFIED_PROCESS_ID = prepare_fixture()
 
 
 if __name__ == "__main__":
@@ -283,6 +355,10 @@ if __name__ == "__main__":
     print(
         "Reparação: "
         f"/v2-clean/workshop/reparacao?process_id={REPAIR_PROCESS_ID}"
+    )
+    print(
+        "Novo fluxo simplificado: "
+        f"/v2-clean/workshop/reparacao?process_id={SIMPLIFIED_PROCESS_ID}"
     )
     print(f"Utilizador: {PREVIEW_EMAIL} / {PREVIEW_PASSWORD}")
     uvicorn.run(app, host="127.0.0.1", port=port, log_level="warning")

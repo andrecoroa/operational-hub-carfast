@@ -64,6 +64,7 @@ INITIAL_PERMISSIONS = [
     ("fleet.commerce.manage", "Gerir lista para comercio"),
     ("workshop.read", "Ver oficina"),
     ("workshop.write", "Gerir oficina"),
+    ("workshop.entry.create", "Recolher viatura e criar a própria entrada de Oficina"),
     ("imports.run", "Executar importacoes"),
     ("imports.approve", "Aprovar importacoes"),
     ("tasks.read", "Ver tarefas"),

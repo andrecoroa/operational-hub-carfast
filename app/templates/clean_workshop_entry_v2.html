@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="app-shell clean-shell workshop-v2-entry">
+  {% set active_menu = "workshop" %}{% include "_sidebar.html" %}
+  {% set can_manage_workshop = nav_has_permission(request, "workshop.write", "admin.manage") %}
+  {% set saved_reasons = saved_entry.entry_reasons or [] %}
+  {% set saved_uploads = saved_entry.uploads or [] %}
+  {% set missing_reasons = saved_entry.photo_absence_reasons or {} %}
+  <main class="content clean-content">
+    <header class="clean-header-shell clean-card-wide">
+      <div class="clean-header-topbar"><p class="eyebrow">Oficina / recolha</p><a class="button-link secondary-link" href="{{ workshop_return_url }}">Voltar</a></div>
+      <div class="clean-header-hero-row single"><div class="clean-header-hero-main">
+        <h2>{{ vehicle_context.process_ref }} | Entrada</h2>
+        <p>Regista os factos da chegada. A equipa de Oficina decide o trabalho na etapa seguinte.</p>
+        <div class="clean-header-meta"><span><b>Registado por</b><em>{{ current_user_name }}</em></span><span><b>Estado</b><em>{{ "Recolha em curso" if workshop_process else "Nova recolha" }}</em></span></div>
+      </div></div>
+    </header>
+
+    {% if can_manage_workshop %}{% include "_clean_workshop_stage_nav.html" %}{% else %}<p class="workshop-v2-progress">Etapa 1 de 4 · Entrada</p>{% endif %}
+    {% set errors = {
+      "missing_plate": "Indica a matrícula.", "missing_km": "Indica o km de entrada.",
+      "reason_required": "Seleciona pelo menos um motivo.", "breakdown_required": "Descreve cada avaria reportada.",
+      "other_reason_required": "Descreve o motivo Outro.", "reporter_required": "Identifica o operador que reportou.",
+      "photo_reason_required": "Indica porque foi usado um ficheiro de fotografia existente.",
+      "photo_absence_required": "Justifica as fotografias obrigatórias que não foram obtidas.",
+      "photo_invalid": "Usa fotografias JPG, PNG ou WebP até 10 MB.",
+      "photo_limit": "Podes carregar até 12 fotografias de cada vez."
+    } %}
+    {% if error %}<p class="clean-rule-note" role="alert">{{ errors.get(error, error) }}</p>{% endif %}
+    {% if saved %}<p class="clean-rule-note" role="status">Entrada guardada.</p>{% endif %}
+
+    <form class="clean-panel clean-card-wide workshop-v2-entry-form" method="post" action="/v2-clean/workshop-entry" enctype="multipart/form-data">
+      <input type="hidden" name="workshop_flow_version" value="2">
+      {% if workshop_process %}<input type="hidden" name="process_id" value="{{ workshop_process.id }}">{% endif %}
+      {% if return_context %}<input type="hidden" name="return_context" value="{{ return_context }}">{% endif %}
+      <div class="table-heading flat-heading"><div><p class="eyebrow">01 · Identificação</p><h3>Viatura e ocorrência</h3></div></div>
+      <div class="clean-phase-field-grid">
+        <label>Matrícula<input name="plate" autocomplete="off" required value="{{ workshop_process.plate_snapshot if workshop_process else request.query_params.get('plate', '') }}" placeholder="Ex.: AA-00-AA"></label>
+        <label>KM de entrada<input name="entry_km" inputmode="numeric" value="{{ saved_entry.entry_km or '' }}" placeholder="Km no quadrante"></label>
+        <label>Tipo de registo<select name="entry_mode" id="workshop-v2-entry-mode">{% for option in ["Entrada", "Marcação", "Entrada em assistência em viagem"] %}<option{% if (saved_entry.entry_mode or "Entrada") == option %} selected{% endif %}>{{ option }}</option>{% endfor %}</select></label>
+        <label>Viatura pode circular?<select name="can_drive">{% for option in ["Por confirmar", "Sim", "Não"] %}<option{% if (saved_entry.can_drive or "Por confirmar") == option %} selected{% endif %}>{{ option }}</option>{% endfor %}</select></label>
+      </div>
+      <fieldset class="workshop-v2-reasons"><legend>Porque entrou?</legend><div class="clean-chip-grid clean-chip-grid-final">
+        {% for reason in entry_reasons %}<label><input type="checkbox" name="entry_reasons" value="{{ reason }}"{% if reason in saved_reasons %} checked{% endif %}><span>{{ reason }}</span></label>{% endfor %}
+      </div></fieldset>
+      <div id="workshop-v2-breakdowns"{% if 'Avaria' not in saved_reasons %} hidden{% endif %}>
+        <label class="clean-full-label">Avarias reportadas · uma por linha</label>
+        <div id="workshop-v2-breakdown-rows">
+          {% for breakdown in saved_entry.breakdowns or [''] %}<div class="workshop-v2-breakdown-row"><input name="breakdown_description" value="{{ breakdown }}" placeholder="Descreve o sintoma ou avaria"><button type="button" class="secondary" data-remove-breakdown aria-label="Remover avaria">Remover</button></div>{% endfor %}
+        </div>
+        <button type="button" class="secondary" id="workshop-v2-add-breakdown">Adicionar avaria</button>
+      </div>
+      <label class="clean-full-label" id="workshop-v2-other-label"{% if 'Outro' not in saved_reasons %} hidden{% endif %}>Outro motivo<input name="other_reason" value="{{ saved_entry.other_reason or '' }}" placeholder="Indica o motivo"></label>
+      <label class="clean-full-label">Descrição curta<textarea name="short_description" rows="3" placeholder="O que aconteceu ou foi pedido?">{{ saved_entry.short_description or '' }}</textarea></label>
+      <div class="clean-phase-field-grid">
+        <label>Quem reportou<select name="reported_by" id="workshop-v2-reporter">{% for option in ["Operador", "Cliente", "Oficina", "Sistema"] %}<option{% if (saved_entry.reported_by or "Operador") == option %} selected{% endif %}>{{ option }}</option>{% endfor %}</select></label>
+        <label>Identificar quem reportou<input name="reported_by_detail" value="{{ saved_entry.reported_by_detail or current_user_name }}" placeholder="Nome ou identificação"></label>
+      </div>
+      <div id="workshop-v2-travel"{% if (saved_entry.entry_mode or '') != 'Entrada em assistência em viagem' %} hidden{% endif %}>
+        <div class="clean-phase-field-grid"><label>Onde entrou?<select name="travel_assistance_destination"><option value="">Selecionar</option><option value="internal"{% if saved_entry.travel_assistance_destination == 'internal' %} selected{% endif %}>Oficina interna</option><option value="external"{% if saved_entry.travel_assistance_destination == 'external' %} selected{% endif %}>Oficina externa</option></select></label><label>Oficina onde entrou<input name="travel_assistance_workshop" value="{{ saved_entry.travel_assistance_workshop or '' }}"></label></div>
+        <label class="clean-full-label">Queixa / ocorrência<textarea name="travel_assistance_complaint" rows="2">{{ saved_entry.travel_assistance_complaint or '' }}</textarea></label>
+      </div>
+      <label class="clean-full-label">Informação adicional<textarea name="validation_notes" rows="2" placeholder="Só o que ajuda a equipa na análise">{{ saved_entry.validation_notes or '' }}</textarea></label>
+
+      <details class="workshop-v2-disclosure" id="workshop-v2-photos"><summary>Fotografias da entrada <small>Quadrante e quatro lados · ou motivo da falta</small></summary>
+        <p>«Tirar agora» abre a câmara quando o dispositivo o permite. Se escolheres um ficheiro existente, explica porquê.</p>
+        {% for slot, label, field in [("dashboard", "Quadrante", "dashboard_photo"), ("front", "Frente", "vehicle_front_photo"), ("rear", "Traseira", "vehicle_rear_photo"), ("left", "Lateral esquerda", "vehicle_left_photo"), ("right", "Lateral direita", "vehicle_right_photo")] %}
+          {% set existing = saved_uploads | selectattr('slot', 'equalto', slot) | list %}
+          <div class="workshop-v2-photo-row"><strong>{{ label }}{% if existing %} · {{ existing|length }} guardada(s){% endif %}</strong><div class="clean-upload-actions"><label class="clean-file-button">Tirar agora<input type="file" name="{{ field }}_camera" accept="image/jpeg,image/png,image/webp" capture="environment"></label><label class="clean-file-button">Carregar existente<input type="file" name="{{ field }}" accept="image/jpeg,image/png,image/webp"></label></div><label>Motivo do ficheiro existente<input name="upload_reason_{{ slot }}" placeholder="Obrigatório se carregar ficheiro"></label><label>Se não houve foto, porquê?<input name="absence_reason_{{ slot }}" value="{{ missing_reasons.get(slot, '') }}" placeholder="Obrigatório quando não há fotografia"></label></div>
+        {% endfor %}
+        <div class="workshop-v2-photo-row"><strong>Fotos de apoio · opcionais</strong><div class="clean-upload-actions"><label class="clean-file-button">Tirar agora<input type="file" name="entry_photos_camera" accept="image/jpeg,image/png,image/webp" capture="environment" multiple></label><label class="clean-file-button">Carregar existente<input type="file" name="entry_photos" accept="image/jpeg,image/png,image/webp" multiple></label></div><label>Motivo do ficheiro existente<input name="upload_reason_support" placeholder="Obrigatório se carregar ficheiro"></label></div>
+        {% if workshop_process and saved_uploads %}<div class="clean-upload-summary"><strong>Fotografias guardadas</strong>{% for upload in saved_uploads %}<a href="/v2-clean/workshop-entry/{{ workshop_process.id }}/uploads/{{ upload.stored_name }}" target="_blank" rel="noopener">{{ upload.label }} · {{ upload.original_name }}{% if upload.source_reason %} · {{ upload.source_reason }}{% endif %}</a>{% endfor %}</div>{% endif %}
+      </details>
+      <details class="workshop-v2-disclosure"><summary>Verificações físicas <small>Abrir quando necessário</small></summary>
+        <div class="clean-physical-check-grid">{% set checks = [("visible_damage", "Danos visíveis?"), ("damage_matches_rentway", "Danos coerentes com Rentway?"), ("dua_copy", "Cópia de DUA?"), ("green_card_valid", "Carta Verde válida?"), ("vv_device", "Dispositivo VV?"), ("reflective_vest", "Colete refletor?"), ("triangle", "Triângulo?"), ("spare_tyre", "Pneu suplente?"), ("jack", "Macaco?"), ("inflation_kit", "Kit enchimento?")] %}{% for code, label in checks %}<label>{{ label }}<select name="{{ code }}">{% for value, text in [("not_checked", "Não verificado"), ("yes", "Sim"), ("no", "Não"), ("not_applicable", "Não aplicável")] %}<option value="{{ value }}"{% if (saved_entry.physical_checks or {}).get(code, 'not_checked') == value %} selected{% endif %}>{{ text }}</option>{% endfor %}</select></label>{% endfor %}</div>
+        <label class="clean-full-label">Notas / evidência física<textarea name="physical_check_note" rows="2">{{ saved_entry.physical_check_note or '' }}</textarea></label>
+      </details>
+      <div class="clean-substep-savebar workshop-v2-actions"><button type="submit" name="action" value="save" class="secondary">Guardar rascunho</button><button type="submit" name="action" value="advance">{{ "Avançar para análise" if can_manage_workshop else "Concluir recolha" }}</button></div>
+    </form>
+  </main>
+</div>
+<script>
+(() => {
+  const root = document.querySelector('.workshop-v2-entry');
+  if (!root) return;
+  const sync = () => {
+    const selected = new Set([...root.querySelectorAll('input[name="entry_reasons"]:checked')].map(el => el.value));
+    root.querySelector('#workshop-v2-breakdowns').hidden = !selected.has('Avaria');
+    root.querySelector('#workshop-v2-other-label').hidden = !selected.has('Outro');
+    root.querySelector('#workshop-v2-travel').hidden = root.querySelector('#workshop-v2-entry-mode').value !== 'Entrada em assistência em viagem';
+  };
+  root.querySelectorAll('input[name="entry_reasons"], #workshop-v2-entry-mode').forEach(el => el.addEventListener('change', sync));
+  root.querySelector('#workshop-v2-add-breakdown').addEventListener('click', () => {
+    const row = document.createElement('div'); row.className = 'workshop-v2-breakdown-row';
+    const input = document.createElement('input'); input.name = 'breakdown_description'; input.placeholder = 'Descreve o sintoma ou avaria';
+    const button = document.createElement('button'); button.type = 'button'; button.className = 'secondary'; button.dataset.removeBreakdown = ''; button.textContent = 'Remover';
+    row.append(input, button); root.querySelector('#workshop-v2-breakdown-rows').append(row); input.focus();
+  });
+  root.addEventListener('click', event => { if (event.target.matches('[data-remove-breakdown]')) event.target.closest('.workshop-v2-breakdown-row').remove(); });
+  sync();
+})();
+</script>
+{% endblock %}

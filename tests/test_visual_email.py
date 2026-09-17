@@ -75,6 +75,15 @@ def test_full_email_workspace_keeps_all_actions_in_tabbed_layout() -> None:
     assert ".email-body-frame{max-height:none!important;overflow:hidden}" in css
 
 
+def test_email_workspace_assets_have_matching_cache_versions() -> None:
+    version = "20260917-email-workspace-tabs"
+    for page in ("clean_email_inbox.html", "clean_email_thread.html"):
+        source = (ROOT / "app" / "templates" / page).read_text(encoding="utf-8")
+        assert f"email.js?v={version}" in source
+    base = (ROOT / "app" / "templates" / "base.html").read_text(encoding="utf-8")
+    assert f"ui-contract-v1.css?v={version}" in base
+
+
 def test_email_responsive_contract_uses_local_overflow_and_full_screen_preview() -> None:
     css = CSS.read_text(encoding="utf-8")
 

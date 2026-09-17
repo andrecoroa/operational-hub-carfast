@@ -84,6 +84,29 @@ def test_vehicle_entry_point_is_contextual(authenticated_client, db_session):
     assert f"/v2-clean/processes/supplier-audits?vehicle_id={vehicle.id}" in response.text
 
 
+def test_detail_phases_start_collapsed_and_keep_actions_available(authenticated_client, db_session):
+    vehicle = _vehicle(db_session)
+    supplier = _supplier(db_session)
+    authenticated_client.post(
+        "/v2-clean/processes/supplier-audits",
+        data={
+            "title": "Reparação demorada",
+            "supplier_id": supplier.id,
+            "vehicle_id": vehicle.id,
+            "problem_type": "delayed_repair",
+            "suspicion_description": "Prazo por confirmar.",
+        },
+    )
+    audit = db_session.scalar(select(SupplierAuditCase))
+    response = authenticated_client.get(f"/v2-clean/processes/supplier-audits/{audit.id}")
+    assert response.status_code == 200
+    for phase in ("registration", "verification", "contacts", "conclusion"):
+        assert f'id="{phase}" name="supplier-audit-phase"' in response.text
+    assert 'name="supplier-audit-phase" open' not in response.text
+    assert response.text.count('class="supplier-audit-action"') == 2
+    assert "openAuditPhaseFromHash" in response.text
+
+
 def test_supplier_is_required_and_vehicle_is_optional(authenticated_client, db_session):
     supplier = _supplier(db_session)
     response = authenticated_client.post("/v2-clean/processes/supplier-audits", data={"title": "Erro de faturação", "supplier_id": supplier.id, "problem_type": "billing_error", "suspicion_description": "Valor por confirmar."}, follow_redirects=False)

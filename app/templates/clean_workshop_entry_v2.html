@@ -62,18 +62,59 @@
       </div>
       <label class="clean-full-label">Informação adicional<textarea name="validation_notes" rows="2" placeholder="Só o que ajuda a equipa na análise">{{ saved_entry.validation_notes or '' }}</textarea></label>
 
-      <details class="workshop-v2-disclosure" id="workshop-v2-photos"><summary>Fotografias da entrada <small>Quadrante e quatro lados · ou motivo da falta</small></summary>
-        <p>«Tirar agora» abre a câmara quando o dispositivo o permite. Se escolheres um ficheiro existente, explica porquê.</p>
-        {% for slot, label, field in [("dashboard", "Quadrante", "dashboard_photo"), ("front", "Frente", "vehicle_front_photo"), ("rear", "Traseira", "vehicle_rear_photo"), ("left", "Lateral esquerda", "vehicle_left_photo"), ("right", "Lateral direita", "vehicle_right_photo")] %}
-          {% set existing = saved_uploads | selectattr('slot', 'equalto', slot) | list %}
-          <div class="workshop-v2-photo-row"><strong>{{ label }}{% if existing %} · {{ existing|length }} guardada(s){% endif %}</strong><div class="clean-upload-actions"><label class="clean-file-button">Tirar agora<input type="file" name="{{ field }}_camera" accept="image/jpeg,image/png,image/webp" capture="environment"></label><label class="clean-file-button">Carregar existente<input type="file" name="{{ field }}" accept="image/jpeg,image/png,image/webp"></label></div><label>Motivo do ficheiro existente<input name="upload_reason_{{ slot }}" placeholder="Obrigatório se carregar ficheiro"></label><label>Se não houve foto, porquê?<input name="absence_reason_{{ slot }}" value="{{ missing_reasons.get(slot, '') }}" placeholder="Obrigatório quando não há fotografia"></label></div>
-        {% endfor %}
-        <div class="workshop-v2-photo-row"><strong>Fotos de apoio · opcionais</strong><div class="clean-upload-actions"><label class="clean-file-button">Tirar agora<input type="file" name="entry_photos_camera" accept="image/jpeg,image/png,image/webp" capture="environment" multiple></label><label class="clean-file-button">Carregar existente<input type="file" name="entry_photos" accept="image/jpeg,image/png,image/webp" multiple></label></div><label>Motivo do ficheiro existente<input name="upload_reason_support" placeholder="Obrigatório se carregar ficheiro"></label></div>
-        {% if workshop_process and saved_uploads %}<div class="clean-upload-summary"><strong>Fotografias guardadas</strong>{% for upload in saved_uploads %}<a href="/v2-clean/workshop-entry/{{ workshop_process.id }}/uploads/{{ upload.stored_name }}" target="_blank" rel="noopener">{{ upload.label }} · {{ upload.original_name }}{% if upload.source_reason %} · {{ upload.source_reason }}{% endif %}</a>{% endfor %}</div>{% endif %}
+      <details class="workshop-v2-disclosure workshop-v2-section" id="workshop-v2-photos"{% if error in ['photo_reason_required', 'photo_absence_required', 'photo_invalid', 'photo_limit'] %} open{% endif %}>
+        <summary><span class="workshop-v2-section-icon" aria-hidden="true">02</span><span class="workshop-v2-section-title"><strong>Fotografias da entrada</strong><small>Quadrante e quatro lados, ou justificação se não foi possível fotografar</small></span><span class="workshop-v2-section-chevron" aria-hidden="true">⌄</span></summary>
+        <div class="workshop-v2-section-body">
+          <p class="workshop-v2-section-help">Escolhe uma ação por vista. O motivo só aparece quando carregas um ficheiro já existente ou assinalas que não conseguiste fotografar.</p>
+          <div class="workshop-v2-photo-grid">
+            {% for slot, label, field in [("dashboard", "Quadrante", "dashboard_photo"), ("front", "Frente", "vehicle_front_photo"), ("rear", "Traseira", "vehicle_rear_photo"), ("left", "Lateral esquerda", "vehicle_left_photo"), ("right", "Lateral direita", "vehicle_right_photo")] %}
+              {% set existing = saved_uploads | selectattr('slot', 'equalto', slot) | list %}
+              <div class="workshop-v2-photo-card" data-photo-slot="{{ slot }}" data-has-photo="{{ 'true' if existing else 'false' }}">
+                <div class="workshop-v2-photo-heading"><div><strong>{{ label }}</strong><small>{{ existing|length ~ ' fotografia(s) guardada(s)' if existing else 'Fotografia necessária' }}</small></div><span class="workshop-v2-photo-status" data-photo-status aria-live="polite">{{ 'Guardada' if existing else 'Por obter' }}</span></div>
+                <div class="workshop-v2-photo-actions"><label class="workshop-v2-photo-action">Tirar agora<input type="file" name="{{ field }}_camera" accept="image/jpeg,image/png,image/webp" capture="environment" data-photo-camera></label><label class="workshop-v2-photo-action">Escolher ficheiro<input type="file" name="{{ field }}" accept="image/jpeg,image/png,image/webp" data-photo-selected></label>{% if not existing %}<button type="button" class="workshop-v2-photo-missing" data-no-photo aria-controls="workshop-v2-absence-{{ slot }}" aria-expanded="{{ 'true' if missing_reasons.get(slot) else 'false' }}">Não foi possível fotografar</button>{% endif %}</div>
+                <p class="workshop-v2-photo-filename" data-photo-filename hidden></p>
+                <label class="workshop-v2-photo-detail" data-selected-reason hidden>Porque foi usado um ficheiro existente?<input name="upload_reason_{{ slot }}" minlength="5" placeholder="Ex.: fotografia enviada pelo motorista"></label>
+                <label class="workshop-v2-photo-detail" id="workshop-v2-absence-{{ slot }}" data-absence-reason{% if not missing_reasons.get(slot) or existing %} hidden{% endif %}>Porque não foi possível fotografar?<input name="absence_reason_{{ slot }}" minlength="5" value="{{ missing_reasons.get(slot, '') }}" placeholder="Regista o motivo concreto"></label>
+              </div>
+            {% endfor %}
+            <div class="workshop-v2-photo-card workshop-v2-photo-card-support" data-photo-slot="support" data-has-photo="true">
+              <div class="workshop-v2-photo-heading"><div><strong>Fotos de apoio</strong><small>Opcionais, para danos ou detalhes</small></div><span class="workshop-v2-photo-status">Opcional</span></div>
+              <div class="workshop-v2-photo-actions">
+                <label class="workshop-v2-photo-action">Tirar agora<input type="file" name="entry_photos_camera" accept="image/jpeg,image/png,image/webp" capture="environment" multiple data-photo-camera></label>
+                <label class="workshop-v2-photo-action">Escolher ficheiro<input type="file" name="entry_photos" accept="image/jpeg,image/png,image/webp" multiple data-photo-selected></label>
+              </div>
+              <p class="workshop-v2-photo-filename" data-photo-filename hidden></p>
+              <label class="workshop-v2-photo-detail" data-selected-reason hidden>Porque foi usado um ficheiro existente?<input name="upload_reason_support" minlength="5" placeholder="Ex.: imagem partilhada pela oficina"></label>
+            </div>
+          </div>
+          {% if workshop_process and saved_uploads %}<div class="clean-upload-summary workshop-v2-saved-photos"><strong>Fotografias guardadas</strong>{% for upload in saved_uploads %}<a href="/v2-clean/workshop-entry/{{ workshop_process.id }}/uploads/{{ upload.stored_name }}" target="_blank" rel="noopener">{{ upload.label }} · {{ upload.original_name }}{% if upload.source_reason %} · {{ upload.source_reason }}{% endif %}</a>{% endfor %}</div>{% endif %}
+        </div>
       </details>
-      <details class="workshop-v2-disclosure"><summary>Verificações físicas <small>Abrir quando necessário</small></summary>
-        <div class="clean-physical-check-grid">{% set checks = [("visible_damage", "Danos visíveis?"), ("damage_matches_rentway", "Danos coerentes com Rentway?"), ("dua_copy", "Cópia de DUA?"), ("green_card_valid", "Carta Verde válida?"), ("vv_device", "Dispositivo VV?"), ("reflective_vest", "Colete refletor?"), ("triangle", "Triângulo?"), ("spare_tyre", "Pneu suplente?"), ("jack", "Macaco?"), ("inflation_kit", "Kit enchimento?")] %}{% for code, label in checks %}<label>{{ label }}<select name="{{ code }}">{% for value, text in [("not_checked", "Não verificado"), ("yes", "Sim"), ("no", "Não"), ("not_applicable", "Não aplicável")] %}<option value="{{ value }}"{% if (saved_entry.physical_checks or {}).get(code, 'not_checked') == value %} selected{% endif %}>{{ text }}</option>{% endfor %}</select></label>{% endfor %}</div>
-        <label class="clean-full-label">Notas / evidência física<textarea name="physical_check_note" rows="2">{{ saved_entry.physical_check_note or '' }}</textarea></label>
+      <details class="workshop-v2-disclosure workshop-v2-section" id="workshop-v2-physical">
+        <summary><span class="workshop-v2-section-icon" aria-hidden="true">03</span><span class="workshop-v2-section-title"><strong>Verificações físicas</strong><small>Regista apenas o que foi verificado na viatura</small></span><span class="workshop-v2-section-chevron" aria-hidden="true">⌄</span></summary>
+        <div class="workshop-v2-section-body">
+          <p class="workshop-v2-section-help">Escolhe o resultado de cada ponto. Os restantes ficam «Por verificar»; não precisas de preencher tudo para guardar a recolha.</p>
+          {% set check_groups = [('Danos e histórico', [('visible_damage', 'Danos visíveis'), ('damage_matches_rentway', 'Danos coerentes com Rentway')]), ('Documentos e equipamento', [('dua_copy', 'Cópia do DUA'), ('green_card_valid', 'Carta Verde válida'), ('vv_device', 'Dispositivo Via Verde'), ('reflective_vest', 'Colete refletor'), ('triangle', 'Triângulo'), ('spare_tyre', 'Pneu suplente'), ('jack', 'Macaco'), ('inflation_kit', 'Kit de enchimento')])] %}
+          {% for group_label, checks in check_groups %}
+            <section class="workshop-v2-check-group">
+              <h4>{{ group_label }}</h4>
+              <div class="workshop-v2-check-grid">
+                {% for code, label in checks %}
+                  <div class="workshop-v2-check-card">
+                    <strong id="workshop-v2-check-{{ code }}">{{ label }}</strong>
+                    <div class="workshop-v2-check-options" role="radiogroup" aria-labelledby="workshop-v2-check-{{ code }}">
+                      {% for value, text in [('not_checked', 'Por verificar'), ('yes', 'Sim'), ('no', 'Não'), ('not_applicable', 'N/A')] %}
+                        <label class="workshop-v2-check-choice" data-value="{{ value }}"><input type="radio" name="{{ code }}" value="{{ value }}"{% if (saved_entry.physical_checks or {}).get(code, 'not_checked') == value %} checked{% endif %}><span>{{ text }}</span></label>
+                      {% endfor %}
+                    </div>
+                  </div>
+                {% endfor %}
+              </div>
+            </section>
+          {% endfor %}
+          <button type="button" class="workshop-v2-note-toggle" id="workshop-v2-physical-note-toggle" aria-expanded="{{ 'true' if saved_entry.physical_check_note else 'false' }}">Adicionar observação</button>
+          <label class="workshop-v2-photo-detail" id="workshop-v2-physical-note"{% if not saved_entry.physical_check_note %} hidden{% endif %}>Observação ou evidência física<textarea name="physical_check_note" rows="2" placeholder="Descreve danos, faltas ou uma situação relevante">{{ saved_entry.physical_check_note or '' }}</textarea></label>
+        </div>
       </details>
       <div class="clean-substep-savebar workshop-v2-actions"><button type="submit" name="action" value="save" class="secondary">Guardar rascunho</button><button type="submit" name="action" value="advance">{{ "Avançar para análise" if can_manage_workshop else "Concluir recolha" }}</button></div>
     </form>
@@ -97,6 +138,102 @@
     row.append(input, button); root.querySelector('#workshop-v2-breakdown-rows').append(row); input.focus();
   });
   root.addEventListener('click', event => { if (event.target.matches('[data-remove-breakdown]')) event.target.closest('.workshop-v2-breakdown-row').remove(); });
+  const photoCards = [...root.querySelectorAll('[data-photo-slot]')];
+  const syncPhotoCard = card => {
+    const camera = card.querySelector('[data-photo-camera]');
+    const selected = card.querySelector('[data-photo-selected]');
+    const missing = card.querySelector('[data-no-photo]');
+    const selectedGroup = card.querySelector('[data-selected-reason]');
+    const selectedReason = selectedGroup.querySelector('input');
+    const absenceGroup = card.querySelector('[data-absence-reason]');
+    const absenceReason = absenceGroup?.querySelector('input');
+    const cameraCount = camera.files.length;
+    const selectedCount = selected.files.length;
+    const hasSaved = card.dataset.hasPhoto === 'true';
+    const isMissing = !hasSaved && !cameraCount && !selectedCount && missing?.getAttribute('aria-expanded') === 'true';
+    selectedGroup.hidden = !selectedCount;
+    selectedReason.required = !!selectedCount;
+    if (absenceGroup) {
+      absenceGroup.hidden = !isMissing;
+      absenceReason.required = !!isMissing;
+    }
+    const filename = card.querySelector('[data-photo-filename]');
+    const files = selectedCount ? selected.files : camera.files;
+    filename.hidden = !files.length;
+    filename.textContent = files.length ? [...files].map(file => file.name).join(', ') : '';
+    const status = card.querySelector('[data-photo-status]');
+    if (status) {
+      status.textContent = files.length ? 'Pronta a guardar' : isMissing ? 'Por justificar' : hasSaved ? 'Guardada' : 'Por obter';
+      status.dataset.state = files.length ? 'ready' : isMissing ? 'missing' : hasSaved ? 'saved' : 'pending';
+    }
+    card.classList.toggle('is-active', !!files.length || isMissing);
+  };
+  photoCards.forEach(card => {
+    const camera = card.querySelector('[data-photo-camera]');
+    const selected = card.querySelector('[data-photo-selected]');
+    const missing = card.querySelector('[data-no-photo]');
+    [camera, selected].forEach(input => input.addEventListener('change', () => {
+      if (input.files.length) {
+        const other = input === camera ? selected : camera;
+        other.value = '';
+        if (input === camera) card.querySelector('[data-selected-reason] input').value = '';
+        const absence = card.querySelector('[data-absence-reason] input');
+        if (absence) absence.value = '';
+        if (missing) missing.setAttribute('aria-expanded', 'false');
+      }
+      syncPhotoCard(card);
+    }));
+    missing?.addEventListener('click', () => {
+      const open = missing.getAttribute('aria-expanded') !== 'true';
+      missing.setAttribute('aria-expanded', String(open));
+      if (open) {
+        camera.value = '';
+        selected.value = '';
+        card.querySelector('[data-selected-reason] input').value = '';
+      } else {
+        card.querySelector('[data-absence-reason] input').value = '';
+      }
+      syncPhotoCard(card);
+      if (open) card.querySelector('[data-absence-reason] input').focus();
+    });
+    syncPhotoCard(card);
+  });
+  const physical = root.querySelector('#workshop-v2-physical');
+  const noteToggle = physical.querySelector('#workshop-v2-physical-note-toggle');
+  const noteGroup = physical.querySelector('#workshop-v2-physical-note');
+  const note = noteGroup.querySelector('textarea');
+  let manualNoteOpen = !!note.value.trim();
+  const syncPhysical = () => {
+    const hasException = [...physical.querySelectorAll('.workshop-v2-check-card input:checked')]
+      .some(input => (input.name === 'visible_damage' && input.value === 'yes') ||
+        (input.name !== 'visible_damage' && input.value === 'no'));
+    const showNote = hasException || manualNoteOpen || !!note.value.trim();
+    noteGroup.hidden = !showNote;
+    noteToggle.hidden = showNote;
+    noteToggle.setAttribute('aria-expanded', String(showNote));
+  };
+  physical.querySelectorAll('.workshop-v2-check-card input').forEach(input => input.addEventListener('change', syncPhysical));
+  noteToggle.addEventListener('click', () => {
+    manualNoteOpen = true;
+    syncPhysical();
+    note.focus();
+  });
+  note.addEventListener('input', syncPhysical);
+  syncPhysical();
+  root.querySelector('form').addEventListener('submit', event => {
+    if (event.submitter?.value !== 'advance') return;
+    const missingCards = photoCards.filter(card => card.dataset.photoSlot !== 'support' && card.dataset.hasPhoto !== 'true' &&
+      !card.querySelector('[data-photo-camera]').files.length && !card.querySelector('[data-photo-selected]').files.length &&
+      (card.querySelector('[data-absence-reason] input').value.trim().length < 5));
+    if (!missingCards.length) return;
+    event.preventDefault();
+    root.querySelector('#workshop-v2-photos').open = true;
+    missingCards.forEach(card => {
+      card.querySelector('[data-no-photo]').setAttribute('aria-expanded', 'true');
+      syncPhotoCard(card);
+    });
+    missingCards[0].querySelector('[data-absence-reason] input').focus();
+  });
   sync();
 })();
 </script>

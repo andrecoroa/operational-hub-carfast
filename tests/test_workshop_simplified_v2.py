@@ -63,6 +63,48 @@ def test_v2_entry_can_advance_with_documented_missing_photos(authenticated_clien
     assert process.current_phase_code == "validacao"
 
 
+def test_v2_entry_conditional_photo_reasons_and_compact_physical_checks(authenticated_client, db_session):
+    page = authenticated_client.get("/v2-clean/workshop-entry?flow=2")
+    assert page.status_code == 200
+    for slot in ("dashboard", "front", "rear", "left", "right"):
+        assert f'data-photo-slot="{slot}"' in page.text
+        assert f'name="upload_reason_{slot}"' in page.text
+        assert f'name="absence_reason_{slot}"' in page.text
+    assert 'data-selected-reason hidden' in page.text
+    assert 'data-absence-reason hidden' in page.text
+    assert 'data-no-photo' in page.text
+    assert 'name="visible_damage" value="yes"' in page.text
+    assert 'name="damage_matches_rentway" value="no"' in page.text
+    assert '<select name="visible_damage"' not in page.text
+
+    saved = authenticated_client.post(
+        "/v2-clean/workshop-entry",
+        data={
+            "workshop_flow_version": "2", "plate": "SV-26-UI", "action": "save",
+            "visible_damage": "yes", "damage_matches_rentway": "no",
+            "dua_copy": "not_applicable", "physical_check_note": "Risco no para-choques",
+            "absence_reason_front": "Fotografia impedida pela posição da viatura",
+        },
+        follow_redirects=False,
+    )
+    assert saved.status_code == 303
+    process = db_session.scalar(select(WorkshopPhasedProcess).where(
+        WorkshopPhasedProcess.plate_snapshot == "SV-26-UI"
+    ))
+    entry = db_session.scalar(select(WorkshopPhasedProcessPhase).where(
+        WorkshopPhasedProcessPhase.process_id == process.id,
+        WorkshopPhasedProcessPhase.phase_code == "entrada",
+    ))
+    assert entry.data_json["physical_checks"]["visible_damage"] == "yes"
+    assert entry.data_json["physical_checks"]["damage_matches_rentway"] == "no"
+    assert entry.data_json["physical_checks"]["dua_copy"] == "not_applicable"
+    assert entry.data_json["physical_check_note"] == "Risco no para-choques"
+    assert entry.data_json["photo_absence_reasons"]["front"] == "Fotografia impedida pela posição da viatura"
+    revisited = authenticated_client.get(f"/v2-clean/workshop-entry?process_id={process.id}")
+    assert 'name="visible_damage" value="yes" checked' in revisited.text
+    assert 'name="damage_matches_rentway" value="no" checked' in revisited.text
+
+
 def test_v2_analysis_late_diagnostic_needs_identified_authorization(authenticated_client, db_session):
     authenticated_client.post(
         "/v2-clean/workshop-entry",

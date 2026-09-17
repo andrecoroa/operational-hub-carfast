@@ -73,6 +73,22 @@
             </select>
           </label>
           <label>
+            <span>Marca</span>
+            <select name="brand">
+              <option value="">Todas</option>
+              {% for option in brand_options %}<option value="{{ option }}"{% if brand == option %} selected{% endif %}>{{ option }}</option>{% endfor %}
+              {% if brand and brand not in brand_options %}<option value="{{ brand }}" selected>{{ brand }} (sem resultados)</option>{% endif %}
+            </select>
+          </label>
+          <label>
+            <span>Grupo</span>
+            <select name="group">
+              <option value="">Todos</option>
+              {% for option in group_options %}<option value="{{ option }}"{% if group == option %} selected{% endif %}>{{ option }}</option>{% endfor %}
+              {% if group and group not in group_options %}<option value="{{ group }}" selected>{{ group }} (sem resultados)</option>{% endif %}
+            </select>
+          </label>
+          <label>
             <span>Fase atual</span>
             <select name="phase">
               <option value="all" {% if phase == 'all' %}selected{% endif %}>Todas</option>
@@ -100,6 +116,7 @@
           <button type="submit">Aplicar filtros</button>
           <a href="/v2-clean/workshop?scope={{ scope }}">Limpar</a>
         </form>
+        <p class="clean-workshop-result-count" role="status">{{ filtered_count }} {{ 'processo encontrado' if filtered_count == 1 else 'processos encontrados' }} · Página {{ page }} de {{ page_count }}</p>
         <p class="clean-workshop-filter-help"><strong>Fase atual</strong> indica onde o processo está no percurso técnico. <strong>Situação</strong> indica se o trabalho está em curso ou temporariamente em espera.</p>
         {% if request.query_params.get('situation_error') %}<p class="clean-phase-error" role="alert">Indica um motivo válido. Se escolheres «Outro», descreve-o antes de confirmar.</p>{% endif %}
         <div class="clean-workshop-table-scroll" data-workshop-table-scroll>
@@ -152,8 +169,11 @@
                       <input type="hidden" name="location" value="{{ location }}">
                       <input type="hidden" name="phase" value="{{ phase }}">
                       <input type="hidden" name="situation" value="{{ situation }}">
+                      <input type="hidden" name="brand" value="{{ brand }}">
+                      <input type="hidden" name="group" value="{{ group }}">
                       <input type="hidden" name="q" value="{{ q }}">
                       <input type="hidden" name="sort" value="{{ sort }}">
+                      <input type="hidden" name="page" value="{{ page }}">
                       <button type="submit" name="action" value="resume" class="clean-workshop-situation-action">Retomar</button>
                     </form>
                   {% else %}
@@ -173,8 +193,11 @@
                   <input type="hidden" name="location" value="{{ location }}">
                   <input type="hidden" name="phase" value="{{ phase }}">
                   <input type="hidden" name="situation" value="{{ situation }}">
+                  <input type="hidden" name="brand" value="{{ brand }}">
+                  <input type="hidden" name="group" value="{{ group }}">
                   <input type="hidden" name="q" value="{{ q }}">
                   <input type="hidden" name="sort" value="{{ sort }}">
+                  <input type="hidden" name="page" value="{{ page }}">
                   <label>Motivo<select name="waiting_reason" required><option value="">Selecionar motivo</option><option>A aguardar peças</option><option>A aguardar orçamento</option><option>A aguardar aprovação</option><option>A aguardar oficina externa</option><option>Outro</option></select></label>
                   <label data-workshop-wait-other hidden>Especifica o motivo<textarea name="waiting_note" maxlength="300" disabled placeholder="Descreve o motivo da espera"></textarea></label>
                   <div class="clean-workshop-wait-dialog-actions">
@@ -186,7 +209,7 @@
             {% endif %}
           {% else %}
             <p class="muted">
-              {% if location != 'all' or phase != 'all' or situation != 'all' %}
+              {% if location != 'all' or phase != 'all' or situation != 'all' or brand or group or q %}
                 Nenhum processo corresponde aos filtros selecionados.
               {% else %}
               {% if scope == "closed" %}
@@ -203,6 +226,13 @@
           {% endfor %}
         </div>
         </div>
+        {% if page_count > 1 %}
+          <nav class="clean-workshop-pagination" aria-label="Páginas dos processos de oficina">
+            {% if page > 1 %}<a href="/v2-clean/workshop?{{ pagination_query }}&amp;page={{ page - 1 }}">Anterior</a>{% endif %}
+            <span>Página {{ page }} de {{ page_count }}</span>
+            {% if page < page_count %}<a href="/v2-clean/workshop?{{ pagination_query }}&amp;page={{ page + 1 }}">Seguinte</a>{% endif %}
+          </nav>
+        {% endif %}
       </article>
     </section>
   </main>

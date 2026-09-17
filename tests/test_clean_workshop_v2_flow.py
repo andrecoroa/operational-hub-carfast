@@ -11,7 +11,7 @@ from sqlalchemy.dialects import postgresql
 
 import app.main as app_main
 from app.models.documents import Document, DocumentLink, VehicleDocumentRecord, VehicleDocumentRecordTag
-from datetime import date
+from datetime import date, datetime
 from app.models.audit import AuditLog
 from app.models.tasks import Task
 from app.models.vehicles import Vehicle, VehicleExternalSnapshot
@@ -545,6 +545,9 @@ def test_workshop_dashboard_shows_operational_context_and_updates_situation(
     assert "PEUGEOT 208" in dashboard.text
     assert "B1" in dashboard.text
     assert "Fase atual</strong> indica onde o processo está no percurso técnico" in dashboard.text
+    assert 'name="brand"' in dashboard.text
+    assert 'name="group"' in dashboard.text
+    assert "1 processo encontrado" in dashboard.text
 
     searched = authenticated_client.get("/v2-clean/workshop?q=WX-10-AA&sort=age")
     assert searched.status_code == 200
@@ -573,7 +576,7 @@ def test_workshop_dashboard_shows_operational_context_and_updates_situation(
     assert "Oficina Parceira" in legacy_report.text
     expected_return = (
         f"/v2-clean/workshop?scope=open&amp;location=all&amp;phase=all&amp;"
-        f"situation=all&amp;q=WX-10-AA&amp;sort=age"
+        f"situation=all&amp;q=WX-10-AA&amp;sort=age&amp;brand=&amp;group=&amp;page=1"
         f"#workshop-process-{process.id}"
     )
     assert f'href="{expected_return}">Voltar à Oficina</a>' in workbench.text
@@ -728,6 +731,111 @@ def test_workshop_wait_other_requires_note_and_keeps_auditable_reason(
     db_session.refresh(process)
     assert "operational_waiting_reason" not in process.metadata_json
     assert "operational_waiting_note" not in process.metadata_json
+
+
+def test_workshop_dashboard_filters_before_pagination_and_preserves_context(
+    authenticated_client, db_session
+):
+    regular_vehicle = Vehicle(plate="AA-00-AA", brand="PEUGEOT", model="208", rentway_group="B", active=True)
+    target_vehicle = Vehicle(plate="TZ-99-AA", brand="MERCEDES", model="GLE", rentway_group="SUV", active=True)
+    db_session.add_all([regular_vehicle, target_vehicle])
+    db_session.flush()
+    for index in range(45):
+        db_session.add(WorkshopPhasedProcess(
+            process_type="workshop", title=f"Processo regular {index}", creation_mode="operational",
+            status="open", vehicle_id=regular_vehicle.id, plate_snapshot=f"AA-{index:02d}-AA",
+            current_phase_code="entrada", priority="normal", opened_at=datetime(2025, 1, 1),
+            metadata_json={},
+        ))
+    target = WorkshopPhasedProcess(
+        process_type="workshop", title="Processo alvo", creation_mode="operational",
+        status="open", vehicle_id=target_vehicle.id, plate_snapshot="TZ-99-AA",
+        current_phase_code="entrada", priority="normal", opened_at=datetime(2026, 1, 1),
+        metadata_json={"operational_situation": "waiting", "operational_waiting_reason": "A aguardar peças"},
+    )
+    db_session.add(target)
+    db_session.flush()
+    db_session.add(WorkshopPhasedProcessPhase(
+        process_id=target.id, phase_code="entrada", name="Entrada", status="completed",
+        sort_order=1, data_json={"external_repair": "yes"},
+    ))
+    db_session.commit()
+
+    first = authenticated_client.get("/v2-clean/workshop?sort=age")
+    assert "46 processos encontrados" in first.text
+    assert 'Página 1 de 2' in first.text
+    assert first.text.count('class="clean-workshop-process-item"') == 40
+    assert "TZ-99-AA" not in first.text
+
+    second = authenticated_client.get("/v2-clean/workshop?sort=age&page=2")
+    assert second.text.count('class="clean-workshop-process-item"') == 6
+    assert "TZ-99-AA" in second.text
+    assert 'name="page" value="2"' in second.text
+    target_link = re.search(
+        rf'id="workshop-process-{target.id}".*?<a class="clean-workshop-open-link" href="([^"]+)">Abrir e trabalhar</a>',
+        second.text, re.S,
+    )
+    assert target_link is not None
+    target_workbench = authenticated_client.get(html.unescape(target_link.group(1)))
+    assert "page=2" in target_workbench.text
+
+    waiting_first = authenticated_client.get("/v2-clean/workshop?sort=situation")
+    assert f'id="workshop-process-{target.id}"' in waiting_first.text
+
+    combined = authenticated_client.get(
+        "/v2-clean/workshop?location=external&situation=waiting&brand=MERCEDES&group=SUV&sort=age"
+    )
+    assert combined.status_code == 200
+    assert "1 processo encontrado" in combined.text
+    assert "TZ-99-AA" in combined.text
+    assert "AA-00-AA" not in combined.text
+    assert 'name="brand"' in combined.text
+    assert 'value="MERCEDES" selected' in combined.text
+    assert 'value="SUV" selected' in combined.text
+
+    unmatched = authenticated_client.get("/v2-clean/workshop?brand=MERCEDES&group=B")
+    assert "0 processos encontrados" in unmatched.text
+    assert "Nenhum processo corresponde aos filtros selecionados" in unmatched.text
+
+    resume = authenticated_client.post(
+        f"/v2-clean/workshop/{target.id}/operational-situation",
+        data={"action": "resume", "scope": "open", "location": "external", "situation": "waiting",
+              "brand": "MERCEDES", "group": "SUV", "sort": "age", "page": "2"},
+        follow_redirects=False,
+    )
+    assert resume.status_code == 303
+    assert "brand=MERCEDES" in resume.headers["location"]
+    assert "group=SUV" in resume.headers["location"]
+    assert "page=2" in resume.headers["location"]
+
+
+def test_workshop_brand_and_group_filters_do_not_guess_unlinked_vehicle(
+    authenticated_client, db_session
+):
+    vehicle = Vehicle(plate="LK-11-AA", brand="MERCEDES", rentway_group="SUV", active=True)
+    db_session.add(vehicle)
+    db_session.flush()
+    db_session.add_all([
+        WorkshopPhasedProcess(
+            process_type="workshop", title="Associado", creation_mode="operational",
+            status="open", vehicle_id=vehicle.id, plate_snapshot="LK-11-AA",
+            current_phase_code="entrada", priority="normal", metadata_json={},
+        ),
+        WorkshopPhasedProcess(
+            process_type="workshop", title="Por associar", creation_mode="operational",
+            status="open", plate_snapshot="LK-12-AA", current_phase_code="entrada",
+            priority="normal", metadata_json={},
+        ),
+    ])
+    db_session.commit()
+
+    all_processes = authenticated_client.get("/v2-clean/workshop")
+    assert "LK-11-AA" in all_processes.text
+    assert "LK-12-AA" in all_processes.text
+    filtered = authenticated_client.get("/v2-clean/workshop?brand=MERCEDES&group=SUV")
+    assert "LK-11-AA" in filtered.text
+    assert "LK-12-AA" not in filtered.text
+    assert "1 processo encontrado" in filtered.text
 
 
 def test_repair_material_request_is_direct_and_uses_existing_stock_contract(

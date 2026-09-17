@@ -80,6 +80,7 @@ else
         tests/test_task_center_v3_contract.py \
         tests/test_task_center_v3_ui_contract.py \
         tests/test_task_cases.py \
+        tests/test_supplier_audit_processes.py \
         tests/test_email_postmark.py \
         tests/test_invoice_service_history.py \
         tests/test_service_desk_operations.py \

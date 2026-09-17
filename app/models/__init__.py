@@ -76,6 +76,9 @@ from app.models.management_center import (
     ManagementProcessAssociation,
     ManagementProcessType,
     ManagementRule,
+    SupplierAuditCase,
+    SupplierAuditEmailDraft,
+    SupplierAuditParty,
 )
 from app.models.organization import OrganizationalUnit, Team, TeamMember, UserOrganizationalUnit
 from app.models.photo_capture import (
@@ -282,6 +285,9 @@ __all__ = [
     "ManagementProcess",
     "ManagementProcessAssociation",
     "ManagementProcessType",
+    "SupplierAuditCase",
+    "SupplierAuditEmailDraft",
+    "SupplierAuditParty",
     "ManagementRule",
     "OrganizationalUnit",
     "OperationalCase",

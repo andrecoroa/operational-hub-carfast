@@ -30139,3 +30139,8 @@ body:has(.email-preview-dialog[open]) { overflow: hidden; }
 .supplier-audit-action[open] > summary::before { content: '−'; }
 .supplier-audit-action[open] > summary { border-bottom: 1px solid #e4e7ec; }
 .supplier-audit-action .process-create-form { padding: 16px; }
+.supplier-audit-plate-input { grid-column: 1 / -1; padding: 12px; border: 1px solid #b7c9df; border-radius: 8px; background: #f4f8fd; }
+.supplier-audit-plate-input input { max-width: 280px; font-size: 18px; font-weight: 800; letter-spacing: .03em; text-transform: uppercase; }
+.supplier-audit-plate-input small { color: #475467; font-size: 12px; font-weight: 500; }
+.supplier-audit-plate-badge { display: inline-flex; align-items: center; gap: 8px; margin: 4px 0 10px; padding: 7px 10px; border: 1px solid #b7c9df; border-radius: 8px; background: #f4f8fd; color: #475467; font-size: 12px; }
+.supplier-audit-plate-badge strong { color: #173b60; font-size: 16px; letter-spacing: .03em; }

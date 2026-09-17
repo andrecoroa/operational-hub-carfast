@@ -78,7 +78,7 @@ def _history(db, audit, user, action, detail):
 
 
 @supplier_audit_router.get("/v2-clean/processes/supplier-audits", response_class=HTMLResponse)
-def supplier_audit_list(request: Request, vehicle_id: int | None = None, supplier_id: int | None = None):
+def supplier_audit_list(request: Request, vehicle_id: int | None = None, supplier_id: int | None = None, error: str | None = None):
     with SessionLocal() as db:
         user, allowed = _can(request, db)
         if not allowed:
@@ -91,14 +91,22 @@ def supplier_audit_list(request: Request, vehicle_id: int | None = None, supplie
         vehicle = db.get(Vehicle, vehicle_id) if vehicle_id else None
         vehicles = list(db.scalars(select(Vehicle).where(Vehicle.active.is_(True)).order_by(Vehicle.plate).limit(1000)))
         suppliers = list(db.scalars(select(StockSupplier).where(StockSupplier.active.is_(True)).order_by(StockSupplier.name)))
-        return templates.TemplateResponse(request, "supplier_audit_list.html", {"rows": rows, "vehicle": vehicle, "vehicles": vehicles, "suppliers": suppliers, "supplier_id": supplier_id, "problem_models": PROBLEM_MODELS, "labels": LABELS, "can_write": _can(request, db, True)[1]})
+        return templates.TemplateResponse(request, "supplier_audit_list.html", {"rows": rows, "vehicle": vehicle, "vehicles": vehicles, "suppliers": suppliers, "supplier_id": supplier_id, "problem_models": PROBLEM_MODELS, "labels": LABELS, "error": error, "can_write": _can(request, db, True)[1]})
 
 
 @supplier_audit_router.post("/v2-clean/processes/supplier-audits")
-def supplier_audit_create(request: Request, title: str = Form(...), supplier_id: int = Form(...), vehicle_id: int | None = Form(None), problem_type: str = Form(...), suspicion_description: str = Form(...), priority: str = Form("normal"), detected_on: str = Form(""), immediate_risk: str = Form(""), potential_value: str = Form("")):
+def supplier_audit_create(request: Request, title: str = Form(...), supplier_id: int = Form(...), vehicle_id: int | None = Form(None), plate: str = Form(""), problem_type: str = Form(...), suspicion_description: str = Form(...), priority: str = Form("normal"), detected_on: str = Form(""), immediate_risk: str = Form(""), potential_value: str = Form("")):
     with SessionLocal() as db:
         user, allowed = _can(request, db, True)
         vehicle = db.get(Vehicle, vehicle_id) if vehicle_id else None
+        plate_key = plate.strip().upper().replace("-", "").replace(" ", "")
+        if plate_key:
+            plate_vehicle = db.scalar(select(Vehicle).where(func.upper(func.replace(func.replace(Vehicle.plate, "-", ""), " ", "")) == plate_key))
+            if not plate_vehicle:
+                return RedirectResponse("/v2-clean/processes/supplier-audits?error=plate_not_found", status_code=303)
+            if vehicle and vehicle.id != plate_vehicle.id:
+                return RedirectResponse("/v2-clean/processes/supplier-audits?error=invalid", status_code=303)
+            vehicle = plate_vehicle
         supplier = db.get(StockSupplier, supplier_id)
         if not allowed or not supplier or not supplier.active or (vehicle_id and not vehicle) or problem_type not in PROBLEM_MODELS or not title.strip() or not suspicion_description.strip():
             return RedirectResponse("/v2-clean/processes/supplier-audits?error=invalid", status_code=303)

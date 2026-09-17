@@ -82,6 +82,39 @@ def test_vehicle_entry_point_is_contextual(authenticated_client, db_session):
     response = authenticated_client.get(f"/v2-clean/fleet/{vehicle.id}")
     assert response.status_code == 200
     assert f"/v2-clean/processes/supplier-audits?vehicle_id={vehicle.id}" in response.text
+    form = authenticated_client.get(f"/v2-clean/processes/supplier-audits?vehicle_id={vehicle.id}")
+    assert 'name="plate"' in form.text
+    assert 'value="ZZ-00-ZZ"' in form.text
+
+
+def test_plate_input_links_existing_vehicle_and_rejects_unknown_plate(authenticated_client, db_session):
+    vehicle = _vehicle(db_session)
+    supplier = _supplier(db_session)
+    payload = {
+        "title": "Reparação demorada",
+        "supplier_id": supplier.id,
+        "problem_type": "delayed_repair",
+        "suspicion_description": "Prazo por confirmar.",
+    }
+    response = authenticated_client.post(
+        "/v2-clean/processes/supplier-audits",
+        data={**payload, "plate": "zz00zz"},
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    audit = db_session.scalar(select(SupplierAuditCase))
+    assert audit.vehicle_id == vehicle.id
+    assert db_session.get(ManagementProcess, audit.process_id).plate == "ZZ-00-ZZ"
+    detail = authenticated_client.get(f"/v2-clean/processes/supplier-audits/{audit.id}")
+    assert "Matrícula <strong>ZZ-00-ZZ</strong>" in detail.text
+
+    unknown = authenticated_client.post(
+        "/v2-clean/processes/supplier-audits",
+        data={**payload, "plate": "AA-99-AA"},
+        follow_redirects=False,
+    )
+    assert unknown.headers["location"].endswith("?error=plate_not_found")
+    assert db_session.query(SupplierAuditCase).count() == 1
 
 
 def test_detail_phases_start_collapsed_and_keep_actions_available(authenticated_client, db_session):

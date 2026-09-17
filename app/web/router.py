@@ -12214,6 +12214,23 @@ def clean_form_values(snapshot: dict[str, object], key: str) -> list[str]:
     return [str(value)]
 
 
+def clean_workshop_readonly_rows(snapshot: dict[str, object]) -> list[dict[str, str]]:
+    rows: list[dict[str, str]] = []
+    for key, value in sorted(snapshot.items()):
+        if isinstance(value, (dict, list, tuple)):
+            display = json.dumps(value, ensure_ascii=False, default=str)
+        elif value is None or value == "":
+            display = "—"
+        else:
+            display = str(value)
+        rows.append({
+            "key": key,
+            "label": key.replace("_", " ").capitalize(),
+            "value": display,
+        })
+    return rows
+
+
 def clean_workshop_saved_substeps(phase_data: dict[str, object]) -> set[str]:
     raw_value = phase_data.get("saved_substeps")
     if not isinstance(raw_value, list):
@@ -27317,6 +27334,7 @@ def clean_workshop_phase(
             "phase_data": phase_data,
             "photo_phase_row": phase_row,
             "phase_form": phase_form,
+            "legacy_readonly_rows": clean_workshop_readonly_rows(phase_form),
             "entry_summary": entry_summary,
             "entry_form": entry_form,
             "repair_summary": repair_summary,
@@ -28999,9 +29017,8 @@ async def clean_workshop_phase_save(request: Request, phase: str):
             if isinstance(phase_data.get("form_snapshot"), dict)
             else {}
         )
-        if action in {"save_substep", "advance_substep"}:
-            existing_snapshot.update(form_snapshot)
-            form_snapshot = existing_snapshot
+        existing_snapshot.update(form_snapshot)
+        form_snapshot = existing_snapshot
 
         saved_substeps = clean_workshop_saved_substeps(phase_data)
         if current_substep and action in {"save", "save_substep", "advance_substep", "advance"}:

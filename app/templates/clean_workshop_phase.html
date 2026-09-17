@@ -1155,6 +1155,16 @@
         </div>
       </article>
     </form>
+    {% if legacy_readonly_rows %}
+      <details class="clean-panel clean-card-wide clean-workshop-legacy-records" aria-label="Dados guardados desta fase">
+        <summary><strong>Dados guardados desta fase</strong><small>Só leitura · inclui campos antigos que não aparecem no formulário simplificado</small></summary>
+        <dl class="clean-workshop-legacy-record-list">
+          {% for row in legacy_readonly_rows %}
+            <div><dt>{{ row.label }} <small>{{ row.key }}</small></dt><dd>{{ row.value }}</dd></div>
+          {% endfor %}
+        </dl>
+      </details>
+    {% endif %}
     {% if phase_key == "diagnostico" %}
       {% for row in diagnostic_suggestions %}
         <form id="diagnostic-suggestion-{{ row.suggestion.id }}" method="post" action="/v2-clean/workshop/diagnostic-suggestions/{{ row.suggestion.id }}/confirm"></form>
@@ -1200,6 +1210,7 @@
   document.querySelectorAll(".clean-workshop-final-grid").forEach((form) => {
     form.addEventListener("submit", (event) => {
       const snapshot = {};
+      const checkableNames = new Set();
       const action = event.submitter?.value || "save";
       const activePanel = form.querySelector(".clean-substep-panel.active");
       const fields = ["save_substep"].includes(action) && activePanel
@@ -1215,8 +1226,9 @@
         if (field.disabled || field.type === "file" || field.type === "submit" || field.type === "button") {
           return;
         }
-        if ((field.type === "checkbox" || field.type === "radio") && !field.checked) {
-          return;
+        if (field.type === "checkbox" || field.type === "radio") {
+          checkableNames.add(field.name);
+          if (!field.checked) return;
         }
         const value = field.type === "checkbox" ? (field.value || "yes") : field.value;
         if (Object.prototype.hasOwnProperty.call(snapshot, field.name)) {
@@ -1225,6 +1237,9 @@
         } else {
           snapshot[field.name] = value;
         }
+      });
+      checkableNames.forEach((name) => {
+        if (!Object.prototype.hasOwnProperty.call(snapshot, name)) snapshot[name] = "";
       });
       const target = form.querySelector('input[name="form_state_json"]');
       if (target) {

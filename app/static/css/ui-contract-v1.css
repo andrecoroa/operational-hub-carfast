@@ -1076,3 +1076,17 @@ body.email-treatment-drawer-open{overflow:auto}
 @media(max-width:600px){.ui-contract-v1 .visual-email-thread-page .email-workspace-tabs{padding:6px 8px}.ui-contract-v1 .visual-email-thread-page .email-workspace-tabs button{min-height:40px;padding:8px 10px}.ui-contract-v1 .visual-email-thread-page .email-modal-footer{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))}.ui-contract-v1 .visual-email-thread-page .email-compose-recipient-grid{grid-template-columns:1fr}}
 @media(max-width:900px){.ui-contract-v1 .visual-email-thread-page .email-workspace-tabs{flex-wrap:wrap}.ui-contract-v1 .visual-email-thread-page .email-workspace-shortcuts{flex:1 1 100%;margin-left:0}}
 .ui-contract-v1 .email-preview-fallback{margin:0;padding:8px 12px;border-top:1px solid #d8e0ea;background:#fff7ed;color:#7c2d12;font-size:12px}
+
+/* Direct email-to-task actions: keep both outcomes legible in the actual workspace DOM. */
+.ui-contract-v1 .email-modal-footer form.email-create-task-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));align-items:stretch;flex:1 1 460px;gap:8px;min-width:0}
+.ui-contract-v1 .email-modal-footer .email-create-task-action{width:100%;height:auto;min-height:44px;padding:9px 12px;border-radius:8px;color:#fff;background:#176c45;border-color:#176c45;font-size:12px;font-weight:700;line-height:1.25;white-space:normal;text-align:center}
+.ui-contract-v1 .email-modal-footer .email-create-task-action:hover{background:#125b3a}
+.ui-contract-v1 .email-modal-footer .email-create-task-wait{color:#155eef;background:#fff;border-color:#8bb8ff}
+.ui-contract-v1 .email-modal-footer .email-create-task-wait:hover{background:#eaf2ff;border-color:#155eef}
+@media(max-width:600px){.ui-contract-v1 .email-modal-footer form.email-create-task-form{grid-column:1/-1;grid-template-columns:1fr}}
+
+/* In the full-page reader, action buttons belong above the scrolling message. */
+.ui-contract-v1 .visual-email-thread-page .email-modal-footer{position:relative!important;z-index:28;order:2;flex:0 0 auto;display:flex!important;align-items:stretch;flex-wrap:wrap;gap:8px;margin:0!important;padding:8px 16px!important;border-top:0;border-bottom:1px solid var(--ui-color-border);background:#f8fafc;box-shadow:none}
+.ui-contract-v1 .visual-email-thread-page .email-modal-footer [data-email-open-composer]{display:none}
+.ui-contract-v1 .visual-email-thread-page .email-reader-grid{order:3}
+@media(max-width:600px){.ui-contract-v1 .visual-email-thread-page .email-modal-footer{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr));padding:8px!important;max-height:190px;overflow-y:auto}}

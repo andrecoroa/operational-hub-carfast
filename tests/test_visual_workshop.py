@@ -110,6 +110,13 @@ def test_simplified_workshop_keeps_work_before_context_on_small_screens():
     assert ".workshop-v2-side { grid-row: 1; }" not in css
 
 
+def test_legacy_readonly_records_do_not_hide_unchecked_changes():
+    phase = _read("app/templates/clean_workshop_phase.html")
+    assert "clean-workshop-legacy-records" in phase
+    assert "const checkableNames = new Set();" in phase
+    assert 'if (!Object.prototype.hasOwnProperty.call(snapshot, name)) snapshot[name] = "";' in phase
+
+
 def test_workshop_summary_preference_is_server_side_and_user_scoped():
     router = _read("app/web/router.py")
     assert '@web_router.post("/v2-clean/workshop/preferences/summary")' in router

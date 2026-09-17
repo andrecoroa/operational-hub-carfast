@@ -64,7 +64,7 @@ def test_full_email_workspace_keeps_all_actions_in_tabbed_layout() -> None:
     for section in ("classification", "management", "attachments", "links"):
         assert f'data-email-workspace-section="{section}"' in template
     assert "if (!tabs) return;" in script  # Embedded preview keeps its drawer behaviour.
-    assert "conversation.append(footer)" in script  # Actions follow the email body.
+    assert "tabs.after(footer)" in script  # Actions stay above the email body.
     assert 'shortcuts.className = "email-workspace-shortcuts"' in script
     assert 'tabs.append(shortcuts)' in script
     assert 'activate("conversation")' in script
@@ -76,12 +76,13 @@ def test_full_email_workspace_keeps_all_actions_in_tabbed_layout() -> None:
 
 
 def test_email_workspace_assets_have_matching_cache_versions() -> None:
-    version = "20260917-email-workspace-tabs"
+    version = "20260917-email-actions-top"
     for page in ("clean_email_inbox.html", "clean_email_thread.html"):
         source = (ROOT / "app" / "templates" / page).read_text(encoding="utf-8")
         assert f"email.js?v={version}" in source
     base = (ROOT / "app" / "templates" / "base.html").read_text(encoding="utf-8")
-    assert "ui-contract-v1.css?v=20260917-email-task-actions" in base
+    assert f"ui-contract-v1.css?v={version}" in base
+    assert ".visual-email-thread-page .email-modal-footer{position:relative!important;z-index:28;order:2" in CONTRACT_CSS.read_text(encoding="utf-8")
 
 
 def test_email_task_creation_has_two_direct_outcome_actions() -> None:
@@ -93,7 +94,8 @@ def test_email_task_creation_has_two_direct_outcome_actions() -> None:
     assert "Criar tarefa e tratar email" in template
     assert "Criar tarefa e aguardar conclusão" in template
     assert 'type="radio" name="task_outcome"' not in template
-    assert ".email-create-task-wait" in css
+    assert ".email-modal-footer form.email-create-task-form{display:grid" in css
+    assert ".email-modal-footer .email-create-task-action{width:100%;height:auto;min-height:44px" in css
 
 
 def test_email_responsive_contract_uses_local_overflow_and_full_screen_preview() -> None:

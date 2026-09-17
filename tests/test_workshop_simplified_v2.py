@@ -199,6 +199,74 @@ def _v2_repair_process(db_session):
     return process
 
 
+def test_legacy_simplified_save_preserves_unshown_advanced_fields(authenticated_client, db_session):
+    vehicle = Vehicle(plate="SV-26-LEG", active=True, lifecycle_status="active")
+    db_session.add(vehicle)
+    db_session.flush()
+    process = WorkshopPhasedProcess(
+        public_reference="OF-LEGACY-PRESERVE", process_type="workshop",
+        title="Reparação antiga", creation_mode="synthetic_test", status="active",
+        vehicle_id=vehicle.id, plate_snapshot=vehicle.plate,
+        current_phase_code="reparacao", priority="normal", origin="v2_clean",
+        metadata_json={},
+    )
+    db_session.add(process)
+    db_session.flush()
+    repair = WorkshopPhasedProcessPhase(
+        process_id=process.id, phase_code="reparacao", name="Reparação",
+        status="in_progress", sort_order=6,
+        data_json={
+            "legacy_meta": "Registo anterior conservado",
+            "form_snapshot": {
+                "repair_summary": "Texto anterior",
+                "repair_done": "yes",
+                "repair_deviation_reason": "Desvio documentado anteriormente",
+                "repair_material_1_reference": "PECA-ANTIGA-001",
+                "repair_hidden_markup": "<script>alert(1)</script>",
+            },
+        },
+    )
+    db_session.add(repair)
+    db_session.commit()
+
+    saved = authenticated_client.post(
+        "/v2-clean/workshop/reparacao/save",
+        data={"process_id": process.id, "action": "save",
+              "repair_summary": "Texto novo", "repair_execution_status": "Em curso"},
+        follow_redirects=False,
+    )
+    assert saved.status_code == 303
+    db_session.expire_all()
+    snapshot = repair.data_json["form_snapshot"]
+    assert snapshot["repair_summary"] == "Texto novo"
+    assert snapshot["repair_deviation_reason"] == "Desvio documentado anteriormente"
+    assert snapshot["repair_material_1_reference"] == "PECA-ANTIGA-001"
+    assert repair.data_json["legacy_meta"] == "Registo anterior conservado"
+    page = authenticated_client.get(f"/v2-clean/workshop/reparacao?process_id={process.id}")
+    assert page.status_code == 200
+    readonly = page.text.split('class="clean-panel clean-card-wide clean-workshop-legacy-records"', 1)[1]
+    readonly = readonly.split("</details>", 1)[0]
+    assert "Dados guardados desta fase" in readonly
+    assert "Desvio documentado anteriormente" in readonly
+    assert "PECA-ANTIGA-001" in readonly
+    assert "&lt;script&gt;alert(1)&lt;/script&gt;" in readonly
+    assert "<script>" not in readonly
+    assert "<input" not in readonly and "<textarea" not in readonly
+    cleared = authenticated_client.post(
+        "/v2-clean/workshop/reparacao/save",
+        data={"process_id": process.id, "action": "save",
+              "form_state_json": '{"repair_summary":"","repair_done":""}'},
+        follow_redirects=False,
+    )
+    assert cleared.status_code == 303
+    db_session.expire_all()
+    assert repair.data_json["form_snapshot"]["repair_summary"] == ""
+    assert repair.data_json["form_snapshot"]["repair_done"] == ""
+    assert repair.data_json["form_snapshot"]["repair_deviation_reason"] == (
+        "Desvio documentado anteriormente"
+    )
+
+
 def test_v2_repair_requires_current_authorization_and_invalidates_on_revision(authenticated_client, db_session):
     process = _v2_repair_process(db_session)
     page = authenticated_client.get(f"/v2-clean/workshop/reparacao?process_id={process.id}")

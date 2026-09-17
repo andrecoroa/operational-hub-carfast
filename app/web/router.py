@@ -10449,8 +10449,11 @@ def clean_workshop_dashboard(
     location: str = "all",
     phase: str = "all",
     situation: str = "all",
+    brand: str = "",
+    group: str = "",
     q: str = "",
     sort: str = "updated",
+    page: int = 1,
 ):
     denied = require_any_web_permission(request, "navigation.workshop.access")
     if not denied:
@@ -10463,7 +10466,10 @@ def clean_workshop_dashboard(
         location = "all"
     if situation not in {"all", "in_progress", "waiting"}:
         situation = "all"
+    brand = brand.strip()[:120]
+    group = group.strip()[:80]
     q = " ".join(q.strip().split())[:120]
+    page = max(1, page)
     if sort not in {"age", "updated", "situation"}:
         sort = "updated"
     phase_options = [
@@ -10476,15 +10482,40 @@ def clean_workshop_dashboard(
         "location": location,
         "phase": phase,
         "situation": situation,
+        "brand": brand,
+        "group": group,
         "q": q,
         "sort": sort,
     }
     filter_query = urlencode(filter_params)
+    pagination_query = urlencode({"scope": scope, **filter_params})
     with SessionLocal() as db:
         v2_process_filter = or_(
             WorkshopPhasedProcess.origin == "v2_clean",
             WorkshopPhasedProcess.origin.is_(None),
         )
+        linked_brands = (
+            select(Vehicle.brand)
+            .join(WorkshopPhasedProcess, WorkshopPhasedProcess.vehicle_id == Vehicle.id)
+            .where(v2_process_filter)
+            .distinct()
+        )
+        linked_groups = (
+            select(Vehicle.rentway_group)
+            .join(WorkshopPhasedProcess, WorkshopPhasedProcess.vehicle_id == Vehicle.id)
+            .where(v2_process_filter)
+            .distinct()
+        )
+        brand_options = sorted({
+            value.strip()
+            for value in db.scalars(linked_brands).all()
+            if value and value.strip()
+        })
+        group_options = sorted({
+            value.strip()
+            for value in db.scalars(linked_groups).all()
+            if value and value.strip()
+        })
         all_processes = (
             db.scalar(
                 select(func.count()).select_from(WorkshopPhasedProcess).where(v2_process_filter)
@@ -10555,7 +10586,11 @@ def clean_workshop_dashboard(
             )
             or 0
         )
-        recent_query = select(WorkshopPhasedProcess).where(v2_process_filter)
+        recent_query = (
+            select(WorkshopPhasedProcess)
+            .outerjoin(Vehicle, Vehicle.id == WorkshopPhasedProcess.vehicle_id)
+            .where(v2_process_filter)
+        )
         if scope == "open":
             recent_query = recent_query.where(
                 WorkshopPhasedProcess.status.notin_(("closed", "cancelled"))
@@ -10566,6 +10601,50 @@ def clean_workshop_dashboard(
             recent_query = recent_query.where(WorkshopPhasedProcess.status == "cancelled")
         if phase != "all":
             recent_query = recent_query.where(WorkshopPhasedProcess.current_phase_code == phase)
+        if brand:
+            recent_query = recent_query.where(func.trim(Vehicle.brand) == brand)
+        if group:
+            recent_query = recent_query.where(func.trim(Vehicle.rentway_group) == group)
+        if situation != "all":
+            situation_value = func.coalesce(
+                WorkshopPhasedProcess.metadata_json["operational_situation"].as_string(),
+                "in_progress",
+            )
+            recent_query = recent_query.where(
+                WorkshopPhasedProcess.status.notin_(("closed", "cancelled")),
+                situation_value == situation,
+            )
+        if location != "all":
+            entry_external = (
+                select(WorkshopPhasedProcessPhase.data_json["external_repair"].as_string())
+                .where(
+                    WorkshopPhasedProcessPhase.process_id == WorkshopPhasedProcess.id,
+                    WorkshopPhasedProcessPhase.phase_code == "entrada",
+                )
+                .order_by(WorkshopPhasedProcessPhase.id)
+                .limit(1)
+                .scalar_subquery()
+            )
+            repair_external = (
+                select(WorkshopPhasedProcessPhase.data_json["form_snapshot"]["repair_external"].as_string())
+                .where(
+                    WorkshopPhasedProcessPhase.process_id == WorkshopPhasedProcess.id,
+                    WorkshopPhasedProcessPhase.phase_code == "reparacao",
+                )
+                .order_by(WorkshopPhasedProcessPhase.id)
+                .limit(1)
+                .scalar_subquery()
+            )
+            flow_version = WorkshopPhasedProcess.metadata_json["workshop_flow_version"].as_integer()
+            effective_external = case(
+                (and_(flow_version == 2, repair_external.in_(("yes", "no"))), repair_external),
+                else_=func.coalesce(entry_external, "no"),
+            )
+            recent_query = recent_query.where(
+                func.lower(effective_external) == "yes"
+                if location == "external"
+                else func.lower(effective_external) != "yes"
+            )
         if q:
             search_term = f"%{q}%"
             recent_query = recent_query.where(
@@ -10585,15 +10664,30 @@ def clean_workshop_dashboard(
                 ).asc(),
                 WorkshopPhasedProcess.id.asc(),
             )
+        elif sort == "situation":
+            situation_order = case(
+                (WorkshopPhasedProcess.status == "closed", 2),
+                (WorkshopPhasedProcess.status == "cancelled", 3),
+                (
+                    WorkshopPhasedProcess.metadata_json["operational_situation"].as_string() == "waiting",
+                    0,
+                ),
+                else_=1,
+            )
+            order_columns = (situation_order.asc(), WorkshopPhasedProcess.id.desc())
         else:
             order_columns = (
                 WorkshopPhasedProcess.updated_at.desc(),
                 WorkshopPhasedProcess.id.desc(),
             )
+        filtered_count = db.scalar(
+            select(func.count()).select_from(recent_query.subquery())
+        ) or 0
+        page_size = 40
+        page_count = max(1, (filtered_count + page_size - 1) // page_size)
+        page = min(page, page_count)
         recent_processes = db.scalars(
-            recent_query.order_by(*order_columns).limit(
-                250 if q or sort != "updated" or location != "all" or situation != "all" else 40
-            )
+            recent_query.order_by(*order_columns).limit(page_size).offset((page - 1) * page_size)
         ).all()
         vehicle_ids = {process.vehicle_id for process in recent_processes if process.vehicle_id}
         vehicles_by_id = {
@@ -10680,6 +10774,9 @@ def clean_workshop_dashboard(
                     "situation": situation,
                     "q": q,
                     "sort": sort,
+                    "brand": brand,
+                    "group": group,
+                    "page": page,
                 }
             )
             return_context = issue_return_context(
@@ -10689,22 +10786,7 @@ def clean_workshop_dashboard(
                 anchor=f"workshop-process-{process.id}",
             )
             row["workbench_url"] = clean_workshop_process_url(process, return_context)
-            if location != "all" and (
-                (location == "external") != (row["location_type"] == "Externa")
-            ):
-                continue
-            if situation != "all" and row["operational_situation"] != situation:
-                continue
             process_rows.append(row)
-        if sort == "situation":
-            situation_order = {"waiting": 0, "in_progress": 1, "closed": 2, "cancelled": 3}
-            process_rows.sort(
-                key=lambda item: (
-                    situation_order.get(str(item["operational_situation"]), 9),
-                    -int(item["process"].id),
-                )
-            )
-        process_rows = process_rows[:40]
         return templates.TemplateResponse(
             request,
             "clean_workshop_dashboard.html",
@@ -10726,6 +10808,14 @@ def clean_workshop_dashboard(
                 "situation": situation,
                 "q": q,
                 "sort": sort,
+                "brand": brand,
+                "group": group,
+                "brand_options": brand_options,
+                "group_options": group_options,
+                "filtered_count": filtered_count,
+                "page": page,
+                "page_count": page_count,
+                "pagination_query": pagination_query,
                 "phase_options": phase_options,
                 "filter_query": filter_query,
                 "can_update_operational": has_any_web_permission(
@@ -10750,15 +10840,22 @@ async def clean_workshop_operational_situation_save(request: Request, process_id
     return_scope = str(form.get("scope") or "open").strip().lower()
     if return_scope not in {"open", "closed", "cancelled", "all"}:
         return_scope = "open"
+    try:
+        return_page = max(1, int(str(form.get("page") or "1")))
+    except ValueError:
+        return_page = 1
     return_filters = {
         "scope": return_scope,
         "location": str(form.get("location") or "all"),
         "phase": str(form.get("phase") or "all"),
         "situation": str(form.get("situation") or "all"),
+        "brand": str(form.get("brand") or "").strip()[:120],
+        "group": str(form.get("group") or "").strip()[:80],
         "q": " ".join(str(form.get("q") or "").strip().split())[:120],
         "sort": str(form.get("sort") or "updated")
         if str(form.get("sort") or "updated") in {"age", "updated", "situation"}
         else "updated",
+        "page": return_page,
     }
     return_query = urlencode(return_filters)
     dashboard_return_url = f"/v2-clean/workshop?{return_query}"

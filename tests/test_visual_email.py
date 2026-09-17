@@ -54,6 +54,48 @@ def test_email_center_keeps_triage_preview_and_actions() -> None:
         assert contract in source
 
 
+def test_full_email_workspace_keeps_all_actions_in_tabbed_layout() -> None:
+    template = THREAD.read_text(encoding="utf-8")
+    script = JS.read_text(encoding="utf-8")
+    css = CONTRACT_CSS.read_text(encoding="utf-8")
+
+    for section in ("conversation", "classification", "management", "attachments", "links", "composer"):
+        assert f'data-email-workspace-target="{section}"' in template
+    for section in ("classification", "management", "attachments", "links"):
+        assert f'data-email-workspace-section="{section}"' in template
+    assert "if (!tabs) return;" in script  # Embedded preview keeps its drawer behaviour.
+    assert "conversation.append(footer)" in script  # Actions follow the email body.
+    assert 'shortcuts.className = "email-workspace-shortcuts"' in script
+    assert 'tabs.append(shortcuts)' in script
+    assert 'activate("conversation")' in script
+    assert ".email-workspace-tabs button[aria-current=\"page\"]" in css
+    assert ".email-reader-grid{order:2;flex:1 1 auto;overflow-y:auto!important" in css
+    assert "const bindReadableBodies = (root) =>" in script
+    assert "document.documentElement.scrollHeight" in script
+    assert ".email-body-frame{max-height:none!important;overflow:hidden}" in css
+
+
+def test_email_workspace_assets_have_matching_cache_versions() -> None:
+    version = "20260917-email-workspace-tabs"
+    for page in ("clean_email_inbox.html", "clean_email_thread.html"):
+        source = (ROOT / "app" / "templates" / page).read_text(encoding="utf-8")
+        assert f"email.js?v={version}" in source
+    base = (ROOT / "app" / "templates" / "base.html").read_text(encoding="utf-8")
+    assert "ui-contract-v1.css?v=20260917-email-task-actions" in base
+
+
+def test_email_task_creation_has_two_direct_outcome_actions() -> None:
+    template = THREAD.read_text(encoding="utf-8")
+    css = CONTRACT_CSS.read_text(encoding="utf-8")
+
+    assert 'name="task_outcome" value="complete"' in template
+    assert 'name="task_outcome" value="wait"' in template
+    assert "Criar tarefa e tratar email" in template
+    assert "Criar tarefa e aguardar conclusão" in template
+    assert 'type="radio" name="task_outcome"' not in template
+    assert ".email-create-task-wait" in css
+
+
 def test_email_responsive_contract_uses_local_overflow_and_full_screen_preview() -> None:
     css = CSS.read_text(encoding="utf-8")
 
@@ -93,7 +135,7 @@ def test_email_thread_uses_full_width_reader_drawer_navigation_and_spam() -> Non
     script = JS.read_text(encoding="utf-8")
     router = ROUTER.read_text(encoding="utf-8")
 
-    for text in ("Voltar à caixa", "Anterior", "Próximo", "Confirmar classificação", "Guardar gestão", "Ligações", "Marcar email como tratado", "Aguardar conclusão da tarefa", "Abrir tarefa", "Spam"):
+    for text in ("Voltar à caixa", "Anterior", "Próximo", "Confirmar classificação", "Guardar gestão", "Ligações", "Criar tarefa e tratar email", "Criar tarefa e aguardar conclusão", "Abrir tarefa", "Spam"):
         assert text in source
     assert "email-treatment-drawer" in source
     assert ".visual-email-thread-page .email-treatment-drawer{position:relative" in css

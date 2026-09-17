@@ -613,6 +613,36 @@ def test_email_preview_sanitizes_html_and_task_uses_operational_queue(
     assert task.task_type == "operational_task"
 
 
+def test_email_task_wait_action_keeps_thread_open_until_task_completion(
+    authenticated_client, db_session, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(settings, "email_storage_root", str(tmp_path))
+    monkeypatch.setattr(
+        email_web,
+        "SessionLocal",
+        sessionmaker(bind=db_session.get_bind(), autoflush=False, autocommit=False),
+    )
+    thread, _ = ingest_inbound(db_session, _payload("pm-ui-task-wait"))
+
+    response = authenticated_client.post(
+        f"/v2-clean/email/{thread.id}/task",
+        data={"task_outcome": "wait"},
+        follow_redirects=False,
+    )
+    db_session.expire_all()
+
+    refreshed = db_session.get(EmailThread, thread.id)
+    assert response.status_code == 303
+    assert refreshed.task_id is not None
+    assert refreshed.status == "task_created"
+    event = db_session.scalar(
+        select(EmailAuditEvent)
+        .where(EmailAuditEvent.thread_id == thread.id)
+        .where(EmailAuditEvent.action == "task_created")
+    )
+    assert event.details_json["task_outcome"] == "wait"
+
+
 def test_email_triage_is_reused_by_task_and_attachment_is_opened_on_demand(
     authenticated_client, db_session, tmp_path, monkeypatch
 ):

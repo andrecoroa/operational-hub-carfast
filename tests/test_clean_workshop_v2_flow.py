@@ -544,7 +544,9 @@ def test_workshop_dashboard_shows_operational_context_and_updates_situation(
     assert 'id="workshop-wait-' in dashboard.text
     assert "PEUGEOT 208" in dashboard.text
     assert "B1" in dashboard.text
-    assert "Fase atual</strong> indica onde o processo está no percurso técnico" in dashboard.text
+    assert "Mais filtros" in dashboard.text
+    assert "Classificação</span>" not in dashboard.text
+    assert "Pedido / abertura" in dashboard.text
     assert 'name="brand"' in dashboard.text
     assert 'name="group"' in dashboard.text
     assert "1 processo encontrado" in dashboard.text
@@ -792,6 +794,8 @@ def test_workshop_dashboard_filters_before_pagination_and_preserves_context(
     assert 'name="brand"' in combined.text
     assert 'value="MERCEDES" selected' in combined.text
     assert 'value="SUV" selected' in combined.text
+    assert 'class="clean-workshop-more-filters" open' in combined.text
+    assert "filters.requestSubmit()" in combined.text
 
     unmatched = authenticated_client.get("/v2-clean/workshop?brand=MERCEDES&group=B")
     assert "0 processos encontrados" in unmatched.text

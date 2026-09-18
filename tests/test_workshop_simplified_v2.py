@@ -177,9 +177,9 @@ def test_v2_entry_conditional_photo_reasons_and_compact_physical_checks(authenti
     assert 'data-selected-reason hidden' in page.text
     assert 'data-absence-reason hidden' in page.text
     assert 'data-no-photo' in page.text
-    assert 'name="visible_damage" value="yes"' in page.text
-    assert 'name="damage_matches_rentway" value="no"' in page.text
-    assert '<select name="visible_damage"' not in page.text
+    assert '<select name="visible_damage">' in page.text
+    assert '<select name="damage_matches_rentway">' in page.text
+    assert '<option value="not_checked" selected>Por verificar</option>' in page.text
 
     saved = authenticated_client.post(
         "/v2-clean/workshop-entry",
@@ -205,8 +205,9 @@ def test_v2_entry_conditional_photo_reasons_and_compact_physical_checks(authenti
     assert entry.data_json["physical_check_note"] == "Risco no para-choques"
     assert entry.data_json["photo_absence_reasons"]["front"] == "Fotografia impedida pela posição da viatura"
     revisited = authenticated_client.get(f"/v2-clean/workshop-entry?process_id={process.id}")
-    assert 'name="visible_damage" value="yes" checked' in revisited.text
-    assert 'name="damage_matches_rentway" value="no" checked' in revisited.text
+    assert '<select name="visible_damage">' in revisited.text
+    assert '<option value="yes" selected>Sim</option>' in revisited.text
+    assert '<option value="no" selected>Não</option>' in revisited.text
 
 
 def test_v2_analysis_late_diagnostic_needs_identified_authorization(authenticated_client, db_session):

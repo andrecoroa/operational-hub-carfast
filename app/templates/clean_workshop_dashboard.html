@@ -72,6 +72,10 @@
               <option value="external" {% if location == 'external' %}selected{% endif %}>Oficina externa</option>
             </select>
           </label>
+          <button type="submit">Pesquisar</button>
+          <details class="clean-workshop-more-filters"{% if brand or group or phase != 'all' or situation != 'all' or sort != 'updated' %} open{% endif %}>
+            <summary>Mais filtros{% if brand or group or phase != 'all' or situation != 'all' or sort != 'updated' %} · ativos{% endif %}</summary>
+            <div class="clean-workshop-more-fields">
           <label>
             <span>Marca</span>
             <select name="brand">
@@ -113,21 +117,19 @@
               <option value="situation" {% if sort == 'situation' %}selected{% endif %}>Situação</option>
             </select>
           </label>
-          <button type="submit">Aplicar filtros</button>
-          <a href="/v2-clean/workshop?scope={{ scope }}">Limpar</a>
+            </div>
+          </details>
+          <a href="/v2-clean/workshop?scope={{ scope }}">Limpar filtros</a>
         </form>
         <p class="clean-workshop-result-count" role="status">{{ filtered_count }} {{ 'processo encontrado' if filtered_count == 1 else 'processos encontrados' }} · Página {{ page }} de {{ page_count }}</p>
-        <p class="clean-workshop-filter-help"><strong>Fase atual</strong> indica onde o processo está no percurso técnico. <strong>Situação</strong> indica se o trabalho está em curso ou temporariamente em espera.</p>
         {% if request.query_params.get('situation_error') %}<p class="clean-phase-error" role="alert">Indica um motivo válido. Se escolheres «Outro», descreve-o antes de confirmar.</p>{% endif %}
         <div class="clean-workshop-table-scroll" data-workshop-table-scroll>
         <div class="clean-workshop-list-head">
           <span>Viatura / processo</span>
-          <span>Abertura / tempo</span>
+          <span>Pedido / abertura</span>
           <span>Local</span>
-          <span>Motivo da entrada</span>
-          <span>Classificação</span>
-          <span>Fase atual</span>
-          <span>Situação</span>
+          <span>Estado</span>
+          <span>Ação</span>
         </div>
         <div class="clean-workshop-process-list" data-workshop-process-list>
           {% for row in process_rows %}
@@ -139,29 +141,20 @@
                 <strong>{{ process.plate_snapshot or "Sem matrícula" }}</strong>
                 <span>{{ process.public_reference or process.title or "Processo de oficina" }}</span>
               </a>
-              <span class="clean-workshop-vehicle-name">{{ row.vehicle_brand_model }}</span>
-              <span class="clean-workshop-vehicle-group">{{ row.vehicle_group }}</span>
-              <a class="clean-workshop-open-link" href="{{ row.workbench_url }}">Abrir e trabalhar</a>
+              <span class="clean-workshop-vehicle-name">{{ row.vehicle_brand_model }} · {{ row.vehicle_group }}</span>
               </div>
-              <div class="clean-workshop-process-fact">
-                <strong>{{ row.opened_at.strftime('%d/%m/%Y · %H:%M') if row.opened_at else '-' }}</strong>
-                <span>{% if row.elapsed_days == 0 %}Hoje · 0 dias{% elif row.elapsed_days == 1 %}1 dia decorrido{% else %}{{ row.elapsed_days }} dias decorridos{% endif %}</span>
+              <div class="clean-workshop-process-fact clean-workshop-process-reason">
+                <strong>{{ row.entry_reason }}</strong>
+                <span title="{{ row.entry_description or '' }}">{{ row.entry_description or 'Sem descrição adicional' }}</span>
+                <small>{{ row.opened_at.strftime('%d/%m/%Y · %H:%M') if row.opened_at else '-' }} · {% if row.elapsed_days == 0 %}Hoje{% elif row.elapsed_days == 1 %}1 dia{% else %}{{ row.elapsed_days }} dias{% endif %}</small>
               </div>
               <div class="clean-workshop-process-fact">
                 <strong class="{% if row.location_type == 'Externa' %}is-external{% endif %}">{{ row.location_type }}</strong>
                 <span>{{ row.location_detail }}</span>
               </div>
-              <div class="clean-workshop-process-fact clean-workshop-process-reason">
-                <strong>{{ row.entry_reason }}</strong>
-                <span>{{ row.entry_description or 'Sem descrição adicional' }}</span>
-              </div>
-              <em>{{ "Histórico" if process.creation_mode == "historical" else "Operacional" }}</em>
-              <em>{{ current_phase|replace("_", " ")|title }}</em>
+              <div class="clean-workshop-process-state"><strong>{{ current_phase|replace("_", " ")|title }}</strong><span>{% if row.operational_situation == "waiting" %}A aguardar{% elif row.operational_situation == "closed" %}Fechado{% elif row.operational_situation == "cancelled" %}Cancelado{% else %}Em curso{% endif %}</span>{% if row.waiting_reason %}<small>{{ row.waiting_reason }}</small>{% endif %}</div>
               <div class="clean-workshop-situation-cell">
-                <b class="situation-{{ row.operational_situation }}">
-                  {% if row.operational_situation == "waiting" %}A aguardar{% elif row.operational_situation == "closed" %}Fechado{% elif row.operational_situation == "cancelled" %}Cancelado{% else %}Em curso{% endif %}
-                </b>
-                {% if row.waiting_reason %}<span>{{ row.waiting_reason }}</span>{% endif %}
+                <a class="clean-workshop-open-link" href="{{ row.workbench_url }}">Abrir e trabalhar</a>
                 {% if can_update_operational and process.status not in ['closed', 'cancelled'] %}
                   {% if row.operational_situation == 'waiting' %}
                     <form method="post" action="/v2-clean/workshop/{{ process.id }}/operational-situation">
@@ -237,4 +230,11 @@
     </section>
   </main>
 </div>
+<script>
+(() => {
+  const filters = document.querySelector('.clean-workshop-dashboard-filters');
+  if (!filters) return;
+  filters.querySelectorAll('select').forEach(select => select.addEventListener('change', () => filters.requestSubmit()));
+})();
+</script>
 {% endblock %}

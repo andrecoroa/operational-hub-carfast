@@ -66,7 +66,7 @@
       <details class="workshop-v2-disclosure workshop-v2-section" id="workshop-v2-photos"{% if error in ['photo_reason_required', 'photo_absence_required', 'photo_invalid', 'photo_limit'] %} open{% endif %}>
         <summary><span class="workshop-v2-section-icon" aria-hidden="true">02</span><span class="workshop-v2-section-title"><strong>Fotografias da entrada</strong><small>Quadrante e quatro lados, ou justificação se não foi possível fotografar</small></span><span class="workshop-v2-section-chevron" aria-hidden="true">⌄</span></summary>
         <div class="workshop-v2-section-body">
-          <p class="workshop-v2-section-help">Escolhe uma ação por vista. O motivo só aparece quando carregas um ficheiro já existente ou assinalas que não conseguiste fotografar.</p>
+          <p class="workshop-v2-section-help">Quadrante e quatro lados. Se não houver fotografia, indica o motivo nessa vista.</p>
           <div class="workshop-v2-photo-grid">
             {% for slot, label, field in [("dashboard", "Quadrante", "dashboard_photo"), ("front", "Frente", "vehicle_front_photo"), ("rear", "Traseira", "vehicle_rear_photo"), ("left", "Lateral esquerda", "vehicle_left_photo"), ("right", "Lateral direita", "vehicle_right_photo")] %}
               {% set existing = saved_uploads | selectattr('slot', 'equalto', slot) | list %}
@@ -94,21 +94,14 @@
       <details class="workshop-v2-disclosure workshop-v2-section" id="workshop-v2-physical">
         <summary><span class="workshop-v2-section-icon" aria-hidden="true">03</span><span class="workshop-v2-section-title"><strong>Verificações físicas</strong><small>Regista apenas o que foi verificado na viatura</small></span><span class="workshop-v2-section-chevron" aria-hidden="true">⌄</span></summary>
         <div class="workshop-v2-section-body">
-          <p class="workshop-v2-section-help">Escolhe o resultado de cada ponto. Os restantes ficam «Por verificar»; não precisas de preencher tudo para guardar a recolha.</p>
+          <p class="workshop-v2-section-help">Regista só o que verificaste. Os restantes ficam por verificar.</p>
           {% set check_groups = [('Danos e histórico', [('visible_damage', 'Danos visíveis'), ('damage_matches_rentway', 'Danos coerentes com Rentway')]), ('Documentos e equipamento', [('dua_copy', 'Cópia do DUA'), ('green_card_valid', 'Carta Verde válida'), ('vv_device', 'Dispositivo Via Verde'), ('reflective_vest', 'Colete refletor'), ('triangle', 'Triângulo'), ('spare_tyre', 'Pneu suplente'), ('jack', 'Macaco'), ('inflation_kit', 'Kit de enchimento')])] %}
           {% for group_label, checks in check_groups %}
             <section class="workshop-v2-check-group">
               <h4>{{ group_label }}</h4>
               <div class="workshop-v2-check-grid">
                 {% for code, label in checks %}
-                  <div class="workshop-v2-check-card">
-                    <strong id="workshop-v2-check-{{ code }}">{{ label }}</strong>
-                    <div class="workshop-v2-check-options" role="radiogroup" aria-labelledby="workshop-v2-check-{{ code }}">
-                      {% for value, text in [('not_checked', 'Por verificar'), ('yes', 'Sim'), ('no', 'Não'), ('not_applicable', 'N/A')] %}
-                        <label class="workshop-v2-check-choice" data-value="{{ value }}"><input type="radio" name="{{ code }}" value="{{ value }}"{% if (saved_entry.physical_checks or {}).get(code, 'not_checked') == value %} checked{% endif %}><span>{{ text }}</span></label>
-                      {% endfor %}
-                    </div>
-                  </div>
+                  <label class="workshop-v2-check-card"><span>{{ label }}</span><select name="{{ code }}">{% for value, text in [('not_checked', 'Por verificar'), ('yes', 'Sim'), ('no', 'Não'), ('not_applicable', 'N/A')] %}<option value="{{ value }}"{% if (saved_entry.physical_checks or {}).get(code, 'not_checked') == value %} selected{% endif %}>{{ text }}</option>{% endfor %}</select></label>
                 {% endfor %}
               </div>
             </section>
@@ -242,7 +235,7 @@
   const note = noteGroup.querySelector('textarea');
   let manualNoteOpen = !!note.value.trim();
   const syncPhysical = () => {
-    const hasException = [...physical.querySelectorAll('.workshop-v2-check-card input:checked')]
+    const hasException = [...physical.querySelectorAll('.workshop-v2-check-card select')]
       .some(input => (input.name === 'visible_damage' && input.value === 'yes') ||
         (input.name !== 'visible_damage' && input.value === 'no'));
     const showNote = hasException || manualNoteOpen || !!note.value.trim();
@@ -250,7 +243,7 @@
     noteToggle.hidden = showNote;
     noteToggle.setAttribute('aria-expanded', String(showNote));
   };
-  physical.querySelectorAll('.workshop-v2-check-card input').forEach(input => input.addEventListener('change', syncPhysical));
+  physical.querySelectorAll('.workshop-v2-check-card select').forEach(input => input.addEventListener('change', syncPhysical));
   noteToggle.addEventListener('click', () => {
     manualNoteOpen = true;
     syncPhysical();

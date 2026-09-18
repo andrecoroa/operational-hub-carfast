@@ -3803,6 +3803,49 @@ def email_mark_spam(
                 EmailMessage.external_message_id.is_not(None),
             ).order_by(EmailMessage.id.desc())
         )
+        inbound_payload = (
+            db.scalar(
+                select(EmailWebhookEvent.payload_json)
+                .join(
+                    EmailMessageDelivery,
+                    EmailMessageDelivery.webhook_event_id == EmailWebhookEvent.id,
+                )
+                .where(EmailMessageDelivery.message_id == message.id)
+                .order_by(EmailMessageDelivery.id.desc())
+                .limit(1)
+            )
+            if message
+            else None
+        )
+        if not message or not isinstance(inbound_payload, dict):
+            return RedirectResponse(
+                f"/v2-clean/email/{thread_id}?error=spam_unavailable", status_code=303
+            )
+        source_provider = str(
+            inbound_payload.get("SourceProvider") or "postmark"
+        ).casefold()
+        if source_provider == "postmark":
+            # Postmark inbound identifiers cannot be used with Microsoft Graph.
+            # Preserve the message/evidence and make the local-only outcome explicit.
+            thread.status = "archived"
+            db.add(
+                EmailAuditEvent(
+                    thread_id=thread.id,
+                    message_id=message.id,
+                    user_id=user_id,
+                    action="marked_as_spam",
+                    details_json={"provider": "postmark", "external_action": "none"},
+                )
+            )
+            db.commit()
+            separator = "&" if "?" in next_url else "?"
+            return RedirectResponse(
+                f"{next_url}{separator}saved=spam_local", status_code=303
+            )
+        if source_provider != "microsoft_graph":
+            return RedirectResponse(
+                f"/v2-clean/email/{thread_id}?error=spam_unavailable", status_code=303
+            )
         required = (
             transport,
             getattr(transport, "tenant_id", None),

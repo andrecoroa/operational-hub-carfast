@@ -186,6 +186,7 @@ class SupplierAuditCase(TimestampMixin, Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     process_id: Mapped[int] = mapped_column(ForeignKey("management_processes.id", ondelete="CASCADE"), unique=True, index=True)
     vehicle_id: Mapped[int | None] = mapped_column(ForeignKey("vehicles.id", ondelete="RESTRICT"), index=True)
+    plate_unmatched: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
     problem_type: Mapped[str] = mapped_column(String(80), index=True)
     suspicion_description: Mapped[str] = mapped_column(Text)
     assessment_grade: Mapped[str] = mapped_column(String(40), default="suspicion", index=True)
@@ -216,6 +217,8 @@ class SupplierAuditParty(TimestampMixin, Base):
     due_on: Mapped[date | None] = mapped_column(Date, index=True)
     response_status: Mapped[str] = mapped_column(String(40), default="not_requested", index=True)
     position_summary: Mapped[str | None] = mapped_column(Text)
+    evidence_notes: Mapped[str | None] = mapped_column(Text)
+    conclusion: Mapped[str | None] = mapped_column(Text)
 
 
 class SupplierAuditEmailDraft(TimestampMixin, Base):

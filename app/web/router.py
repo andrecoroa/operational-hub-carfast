@@ -76,6 +76,7 @@ from app.models.management_center import (
     ManagementProcessAssociation,
     ManagementProcessType,
     ManagementRule,
+    SupplierAuditCase,
 )
 from app.models.organization import OrganizationalUnit, Team, TeamMember, UserOrganizationalUnit
 from app.models.pilot import PilotFeedback
@@ -39518,6 +39519,22 @@ def task_detail(
                 ),
             ]
         detail_permissions = get_user_permission_codes(db, current_user)
+        can_view_supplier_audits = bool(detail_permissions.intersection({
+            "management_center.read", "management_center.write", "tasks.management.read",
+            "tasks.management.create", "tasks.management.update",
+        }))
+        can_create_supplier_audit = bool(detail_permissions.intersection({
+            "management_center.write", "tasks.management.create", "tasks.management.update",
+        }))
+        task_audits = list(db.execute(
+            select(SupplierAuditCase, ManagementProcess)
+            .join(ManagementProcess, ManagementProcess.id == SupplierAuditCase.process_id)
+            .join(ManagementProcessAssociation,
+                  ManagementProcessAssociation.process_id == ManagementProcess.id)
+            .where(ManagementProcessAssociation.entity_type == "task",
+                   ManagementProcessAssociation.entity_id == task.id,
+                   ManagementProcessAssociation.active.is_(True))
+        )) if is_clean_detail and can_view_supplier_audits else []
         resolver_ids = set(
             db.scalars(
                 select(UserRole.user_id)
@@ -39623,6 +39640,8 @@ def task_detail(
             ),
             {
                 "task": task,
+                "task_audits": task_audits,
+                "can_create_supplier_audit": can_create_supplier_audit,
                 "task_workspace": task_workspace,
                 "task_workspace_label": TASK_WORKSPACE_LABELS[task_workspace],
                 "task_manage_url": task_manage_url,

@@ -1,6 +1,7 @@
 import base64
 import json
 import re
+from html import unescape
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -347,6 +348,31 @@ def test_email_work_views_group_without_duplicates_and_mine_stays_scoped(
     assert 'data-email-work-view="all"' in all_view.text
     assert all_view.text.count(f'data-email-thread-url="/v2-clean/email/{mine.id}') == 1
     assert 'name="view" value="all"' in all_view.text
+
+
+def test_return_to_inbox_keeps_search_and_status_filters(
+    authenticated_client, db_session, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(settings, "email_storage_root", str(tmp_path))
+    _bind_email_session(monkeypatch, db_session)
+    payload = _payload("return-filtered-inbox")
+    payload["Subject"] = "regresso-sintetico"
+    thread, _ = ingest_inbound(db_session, payload)
+
+    inbox = authenticated_client.get(
+        "/v2-clean/email?view=all&status=all&q=regresso-sintetico"
+    )
+    match = re.search(
+        rf'href="(/v2-clean/email/{thread.id}\?[^\"]+)"', inbox.text
+    )
+    assert match is not None
+    conversation = authenticated_client.get(unescape(match.group(1)))
+
+    assert conversation.status_code == 200
+    assert (
+        'href="/v2-clean/email?view=all&amp;status=all&amp;q=regresso-sintetico"'
+        in conversation.text
+    )
 
 
 def test_email_body_keeps_safe_links_and_removes_active_content(

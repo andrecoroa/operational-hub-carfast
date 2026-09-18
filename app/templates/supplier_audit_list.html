@@ -13,7 +13,7 @@
     {% if task %}<section class="notice-inline"><strong>Tarefa de origem: <a href="/v2-clean/tasks/{{ task.id }}/detail">CF-{{ "%05d"|format(task.id) }}</a></strong> · {{ task.title }}. A tarefa permanecerá aberta após a associação.</section>{% endif %}
     {% if matching %}<section class="notice-inline warning"><strong>Processo possivelmente já existente:</strong>
       {% for audit in matching %}<a href="/v2-clean/processes/supplier-audits/{{ audit.id }}">Auditoria {{ audit.id }}</a>{% if not loop.last %} · {% endif %}{% endfor %}.
-      Confirma antes de criar outro processo; a mesma fatura pode estar ligada a várias tarefas.
+      Confirma o documento e o fornecedor antes de criar outro processo. O mesmo número de fatura, por si só, não une processos automaticamente.
     </section>{% endif %}
     {% if can_write %}
     <details class="clean-panel process-create-panel" {% if vehicle or task %}open{% endif %}>

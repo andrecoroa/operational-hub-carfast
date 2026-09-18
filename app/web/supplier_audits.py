@@ -269,7 +269,7 @@ def _link_task(db, audit, task, user):
     return True
 
 
-def _matching_audits(db, task, document_reference):
+def _matching_audits(db, task):
     audit_ids = set()
     audit_ids.update(
         db.scalars(
@@ -305,16 +305,20 @@ def _matching_audits(db, task, document_reference):
             )
         )
         audit_ids.update(int(value) for value in linked_ids if value.isdigit())
-    reference = document_reference.strip().upper()
-    if reference:
-        audit_ids.update(
-            db.scalars(
-                select(SupplierAuditCase.id)
-                .join(ManagementProcess, ManagementProcess.id == SupplierAuditCase.process_id)
-                .where(func.upper(ManagementProcess.document_reference) == reference)
-            )
-        )
     return [db.get(SupplierAuditCase, audit_id) for audit_id in sorted(audit_ids)]
+
+
+def _reference_candidates(db, reference):
+    """Show an advisory match; invoice numbers alone do not prove document identity."""
+    if not reference.strip():
+        return []
+    return list(
+        db.scalars(
+            select(SupplierAuditCase)
+            .join(ManagementProcess, ManagementProcess.id == SupplierAuditCase.process_id)
+            .where(func.upper(ManagementProcess.document_reference) == reference.strip().upper())
+        )
+    )
 
 
 @supplier_audit_router.get("/v2-clean/processes/supplier-audits", response_class=HTMLResponse)
@@ -358,7 +362,12 @@ def supplier_audit_list(
                 .order_by(StockSupplier.name)
             )
         )
-        matching = _matching_audits(db, task, task.invoice_number or "") if task else []
+        matching = []
+        if task:
+            candidates = _matching_audits(db, task) + _reference_candidates(
+                db, task.invoice_number or ""
+            )
+            matching = list({candidate.id: candidate for candidate in candidates}.values())
         return templates.TemplateResponse(
             request,
             "supplier_audit_list.html",
@@ -416,7 +425,7 @@ def supplier_audit_create(
             task.invoice_number.strip()[:160] if task and task.invoice_number else ""
         )
         if task:
-            matches = _matching_audits(db, task, reference_text)
+            matches = _matching_audits(db, task)
             if len(matches) > 1:
                 return RedirectResponse(
                     "/v2-clean/processes/supplier-audits?error=ambiguous_duplicate", status_code=303
@@ -682,7 +691,7 @@ def supplier_audit_link_task(request: Request, audit_id: int, task_id: int = For
             return RedirectResponse(
                 f"/v2-clean/processes/supplier-audits/{audit_id}?error=invalid", status_code=303
             )
-        matches = _matching_audits(db, task, task.invoice_number or "")
+        matches = _matching_audits(db, task)
         if any(item.id != audit.id for item in matches):
             return RedirectResponse(
                 f"/v2-clean/processes/supplier-audits/{audit_id}?error=duplicate", status_code=303

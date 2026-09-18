@@ -397,6 +397,16 @@ def test_repeated_tasks_for_same_document_reuse_one_audit_and_remain_open(
     second = _task(
         db_session, "Confirmar a mesma fatura", invoice_number="020_18654", plate="AA-99-AA"
     )
+    document = Document(
+        original_name="shared.pdf",
+        file_name="shared.pdf",
+        storage_path="tests/shared.pdf",
+        task_id=first.id,
+    )
+    db_session.add(document)
+    db_session.commit()
+    db_session.add(TaskDocument(task_id=second.id, document_id=document.id))
+    db_session.commit()
     data = {
         "title": "Fatura a verificar",
         "problem_type": "invoice_plate_mismatch",
@@ -440,6 +450,44 @@ def test_repeated_tasks_for_same_document_reuse_one_audit_and_remain_open(
             ManagementHistory.action == "supplier_audit_task_linked",
         )
     )
+
+
+def test_same_invoice_number_from_distinct_suppliers_never_auto_merges(
+    authenticated_client, db_session
+):
+    first_supplier = _supplier(db_session)
+    second_supplier = StockSupplier(name="Outro fornecedor", active=True)
+    db_session.add(second_supplier)
+    db_session.commit()
+    first_task = _task(db_session, "Fatura da primeira entidade", invoice_number="123")
+    second_task = _task(db_session, "Fatura da segunda entidade", invoice_number="123")
+    data = {
+        "title": "Fatura em verificação",
+        "problem_type": "document_request_divergence",
+        "document_reference": "123",
+        "suspicion_description": "Origem por verificar.",
+    }
+    authenticated_client.post(
+        "/v2-clean/processes/supplier-audits",
+        data={**data, "task_id": first_task.id, "supplier_id": first_supplier.id},
+    )
+    authenticated_client.post(
+        "/v2-clean/processes/supplier-audits",
+        data={**data, "task_id": second_task.id, "supplier_id": second_supplier.id},
+    )
+    audits = list(db_session.scalars(select(SupplierAuditCase).order_by(SupplierAuditCase.id)))
+    assert len(audits) == 2
+    links = list(
+        db_session.scalars(
+            select(ManagementProcessAssociation).where(
+                ManagementProcessAssociation.entity_type == "task"
+            )
+        )
+    )
+    assert {(link.process_id, link.entity_id) for link in links} == {
+        (audits[0].process_id, first_task.id),
+        (audits[1].process_id, second_task.id),
+    }
 
 
 def test_source_document_deduplicates_tasks_and_unauthenticated_cannot_link(

@@ -1,6 +1,7 @@
 import base64
 import json
 import re
+from html import unescape
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -68,7 +69,10 @@ def test_spam_moves_graph_message_archives_locally_and_preserves_navigation(
 ):
     monkeypatch.setattr(settings, "email_storage_root", str(tmp_path))
     _bind_email_session(monkeypatch, db_session)
-    thread, _ = ingest_inbound(db_session, _payload("graph-message-spam"))
+    payload = _payload("graph-message-spam")
+    payload["SourceProvider"] = "microsoft_graph"
+    payload["OriginalRecipient"] = "email@carfast.pt"
+    thread, _ = ingest_inbound(db_session, payload)
     transport = EmailChannelTransport(
         channel_id=thread.channel_id,
         provider="microsoft365",
@@ -104,7 +108,9 @@ def test_spam_fails_closed_without_microsoft_transport(
 ):
     monkeypatch.setattr(settings, "email_storage_root", str(tmp_path))
     _bind_email_session(monkeypatch, db_session)
-    thread, _ = ingest_inbound(db_session, _payload("spam-without-graph"))
+    payload = _payload("spam-without-graph")
+    payload["SourceProvider"] = "microsoft_graph"
+    thread, _ = ingest_inbound(db_session, payload)
 
     response = authenticated_client.post(
         f"/v2-clean/email/{thread.id}/spam", follow_redirects=False
@@ -114,6 +120,33 @@ def test_spam_fails_closed_without_microsoft_transport(
     assert response.status_code == 303
     assert "error=spam_unavailable" in response.headers["location"]
     assert db_session.get(EmailThread, thread.id).status != "archived"
+
+
+def test_postmark_spam_archives_locally_without_calling_graph(
+    authenticated_client, db_session, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(settings, "email_storage_root", str(tmp_path))
+    _bind_email_session(monkeypatch, db_session)
+    thread, _ = ingest_inbound(db_session, _payload("postmark-message-spam"))
+    calls = []
+    monkeypatch.setattr(email_web, "move_shared_mailbox_message_to_junk", lambda **kwargs: calls.append(kwargs))
+
+    response = authenticated_client.post(
+        f"/v2-clean/email/{thread.id}/spam",
+        data={"next_url": "/v2-clean/email?view=all"},
+        follow_redirects=False,
+    )
+    db_session.expire_all()
+    audit = db_session.scalar(
+        select(EmailAuditEvent)
+        .where(EmailAuditEvent.thread_id == thread.id, EmailAuditEvent.action == "marked_as_spam")
+        .order_by(EmailAuditEvent.id.desc())
+    )
+
+    assert response.headers["location"].endswith("&saved=spam_local")
+    assert db_session.get(EmailThread, thread.id).status == "archived"
+    assert audit.details_json == {"provider": "postmark", "external_action": "none"}
+    assert calls == []
 
 
 def test_completed_linked_task_returns_email_to_triage(db_session, tmp_path, monkeypatch):
@@ -145,8 +178,8 @@ def test_inbox_open_is_native_full_page_navigation_and_cannot_render_inline():
     assert "sourceRow.after(inlinePreviewRow)" not in script
     assert "window.location.assign(`/v2-clean/email/${threadId}?return_context=" in script
     assert "window.location.assign(element.dataset.emailThreadUrl)" in script
-    assert "email.js?v=20260910-email-full-page-navigation" in inbox
-    assert "email.js?v=20260912-email-horizontal-workspace" in thread
+    assert "email.js?v=20260918-email-triage-feedback" in inbox
+    assert "email.js?v=20260918-email-triage-feedback" in thread
 
 
 def test_inbox_facets_apply_remaining_filters_server_side(authenticated_client, db_session, tmp_path, monkeypatch):
@@ -315,6 +348,31 @@ def test_email_work_views_group_without_duplicates_and_mine_stays_scoped(
     assert 'data-email-work-view="all"' in all_view.text
     assert all_view.text.count(f'data-email-thread-url="/v2-clean/email/{mine.id}') == 1
     assert 'name="view" value="all"' in all_view.text
+
+
+def test_return_to_inbox_keeps_search_and_status_filters(
+    authenticated_client, db_session, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(settings, "email_storage_root", str(tmp_path))
+    _bind_email_session(monkeypatch, db_session)
+    payload = _payload("return-filtered-inbox")
+    payload["Subject"] = "regresso-sintetico"
+    thread, _ = ingest_inbound(db_session, payload)
+
+    inbox = authenticated_client.get(
+        "/v2-clean/email?view=all&status=all&q=regresso-sintetico"
+    )
+    match = re.search(
+        rf'href="(/v2-clean/email/{thread.id}\?[^\"]+)"', inbox.text
+    )
+    assert match is not None
+    conversation = authenticated_client.get(unescape(match.group(1)))
+
+    assert conversation.status_code == 200
+    assert (
+        'href="/v2-clean/email?view=all&amp;status=all&amp;q=regresso-sintetico"'
+        in conversation.text
+    )
 
 
 def test_email_body_keeps_safe_links_and_removes_active_content(
@@ -1160,6 +1218,9 @@ def test_archive_requires_explicit_classification_validation(
     assert stored.status == "triage"
     assert stored.classification_status != "classified"
     assert len(db_session.scalars(select(EmailAuditEvent)).all()) == initial_audits
+    guidance = authenticated_client.get(response.headers["location"])
+    assert "confirma primeiro a classificação" in guidance.text
+    assert "Escolhe a fila primeiro" in guidance.text
 
     stored.classification_status = "classified"
     stored.status = "waiting_reply"

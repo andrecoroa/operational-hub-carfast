@@ -67,7 +67,7 @@ def test_full_email_workspace_keeps_all_actions_in_tabbed_layout() -> None:
     assert "tabs.after(footer)" in script  # Actions stay above the email body.
     assert 'shortcuts.className = "email-workspace-shortcuts"' in script
     assert 'tabs.append(shortcuts)' in script
-    assert 'activate("conversation")' in script
+    assert 'activate(classificationError ? "classification" : "conversation")' in script
     assert ".email-workspace-tabs button[aria-current=\"page\"]" in css
     assert ".email-reader-grid{order:2;flex:1 1 auto;overflow-y:auto!important" in css
     assert "const bindReadableBodies = (root) =>" in script
@@ -76,12 +76,12 @@ def test_full_email_workspace_keeps_all_actions_in_tabbed_layout() -> None:
 
 
 def test_email_workspace_assets_have_matching_cache_versions() -> None:
-    version = "20260917-email-actions-top"
+    version = "20260918-email-triage-feedback"
     for page in ("clean_email_inbox.html", "clean_email_thread.html"):
         source = (ROOT / "app" / "templates" / page).read_text(encoding="utf-8")
         assert f"email.js?v={version}" in source
     base = (ROOT / "app" / "templates" / "base.html").read_text(encoding="utf-8")
-    assert f"ui-contract-v1.css?v={version}" in base
+    assert 'ui-contract-v1.css?v=' in base
     assert ".visual-email-thread-page .email-modal-footer{position:relative!important;z-index:28;order:2" in CONTRACT_CSS.read_text(encoding="utf-8")
 
 

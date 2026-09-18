@@ -755,9 +755,12 @@ def inbox_rule_matches(rule: EmailInboxRule, *, subject: str, sender: str = "") 
     """Evaluate an inbox rule without side effects (also used by admin previews)."""
     normalized = subject.strip().casefold()
     expected = rule.subject_match.strip().casefold()
-    subject_matches = bool(expected) and (
-        (rule.match_type == "exact" and normalized == expected)
-        or (rule.match_type == "contains" and expected in normalized)
+    subject_matches = rule.match_type == "any" or (
+        bool(expected)
+        and (
+            (rule.match_type == "exact" and normalized == expected)
+            or (rule.match_type == "contains" and expected in normalized)
+        )
     )
     sender_expected = (rule.sender_match or "").strip().casefold()
     if not sender_expected:
@@ -779,9 +782,10 @@ def inbox_rule_matches(rule: EmailInboxRule, *, subject: str, sender: str = "") 
 
 
 def deterministic_rule_close_allowed(rule: EmailInboxRule) -> bool:
-    """Close only exact subjects or subject+verified sender conjunctions."""
+    """Require an explicit deterministic rule before automatic closure."""
     return bool(rule.deterministic) and (
         rule.match_type == "exact"
+        or (rule.match_type == "any" and not (rule.sender_match or "").strip())
         or (
             bool((rule.sender_match or "").strip())
             and rule.condition_operator == "and"
@@ -1093,7 +1097,7 @@ def ingest_inbound(db: Session, payload: dict) -> tuple[EmailThread, bool]:
             alias=channel_alias,
         )
     )
-    reconcile_inbound_attachments(
+    attachment_result = reconcile_inbound_attachments(
         db,
         thread=thread,
         message=message,
@@ -1166,6 +1170,12 @@ def ingest_inbound(db: Session, payload: dict) -> tuple[EmailThread, bool]:
         if rule.status_action != "none":
             if rule.status_action in {"resolved", "archived"} and not deterministic_rule_close_allowed(rule):
                 applied_actions.append(f"status:{rule.status_action}:skipped_non_deterministic")
+            elif (
+                rule.match_type == "any"
+                and rule.status_action in {"resolved", "archived"}
+                and (not attachment_result["payload"] or attachment_result["blocked"])
+            ):
+                applied_actions.append(f"status:{rule.status_action}:skipped_attachments_not_stored")
             else:
                 thread.status = rule.status_action
                 if rule.status_action == "resolved":

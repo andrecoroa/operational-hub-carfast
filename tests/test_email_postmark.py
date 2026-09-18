@@ -569,6 +569,51 @@ def test_auto_close_requires_structurally_deterministic_conditions():
     assert not deterministic_rule_close_allowed(broad)
 
 
+def test_any_subject_rule_closes_only_after_attachment_is_stored(
+    db_session, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(settings, "email_storage_root", str(tmp_path))
+    ensure_email_channels(db_session)
+    channel = db_session.scalar(select(EmailChannel).where(EmailChannel.code == "test"))
+    db_session.add(
+        EmailInboxRule(
+            channel_id=channel.id,
+            name="Entrada documental",
+            subject_match="",
+            match_type="any",
+            auto_task_mode="none",
+            status_action="resolved",
+            deterministic=True,
+        )
+    )
+    db_session.commit()
+
+    stored, _ = ingest_inbound(db_session, _payload("pm-any-stored"))
+    assert stored.status == "resolved"
+    attachment = db_session.scalar(
+        select(EmailAttachment).join(EmailMessage).where(EmailMessage.thread_id == stored.id)
+    )
+    assert attachment.ingest_state == "stored"
+
+    no_attachment = _payload("pm-any-empty")
+    no_attachment["Subject"] = "Sem documento"
+    no_attachment["Attachments"] = []
+    pending, _ = ingest_inbound(db_session, no_attachment)
+    assert pending.status != "resolved"
+
+    monkeypatch.setattr(settings, "email_max_attachment_bytes", 4)
+    blocked_payload = _payload("pm-any-blocked")
+    blocked_payload["Subject"] = "Documento demasiado grande"
+    blocked, _ = ingest_inbound(db_session, blocked_payload)
+    assert blocked.status != "resolved"
+    audit = db_session.scalar(
+        select(EmailAuditEvent)
+        .where(EmailAuditEvent.thread_id == blocked.id)
+        .where(EmailAuditEvent.action == "inbox_rule_applied")
+    )
+    assert "status:resolved:skipped_attachments_not_stored" in audit.details_json["actions"]
+
+
 def test_deterministic_rule_applies_status_and_audits_actions(
     db_session, tmp_path, monkeypatch
 ):
@@ -655,6 +700,15 @@ def test_admin_rule_preview_is_read_only(authenticated_client, db_session, tmp_p
     assert response.status_code == 200
     assert response.json()["read_only"] is True
     assert response.json()["matched"] == 1
+    db_session.refresh(thread)
+    assert thread.status == before_status
+
+    any_subject_response = authenticated_client.post(
+        "/v2-clean/admin/work-classification/email-inbox-rules/preview",
+        data={"channel_id": channel.id, "match_type": "any"},
+    )
+    assert any_subject_response.status_code == 200
+    assert any_subject_response.json()["matched"] == 1
     db_session.refresh(thread)
     assert thread.status == before_status
 

@@ -1,14 +1,56 @@
-{% extends "base.html" %}{% block body %}
-<div class="app-shell clean-shell">{% set active_menu = "clean_processes" %}{% include "_sidebar.html" %}
-<main class="content clean-content"><header class="topbar"><div><p class="eyebrow">Processos / Auditoria a fornecedores</p><h2>Auditorias a fornecedores</h2><p>Uma suspeita inicia verificação; não atribui responsabilidade.</p></div><a class="button-link secondary-link" href="/v2-clean/processes">Centro de Processos</a></header>
-{% if error %}<section class="notice-inline warning">{% if error == 'plate_not_found' %}Matrícula não encontrada na frota. Confirma a matrícula antes de criar o processo.{% else %}Não foi possível criar o processo. Confirma os campos obrigatórios.{% endif %}</section>{% endif %}
-{% if can_write %}<details class="clean-panel process-create-panel" {% if vehicle %}open{% endif %}><summary>Registar desconfiança</summary><form method="post" class="process-create-form">
-<label class="supplier-audit-plate-input">Matrícula<input name="plate" list="supplier-audit-vehicle-plates" value="{{ vehicle.plate if vehicle and vehicle.plate else '' }}" placeholder="Ex.: BT-38-IC" autocomplete="off"><small>Introduz a matrícula para ligar o processo à viatura existente.</small></label><datalist id="supplier-audit-vehicle-plates">{% for item in vehicles %}{% if item.plate %}<option value="{{ item.plate }}">{{ item.vin or '' }}</option>{% endif %}{% endfor %}</datalist>
-<label class="process-create-wide">Título<input name="title" required maxlength="240"></label>
-<label>Fornecedor<select name="supplier_id" required><option value="">Selecionar fornecedor</option>{% for item in suppliers %}<option value="{{ item.id }}" {% if supplier_id == item.id %}selected{% endif %}>{{ item.name }}</option>{% endfor %}</select></label>
-<label>Tipo de problema<select name="problem_type" required>{% for code, item in problem_models.items() %}<option value="{{ code }}">{{ item[0] }}</option>{% endfor %}</select></label>
-<label>Prioridade<select name="priority"><option value="normal">Normal</option><option value="high">Alta</option><option value="urgent">Urgente</option><option value="critical">Crítica</option></select></label>
-<label>Data de deteção<input type="date" name="detected_on"></label><label>Valor potencial<input name="potential_value" inputmode="decimal"></label>
-<label class="process-create-wide">Alerta / desconfiança<textarea name="suspicion_description" required rows="4"></textarea></label><label class="process-create-wide">Risco imediato<textarea name="immediate_risk" rows="2"></textarea></label><div><button type="submit">Criar auditoria</button></div></form></details>{% endif %}
-<section class="clean-panel"><div class="table-heading"><div><p class="eyebrow">Fila</p><h3>Processos de auditoria</h3></div><form method="get"><label>Fornecedor<select name="supplier_id" onchange="this.form.submit()"><option value="">Todos</option>{% for item in suppliers %}<option value="{{ item.id }}" {% if supplier_id == item.id %}selected{% endif %}>{{ item.name }}</option>{% endfor %}</select></label></form></div><table><thead><tr><th>Processo</th><th>Matrícula</th><th>Fornecedor</th><th>Problema</th><th>Grau</th><th>Estado</th><th></th></tr></thead><tbody>{% for audit, process, vehicle, supplier in rows %}<tr><td><strong>{{ process.internal_reference }}</strong><br>{{ process.title }}</td><td><strong>{{ vehicle.plate if vehicle and vehicle.plate else '—' }}</strong><br><small>{{ vehicle.vin or '' if vehicle else '' }}</small></td><td>{{ supplier.name if supplier else '-' }}</td><td>{{ problem_models[audit.problem_type][0] }}</td><td>{{ labels.get(audit.assessment_grade, audit.assessment_grade) }}</td><td>{{ labels.get(process.status, process.status) }}</td><td><a class="button-link secondary-link" href="/v2-clean/processes/supplier-audits/{{ audit.id }}">Abrir</a></td></tr>{% else %}<tr><td colspan="7">Ainda não existem auditorias.</td></tr>{% endfor %}</tbody></table></section>
-</main></div>{% endblock %}
+{% extends "base.html" %}
+{% block body %}
+<div class="app-shell clean-shell">
+  {% set active_menu = "clean_processes" %}{% include "_sidebar.html" %}
+  <main class="content clean-content">
+    <header class="topbar"><div><p class="eyebrow">Processos / Auditoria a fornecedores</p><h2>Auditorias a fornecedores</h2><p>Registar uma suspeita, verificar os factos e ouvir cada interveniente antes de concluir.</p></div><a class="button-link secondary-link" href="/v2-clean/processes">Centro de Processos</a></header>
+    {% if error %}<section class="notice-inline warning">
+      {% if error == 'plate_not_found' %}A matrícula não consta da frota. Se for este o problema a auditar, assinala “Matrícula incorreta ou viatura não encontrada”.
+      {% elif error == 'plate_exists' %}Esta matrícula existe na frota, incluindo viaturas históricas. Cria o processo ligado à ficha existente ou confirma qual é a viatura correta.
+      {% elif error == 'ambiguous_duplicate' %}Foram encontrados vários processos com esta referência. Abre o processo correto e associa aí a tarefa.
+      {% else %}Não foi possível criar o processo. Confirma os campos e as permissões.{% endif %}
+    </section>{% endif %}
+    {% if task %}<section class="notice-inline"><strong>Tarefa de origem: <a href="/v2-clean/tasks/{{ task.id }}/detail">CF-{{ "%05d"|format(task.id) }}</a></strong> · {{ task.title }}. A tarefa permanecerá aberta após a associação.</section>{% endif %}
+    {% if matching %}<section class="notice-inline warning"><strong>Processo possivelmente já existente:</strong>
+      {% for audit in matching %}<a href="/v2-clean/processes/supplier-audits/{{ audit.id }}">Auditoria {{ audit.id }}</a>{% if not loop.last %} · {% endif %}{% endfor %}.
+      Confirma antes de criar outro processo; a mesma fatura pode estar ligada a várias tarefas.
+    </section>{% endif %}
+    {% if can_write %}
+    <details class="clean-panel process-create-panel" {% if vehicle or task %}open{% endif %}>
+      <summary>Registar desconfiança</summary>
+      <form method="post" class="process-create-form">
+        {% if task %}<input type="hidden" name="task_id" value="{{ task.id }}">{% endif %}
+        <label class="supplier-audit-plate-input">Matrícula indicada no documento
+          <input name="plate" list="supplier-audit-vehicle-plates" value="{{ vehicle.plate if vehicle and vehicle.plate else (task.plate or '' if task else '') }}" placeholder="Ex.: BT-38-IC" autocomplete="off">
+          <small>A procura inclui toda a frota, também viaturas históricas/inativas. A matrícula indicada é conservada para auditoria.</small>
+        </label>
+        <datalist id="supplier-audit-vehicle-plates">{% for item in vehicles %}{% if item.plate %}<option value="{{ item.plate }}">{{ item.vin or '' }}</option>{% endif %}{% endfor %}</datalist>
+        <label class="process-create-wide"><input type="checkbox" name="plate_unmatched" value="true"> Matrícula incorreta ou viatura não encontrada — criar sem ligação à ficha</label>
+        <label class="process-create-wide">Título<input name="title" required maxlength="240" value="{{ task.title if task else '' }}"></label>
+        <label>Fornecedor inicial (opcional)<select name="supplier_id"><option value="">Ainda por identificar</option>{% for item in suppliers %}<option value="{{ item.id }}" {% if supplier_id == item.id %}selected{% endif %}>{{ item.name }}</option>{% endfor %}</select></label>
+        <label>Tipo de problema<select name="problem_type" required>{% for code, item in problem_models.items() %}<option value="{{ code }}">{{ item[0] }}</option>{% endfor %}</select></label>
+        <label>Referência do documento / fatura<input name="document_reference" maxlength="160" value="{{ task.invoice_number or '' if task else '' }}"></label>
+        <label>Prioridade<select name="priority"><option value="normal">Normal</option><option value="high">Alta</option><option value="urgent">Urgente</option><option value="critical">Crítica</option></select></label>
+        <label>Data de deteção<input type="date" name="detected_on"></label><label>Valor potencial<input name="potential_value" inputmode="decimal"></label>
+        <label class="process-create-wide">Alerta / desconfiança<textarea name="suspicion_description" required rows="4">{{ task.description or '' if task else '' }}</textarea></label>
+        <label class="process-create-wide">Risco imediato<textarea name="immediate_risk" rows="2"></textarea></label>
+        <div><button type="submit">Criar ou associar à auditoria existente</button></div>
+      </form>
+    </details>
+    {% endif %}
+    <section class="clean-panel"><div class="table-heading"><div><p class="eyebrow">Fila</p><h3>Processos de auditoria</h3></div>
+      <form method="get"><label>Fornecedor<select name="supplier_id" onchange="this.form.submit()"><option value="">Todos</option>{% for item in suppliers %}<option value="{{ item.id }}" {% if supplier_id == item.id %}selected{% endif %}>{{ item.name }}</option>{% endfor %}</select></label></form></div>
+      <table><thead><tr><th>Processo</th><th>Matrícula indicada</th><th>Intervenientes</th><th>Problema</th><th>Grau</th><th>Estado</th><th></th></tr></thead><tbody>
+      {% for audit, process, vehicle in rows %}<tr>
+        <td><strong>{{ process.internal_reference }}</strong><br>{{ process.title }}</td>
+        <td><strong>{{ process.plate or '—' }}</strong>{% if audit.plate_unmatched %}<br><small>Por confirmar na frota</small>{% elif vehicle %}<br><small>{{ vehicle.vin or '' }}</small>{% endif %}</td>
+        <td>{{ party_names.get(audit.id, [])|join(', ') or 'Por identificar' }}</td>
+        <td>{{ problem_models.get(audit.problem_type, (audit.problem_type, []))[0] }}</td>
+        <td>{{ labels.get(audit.assessment_grade, audit.assessment_grade) }}</td>
+        <td>{{ labels.get(process.status, process.status) }}</td>
+        <td><a class="button-link secondary-link" href="/v2-clean/processes/supplier-audits/{{ audit.id }}">Abrir</a></td>
+      </tr>{% else %}<tr><td colspan="7">Ainda não existem auditorias.</td></tr>{% endfor %}</tbody></table>
+    </section>
+  </main>
+</div>
+{% endblock %}

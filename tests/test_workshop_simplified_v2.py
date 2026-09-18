@@ -238,6 +238,11 @@ def test_v2_analysis_requests_confirmation_before_conclusions(authenticated_clie
     db_session.add(team)
     db_session.flush()
     db_session.add(TeamMember(team_id=team.id, user_id=recipient.id))
+    process.metadata_json = {
+        **(process.metadata_json or {}),
+        "operational_situation": "waiting",
+        "operational_waiting_reason": "À espera de material antigo",
+    }
     db_session.commit()
     previous_situation = process.metadata_json.get("operational_situation")
     previous_reason = process.metadata_json.get("operational_waiting_reason")
@@ -283,6 +288,9 @@ def test_v2_analysis_requests_confirmation_before_conclusions(authenticated_clie
     assert process.current_phase_code == "validacao"
     assert process.metadata_json["analysis_confirmation"]["task_id"] == task.id
     assert process.metadata_json["operational_situation"] == "waiting"
+    pending_page = authenticated_client.get(f"/v2-clean/workshop/validacao?process_id={process.id}")
+    assert 'data-confirmation-pending="yes"' in pending_page.text
+    assert "O pedido ainda está em aberto" in pending_page.text
     duplicate = authenticated_client.post(
         "/v2-clean/workshop/validacao/save",
         data={**base, "action": "request_confirmation"}, follow_redirects=False,
@@ -307,6 +315,14 @@ def test_v2_analysis_requests_confirmation_before_conclusions(authenticated_clie
     ))
     assert validation.data_json["form_snapshot"]["analysis_orientation"] == base["analysis_orientation"]
     assert not validation.data_json["form_snapshot"]["problem_conclusion"]
+    validation.data_json = {
+        **validation.data_json,
+        "form_snapshot": {
+            **validation.data_json["form_snapshot"],
+            "legacy_history_only": "Dado histórico preservado",
+        },
+    }
+    db_session.commit()
 
     repair = {
         **base, "action": "advance", "analysis_decision": "Reparar",
@@ -330,6 +346,9 @@ def test_v2_analysis_requests_confirmation_before_conclusions(authenticated_clie
     db_session.expire_all()
     db_session.refresh(task)
     assert task.closed_at is not None
+    answered_page = authenticated_client.get(f"/v2-clean/workshop/validacao?process_id={process.id}")
+    assert 'data-confirmation-pending="no"' in answered_page.text
+    assert "Resultado da confirmação recebida" in answered_page.text
     missing_result = authenticated_client.post(
         "/v2-clean/workshop/validacao/save",
         data={**repair, "confirmation_result": ""}, follow_redirects=False,
@@ -345,12 +364,72 @@ def test_v2_analysis_requests_confirmation_before_conclusions(authenticated_clie
     assert process.metadata_json["analysis_confirmation"]["status"] == "resolved"
     assert process.metadata_json.get("operational_situation") == previous_situation
     assert process.metadata_json.get("operational_waiting_reason") == previous_reason
+    db_session.refresh(validation)
+    assert validation.data_json["form_snapshot"]["legacy_history_only"] == "Dado histórico preservado"
     repair_phase = db_session.scalar(select(WorkshopPhasedProcessPhase).where(
         WorkshopPhasedProcessPhase.process_id == process.id,
         WorkshopPhasedProcessPhase.phase_code == "reparacao",
     ))
     assert repair_phase.data_json["form_snapshot"]["repair_external"] == "yes"
     assert repair_phase.data_json["form_snapshot"]["repair_external_partner"] == "Oficina de teste"
+
+
+def test_v2_no_repair_decision_can_close_process(authenticated_client, db_session):
+    entry = authenticated_client.post(
+        "/v2-clean/workshop-entry",
+        data={
+            "workshop_flow_version": "2", "plate": "SV-26-NR", "action": "advance",
+            "entry_km": "21000", "entry_reasons": "Avaria",
+            "breakdown_description": "Ruído a verificar", "reported_by": "Operador",
+            "reported_by_detail": "Técnico de teste",
+            **{f"absence_reason_{slot}": "Fotografia indisponível no teste"
+               for slot in ("dashboard", "front", "rear", "left", "right")},
+        },
+        follow_redirects=False,
+    )
+    assert entry.status_code == 303
+    process = db_session.scalar(select(WorkshopPhasedProcess).where(
+        WorkshopPhasedProcess.plate_snapshot == "SV-26-NR"
+    ))
+    analysis = authenticated_client.post(
+        "/v2-clean/workshop/validacao/save",
+        data={
+            "process_id": process.id, "action": "advance",
+            "analysis_template_code": process.template_snapshot_json["template_code"],
+            "analysis_decision": "Fechar sem reparação",
+            "analysis_decision_reason": "Intervenção desnecessária",
+            "problem_conclusion": "A verificação não confirmou avaria",
+        },
+        follow_redirects=False,
+    )
+    assert analysis.headers["location"] == f"/v2-clean/workshop/fecho?process_id={process.id}"
+    db_session.expire_all()
+    db_session.refresh(process)
+    assert process.current_phase_code == "fecho"
+    assert process.status != "closed"
+    diagnostic = db_session.scalar(select(WorkshopPhasedProcessPhase).where(
+        WorkshopPhasedProcessPhase.process_id == process.id,
+        WorkshopPhasedProcessPhase.phase_code == "diagnostico",
+    ))
+    assert diagnostic.status == "not_applicable"
+    closed = authenticated_client.post(
+        "/v2-clean/workshop/fecho/save",
+        data={
+            "process_id": process.id, "action": "close_process",
+            "closure_final_summary": "Viatura validada; não foi necessária reparação",
+            "closure_vehicle_validated": "yes", "closure_history_updated": "yes",
+            "closure_fleet_state_defined": "yes", "closure_min_docs_attached": "yes",
+        },
+        follow_redirects=False,
+    )
+    assert closed.status_code == 303
+    db_session.expire_all()
+    db_session.refresh(process)
+    assert process.status == "closed"
+    assert process.closed_at is not None
+    dossier = authenticated_client.get(f"/v2-clean/workshop/{process.id}/print/process-dossier")
+    assert dossier.status_code == 200
+    assert "Fechado sem reparação" in dossier.text
 
 
 def test_v2_analysis_late_diagnostic_needs_identified_authorization(authenticated_client, db_session):

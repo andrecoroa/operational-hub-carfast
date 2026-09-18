@@ -30464,7 +30464,11 @@ body:has(.email-preview-dialog[open]) { overflow: hidden; }
 .workshop-v2-routing-detail p { margin: 0 0 7px; }
 .workshop-v2-close-option { margin-top: 9px; }
 .workshop-v2-completion { margin-top: 0; }
-.workshop-v2-completion .workshop-v2-actions { padding-top: 10px; }
+.workshop-v2-analysis .workshop-v2-actions button { width: auto; min-width: 142px; }
+.workshop-v2-analysis .workshop-v2-actions button[value="save"] { background: #fff; border-color: #d1d9e6; color: #173153; }
+.workshop-v2-analysis .workshop-v2-actions button[value="request_confirmation"],
+.workshop-v2-analysis .workshop-v2-actions button[value="advance"] { background: var(--brand-dark); border-color: var(--brand-dark); color: #fff; }
+.workshop-v2-analysis .workshop-v2-actions button:disabled { opacity: .55; cursor: not-allowed; }
 .workshop-v2-analysis-form fieldset > section,
 .workshop-v2-analysis-form fieldset > details {
   border-bottom: 1px solid #e5eaf3;

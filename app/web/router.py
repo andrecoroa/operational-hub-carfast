@@ -27332,7 +27332,7 @@ def clean_workshop_phase(
                     analysis_confirmation = dict(raw_confirmation) if isinstance(raw_confirmation, dict) else {}
                     if analysis_confirmation.get("task_id"):
                         confirmation_task = db.get(Task, analysis_confirmation["task_id"])
-                        if confirmation_task and confirmation_task.closed_at:
+                        if confirmation_task and confirmation_task.closed_at and analysis_confirmation.get("status") == "pending":
                             analysis_confirmation["status"] = "responded"
             if phase == "reparacao":
                 articles = db.scalars(

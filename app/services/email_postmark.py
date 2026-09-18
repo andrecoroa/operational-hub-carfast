@@ -781,8 +781,53 @@ def _attachments_ready_for_close(result: dict[str, int]) -> bool:
     )
 
 
-def inbox_rule_matches(rule: EmailInboxRule, *, subject: str, sender: str = "") -> bool:
+def resolve_rule_recipient_alias_id(db: Session, payload: dict, channel_id: int) -> int | None:
+    """Use this delivery's unambiguous recipient evidence, never thread history."""
+    aliases = db.scalars(
+        select(EmailChannelAlias).where(EmailChannelAlias.active.is_(True))
+    ).all()
+    by_address: dict[str, set[int]] = {}
+    for alias in aliases:
+        for address in (alias.address, alias.inbound_forward_address):
+            if address:
+                by_address.setdefault(_address(address), set()).add(alias.id)
+    by_hash = {
+        alias.inbound_hash.strip().casefold(): alias
+        for alias in aliases
+        if alias.inbound_hash and alias.inbound_hash.strip()
+    }
+    original = _address(payload.get("OriginalRecipient"))
+    if original and len(by_address.get(original, set())) != 1:
+        return None
+    candidates: set[int] = set()
+    if original:
+        candidates.update(by_address[original])
+    for value in (payload.get("To"),):
+        for part in re.split(r"[,;]", str(value or "")):
+            candidates.update(by_address.get(_address(part), set()))
+    for field in ("ToFull", "CcFull"):
+        for item in payload.get(field) or []:
+            if isinstance(item, dict):
+                candidates.update(by_address.get(_address(item.get("Email")), set()))
+    mailbox_hash = str(payload.get("MailboxHash") or "").strip().casefold()
+    if mailbox_hash and mailbox_hash in by_hash:
+        candidates.add(by_hash[mailbox_hash].id)
+    if len(candidates) != 1:
+        return None
+    alias = next(alias for alias in aliases if alias.id in candidates)
+    return alias.id if alias.channel_id == channel_id else None
+
+
+def inbox_rule_matches(
+    rule: EmailInboxRule,
+    *,
+    subject: str,
+    sender: str = "",
+    recipient_alias_id: int | None = None,
+) -> bool:
     """Evaluate an inbox rule without side effects (also used by admin previews)."""
+    if rule.recipient_alias_id and rule.recipient_alias_id != recipient_alias_id:
+        return False
     normalized = subject.strip().casefold()
     expected = rule.subject_match.strip().casefold()
     subject_matches = rule.match_type == "any" or (
@@ -825,7 +870,11 @@ def deterministic_rule_close_allowed(rule: EmailInboxRule) -> bool:
 
 
 def _inbox_rule(
-    db: Session, channel_id: int, subject: str, sender: str = ""
+    db: Session,
+    channel_id: int,
+    subject: str,
+    sender: str = "",
+    recipient_alias_id: int | None = None,
 ) -> EmailInboxRule | None:
     rules = db.scalars(
         select(EmailInboxRule)
@@ -836,7 +885,12 @@ def _inbox_rule(
         .order_by(EmailInboxRule.sort_order, EmailInboxRule.id)
     ).all()
     for rule in rules:
-        if inbox_rule_matches(rule, subject=subject, sender=sender):
+        if inbox_rule_matches(
+            rule,
+            subject=subject,
+            sender=sender,
+            recipient_alias_id=recipient_alias_id,
+        ):
             return rule
     return None
 
@@ -999,7 +1053,8 @@ def ingest_inbound(db: Session, payload: dict) -> tuple[EmailThread, bool]:
     external_id = str(payload.get("MessageID") or payload.get("MessageId") or key)
     subject = str(payload.get("Subject") or "(sem assunto)")[:500]
     sender = _address(payload.get("From"))
-    rule = _inbox_rule(db, channel.id, subject, sender)
+    recipient_alias_id = resolve_rule_recipient_alias_id(db, payload, channel.id)
+    rule = _inbox_rule(db, channel.id, subject, sender, recipient_alias_id)
     headers = _headers(payload)
     conversation_id = str(payload.get("OriginalMessageID") or "").strip() or None
     thread = None
@@ -1219,6 +1274,7 @@ def ingest_inbound(db: Session, payload: dict) -> tuple[EmailThread, bool]:
                 details_json={
                     "rule_id": rule.id,
                     "rule_name": rule.name,
+                    "recipient_alias_id": recipient_alias_id,
                     "conditions": {
                         "subject_match": rule.subject_match,
                         "match_type": rule.match_type,

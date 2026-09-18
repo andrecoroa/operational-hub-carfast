@@ -111,25 +111,6 @@ def _send_error_code(exc: RuntimeError) -> str:
     return "send_disabled"
 
 
-def _reopen_threads_after_linked_task_completion(db) -> None:
-    rows = db.execute(
-        select(EmailThread, Task).join(Task, Task.id == EmailThread.task_id).where(
-            EmailThread.status == "task_created",
-            Task.status.in_({"execution_done", "closed", "cancelled", "no_action_needed"}),
-        )
-    ).all()
-    for thread, task in rows:
-        thread.status = "triage"
-        db.add(EmailAuditEvent(
-            thread_id=thread.id,
-            user_id=None,
-            action="reopened_after_task_completion",
-            details_json={"task_id": task.id, "task_status": task.status},
-        ))
-    if rows:
-        db.commit()
-
-
 def _nav_permissions(request: Request) -> set[str]:
     cached = getattr(request.state, "permission_codes", None)
     if cached is not None:
@@ -1149,7 +1130,6 @@ def email_inbox(
     with SessionLocal() as db:
         ensure_email_channels(db)
         db.commit()
-        _reopen_threads_after_linked_task_completion(db)
         channel_access = _channel_access(db, user_id, permissions)
         stored_view = request.session.get("email_work_view")
         stored_view_code = (

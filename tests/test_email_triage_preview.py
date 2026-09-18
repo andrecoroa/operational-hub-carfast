@@ -7,6 +7,7 @@ from pathlib import Path
 from urllib.parse import quote
 from zoneinfo import ZoneInfo
 
+import pytest
 from sqlalchemy import select
 from sqlalchemy.orm import sessionmaker
 
@@ -18,12 +19,14 @@ from app.models.email import (
     EmailAuditEvent,
     EmailChannel,
     EmailChannelTransport,
+    EmailInboxRule,
     EmailMessage,
     EmailThread,
 )
 from app.models.work_hierarchy import WorkCategory, WorkDepartment, WorkQueue
 from app.models.tasks import Task
 from app.services.email_postmark import ingest_inbound, send_message
+from app.services.email_task_events import reconcile_completed_email_tasks
 from app.services.users import create_user
 
 ROOT = Path(__file__).parents[1]
@@ -150,21 +153,139 @@ def test_postmark_spam_archives_locally_without_calling_graph(
     assert calls == []
 
 
-def test_completed_linked_task_returns_email_to_triage(db_session, tmp_path, monkeypatch):
+@pytest.mark.parametrize(
+    "completed_status",
+    ("execution_done", "closed", "cancelled", "no_action_needed"),
+)
+def test_completed_linked_task_returns_email_to_triage_on_task_event(
+    db_session, tmp_path, monkeypatch, completed_status
+):
     monkeypatch.setattr(settings, "email_storage_root", str(tmp_path))
     thread, _ = ingest_inbound(db_session, _payload("linked-task-completed"))
-    task = Task(title="Tarefa ligada", status="closed", source="email")
+    task = Task(title="Tarefa ligada", status="in_execution", source="email")
     db_session.add(task)
     db_session.flush()
     thread.task_id = task.id
     thread.status = "task_created"
     db_session.commit()
 
-    email_web._reopen_threads_after_linked_task_completion(db_session)
+    task.status = completed_status
+    db_session.commit()
     db_session.expire_all()
 
     assert db_session.get(EmailThread, thread.id).status == "triage"
-    assert db_session.scalar(select(EmailAuditEvent).where(EmailAuditEvent.action == "reopened_after_task_completion"))
+    audit = db_session.scalar(
+        select(EmailAuditEvent).where(
+            EmailAuditEvent.thread_id == thread.id,
+            EmailAuditEvent.action == "reopened_after_task_completion",
+        )
+    )
+    assert audit is not None
+    assert audit.details_json == {"task_id": task.id, "task_status": completed_status}
+
+
+def test_opening_email_inbox_does_not_reopen_completed_linked_task(
+    authenticated_client, db_session, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(settings, "email_storage_root", str(tmp_path))
+    _bind_email_session(monkeypatch, db_session)
+    thread, _ = ingest_inbound(db_session, _payload("linked-task-read-only"))
+    task = Task(title="Tarefa já concluída", status="closed", source="email")
+    db_session.add(task)
+    db_session.flush()
+    thread.task_id = task.id
+    thread.status = "task_created"
+    db_session.commit()
+
+    response = authenticated_client.get("/v2-clean/email?view=all&status=all")
+    db_session.expire_all()
+
+    assert response.status_code == 200
+    assert db_session.get(EmailThread, thread.id).status == "task_created"
+    assert db_session.scalar(
+        select(EmailAuditEvent).where(
+            EmailAuditEvent.thread_id == thread.id,
+            EmailAuditEvent.action == "reopened_after_task_completion",
+        )
+    ) is None
+
+    assert reconcile_completed_email_tasks(db_session) == 1
+    db_session.commit()
+    assert reconcile_completed_email_tasks(db_session) == 0
+    assert db_session.get(EmailThread, thread.id).status == "triage"
+
+
+def test_new_inbound_flags_reply_without_losing_approval_or_linked_task(
+    authenticated_client, db_session, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(settings, "email_storage_root", str(tmp_path))
+    _bind_email_session(monkeypatch, db_session)
+    for prior_status in ("waiting_approval", "task_created"):
+        first_payload = _payload(f"{prior_status}-first")
+        first_payload["OriginalMessageID"] = f"{prior_status}-conversation"
+        first_payload["Headers"] = [
+            {"Name": "Message-ID", "Value": f"<{prior_status}-first@example.com>"}
+        ]
+        thread, _ = ingest_inbound(db_session, first_payload)
+        if prior_status == "waiting_approval":
+            db_session.add(
+                EmailInboxRule(
+                    channel_id=thread.channel_id,
+                    name="Regra sintética",
+                    subject_match="Preview de triagem",
+                    status_action="in_progress",
+                )
+            )
+        thread.status = prior_status
+        pending = EmailMessage(
+            thread_id=thread.id,
+            direction="outbound",
+            state="pending_approval",
+            sender="email@carfast.pt",
+            subject="Rascunho preservado",
+            text_body="Resposta em preparação",
+        )
+        db_session.add(pending)
+        task = Task(title="Tarefa preservada", status="in_execution", source="email")
+        db_session.add(task)
+        db_session.flush()
+        thread.task_id = task.id
+        db_session.commit()
+
+        reply_payload = _payload(f"{prior_status}-reply")
+        reply_payload["OriginalMessageID"] = first_payload["OriginalMessageID"]
+        reply_payload["Headers"] = [
+            {"Name": "Message-ID", "Value": f"<{prior_status}-reply@example.com>"}
+        ]
+        returned_thread, created = ingest_inbound(db_session, reply_payload)
+        db_session.expire_all()
+
+        assert created
+        assert returned_thread.id == thread.id
+        assert db_session.get(EmailThread, thread.id).status == "new_reply"
+        assert db_session.get(EmailThread, thread.id).task_id == task.id
+        assert db_session.get(EmailMessage, pending.id).state == "pending_approval"
+        assert db_session.get(EmailMessage, pending.id).text_body == "Resposta em preparação"
+        rule_audits = db_session.scalars(
+            select(EmailAuditEvent).where(
+                EmailAuditEvent.thread_id == thread.id,
+                EmailAuditEvent.action == "inbox_rule_applied",
+            )
+        ).all()
+        assert any(
+            "status:in_progress:skipped_new_reply"
+            in event.details_json.get("actions", [])
+            for event in rule_audits
+        )
+        detail = authenticated_client.get(f"/v2-clean/email/{thread.id}")
+        assert detail.status_code == 200
+        assert "Nova resposta" in detail.text
+        assert "A aguardar aprovação" in detail.text
+        assert f"Tarefa ligada #{task.id}" in detail.text
+        task.status = "closed"
+        db_session.commit()
+        db_session.expire_all()
+        assert db_session.get(EmailThread, thread.id).status == "new_reply"
 
 
 def test_inbox_open_is_native_full_page_navigation_and_cannot_render_inline():

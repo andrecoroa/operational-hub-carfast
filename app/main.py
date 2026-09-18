@@ -15,6 +15,7 @@ from app.core.config import settings
 from app.core.database import SessionLocal
 from app.models.admin import User
 from app.services.audit import record_audit
+from app.services.email_task_events import register_email_task_events
 from app.services.authorization import get_user_permission_codes
 from app.services.navigation import navigation_permission_for_path
 from app.services.microsoft365_oauth import (
@@ -30,6 +31,8 @@ from app.web.stock import stock_router
 from app.web.suppliers import supplier_router
 from app.web.supplier_audits import supplier_audit_router
 from app.web.vehicle_sales import vehicle_sales_router
+
+register_email_task_events()
 
 if settings.microsoft365_token_encryption_key:
     configure_secret_reference_store(

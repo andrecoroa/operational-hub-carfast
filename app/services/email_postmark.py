@@ -1078,6 +1078,9 @@ def ingest_inbound(db: Session, payload: dict) -> tuple[EmailThread, bool]:
         if parent:
             thread = db.get(EmailThread, parent.thread_id)
     created_thread = thread is None
+    preserve_new_reply = bool(
+        thread and thread.status in {"waiting_approval", "task_created"}
+    )
     if not thread:
         now = datetime.now(UTC)
         hierarchy = _resolved_inbound_hierarchy(db, channel, rule)
@@ -1144,7 +1147,9 @@ def ingest_inbound(db: Session, payload: dict) -> tuple[EmailThread, bool]:
         initialize_email_operations(db, thread, channel=channel, rule=rule, now=now)
         db.add(thread)
         db.flush()
-    elif thread.status in {"waiting_reply", "resolved", "archived"}:
+    elif thread.status in {
+        "waiting_reply", "waiting_approval", "task_created", "resolved", "archived"
+    }:
         transition_email_waiting(
             db,
             thread,
@@ -1253,7 +1258,11 @@ def ingest_inbound(db: Session, payload: dict) -> tuple[EmailThread, bool]:
         if auto_task_mode in {"open", "complete"} and created_thread:
             applied_actions.append(f"task:{auto_task_mode}")
         if rule.status_action != "none":
-            if rule.status_action in {"resolved", "archived"} and not deterministic_rule_close_allowed(rule):
+            if preserve_new_reply:
+                applied_actions.append(
+                    f"status:{rule.status_action}:skipped_new_reply"
+                )
+            elif rule.status_action in {"resolved", "archived"} and not deterministic_rule_close_allowed(rule):
                 applied_actions.append(f"status:{rule.status_action}:skipped_non_deterministic")
             elif (
                 rule.match_type == "any"

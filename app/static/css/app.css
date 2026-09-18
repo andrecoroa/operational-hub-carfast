@@ -30452,6 +30452,19 @@ body:has(.email-preview-dialog[open]) { overflow: hidden; }
   display: grid;
   gap: 24px;
 }
+.workshop-v2-analysis [hidden] { display: none !important; }
+.workshop-v2-routing-choices { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.workshop-v2-routing-choices label { position: relative; margin: 0; cursor: pointer; }
+.workshop-v2-routing-choices input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.workshop-v2-routing-choices label span { display: grid; gap: 3px; min-height: 66px; padding: 11px 13px; border: 1px solid #d7e1ef; border-radius: 8px; background: #f8fbff; color: #173153; }
+.workshop-v2-routing-choices label small { color: #62748c; }
+.workshop-v2-routing-choices input:checked + span { border-color: #245bd5; background: #edf4ff; color: #15459f; }
+.workshop-v2-routing-choices input:focus-visible + span { outline: 2px solid #245bd5; outline-offset: 2px; }
+.workshop-v2-routing-detail { margin-top: 12px; padding: 10px 13px; border-left: 3px solid #245bd5; background: #f8fbff; }
+.workshop-v2-routing-detail p { margin: 0 0 7px; }
+.workshop-v2-close-option { margin-top: 9px; }
+.workshop-v2-completion { margin-top: 0; }
+.workshop-v2-completion .workshop-v2-actions { padding-top: 10px; }
 .workshop-v2-analysis-form fieldset > section,
 .workshop-v2-analysis-form fieldset > details {
   border-bottom: 1px solid #e5eaf3;
@@ -30521,6 +30534,7 @@ body:has(.email-preview-dialog[open]) { overflow: hidden; }
   .workshop-v2-side details:not([open]) > *:not(summary) { display: none; }
 }
 @media (max-width: 600px) {
+  .workshop-v2-routing-choices { grid-template-columns: minmax(0, 1fr); }
   .workshop-v2-material-head { display: none; }
   .workshop-v2-material-row,
   .workshop-v2-report-fields > div { grid-template-columns: minmax(0, 1fr); }

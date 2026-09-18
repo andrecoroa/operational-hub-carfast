@@ -1,8 +1,12 @@
+from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 import app.main as app_main
 from app.web import router as web_router
 from app.models.vehicles import Vehicle
+from app.models.organization import Team, TeamMember
+from app.models.tasks import Task
+from app.services.users import create_user
 from app.models.workshop_phased import (
     WorkshopMaterialNeed, WorkshopPhasedProcess, WorkshopPhasedProcessPhase,
     WorkshopPhasedTechnicalReport,
@@ -207,6 +211,146 @@ def test_v2_entry_conditional_photo_reasons_and_compact_physical_checks(authenti
     revisited = authenticated_client.get(f"/v2-clean/workshop-entry?process_id={process.id}")
     assert 'name="visible_damage" value="yes" checked' in revisited.text
     assert 'name="damage_matches_rentway" value="no" checked' in revisited.text
+
+
+def test_v2_analysis_requests_confirmation_before_conclusions(authenticated_client, db_session):
+    entry = authenticated_client.post(
+        "/v2-clean/workshop-entry",
+        data={
+            "workshop_flow_version": "2", "plate": "SV-26-CF", "action": "advance",
+            "entry_km": "12000", "entry_reasons": "Avaria",
+            "breakdown_description": "Ruído na suspensão", "reported_by": "Operador",
+            "reported_by_detail": "Técnico de teste",
+            **{f"absence_reason_{slot}": "Fotografia indisponível no teste"
+               for slot in ("dashboard", "front", "rear", "left", "right")},
+        },
+        follow_redirects=False,
+    )
+    assert entry.status_code == 303
+    process = db_session.scalar(select(WorkshopPhasedProcess).where(
+        WorkshopPhasedProcess.plate_snapshot == "SV-26-CF"
+    ))
+    recipient = create_user(
+        db_session, name="Gestor de confirmação", email="confirmacao.tests@carfast.local",
+        password="Secret123!", role_codes=["manager"],
+    )
+    team = Team(code="workshop-confirmation-test", name="Equipa de confirmação", active=True)
+    db_session.add(team)
+    db_session.flush()
+    db_session.add(TeamMember(team_id=team.id, user_id=recipient.id))
+    db_session.commit()
+    previous_situation = process.metadata_json.get("operational_situation")
+    previous_reason = process.metadata_json.get("operational_waiting_reason")
+
+    page = authenticated_client.get(f"/v2-clean/workshop/validacao?process_id={process.id}")
+    assert page.status_code == 200
+    labels = ["Pedido e orientações", "O que fazer a seguir?", "É necessário diagnóstico?",
+              "PDFs e leituras de diagnóstico", "Conclusão e serviços", "Peças e orçamento"]
+    assert [page.text.index(label) for label in labels] == sorted(page.text.index(label) for label in labels)
+    assert 'form="workshop-v2-analysis-form" name="problem_conclusion"' in page.text
+    assert "Conclusão da necessidade / problema" not in page.text[:page.text.index("PDFs e leituras de diagnóstico")]
+    assert 'value="team:' + str(team.id) + '"' in page.text
+    assert 'value="user:' + str(recipient.id) + '"' in page.text
+
+    base = {
+        "process_id": process.id,
+        "analysis_template_code": process.template_snapshot_json["template_code"],
+        "analysis_decision": "Confirmar necessidade",
+        "analysis_orientation": "Confirmar se a suspensão exige reparação",
+        "confirmation_target": f"team:{team.id}",
+    }
+    invalid_target = authenticated_client.post(
+        "/v2-clean/workshop/validacao/save",
+        data={**base, "action": "request_confirmation", "confirmation_target": "team:999999"},
+        follow_redirects=False,
+    )
+    assert "error=confirmation_target_required" in invalid_target.headers["location"]
+    requested = authenticated_client.post(
+        "/v2-clean/workshop/validacao/save",
+        data={**base, "action": "request_confirmation"},
+        follow_redirects=False,
+    )
+    assert requested.status_code == 303
+    assert "confirmation_requested=1" in requested.headers["location"]
+    db_session.expire_all()
+    db_session.refresh(process)
+    task = db_session.scalar(select(Task).where(
+        Task.entity_type == "workshop_phased_process", Task.entity_id == str(process.id)
+    ))
+    assert task is not None
+    assert task.team_id == team.id
+    assert task.description == base["analysis_orientation"]
+    assert process.current_phase_code == "validacao"
+    assert process.metadata_json["analysis_confirmation"]["task_id"] == task.id
+    assert process.metadata_json["operational_situation"] == "waiting"
+    duplicate = authenticated_client.post(
+        "/v2-clean/workshop/validacao/save",
+        data={**base, "action": "request_confirmation"}, follow_redirects=False,
+    )
+    assert "error=confirmation_already_pending" in duplicate.headers["location"]
+    assert len(db_session.scalars(select(Task).where(
+        Task.entity_type == "workshop_phased_process", Task.entity_id == str(process.id)
+    )).all()) == 1
+    with TestClient(app_main.app) as recipient_client:
+        login = recipient_client.post(
+            "/login", data={"email": recipient.email, "password": "Secret123!"},
+            follow_redirects=False,
+        )
+        assert login.status_code == 303
+        recipient_client.post("/change-notice", data={"next_url": "/v2-clean"}, follow_redirects=False)
+        detail = recipient_client.get(f"/v2-clean/tasks/{task.id}/detail", follow_redirects=False)
+        assert detail.status_code == 200
+        assert base["analysis_orientation"] in detail.text
+    validation = db_session.scalar(select(WorkshopPhasedProcessPhase).where(
+        WorkshopPhasedProcessPhase.process_id == process.id,
+        WorkshopPhasedProcessPhase.phase_code == "validacao",
+    ))
+    assert validation.data_json["form_snapshot"]["analysis_orientation"] == base["analysis_orientation"]
+    assert not validation.data_json["form_snapshot"]["problem_conclusion"]
+
+    repair = {
+        **base, "action": "advance", "analysis_decision": "Reparar",
+        "analysis_repair_location": "external", "analysis_external_workshop": "Oficina de teste",
+        "confirmation_result": "Reparação necessária", "problem_conclusion": "Falha confirmada",
+        "services_proposed": "Substituir componente", "diagnostic_mode": "waived",
+        "diagnostic_waiver_reason": "Falha identificada visualmente",
+    }
+    pending = authenticated_client.post(
+        "/v2-clean/workshop/validacao/save", data=repair, follow_redirects=False,
+    )
+    assert "error=confirmation_pending" in pending.headers["location"]
+    with TestClient(app_main.app) as recipient_client:
+        recipient_client.post(
+            "/login", data={"email": recipient.email, "password": "Secret123!"},
+            follow_redirects=False,
+        )
+        recipient_client.post("/change-notice", data={"next_url": "/v2-clean"}, follow_redirects=False)
+        closed = recipient_client.post(f"/v2-clean/tasks/{task.id}/close", follow_redirects=False)
+        assert closed.status_code == 303
+    db_session.expire_all()
+    db_session.refresh(task)
+    assert task.closed_at is not None
+    missing_result = authenticated_client.post(
+        "/v2-clean/workshop/validacao/save",
+        data={**repair, "confirmation_result": ""}, follow_redirects=False,
+    )
+    assert "error=confirmation_result_required" in missing_result.headers["location"]
+    advanced = authenticated_client.post(
+        "/v2-clean/workshop/validacao/save", data=repair, follow_redirects=False,
+    )
+    assert advanced.status_code == 303
+    assert "/v2-clean/workshop/reparacao" in advanced.headers["location"]
+    db_session.expire_all()
+    db_session.refresh(process)
+    assert process.metadata_json["analysis_confirmation"]["status"] == "resolved"
+    assert process.metadata_json.get("operational_situation") == previous_situation
+    assert process.metadata_json.get("operational_waiting_reason") == previous_reason
+    repair_phase = db_session.scalar(select(WorkshopPhasedProcessPhase).where(
+        WorkshopPhasedProcessPhase.process_id == process.id,
+        WorkshopPhasedProcessPhase.phase_code == "reparacao",
+    ))
+    assert repair_phase.data_json["form_snapshot"]["repair_external"] == "yes"
+    assert repair_phase.data_json["form_snapshot"]["repair_external_partner"] == "Oficina de teste"
 
 
 def test_v2_analysis_late_diagnostic_needs_identified_authorization(authenticated_client, db_session):

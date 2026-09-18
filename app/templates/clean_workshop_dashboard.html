@@ -148,11 +148,12 @@
                 <span title="{{ row.entry_description or '' }}">{{ row.entry_description or 'Sem descrição adicional' }}</span>
                 <small>{{ row.opened_at.strftime('%d/%m/%Y · %H:%M') if row.opened_at else '-' }} · {% if row.elapsed_days == 0 %}Hoje{% elif row.elapsed_days == 1 %}1 dia{% else %}{{ row.elapsed_days }} dias{% endif %}</small>
               </div>
-              <div class="clean-workshop-process-fact">
+              <div class="clean-workshop-process-fact clean-workshop-process-location">
+                <small class="clean-workshop-mobile-label">Local</small>
                 <strong class="{% if row.location_type == 'Externa' %}is-external{% endif %}">{{ row.location_type }}</strong>
                 <span>{{ row.location_detail }}</span>
               </div>
-              <div class="clean-workshop-process-state"><strong>{{ current_phase|replace("_", " ")|title }}</strong><span>{% if row.operational_situation == "waiting" %}A aguardar{% elif row.operational_situation == "closed" %}Fechado{% elif row.operational_situation == "cancelled" %}Cancelado{% else %}Em curso{% endif %}</span>{% if row.waiting_reason %}<small>{{ row.waiting_reason }}</small>{% endif %}</div>
+              <div class="clean-workshop-process-state"><small class="clean-workshop-mobile-label">Estado</small><strong>{{ current_phase|replace("_", " ")|title }}</strong><span>{% if row.operational_situation == "waiting" %}A aguardar{% elif row.operational_situation == "closed" %}Fechado{% elif row.operational_situation == "cancelled" %}Cancelado{% else %}Em curso{% endif %}</span>{% if row.waiting_reason %}<small>{{ row.waiting_reason }}</small>{% endif %}</div>
               <div class="clean-workshop-situation-cell">
                 <a class="clean-workshop-open-link" href="{{ row.workbench_url }}">Abrir e trabalhar</a>
                 {% if can_update_operational and process.status not in ['closed', 'cancelled'] %}

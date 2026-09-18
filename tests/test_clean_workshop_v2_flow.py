@@ -547,6 +547,10 @@ def test_workshop_dashboard_shows_operational_context_and_updates_situation(
     assert "Mais filtros" in dashboard.text
     assert "Classificação</span>" not in dashboard.text
     assert "Pedido / abertura" in dashboard.text
+    assert 'class="clean-workshop-process-fact clean-workshop-process-location"' in dashboard.text
+    assert 'class="clean-workshop-mobile-label">Local</small>' in dashboard.text
+    assert 'class="clean-workshop-mobile-label">Estado</small>' in dashboard.text
+    assert "Abrir e trabalhar" in dashboard.text
     assert 'name="brand"' in dashboard.text
     assert 'name="group"' in dashboard.text
     assert "1 processo encontrado" in dashboard.text

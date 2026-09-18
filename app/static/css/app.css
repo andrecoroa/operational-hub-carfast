@@ -21170,10 +21170,51 @@ body.clean-doc-modal-open {
 }
 .clean-workshop-process-state strong { color: #0f2a5f; font-size: var(--clean-font-sm); }
 .clean-workshop-process-state span { color: #475467; font-size: var(--clean-font-xs); }
+.clean-workshop-mobile-label { display: none !important; }
 .clean-workshop-situation-cell { gap: 7px; }
 @media (max-width: 1100px) {
-  .clean-workshop-list-head,
-  .clean-workshop-process-item { min-width: 860px; }
+  .clean-workshop-table-scroll {
+    max-height: none;
+    overflow: visible;
+    border: 0;
+    scrollbar-gutter: auto;
+  }
+  .clean-workshop-table-scroll .clean-workshop-list-head { display: none; }
+  .clean-workshop-process-item {
+    min-width: 0;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "vehicle action"
+      "request request"
+      "location state";
+    align-items: start;
+    gap: 10px 14px;
+    padding: 12px;
+  }
+  .clean-workshop-process-item > * { min-width: 0; }
+  .clean-workshop-vehicle-cell { grid-area: vehicle; }
+  .clean-workshop-process-reason { grid-area: request; }
+  .clean-workshop-process-location { grid-area: location; }
+  .clean-workshop-process-state { grid-area: state; }
+  .clean-workshop-situation-cell { grid-area: action; justify-items: end; align-self: start; }
+  .clean-workshop-mobile-label { display: block !important; margin: 0 0 4px !important; color: #667085 !important; font-size: var(--clean-font-xs) !important; font-weight: 850 !important; text-transform: uppercase; }
+  .clean-workshop-process-location,
+  .clean-workshop-process-state { padding-top: 9px; border-top: 1px solid #e5eaf2; }
+  .clean-workshop-process-reason span { max-width: none; white-space: normal; overflow-wrap: anywhere; }
+  .clean-workshop-situation-cell .clean-workshop-open-link {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 36px;
+    margin: 0;
+    padding: 7px 10px;
+    border: 1px solid #bcd0ef;
+    border-radius: 7px;
+    background: #edf4ff;
+    white-space: nowrap;
+    text-decoration: none;
+  }
+  .clean-workshop-situation-cell .clean-workshop-open-link:focus-visible { outline: 2px solid #245bd5; outline-offset: 2px; }
 }
 @media (max-width: 800px) {
   .clean-workshop-dashboard-filters { grid-template-columns: minmax(0, 1fr) auto; }
@@ -21184,6 +21225,16 @@ body.clean-doc-modal-open {
 }
 @media (max-width: 520px) {
   .clean-workshop-more-fields { grid-template-columns: minmax(0, 1fr); }
+  .clean-workshop-process-item {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-areas:
+      "vehicle vehicle"
+      "action action"
+      "request request"
+      "location state";
+  }
+  .clean-workshop-situation-cell { justify-items: stretch; }
+  .clean-workshop-situation-cell .clean-workshop-open-link { width: 100%; }
 }
 
 .clean-task-classification-row,

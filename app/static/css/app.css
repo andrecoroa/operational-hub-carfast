@@ -30452,6 +30452,23 @@ body:has(.email-preview-dialog[open]) { overflow: hidden; }
   display: grid;
   gap: 24px;
 }
+.workshop-v2-analysis [hidden] { display: none !important; }
+.workshop-v2-routing-choices { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.workshop-v2-routing-choices label { position: relative; margin: 0; cursor: pointer; }
+.workshop-v2-routing-choices input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.workshop-v2-routing-choices label span { display: grid; gap: 3px; min-height: 66px; padding: 11px 13px; border: 1px solid #d7e1ef; border-radius: 8px; background: #f8fbff; color: #173153; }
+.workshop-v2-routing-choices label small { color: #62748c; }
+.workshop-v2-routing-choices input:checked + span { border-color: #245bd5; background: #edf4ff; color: #15459f; }
+.workshop-v2-routing-choices input:focus-visible + span { outline: 2px solid #245bd5; outline-offset: 2px; }
+.workshop-v2-routing-detail { margin-top: 12px; padding: 10px 13px; border-left: 3px solid #245bd5; background: #f8fbff; }
+.workshop-v2-routing-detail p { margin: 0 0 7px; }
+.workshop-v2-close-option { margin-top: 9px; }
+.workshop-v2-completion { margin-top: 0; }
+.workshop-v2-analysis .workshop-v2-actions button { width: auto; min-width: 142px; }
+.workshop-v2-analysis .workshop-v2-actions button[value="save"] { background: #fff; border-color: #d1d9e6; color: #173153; }
+.workshop-v2-analysis .workshop-v2-actions button[value="request_confirmation"],
+.workshop-v2-analysis .workshop-v2-actions button[value="advance"] { background: var(--brand-dark); border-color: var(--brand-dark); color: #fff; }
+.workshop-v2-analysis .workshop-v2-actions button:disabled { opacity: .55; cursor: not-allowed; }
 .workshop-v2-analysis-form fieldset > section,
 .workshop-v2-analysis-form fieldset > details {
   border-bottom: 1px solid #e5eaf3;
@@ -30476,10 +30493,51 @@ body:has(.email-preview-dialog[open]) { overflow: hidden; }
   margin-bottom: 12px;
 }
 .workshop-v2-choice-list label {
-  display: flex;
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   margin: 0;
+  padding: 10px 12px;
+  min-width: 0;
+  border: 1px solid #d7e1ef;
+  border-radius: 8px;
+  background: #fff;
+  cursor: pointer;
+}
+.workshop-v2-choice-list label:has(input:checked) {
+  border-color: #245bd5;
+  background: #edf4ff;
+}
+.workshop-v2-choice-list input[type="radio"],
+.workshop-v2-authorization-choice input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  min-width: 18px;
+  margin: 0;
+  padding: 0;
+  accent-color: #245bd5;
+}
+.workshop-v2-choice-list label span,
+.workshop-v2-authorization-choice span {
+  min-width: 0;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+.workshop-v2-analysis-form .workshop-v2-authorization-choice {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  align-items: start;
+  gap: 10px;
+  margin: 0;
+  padding: 11px 12px;
+  border: 1px solid #c8d9f3;
+  border-radius: 8px;
+  background: #f6f9ff;
+  cursor: pointer;
+}
+.workshop-v2-authorization-choice input[type="checkbox"] {
+  margin-top: 1px;
 }
 .workshop-v2-disclosure summary {
   cursor: pointer;
@@ -30521,6 +30579,7 @@ body:has(.email-preview-dialog[open]) { overflow: hidden; }
   .workshop-v2-side details:not([open]) > *:not(summary) { display: none; }
 }
 @media (max-width: 600px) {
+  .workshop-v2-routing-choices { grid-template-columns: minmax(0, 1fr); }
   .workshop-v2-material-head { display: none; }
   .workshop-v2-material-row,
   .workshop-v2-report-fields > div { grid-template-columns: minmax(0, 1fr); }

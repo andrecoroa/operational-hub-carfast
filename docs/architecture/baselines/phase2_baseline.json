@@ -20,12 +20,12 @@
     "web_rules_sha256": "50c840a8caf355c65501ccacef3aa2769490f675c6f36bd4707d409fba452393"
   },
   "post_actions": {
-    "form_action_count": 631,
-    "form_action_occurrence_count": 872,
-    "form_actions_sha256": "f7a944644d35525a0027d5d8d8b0678cbdfa1b0d6a294c676a4b436dcddf6e02",
-    "redirect_destination_count": 481,
-    "redirect_destinations_sha256": "23b6e865ff24c867999aeaf63537efda2f088101f1aba643c969974f37ef602f",
-    "redirect_occurrence_count": 1060
+    "form_action_count": 634,
+    "form_action_occurrence_count": 876,
+    "form_actions_sha256": "7054076391023077f49aa8af86ac02a7e13c7bcaa77eba701bc83e43577bc244",
+    "redirect_destination_count": 487,
+    "redirect_destinations_sha256": "b15a7f452791c865ca60fe96d1f13a357b51671b9a62ea62bdc07159d54ca975",
+    "redirect_occurrence_count": 1068
   },
   "routes": {
     "by_method": {

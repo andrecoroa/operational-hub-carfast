@@ -36,6 +36,27 @@ Usar as regras contabilísticas já **aprovadas** como limite de automatismo. A 
 
 Se o tipo/identidade for desconhecido, o ficheiro for ilegível ou a evidência ficar abaixo do limiar aprovado: manter o documento `por tratar`, guardar a razão e criar **uma** tarefa de alerta por `(document_id, reason_code)` com ligação ao documento. O destino proposto é Fila `Administração` → Departamento `Dep. Financeiro` → Categoria `Tarefas Financeiras`, resolvido por configuração da instalação, não por IDs fixos. Reexecuções atualizam evidência/estado da mesma ocorrência; não multiplicam tarefas. A resolução do email não é revertida por esta dúvida documental.
 
+## Arquivo mensal OneDrive/SharePoint para a contabilidade (etapa posterior)
+
+A biblioteca `FINANCEIRO` indicada pelo André é um **destino candidato**, a confirmar/configurar; não é a fonte primária. O original imutável e visualizável permanece no armazenamento persistente da app. A publicação externa é uma operação posterior à classificação validada, com fila e estado próprios; falhas no OneDrive/SharePoint não apagam nem invalidam o documento da app.
+
+Estrutura proposta: `FINANCEIRO/AAAA/MM/TIPO_DOCUMENTAL/doc-{document_id}-{sha256_8}.pdf`. O mês é o **período contabilístico escolhido e validado para aquele tipo**, não a data de receção do email por defeito. `document_id` e prefixo do hash tornam o nome estável, único e sem sobrescrita; emitente, NIF, referência e nome original ficam pesquisáveis nos metadados e no manifesto, não precisam de determinar o caminho. Data/tipo ainda desconhecidos ficam numa fila `Por_classificar` **fora** das pastas mensais e do lote de impressão.
+
+| Tipo e exemplo sintético | Data candidata para `AAAA/MM` | Subpasta proposta | Salvaguarda |
+|---|---|---|---|
+| Fatura de reparação de uma viatura | Data de emissão da fatura | `Faturas_Reparacao` | Matrícula/ordem de reparação é associação, não substitui a data documental. |
+| Fatura geral de serviços | Data de emissão da fatura | `Faturas_Gerais` | Vencimento e receção não definem automaticamente o mês. |
+| Prestação de financiamento/leasing de uma viatura | Período da prestação explicitamente indicado, após validação da regra contabilística | `Prestacoes_Viatura` | Guardar capital/juros/IVA separados na extração; vencimento não prova pagamento. |
+| Documento de prestações de um lote de viaturas | Período do lote explicitamente indicado e validado | `Prestacoes_Lote` | Um PDF original, várias associações; não fabricar PDFs por viatura. |
+| Extrato bancário mensal | Data final do período do extrato | `Extratos_Bancarios` | O extrato apoia conciliação; não gera outra despesa. |
+| Nota autónoma de comissão bancária | Data de lançamento/valor da comissão, conforme política aprovada | `Comissoes_Bancarias` | Se a comissão existe só como linha de extrato, não duplicar o PDF nem a despesa. |
+
+Estas datas são **propostas**, não regras aprovadas. Se emissão, período ou lançamento forem contraditórios/ilegíveis, não usar silenciosamente a data de receção: deixar pendente e abrir a tarefa de esclarecimento. O mês e a data escolhidos devem guardar origem, regra/versão, confiança e validação; alterações posteriores são auditadas.
+
+Reclassificar um documento pode alterar mês ou subpasta, mas nunca os bytes originais na app. A publicação externa tem identidade `(document_id, classification_version)` e chave idempotente; publicar a nova localização, conferir hash e manifesto, marcar a localização anterior como substituída e conservar histórico. Não sobrescrever ou eliminar a cópia anterior automaticamente. Um reconciliador compara documentos elegíveis, versões, objetos remotos e hashes; identifica ausentes, duplicados e divergentes antes de fechar o mês.
+
+Para cada mês, gerar um **manifesto versionado** (CSV para conferência e índice PDF imprimível) com ordem de impressão, tipo, data escolhida, emitente, referência, viatura/lote quando aplicável, `document_id`, hash, páginas, localização, estado de validação e exceções. Conferir contagens e hashes com a app; um mês fechado não muda silenciosamente — correções geram nova versão do manifesto. Só documentos validados e reconciliados entram no pacote mensal para imprimir/enviar à contabilidade. A geração, impressão e envio não são automáticos nesta fase.
+
 ## Segurança e observabilidade
 
 - Validar formato pelo conteúdo, limites de tamanho/páginas e autorização de leitura; não aceitar caminhos fornecidos pelo email como caminhos de armazenamento. Isolar falhas de OCR e não enviar ficheiros para serviços externos sem configuração e aprovação específicas.
@@ -48,7 +69,7 @@ Se o tipo/identidade for desconhecido, o ficheiro for ilegível ou a evidência 
 1. Provar armazenamento persistente/backup e implementar ligação idempotente anexo→documento + outbox, atrás de flag desligada. Testar crash/retry, hash inválido, ficheiro ausente e duplicados em PostgreSQL isolado.
 2. Ligar um extrator técnico a essa outbox, guardar texto/JSON e versões imutáveis; testar só com PDFs sintéticos. Não classificar nem criar tarefas nesta fase.
 3. Aplicar taxonomia e regras aprovadas, com tarefa deduplicada para desconhecidos e pré-visualização *read-only* do impacto. Rever amostras sem escrever nos emails/documentos reais.
-4. Só após decisão expressa do André: piloto pequeno do alias `faturas@carfast.pt`, com métricas, reversão e validação de cada tipo documental. SharePoint/OneDrive é uma entrega posterior e nunca substitui a cópia persistente da app.
+4. Só após decisão expressa do André: piloto pequeno do alias `faturas@carfast.pt`, com métricas, reversão e validação de cada tipo documental. O arquivo mensal OneDrive/SharePoint e o manifesto são entrega posterior, com aprovação própria; nunca substituem a cópia persistente da app.
 
 ## Critérios de aceitação antes de qualquer ativação
 
@@ -57,6 +78,7 @@ Se o tipo/identidade for desconhecido, o ficheiro for ilegível ou a evidência 
 - Anexo de mensagem anterior da mesma conversa nunca satisfaz a elegibilidade de uma mensagem nova. PDF ausente, hash divergente ou anexo bloqueado não é marcado como extraído.
 - A app continua a abrir o PDF quando a cópia SharePoint é removida; a restauração da base de dados e do volume documental é ensaiada em ambiente isolado.
 - Documento desconhecido fica `por tratar` com uma única tarefa financeira; o estado do email pode permanecer resolvido.
+- O lote mensal agrupa por data validada conforme o tipo, subpasta correta e nome estável; reclassificação não perde o original nem sobrescreve outra cópia. Manifesto e objetos externos reconciliam em contagem e hash antes de imprimir/enviar.
 
 ## Decisões pendentes para André e equipa financeira
 
@@ -64,3 +86,4 @@ Se o tipo/identidade for desconhecido, o ficheiro for ilegível ou a evidência 
 - Aprovar quais tipos documentais podem seguir automaticamente após extração, e o limiar de confiança por tipo. Os restantes ficam pendentes sem lançamento.
 - Confirmar o responsável/tempo de resposta da tarefa de documento desconhecido e a política de reabertura quando uma nova extração altera a proposta.
 - Validar o volume persistente da app, backups, retenção e restauro antes de qualquer fluxo com dados reais; decidir separadamente se/quando publicar cópia no SharePoint.
+- Aprovar para cada tipo a data que define o mês contabilístico, a estrutura OneDrive/SharePoint, quem fecha o manifesto e quem autoriza impressão/envio à contabilidade.

@@ -674,7 +674,14 @@ def reconcile_inbound_attachments(
     provider: str = "postmark",
 ) -> dict[str, int]:
     """Idempotently materialize every source attachment or a visible blocked record."""
-    result = {"payload": 0, "stored": 0, "blocked": 0, "existing": 0}
+    result = {
+        "payload": 0,
+        "stored": 0,
+        "blocked": 0,
+        "existing": 0,
+        "existing_stored": 0,
+        "existing_blocked": 0,
+    }
     for item in normalize_inbound_attachments(payload, provider):
         result["payload"] += 1
         existing = db.scalar(
@@ -685,6 +692,13 @@ def reconcile_inbound_attachments(
         )
         if existing:
             result["existing"] += 1
+            result[
+                "existing_stored"
+                if existing.ingest_state == "stored"
+                and existing.storage_path
+                and Path(existing.storage_path).is_file()
+                else "existing_blocked"
+            ] += 1
             continue
         safe_name = re.sub(r"[^A-Za-z0-9._-]", "_", Path(item["name"]).name)
         estimated_size = item["declared_size"] or _decoded_base64_size(item["content"])
@@ -703,10 +717,19 @@ def reconcile_inbound_attachments(
             legacy.webhook_event_id = event.id
             legacy.source_provider = provider
             legacy.source_attachment_id = item["source_id"]
-            legacy.ingest_state = "stored" if legacy.storage_path else "blocked"
+            legacy.ingest_state = (
+                "stored"
+                if legacy.storage_path and Path(legacy.storage_path).is_file()
+                else "blocked"
+            )
             if legacy.ingest_state == "blocked" and not legacy.ingest_reason:
                 legacy.ingest_reason = "attachment_file_unavailable"
             result["existing"] += 1
+            result[
+                "existing_stored"
+                if legacy.ingest_state == "stored"
+                else "existing_blocked"
+            ] += 1
             db.flush()
             continue
         attachment = EmailAttachment(
@@ -749,6 +772,13 @@ def reconcile_inbound_attachments(
         result["stored" if attachment.ingest_state == "stored" else "blocked"] += 1
     db.flush()
     return result
+
+
+def _attachments_ready_for_close(result: dict[str, int]) -> bool:
+    return (
+        result["payload"] > 0
+        and result["stored"] + result["existing_stored"] == result["payload"]
+    )
 
 
 def inbox_rule_matches(rule: EmailInboxRule, *, subject: str, sender: str = "") -> bool:
@@ -1173,7 +1203,7 @@ def ingest_inbound(db: Session, payload: dict) -> tuple[EmailThread, bool]:
             elif (
                 rule.match_type == "any"
                 and rule.status_action in {"resolved", "archived"}
-                and (not attachment_result["payload"] or attachment_result["blocked"])
+                and not _attachments_ready_for_close(attachment_result)
             ):
                 applied_actions.append(f"status:{rule.status_action}:skipped_attachments_not_stored")
             else:

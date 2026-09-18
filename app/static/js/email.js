@@ -246,7 +246,9 @@
     tabs.querySelectorAll("[data-email-workspace-target]").forEach((button) => {
       button.addEventListener("click", () => activate(button.dataset.emailWorkspaceTarget));
     });
-    activate("conversation");
+    const classificationError = ["invalid_hierarchy", "missing_classification", "invalid_transition"]
+      .includes(new URLSearchParams(window.location.search).get("error"));
+    activate(classificationError ? "classification" : "conversation");
   };
   const bindReadableBodies = (root) => {
     const shell = root.querySelector("[data-email-thread-id]");

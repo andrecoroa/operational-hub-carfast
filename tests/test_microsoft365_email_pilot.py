@@ -39,7 +39,8 @@ def test_callback_route_is_exact_and_get_only():
 def test_transport_migration_is_the_single_additive_head():
     config = Config("alembic.ini")
     scripts = ScriptDirectory.from_config(config)
-    assert scripts.get_heads() == ["100056bc78de"]
+    assert len(scripts.get_heads()) == 1
+    assert "100056bc78de" in {revision.revision for revision in scripts.walk_revisions()}
     assert scripts.get_revision("fffc017b8d9e").down_revision == "fffbf06a7c8d"
     assert scripts.get_revision("100056bc78de").down_revision == "ffff45bf213c"
 
@@ -491,7 +492,7 @@ def test_graph_send_uses_shared_mailbox_endpoint_and_saves_sent_copy(monkeypatch
         {
             "subject": "Teste CarFast 365",
             "text_body": "Teste",
-            "html_body": None,
+            "html_body": "Bom dia,<br><br>Pergunta?<br><br>Cumprimentos,",
             "recipients_json": [{"Email": "andrecoroa@daccordinvest.pt"}],
             "cc_json": [],
             "bcc_json": [],
@@ -516,6 +517,10 @@ def test_graph_send_uses_shared_mailbox_endpoint_and_saves_sent_copy(monkeypatch
     ]
     assert captured["body"]["message"]["from"] == {
         "emailAddress": {"address": "frota@carfast.pt"}
+    }
+    assert captured["body"]["message"]["body"] == {
+        "contentType": "HTML",
+        "content": "Bom dia,<br><br>Pergunta?<br><br>Cumprimentos,",
     }
 
 

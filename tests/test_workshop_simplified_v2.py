@@ -75,6 +75,8 @@ def test_simplified_process_can_be_cancelled_from_each_stage(
     assert "Criado por engano" in cancelled_page.text
     assert "<summary>Reabrir processo</summary>" in cancelled_page.text
     assert "<summary>Cancelar processo</summary>" not in cancelled_page.text
+    if phase == "entrada":
+        assert '<fieldset class="workshop-v2-entry-fields" disabled>' in cancelled_page.text
 
 
 def test_entry_permission_only_opens_own_new_entry(authenticated_client, db_session, monkeypatch):

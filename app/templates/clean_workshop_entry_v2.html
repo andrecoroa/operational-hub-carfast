@@ -34,6 +34,7 @@
       <input type="hidden" name="workshop_flow_version" value="2">
       {% if workshop_process %}<input type="hidden" name="process_id" value="{{ workshop_process.id }}">{% endif %}
       {% if return_context %}<input type="hidden" name="return_context" value="{{ return_context }}">{% endif %}
+      <fieldset class="workshop-v2-entry-fields"{% if workshop_admin.is_closed or workshop_admin.is_cancelled %} disabled{% endif %}>
       <div class="table-heading flat-heading"><div><p class="eyebrow">01 · Identificação</p><h3>Viatura e ocorrência</h3></div></div>
       <div class="clean-phase-field-grid">
         <label>Matrícula<input id="workshop-v2-plate" name="plate" list="workshop-v2-plate-suggestions" aria-describedby="workshop-v2-vehicle-status" autocomplete="off" required value="{{ workshop_process.plate_snapshot if workshop_process else request.query_params.get('plate', '') }}" placeholder="Ex.: AA-00-AA"><datalist id="workshop-v2-plate-suggestions"></datalist></label>
@@ -112,6 +113,7 @@
         </div>
       </details>
       <div class="clean-substep-savebar workshop-v2-actions"><button type="submit" name="action" value="save" class="secondary">Guardar rascunho</button><button type="submit" name="action" value="advance">{{ "Avançar para análise" if can_manage_workshop else "Concluir recolha" }}</button></div>
+      </fieldset>
     </form>
   </main>
 </div>

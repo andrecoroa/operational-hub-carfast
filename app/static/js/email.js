@@ -148,7 +148,23 @@
       if (!editor || !plain || !html) return;
       const sync = () => {
         plain.value = editor.innerText.trim();
-        html.value = editor.innerHTML.trim();
+        // A pasted plain-text newline is visible in this pre-wrapped editor,
+        // but HTML mail clients collapse it unless it becomes a real <br>.
+        const copy = editor.cloneNode(true);
+        const walker = document.createTreeWalker(copy, NodeFilter.SHOW_TEXT);
+        const textNodes = [];
+        while (walker.nextNode()) textNodes.push(walker.currentNode);
+        textNodes.forEach((node) => {
+          const value = (node.nodeValue || "").replace(/\r\n?/g, "\n");
+          if (!value.trim() || !value.includes("\n") || node.parentElement?.closest("pre")) return;
+          const replacement = document.createDocumentFragment();
+          value.split("\n").forEach((line, index) => {
+            if (index) replacement.append(document.createElement("br"));
+            replacement.append(document.createTextNode(line));
+          });
+          node.replaceWith(replacement);
+        });
+        html.value = copy.innerHTML.trim();
       };
       editor.addEventListener("input", sync);
       form.addEventListener("submit", sync);
@@ -246,7 +262,9 @@
     tabs.querySelectorAll("[data-email-workspace-target]").forEach((button) => {
       button.addEventListener("click", () => activate(button.dataset.emailWorkspaceTarget));
     });
-    activate("conversation");
+    const classificationError = ["invalid_hierarchy", "missing_classification", "invalid_transition"]
+      .includes(new URLSearchParams(window.location.search).get("error"));
+    activate(classificationError ? "classification" : "conversation");
   };
   const bindReadableBodies = (root) => {
     const shell = root.querySelector("[data-email-thread-id]");

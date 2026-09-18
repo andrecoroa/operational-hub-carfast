@@ -142,6 +142,9 @@ STATUS_LABELS = {
     "resolved": "Resolvido",
     "archived": "Arquivado",
 }
+MANUAL_EMAIL_STATUSES = frozenset({
+    "triage", "in_progress", "waiting_reply", "resolved", "archived",
+})
 
 EMAIL_WORK_VIEW_LABELS = {
     "mailbox": "Por caixa",
@@ -208,10 +211,12 @@ class _SafeEmailHTMLParser(HTMLParser):
     void_tags = {"br", "hr", "img"}
     blocked_content_tags = {"embed", "iframe", "object", "script", "style"}
 
-    def __init__(self) -> None:
+    def __init__(self, *, preserve_text_newlines: bool = False) -> None:
         super().__init__(convert_charrefs=True)
         self.parts: list[str] = []
         self.blocked_content_depth = 0
+        self.preserve_text_newlines = preserve_text_newlines
+        self.preformatted_depth = 0
 
     @staticmethod
     def _safe_url(value: str) -> tuple[str, bool] | None:
@@ -240,6 +245,8 @@ class _SafeEmailHTMLParser(HTMLParser):
             return
         if tag not in self.allowed_tags:
             return
+        if tag == "pre":
+            self.preformatted_depth += 1
         safe_attrs: list[str] = []
         for name, value in attrs:
             name, value = name.lower(), value or ""
@@ -276,9 +283,21 @@ class _SafeEmailHTMLParser(HTMLParser):
             return
         if tag in self.allowed_tags and tag not in self.void_tags:
             self.parts.append(f"</{tag}>")
+            if tag == "pre" and self.preformatted_depth:
+                self.preformatted_depth -= 1
 
     def handle_data(self, data: str) -> None:
-        if not self.blocked_content_depth:
+        if self.blocked_content_depth:
+            return
+        if (
+            self.preserve_text_newlines
+            and not self.preformatted_depth
+            and data.strip()
+            and ("\n" in data or "\r" in data)
+        ):
+            lines = data.replace("\r\n", "\n").replace("\r", "\n").split("\n")
+            self.parts.append("<br>".join(escape(line) for line in lines))
+        else:
             self.parts.append(escape(data))
 
 
@@ -1582,6 +1601,7 @@ def email_inbox(
                 "all_is_truncated": selected_view == "all"
                 and len(inbox_rows) < filtered_total_count,
                 "status_labels": STATUS_LABELS,
+                "manual_statuses": MANUAL_EMAIL_STATUSES,
                 "email_signal_labels": EMAIL_SIGNAL_LABELS,
                 "filters": {
                     "status": selected_status,
@@ -1871,10 +1891,24 @@ def email_thread(request: Request, thread_id: int):
     if not auth:
         return RedirectResponse("/login?next=/v2-clean/email", status_code=303)
     user_id, permissions = auth
-    return_context = request.query_params.get("return_context", "")
-    if not return_context.startswith("/v2-clean/email") or return_context.startswith("//"):
-        return_context = "/v2-clean/email"
+    requested_context = request.query_params.get("return_context", "")
+    navigation_state = request.session.get("email_navigation_context", {})
+    if not isinstance(navigation_state, dict) or navigation_state.get("user_id") != user_id:
+        navigation_state = {}
+    if not requested_context and navigation_state.get("thread_id") == thread_id:
+        requested_context = str(navigation_state.get("return_context") or "")
+    parsed_context = urlparse(requested_context)
+    return_context = (
+        requested_context
+        if parsed_context.path == "/v2-clean/email"
+        and not parsed_context.scheme
+        and not parsed_context.netloc
+        and not requested_context.startswith("//")
+        else "/v2-clean/email"
+    )
     sequence_raw = request.query_params.get("sequence", "")
+    if not sequence_raw and navigation_state.get("thread_id") == thread_id:
+        sequence_raw = str(navigation_state.get("sequence") or "")
     sequence_ids = [int(item) for item in sequence_raw.split(",")[:100] if item.isdigit()]
     def _neighbor_url(raw_id: str | int | None) -> str | None:
         try:
@@ -1897,6 +1931,13 @@ def email_thread(request: Request, thread_id: int):
             db, user_id, permissions, thread.channel_id, thread=thread
         ):
             return RedirectResponse("/v2-clean/email?error=not_found", status_code=303)
+        if request.query_params.get("return_context") or request.query_params.get("sequence"):
+            request.session["email_navigation_context"] = {
+                "user_id": user_id,
+                "thread_id": thread_id,
+                "return_context": return_context,
+                "sequence": ",".join(str(item) for item in sequence_ids),
+            }
         channel = db.get(EmailChannel, thread.channel_id)
         view_data = _thread_view_data(db, thread)
         reply_channels, reply_channel_send_direct = _reply_channel_context(
@@ -2013,6 +2054,7 @@ def email_thread(request: Request, thread_id: int):
                 **_classification_context(),
                 **workflow_context,
                 "status_labels": STATUS_LABELS,
+                "manual_statuses": MANUAL_EMAIL_STATUSES,
                 "can_triage": can_alter,
                 "can_reply": bool(
                     permissions.intersection({"email.reply", "email.manage", "admin.manage"})
@@ -2174,6 +2216,7 @@ def email_thread_preview(request: Request, thread_id: int):
                 **_classification_context(),
                 **workflow_context,
                 "status_labels": STATUS_LABELS,
+                "manual_statuses": MANUAL_EMAIL_STATUSES,
                 "can_triage": can_alter,
                 "can_reply": bool(
                     permissions.intersection({"email.reply", "email.manage", "admin.manage"})
@@ -2803,12 +2846,16 @@ def email_channel_access(
 @email_router.post("/v2-clean/email/{thread_id}/status")
 def email_status(request: Request, thread_id: int, status: str = Form(...)):
     auth = _auth(request, "email.triage", "email.manage", "admin.manage")
-    if not auth or status not in STATUS_LABELS:
+    if not auth:
         return RedirectResponse(f"/v2-clean/email/{thread_id}?error=forbidden", status_code=303)
+    if status not in MANUAL_EMAIL_STATUSES:
+        return RedirectResponse(
+            f"/v2-clean/email/{thread_id}?error=invalid_state", status_code=303
+        )
     user_id, _ = auth
     with SessionLocal() as db:
         thread = db.get(EmailThread, thread_id)
-        if thread and status == "archived":
+        if thread and status in {"resolved", "archived"}:
             latest_classification_action = db.scalar(
                 select(EmailAuditEvent.action)
                 .where(
@@ -2839,6 +2886,8 @@ def email_status(request: Request, thread_id: int, status: str = Form(...)):
             db, user_id, auth[1], thread.channel_id, action, thread=thread
         ):
             prior_status = thread.status
+            if prior_status == status:
+                return RedirectResponse(f"/v2-clean/email/{thread_id}", status_code=303)
             thread.status = status
             if status == "resolved":
                 mark_email_resolved(db, thread, user_id=user_id)
@@ -2888,7 +2937,8 @@ def email_status(request: Request, thread_id: int, status: str = Form(...)):
                 )
             )
             db.commit()
-    return RedirectResponse(f"/v2-clean/email/{thread_id}?saved=status", status_code=303)
+            return RedirectResponse(f"/v2-clean/email/{thread_id}?saved=status", status_code=303)
+    return RedirectResponse(f"/v2-clean/email/{thread_id}?error=forbidden", status_code=303)
 
 
 @email_router.post("/v2-clean/email/{thread_id}/read")
@@ -3128,7 +3178,7 @@ def email_reply(
             )
         clean_html = None
         if rendered_html:
-            parser = _SafeEmailHTMLParser()
+            parser = _SafeEmailHTMLParser(preserve_text_newlines=True)
             parser.feed(rendered_html)
             clean_html = "".join(parser.parts).strip() or None
         state = {
@@ -3315,6 +3365,9 @@ def email_update_draft(
         prior_state = message.state
         message.subject = (subject.strip() or message.subject)[:500]
         message.text_body = body.strip()
+        # This legacy text-only edit endpoint has no HTML field. Never send
+        # the previous draft's HTML after its plain-text content changes.
+        message.html_body = None
         message.recipients_json = _recipient_json(to_list) if to_list else message.recipients_json
         message.cc_json = _recipient_json(cc_list)
         message.bcc_json = _recipient_json(bcc_list)
@@ -3764,6 +3817,49 @@ def email_mark_spam(
                 EmailMessage.external_message_id.is_not(None),
             ).order_by(EmailMessage.id.desc())
         )
+        inbound_payload = (
+            db.scalar(
+                select(EmailWebhookEvent.payload_json)
+                .join(
+                    EmailMessageDelivery,
+                    EmailMessageDelivery.webhook_event_id == EmailWebhookEvent.id,
+                )
+                .where(EmailMessageDelivery.message_id == message.id)
+                .order_by(EmailMessageDelivery.id.desc())
+                .limit(1)
+            )
+            if message
+            else None
+        )
+        if not message or not isinstance(inbound_payload, dict):
+            return RedirectResponse(
+                f"/v2-clean/email/{thread_id}?error=spam_unavailable", status_code=303
+            )
+        source_provider = str(
+            inbound_payload.get("SourceProvider") or "postmark"
+        ).casefold()
+        if source_provider == "postmark":
+            # Postmark inbound identifiers cannot be used with Microsoft Graph.
+            # Preserve the message/evidence and make the local-only outcome explicit.
+            thread.status = "archived"
+            db.add(
+                EmailAuditEvent(
+                    thread_id=thread.id,
+                    message_id=message.id,
+                    user_id=user_id,
+                    action="marked_as_spam",
+                    details_json={"provider": "postmark", "external_action": "none"},
+                )
+            )
+            db.commit()
+            separator = "&" if "?" in next_url else "?"
+            return RedirectResponse(
+                f"{next_url}{separator}saved=spam_local", status_code=303
+            )
+        if source_provider != "microsoft_graph":
+            return RedirectResponse(
+                f"/v2-clean/email/{thread_id}?error=spam_unavailable", status_code=303
+            )
         required = (
             transport,
             getattr(transport, "tenant_id", None),

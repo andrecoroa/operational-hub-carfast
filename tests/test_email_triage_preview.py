@@ -1,8 +1,10 @@
 import base64
 import json
 import re
+from html import unescape
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from urllib.parse import quote
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -71,7 +73,10 @@ def test_spam_moves_graph_message_archives_locally_and_preserves_navigation(
 ):
     monkeypatch.setattr(settings, "email_storage_root", str(tmp_path))
     _bind_email_session(monkeypatch, db_session)
-    thread, _ = ingest_inbound(db_session, _payload("graph-message-spam"))
+    payload = _payload("graph-message-spam")
+    payload["SourceProvider"] = "microsoft_graph"
+    payload["OriginalRecipient"] = "email@carfast.pt"
+    thread, _ = ingest_inbound(db_session, payload)
     transport = EmailChannelTransport(
         channel_id=thread.channel_id,
         provider="microsoft365",
@@ -107,7 +112,9 @@ def test_spam_fails_closed_without_microsoft_transport(
 ):
     monkeypatch.setattr(settings, "email_storage_root", str(tmp_path))
     _bind_email_session(monkeypatch, db_session)
-    thread, _ = ingest_inbound(db_session, _payload("spam-without-graph"))
+    payload = _payload("spam-without-graph")
+    payload["SourceProvider"] = "microsoft_graph"
+    thread, _ = ingest_inbound(db_session, payload)
 
     response = authenticated_client.post(
         f"/v2-clean/email/{thread.id}/spam", follow_redirects=False
@@ -117,6 +124,33 @@ def test_spam_fails_closed_without_microsoft_transport(
     assert response.status_code == 303
     assert "error=spam_unavailable" in response.headers["location"]
     assert db_session.get(EmailThread, thread.id).status != "archived"
+
+
+def test_postmark_spam_archives_locally_without_calling_graph(
+    authenticated_client, db_session, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(settings, "email_storage_root", str(tmp_path))
+    _bind_email_session(monkeypatch, db_session)
+    thread, _ = ingest_inbound(db_session, _payload("postmark-message-spam"))
+    calls = []
+    monkeypatch.setattr(email_web, "move_shared_mailbox_message_to_junk", lambda **kwargs: calls.append(kwargs))
+
+    response = authenticated_client.post(
+        f"/v2-clean/email/{thread.id}/spam",
+        data={"next_url": "/v2-clean/email?view=all"},
+        follow_redirects=False,
+    )
+    db_session.expire_all()
+    audit = db_session.scalar(
+        select(EmailAuditEvent)
+        .where(EmailAuditEvent.thread_id == thread.id, EmailAuditEvent.action == "marked_as_spam")
+        .order_by(EmailAuditEvent.id.desc())
+    )
+
+    assert response.headers["location"].endswith("&saved=spam_local")
+    assert db_session.get(EmailThread, thread.id).status == "archived"
+    assert audit.details_json == {"provider": "postmark", "external_action": "none"}
+    assert calls == []
 
 
 @pytest.mark.parametrize(
@@ -266,8 +300,67 @@ def test_inbox_open_is_native_full_page_navigation_and_cannot_render_inline():
     assert "sourceRow.after(inlinePreviewRow)" not in script
     assert "window.location.assign(`/v2-clean/email/${threadId}?return_context=" in script
     assert "window.location.assign(element.dataset.emailThreadUrl)" in script
-    assert "email.js?v=20260910-email-full-page-navigation" in inbox
-    assert "email.js?v=20260912-email-horizontal-workspace" in thread
+    assert "email.js?v=20260919-editor-triage" in inbox
+    assert "email.js?v=20260919-editor-triage" in thread
+
+
+def test_thread_navigation_context_survives_post_redirects(
+    authenticated_client, db_session, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(settings, "email_storage_root", str(tmp_path))
+    _bind_email_session(monkeypatch, db_session)
+    first, _ = ingest_inbound(db_session, _payload("context-first"))
+    second, _ = ingest_inbound(db_session, _payload("context-second"))
+    return_context = "/v2-clean/email?view=all&status=triage&q=context"
+    detail_url = (
+        f"/v2-clean/email/{first.id}?return_context={quote(return_context, safe='')}"
+        f"&sequence={first.id},{second.id}"
+    )
+
+    initial = authenticated_client.get(detail_url)
+    assert initial.status_code == 200
+    assert return_context.replace("&", "&amp;") in initial.text
+
+    marked = authenticated_client.post(
+        f"/v2-clean/email/{first.id}/read", follow_redirects=False
+    )
+    reopened = authenticated_client.get(marked.headers["location"])
+    assert marked.status_code == 303
+    assert reopened.status_code == 200
+    assert return_context.replace("&", "&amp;") in reopened.text
+    assert f"/v2-clean/email/{second.id}?return_context=" in reopened.text
+    assert f"sequence={first.id},{second.id}" in reopened.text
+
+    actions = (
+        ("status", {"status": "in_progress"}),
+        ("claim", {}),
+        ("reply", {"body": "Rascunho sintético", "recipients": "cliente@example.com", "submit": "draft"}),
+        ("links", {"link_type": "entity", "link_kind": "vehicle", "label": "Viatura sintética", "reference": "AA-00-AA"}),
+        ("task", {"task_outcome": "wait"}),
+    )
+    for action, data in actions:
+        result = authenticated_client.post(
+            f"/v2-clean/email/{first.id}/{action}",
+            data=data,
+            follow_redirects=False,
+        )
+        assert result.status_code == 303
+        after_action = authenticated_client.get(result.headers["location"])
+        assert after_action.status_code == 200
+        assert return_context.replace("&", "&amp;") in after_action.text
+        assert f"sequence={first.id},{second.id}" in after_action.text
+
+
+def test_direct_thread_open_uses_unfiltered_mailbox_without_saved_context(
+    authenticated_client, db_session, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(settings, "email_storage_root", str(tmp_path))
+    _bind_email_session(monkeypatch, db_session)
+    thread, _ = ingest_inbound(db_session, _payload("direct-context"))
+
+    response = authenticated_client.get(f"/v2-clean/email/{thread.id}")
+    assert response.status_code == 200
+    assert 'href="/v2-clean/email"' in response.text
 
 
 def test_inbox_facets_apply_remaining_filters_server_side(authenticated_client, db_session, tmp_path, monkeypatch):
@@ -436,6 +529,31 @@ def test_email_work_views_group_without_duplicates_and_mine_stays_scoped(
     assert 'data-email-work-view="all"' in all_view.text
     assert all_view.text.count(f'data-email-thread-url="/v2-clean/email/{mine.id}') == 1
     assert 'name="view" value="all"' in all_view.text
+
+
+def test_return_to_inbox_keeps_search_and_status_filters(
+    authenticated_client, db_session, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(settings, "email_storage_root", str(tmp_path))
+    _bind_email_session(monkeypatch, db_session)
+    payload = _payload("return-filtered-inbox")
+    payload["Subject"] = "regresso-sintetico"
+    thread, _ = ingest_inbound(db_session, payload)
+
+    inbox = authenticated_client.get(
+        "/v2-clean/email?view=all&status=all&q=regresso-sintetico"
+    )
+    match = re.search(
+        rf'href="(/v2-clean/email/{thread.id}\?[^\"]+)"', inbox.text
+    )
+    assert match is not None
+    conversation = authenticated_client.get(unescape(match.group(1)))
+
+    assert conversation.status_code == 200
+    assert (
+        'href="/v2-clean/email?view=all&amp;status=all&amp;q=regresso-sintetico"'
+        in conversation.text
+    )
 
 
 def test_email_body_keeps_safe_links_and_removes_active_content(
@@ -879,6 +997,117 @@ def test_saved_draft_keeps_triage_and_can_be_continued_without_creating_a_second
     assert db_session.get(EmailThread, thread.id).status == original_status
 
 
+def test_editor_line_breaks_survive_draft_save_and_reopen(
+    authenticated_client, db_session, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(settings, "email_storage_root", str(tmp_path))
+    _bind_email_session(monkeypatch, db_session)
+    thread, _ = ingest_inbound(db_session, _payload("draft-editor-line-breaks"))
+    body = "Bom dia,\n\nPrimeira pergunta?\nSegunda pergunta?\n\nCumprimentos,\nAndré"
+
+    response = authenticated_client.post(
+        f"/v2-clean/email/{thread.id}/reply",
+        data={
+            "body": body,
+            # A pre-wrapped contenteditable can look multiline while its HTML
+            # contains only text-node newlines, which mail clients collapse.
+            "body_html": body,
+            "recipients": "cliente@example.com",
+            "submit": "draft",
+        },
+        follow_redirects=False,
+    )
+    db_session.expire_all()
+    draft = db_session.scalar(
+        select(EmailMessage).where(
+            EmailMessage.thread_id == thread.id,
+            EmailMessage.direction == "outbound",
+        )
+    )
+    detail = authenticated_client.get(f"/v2-clean/email/{thread.id}")
+
+    assert response.status_code == 303
+    assert draft.text_body == body
+    assert draft.html_body == (
+        "Bom dia,<br><br>Primeira pergunta?<br>Segunda pergunta?"
+        "<br><br>Cumprimentos,<br>André"
+    )
+    payload = re.search(
+        rf'<script type="application/json" data-email-draft-payload="{draft.id}">(.*?)</script>',
+        detail.text,
+        re.S,
+    )
+    assert payload is not None
+    assert json.loads(payload.group(1))["html"] == draft.html_body
+
+    approval = authenticated_client.post(
+        f"/v2-clean/email/{thread.id}/reply",
+        data={
+            "draft_message_id": str(draft.id),
+            "body": body,
+            "body_html": draft.html_body,
+            "recipients": "cliente@example.com",
+            "submit": "approval",
+        },
+        follow_redirects=False,
+    )
+    db_session.expire_all()
+    pending = db_session.get(EmailMessage, draft.id)
+    assert approval.status_code == 303
+    assert pending.state == "pending_approval"
+    assert pending.text_body == body
+    assert pending.html_body == draft.html_body
+
+
+def test_editor_preserves_newlines_inside_formatted_text_and_strips_scripts():
+    parser = email_web._SafeEmailHTMLParser(preserve_text_newlines=True)
+    parser.feed(
+        "<div>Olá,\n<strong>primeira\nsegunda</strong></div>"
+        "<pre>linha 1\nlinha 2</pre><script>bad()</script>"
+    )
+
+    assert "".join(parser.parts) == (
+        "<div>Olá,<br><strong>primeira<br>segunda</strong></div>"
+        "<pre>linha 1\nlinha 2</pre>"
+    )
+
+
+def test_text_only_draft_edit_does_not_keep_stale_html(
+    authenticated_client, db_session, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(settings, "email_storage_root", str(tmp_path))
+    _bind_email_session(monkeypatch, db_session)
+    thread, _ = ingest_inbound(db_session, _payload("draft-text-only-edit"))
+    authenticated_client.post(
+        f"/v2-clean/email/{thread.id}/reply",
+        data={
+            "body": "Texto antigo",
+            "body_html": "<p>Texto antigo</p>",
+            "recipients": "cliente@example.com",
+            "submit": "draft",
+        },
+        follow_redirects=False,
+    )
+    db_session.expire_all()
+    draft = db_session.scalar(
+        select(EmailMessage).where(
+            EmailMessage.thread_id == thread.id,
+            EmailMessage.direction == "outbound",
+        )
+    )
+
+    response = authenticated_client.post(
+        f"/v2-clean/email/{thread.id}/messages/{draft.id}/draft",
+        data={"body": "Texto novo\n\nSegunda linha", "recipients": "cliente@example.com"},
+        follow_redirects=False,
+    )
+    db_session.expire_all()
+    saved = db_session.get(EmailMessage, draft.id)
+    assert response.status_code == 303
+    assert saved.text_body == "Texto novo\n\nSegunda linha"
+    assert saved.html_body is None
+
+
 def test_pdf_preview_is_server_rendered_with_explicit_fallback(
     authenticated_client, db_session, tmp_path, monkeypatch
 ):
@@ -1281,6 +1510,9 @@ def test_archive_requires_explicit_classification_validation(
     assert stored.status == "triage"
     assert stored.classification_status != "classified"
     assert len(db_session.scalars(select(EmailAuditEvent)).all()) == initial_audits
+    guidance = authenticated_client.get(response.headers["location"])
+    assert "confirma primeiro a classificação" in guidance.text
+    assert "Escolhe a fila primeiro" in guidance.text
 
     stored.classification_status = "classified"
     stored.status = "waiting_reply"
@@ -1295,6 +1527,112 @@ def test_archive_requires_explicit_classification_validation(
     assert "error=invalid_transition" in bypass.headers["location"]
     assert db_session.get(EmailThread, thread.id).status == "waiting_reply"
     assert len(db_session.scalars(select(EmailAuditEvent)).all()) == initial_audits
+
+
+def test_manual_status_rejects_event_states_and_unclassified_resolution(
+    authenticated_client, db_session, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(settings, "email_storage_root", str(tmp_path))
+    _bind_email_session(monkeypatch, db_session)
+    thread, _ = ingest_inbound(db_session, _payload("manual-state-guards"))
+    initial_audits = len(db_session.scalars(select(EmailAuditEvent)).all())
+
+    for status in ("new_reply", "waiting_approval", "task_created", "associated", "returned"):
+        response = authenticated_client.post(
+            f"/v2-clean/email/{thread.id}/status",
+            data={"status": status},
+            follow_redirects=False,
+        )
+        assert "error=invalid_state" in response.headers["location"]
+    resolve = authenticated_client.post(
+        f"/v2-clean/email/{thread.id}/status",
+        data={"status": "resolved"},
+        follow_redirects=False,
+    )
+    db_session.expire_all()
+    assert "error=invalid_transition" in resolve.headers["location"]
+    assert db_session.get(EmailThread, thread.id).status == "triage"
+    assert len(db_session.scalars(select(EmailAuditEvent)).all()) == initial_audits
+
+    detail = authenticated_client.get(f"/v2-clean/email/{thread.id}")
+    assert '<option value="new_reply"' not in detail.text
+    assert '<option value="waiting_approval"' not in detail.text
+    assert '<option value="task_created"' not in detail.text
+
+
+def test_manual_resolution_after_validation_records_sla_once(
+    authenticated_client, db_session, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(settings, "email_storage_root", str(tmp_path))
+    _bind_email_session(monkeypatch, db_session)
+    thread, _ = ingest_inbound(db_session, _payload("manual-resolve-valid"))
+    thread.status = "in_progress"
+    thread.classification_status = "classified"
+    db_session.add(
+        EmailAuditEvent(thread_id=thread.id, action="classification_validated")
+    )
+    db_session.commit()
+
+    response = authenticated_client.post(
+        f"/v2-clean/email/{thread.id}/status",
+        data={"status": "resolved"},
+        follow_redirects=False,
+    )
+    db_session.expire_all()
+    stored = db_session.get(EmailThread, thread.id)
+    assert "saved=status" in response.headers["location"]
+    assert stored.status == "resolved"
+    assert stored.resolved_at is not None
+    audit_count = len(db_session.scalars(select(EmailAuditEvent)).all())
+
+    unchanged = authenticated_client.post(
+        f"/v2-clean/email/{thread.id}/status",
+        data={"status": "resolved"},
+        follow_redirects=False,
+    )
+    assert unchanged.headers["location"] == f"/v2-clean/email/{thread.id}"
+    assert len(db_session.scalars(select(EmailAuditEvent)).all()) == audit_count
+
+
+def test_waiting_reply_pauses_and_resumes_email_sla(
+    authenticated_client, db_session, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(settings, "email_storage_root", str(tmp_path))
+    _bind_email_session(monkeypatch, db_session)
+    thread, _ = ingest_inbound(db_session, _payload("waiting-sla-roundtrip"))
+    thread.status = "in_progress"
+    thread.sla_pause_on_waiting = True
+    thread.resolution_due_at = datetime.now(UTC) + timedelta(hours=2)
+    db_session.commit()
+
+    paused = authenticated_client.post(
+        f"/v2-clean/email/{thread.id}/status",
+        data={"status": "waiting_reply"},
+        follow_redirects=False,
+    )
+    db_session.expire_all()
+    stored = db_session.get(EmailThread, thread.id)
+    assert "saved=status" in paused.headers["location"]
+    assert stored.status == "waiting_reply"
+    assert stored.sla_paused_at is not None
+
+    resumed = authenticated_client.post(
+        f"/v2-clean/email/{thread.id}/status",
+        data={"status": "in_progress"},
+        follow_redirects=False,
+    )
+    db_session.expire_all()
+    stored = db_session.get(EmailThread, thread.id)
+    actions = set(
+        db_session.scalars(
+            select(EmailAuditEvent.action).where(EmailAuditEvent.thread_id == thread.id)
+        )
+    )
+    assert "saved=status" in resumed.headers["location"]
+    assert stored.status == "in_progress"
+    assert stored.sla_paused_at is None
+    assert stored.sla_total_paused_seconds >= 0
+    assert {"sla_paused", "sla_resumed"} <= actions
 
 
 def test_mobile_layout_is_single_column_without_body_overflow():

@@ -6,6 +6,16 @@ are installation data. Administrators must map, preview and explicitly activate 
 
 REVIEWED_EMAIL_RULE_PRESETS: tuple[dict, ...] = (
     {
+        "code": "finance_document_intake",
+        "channel": "finance",
+        "subjects": ("Qualquer assunto da caixa",),
+        "match_type": "any",
+        "auto_task_mode": "none",
+        "status_action": "resolved",
+        "deterministic": True,
+        "notes": "Fechar apenas depois de guardar todos os anexos; sem anexos ou com falhas fica pendente. Classificação do documento é separada.",
+    },
+    {
         "code": "support_newsletter_subscriber",
         "channel": "support",
         "subjects": ("Novo Subscritor à Newsletter",),

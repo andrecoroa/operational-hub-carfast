@@ -4283,8 +4283,8 @@ def clean_admin_preview_email_inbox_rule(
     if not _work_classification_manage_access(request):
         return _denied(request)
     if (
-        not subject_match.strip()
-        or match_type not in {"contains", "exact"}
+        (not subject_match.strip() and match_type != "any")
+        or match_type not in {"contains", "exact", "any"}
         or sender_match_type not in {"contains", "exact", "domain"}
         or condition_operator not in {"and", "or"}
     ):
@@ -4365,8 +4365,8 @@ def clean_admin_create_email_inbox_rule(
         return _denied(request)
     if (
         not name.strip()
-        or not subject_match.strip()
-        or match_type not in {"contains", "exact"}
+        or (not subject_match.strip() and match_type != "any")
+        or match_type not in {"contains", "exact", "any"}
         or sender_match_type not in {"contains", "exact", "domain"}
         or condition_operator not in {"and", "or"}
         or status_action not in {"none", "in_progress", "resolved", "archived"}
@@ -4548,8 +4548,8 @@ def clean_admin_update_email_inbox_rule(
         return _denied(request)
     if (
         not name.strip()
-        or not subject_match.strip()
-        or match_type not in {"contains", "exact"}
+        or (not subject_match.strip() and match_type != "any")
+        or match_type not in {"contains", "exact", "any"}
         or sender_match_type not in {"contains", "exact", "domain"}
         or condition_operator not in {"and", "or"}
         or status_action not in {"none", "in_progress", "resolved", "archived"}

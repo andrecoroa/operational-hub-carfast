@@ -31,12 +31,14 @@ from app.services.bootstrap import (
     seed_email_channels,
 )
 from app.services.email_postmark import (
+    _attachments_ready_for_close,
     ensure_email_channels,
     deterministic_rule_close_allowed,
     ingest_inbound,
     ingest_outbound_event,
     inbox_rule_matches,
     normalize_inbound_attachments,
+    reconcile_inbound_attachments,
     outbound_identity,
     reply_all_recipients,
     send_message,
@@ -163,6 +165,57 @@ def test_repeated_webhook_adopts_legacy_attachment_without_duplication(
     assert adopted.webhook_event_id is not None
     assert adopted.source_attachment_id
     assert adopted.source_provider == "postmark"
+
+
+def test_existing_blocked_attachment_is_not_counted_as_stored(
+    db_session, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(settings, "email_storage_root", str(tmp_path))
+    payload = _payload("pm-existing-blocked")
+    thread, _ = ingest_inbound(db_session, payload)
+    attachment = db_session.scalar(select(EmailAttachment))
+    message = db_session.get(EmailMessage, attachment.message_id)
+    event = db_session.get(EmailWebhookEvent, attachment.webhook_event_id)
+
+    stored_result = reconcile_inbound_attachments(
+        db_session, thread=thread, message=message, event=event, payload=payload
+    )
+    assert stored_result["existing_stored"] == 1
+    assert _attachments_ready_for_close(stored_result)
+
+    attachment.storage_path = None
+    attachment.ingest_state = "blocked"
+    db_session.flush()
+    existing_result = reconcile_inbound_attachments(
+        db_session, thread=thread, message=message, event=event, payload=payload
+    )
+    assert existing_result["payload"] == 1
+    assert existing_result["existing_blocked"] == 1
+    assert existing_result["existing_stored"] == 0
+    assert not _attachments_ready_for_close(existing_result)
+
+    attachment.ingest_state = "stored"
+    attachment.storage_path = str(tmp_path / "missing.pdf")
+    db_session.flush()
+    missing_file_result = reconcile_inbound_attachments(
+        db_session, thread=thread, message=message, event=event, payload=payload
+    )
+    assert missing_file_result["existing_blocked"] == 1
+    assert missing_file_result["existing_stored"] == 0
+    assert not _attachments_ready_for_close(missing_file_result)
+
+    attachment.webhook_event_id = None
+    attachment.source_attachment_id = None
+    attachment.storage_path = None
+    db_session.flush()
+    legacy_result = reconcile_inbound_attachments(
+        db_session, thread=thread, message=message, event=event, payload=payload
+    )
+    assert legacy_result["payload"] == 1
+    assert legacy_result["existing_blocked"] == 1
+    assert legacy_result["existing_stored"] == 0
+    assert attachment.ingest_state == "blocked"
+    assert not _attachments_ready_for_close(legacy_result)
 
 
 def test_thread_view_alerts_when_payload_and_attachment_records_diverge(
@@ -569,6 +622,51 @@ def test_auto_close_requires_structurally_deterministic_conditions():
     assert not deterministic_rule_close_allowed(broad)
 
 
+def test_any_subject_rule_closes_only_after_attachment_is_stored(
+    db_session, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(settings, "email_storage_root", str(tmp_path))
+    ensure_email_channels(db_session)
+    channel = db_session.scalar(select(EmailChannel).where(EmailChannel.code == "test"))
+    db_session.add(
+        EmailInboxRule(
+            channel_id=channel.id,
+            name="Entrada documental",
+            subject_match="",
+            match_type="any",
+            auto_task_mode="none",
+            status_action="resolved",
+            deterministic=True,
+        )
+    )
+    db_session.commit()
+
+    stored, _ = ingest_inbound(db_session, _payload("pm-any-stored"))
+    assert stored.status == "resolved"
+    attachment = db_session.scalar(
+        select(EmailAttachment).join(EmailMessage).where(EmailMessage.thread_id == stored.id)
+    )
+    assert attachment.ingest_state == "stored"
+
+    no_attachment = _payload("pm-any-empty")
+    no_attachment["Subject"] = "Sem documento"
+    no_attachment["Attachments"] = []
+    pending, _ = ingest_inbound(db_session, no_attachment)
+    assert pending.status != "resolved"
+
+    monkeypatch.setattr(settings, "email_max_attachment_bytes", 4)
+    blocked_payload = _payload("pm-any-blocked")
+    blocked_payload["Subject"] = "Documento demasiado grande"
+    blocked, _ = ingest_inbound(db_session, blocked_payload)
+    assert blocked.status != "resolved"
+    audit = db_session.scalar(
+        select(EmailAuditEvent)
+        .where(EmailAuditEvent.thread_id == blocked.id)
+        .where(EmailAuditEvent.action == "inbox_rule_applied")
+    )
+    assert "status:resolved:skipped_attachments_not_stored" in audit.details_json["actions"]
+
+
 def test_deterministic_rule_applies_status_and_audits_actions(
     db_session, tmp_path, monkeypatch
 ):
@@ -655,6 +753,15 @@ def test_admin_rule_preview_is_read_only(authenticated_client, db_session, tmp_p
     assert response.status_code == 200
     assert response.json()["read_only"] is True
     assert response.json()["matched"] == 1
+    db_session.refresh(thread)
+    assert thread.status == before_status
+
+    any_subject_response = authenticated_client.post(
+        "/v2-clean/admin/work-classification/email-inbox-rules/preview",
+        data={"channel_id": channel.id, "match_type": "any"},
+    )
+    assert any_subject_response.status_code == 200
+    assert any_subject_response.json()["matched"] == 1
     db_session.refresh(thread)
     assert thread.status == before_status
 

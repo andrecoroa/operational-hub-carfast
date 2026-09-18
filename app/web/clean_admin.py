@@ -31,8 +31,11 @@ from app.models.email import (
     EmailChannelUser,
     EmailExecutorEligibility,
     EmailInboxRule,
+    EmailMessage,
+    EmailMessageDelivery,
     EmailThread,
     EmailTemplate,
+    EmailWebhookEvent,
 )
 from app.models.evolution import (
     EvolutionRecord,
@@ -84,6 +87,7 @@ from app.services.email_postmark import (
     deterministic_rule_close_allowed,
     inbox_rule_matches,
     outbound_identity,
+    resolve_rule_recipient_alias_id,
 )
 from app.services.email_rule_catalog import REVIEWED_EMAIL_RULE_PRESETS
 from app.services.service_desk import (
@@ -4167,6 +4171,7 @@ def _save_email_inbox_rule(
     rule: EmailInboxRule,
     *,
     name: str,
+    recipient_alias_id: int | None,
     subject_match: str,
     match_type: str,
     sender_match: str,
@@ -4195,6 +4200,7 @@ def _save_email_inbox_rule(
     notes: str,
 ) -> None:
     rule.name = name.strip()
+    rule.recipient_alias_id = recipient_alias_id
     rule.subject_match = subject_match.strip()
     rule.match_type = match_type
     rule.sender_match = sender_match.strip() or None
@@ -4226,6 +4232,7 @@ def _save_email_inbox_rule(
 def _email_rule_audit_snapshot(rule: EmailInboxRule) -> dict:
     return {
         "channel_id": rule.channel_id,
+        "recipient_alias_id": rule.recipient_alias_id,
         "name": rule.name,
         "subject_match": rule.subject_match,
         "match_type": rule.match_type,
@@ -4237,6 +4244,13 @@ def _email_rule_audit_snapshot(rule: EmailInboxRule) -> dict:
         "deterministic": rule.deterministic,
         "active": rule.active,
     }
+
+
+def _rule_alias_valid(db, channel_id: int, recipient_alias_id: int | None) -> bool:
+    if recipient_alias_id is None:
+        return True
+    alias = db.get(EmailChannelAlias, recipient_alias_id)
+    return bool(alias and alias.active and alias.channel_id == channel_id)
 
 
 def _auto_close_form_safe(
@@ -4273,13 +4287,14 @@ def _auto_close_form_safe(
 def clean_admin_preview_email_inbox_rule(
     request: Request,
     channel_id: int = Form(...),
+    recipient_alias_id: int | None = Form(None),
     subject_match: str = Form(""),
     match_type: str = Form("contains"),
     sender_match: str = Form(""),
     sender_match_type: str = Form("contains"),
     condition_operator: str = Form("and"),
 ):
-    """Read-only impact preview over the 100 most recent threads in the mailbox."""
+    """Read-only impact preview over the 100 most recent inbound messages."""
     if not _work_classification_manage_access(request):
         return _denied(request)
     if (
@@ -4287,10 +4302,12 @@ def clean_admin_preview_email_inbox_rule(
         or match_type not in {"contains", "exact", "any"}
         or sender_match_type not in {"contains", "exact", "domain"}
         or condition_operator not in {"and", "or"}
+        or recipient_alias_id is not None and recipient_alias_id <= 0
     ):
         return JSONResponse({"error": "invalid_rule"}, status_code=422)
     candidate = EmailInboxRule(
         channel_id=channel_id,
+        recipient_alias_id=recipient_alias_id,
         name="preview",
         subject_match=subject_match,
         match_type=match_type,
@@ -4299,27 +4316,47 @@ def clean_admin_preview_email_inbox_rule(
         condition_operator=condition_operator,
     )
     with SessionLocal() as db:
-        threads = db.scalars(
-            select(EmailThread)
-            .where(EmailThread.channel_id == channel_id)
-            .order_by(EmailThread.last_message_at.desc(), EmailThread.id.desc())
+        if not _rule_alias_valid(db, channel_id, recipient_alias_id):
+            return JSONResponse({"error": "invalid_recipient_alias"}, status_code=422)
+        rows = db.execute(
+            select(EmailMessage, EmailWebhookEvent.payload_json)
+            .join(EmailMessageDelivery, EmailMessageDelivery.message_id == EmailMessage.id)
+            .join(EmailWebhookEvent, EmailWebhookEvent.id == EmailMessageDelivery.webhook_event_id)
+            .where(
+                EmailMessageDelivery.channel_id == channel_id,
+                EmailMessageDelivery.canonical_marker == "canonical",
+                EmailMessage.direction == "inbound",
+            )
+            .order_by(EmailMessage.received_at.desc(), EmailMessage.id.desc())
             .limit(100)
         ).all()
         matches = [
-            item
-            for item in threads
+            (message, resolved_alias_id)
+            for message, payload in rows
+            if (resolved_alias_id := resolve_rule_recipient_alias_id(db, payload, channel_id))
+            or recipient_alias_id is None
             if inbox_rule_matches(
-                candidate, subject=item.subject, sender=item.sender_email or ""
+                candidate,
+                subject=message.subject,
+                sender=message.sender,
+                recipient_alias_id=resolved_alias_id,
             )
         ]
     return JSONResponse(
         {
-            "evaluated": len(threads),
+            "evaluated": len(rows),
             "matched": len(matches),
             "samples": [
-                {"thread_id": item.id, "subject": item.subject, "sender": item.sender_email}
-                for item in matches[:20]
+                {
+                    "thread_id": message.thread_id,
+                    "message_id": message.id,
+                    "subject": message.subject,
+                    "sender": message.sender,
+                    "recipient_alias_id": resolved_alias_id,
+                }
+                for message, resolved_alias_id in matches[:20]
             ],
+            "note": "A pré-visualização mostra apenas correspondências por mensagem; não extrai, classifica nem trata os anexos.",
             "read_only": True,
         }
     )
@@ -4329,6 +4366,7 @@ def clean_admin_preview_email_inbox_rule(
 def clean_admin_create_email_inbox_rule(
     request: Request,
     channel_id: int = Form(...),
+    recipient_alias_id: int | None = Form(None),
     name: str = Form(""),
     subject_match: str = Form(""),
     match_type: str = Form("contains"),
@@ -4370,6 +4408,7 @@ def clean_admin_create_email_inbox_rule(
         or sender_match_type not in {"contains", "exact", "domain"}
         or condition_operator not in {"and", "or"}
         or status_action not in {"none", "in_progress", "resolved", "archived"}
+        or recipient_alias_id is not None and recipient_alias_id <= 0
         or not _auto_close_form_safe(
             status_action=status_action,
             deterministic=deterministic,
@@ -4402,6 +4441,8 @@ def clean_admin_create_email_inbox_rule(
         channel = db.get(EmailChannel, channel_id)
         if not channel:
             return _redirect("/v2-clean/admin/work-classification", "error", "missing")
+        if not _rule_alias_valid(db, channel_id, recipient_alias_id):
+            return _redirect("/v2-clean/admin/work-classification", "error", "invalid_rule")
         hierarchy_ids = (
             default_queue_id,
             default_department_id,
@@ -4459,6 +4500,7 @@ def clean_admin_create_email_inbox_rule(
         _save_email_inbox_rule(
             rule,
             name=name,
+            recipient_alias_id=recipient_alias_id,
             subject_match=subject_match,
             match_type=match_type,
             sender_match=sender_match,
@@ -4512,6 +4554,7 @@ def clean_admin_create_email_inbox_rule(
 def clean_admin_update_email_inbox_rule(
     request: Request,
     rule_id: int,
+    recipient_alias_id: int | None = Form(None),
     name: str = Form(""),
     subject_match: str = Form(""),
     match_type: str = Form("contains"),
@@ -4553,6 +4596,7 @@ def clean_admin_update_email_inbox_rule(
         or sender_match_type not in {"contains", "exact", "domain"}
         or condition_operator not in {"and", "or"}
         or status_action not in {"none", "in_progress", "resolved", "archived"}
+        or recipient_alias_id is not None and recipient_alias_id <= 0
         or not _auto_close_form_safe(
             status_action=status_action,
             deterministic=deterministic,
@@ -4586,6 +4630,8 @@ def clean_admin_update_email_inbox_rule(
         if not rule:
             return _redirect("/v2-clean/admin/work-classification", "error", "missing")
         channel = db.get(EmailChannel, rule.channel_id)
+        if not _rule_alias_valid(db, rule.channel_id, recipient_alias_id):
+            return _redirect("/v2-clean/admin/work-classification", "error", "invalid_rule")
         hierarchy_ids = (
             default_queue_id,
             default_department_id,
@@ -4641,6 +4687,7 @@ def clean_admin_update_email_inbox_rule(
         _save_email_inbox_rule(
             rule,
             name=name,
+            recipient_alias_id=recipient_alias_id,
             subject_match=subject_match,
             match_type=match_type,
             sender_match=sender_match,

@@ -145,8 +145,8 @@ def test_inbox_open_is_native_full_page_navigation_and_cannot_render_inline():
     assert "sourceRow.after(inlinePreviewRow)" not in script
     assert "window.location.assign(`/v2-clean/email/${threadId}?return_context=" in script
     assert "window.location.assign(element.dataset.emailThreadUrl)" in script
-    assert "email.js?v=20260910-email-full-page-navigation" in inbox
-    assert "email.js?v=20260912-email-horizontal-workspace" in thread
+    assert "email.js?v=20260918-editor-linebreaks" in inbox
+    assert "email.js?v=20260918-editor-linebreaks" in thread
 
 
 def test_inbox_facets_apply_remaining_filters_server_side(authenticated_client, db_session, tmp_path, monkeypatch):
@@ -756,6 +756,117 @@ def test_saved_draft_keeps_triage_and_can_be_continued_without_creating_a_second
     assert drafts[0].text_body == "Segunda versão persistida."
     assert drafts[0].content_revision == 2
     assert db_session.get(EmailThread, thread.id).status == original_status
+
+
+def test_editor_line_breaks_survive_draft_save_and_reopen(
+    authenticated_client, db_session, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(settings, "email_storage_root", str(tmp_path))
+    _bind_email_session(monkeypatch, db_session)
+    thread, _ = ingest_inbound(db_session, _payload("draft-editor-line-breaks"))
+    body = "Bom dia,\n\nPrimeira pergunta?\nSegunda pergunta?\n\nCumprimentos,\nAndré"
+
+    response = authenticated_client.post(
+        f"/v2-clean/email/{thread.id}/reply",
+        data={
+            "body": body,
+            # A pre-wrapped contenteditable can look multiline while its HTML
+            # contains only text-node newlines, which mail clients collapse.
+            "body_html": body,
+            "recipients": "cliente@example.com",
+            "submit": "draft",
+        },
+        follow_redirects=False,
+    )
+    db_session.expire_all()
+    draft = db_session.scalar(
+        select(EmailMessage).where(
+            EmailMessage.thread_id == thread.id,
+            EmailMessage.direction == "outbound",
+        )
+    )
+    detail = authenticated_client.get(f"/v2-clean/email/{thread.id}")
+
+    assert response.status_code == 303
+    assert draft.text_body == body
+    assert draft.html_body == (
+        "Bom dia,<br><br>Primeira pergunta?<br>Segunda pergunta?"
+        "<br><br>Cumprimentos,<br>André"
+    )
+    payload = re.search(
+        rf'<script type="application/json" data-email-draft-payload="{draft.id}">(.*?)</script>',
+        detail.text,
+        re.S,
+    )
+    assert payload is not None
+    assert json.loads(payload.group(1))["html"] == draft.html_body
+
+    approval = authenticated_client.post(
+        f"/v2-clean/email/{thread.id}/reply",
+        data={
+            "draft_message_id": str(draft.id),
+            "body": body,
+            "body_html": draft.html_body,
+            "recipients": "cliente@example.com",
+            "submit": "approval",
+        },
+        follow_redirects=False,
+    )
+    db_session.expire_all()
+    pending = db_session.get(EmailMessage, draft.id)
+    assert approval.status_code == 303
+    assert pending.state == "pending_approval"
+    assert pending.text_body == body
+    assert pending.html_body == draft.html_body
+
+
+def test_editor_preserves_newlines_inside_formatted_text_and_strips_scripts():
+    parser = email_web._SafeEmailHTMLParser(preserve_text_newlines=True)
+    parser.feed(
+        "<div>Olá,\n<strong>primeira\nsegunda</strong></div>"
+        "<pre>linha 1\nlinha 2</pre><script>bad()</script>"
+    )
+
+    assert "".join(parser.parts) == (
+        "<div>Olá,<br><strong>primeira<br>segunda</strong></div>"
+        "<pre>linha 1\nlinha 2</pre>"
+    )
+
+
+def test_text_only_draft_edit_does_not_keep_stale_html(
+    authenticated_client, db_session, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(settings, "email_storage_root", str(tmp_path))
+    _bind_email_session(monkeypatch, db_session)
+    thread, _ = ingest_inbound(db_session, _payload("draft-text-only-edit"))
+    authenticated_client.post(
+        f"/v2-clean/email/{thread.id}/reply",
+        data={
+            "body": "Texto antigo",
+            "body_html": "<p>Texto antigo</p>",
+            "recipients": "cliente@example.com",
+            "submit": "draft",
+        },
+        follow_redirects=False,
+    )
+    db_session.expire_all()
+    draft = db_session.scalar(
+        select(EmailMessage).where(
+            EmailMessage.thread_id == thread.id,
+            EmailMessage.direction == "outbound",
+        )
+    )
+
+    response = authenticated_client.post(
+        f"/v2-clean/email/{thread.id}/messages/{draft.id}/draft",
+        data={"body": "Texto novo\n\nSegunda linha", "recipients": "cliente@example.com"},
+        follow_redirects=False,
+    )
+    db_session.expire_all()
+    saved = db_session.get(EmailMessage, draft.id)
+    assert response.status_code == 303
+    assert saved.text_body == "Texto novo\n\nSegunda linha"
+    assert saved.html_body is None
 
 
 def test_pdf_preview_is_server_rendered_with_explicit_fallback(

@@ -491,7 +491,7 @@ def test_graph_send_uses_shared_mailbox_endpoint_and_saves_sent_copy(monkeypatch
         {
             "subject": "Teste CarFast 365",
             "text_body": "Teste",
-            "html_body": None,
+            "html_body": "Bom dia,<br><br>Pergunta?<br><br>Cumprimentos,",
             "recipients_json": [{"Email": "andrecoroa@daccordinvest.pt"}],
             "cc_json": [],
             "bcc_json": [],
@@ -516,6 +516,10 @@ def test_graph_send_uses_shared_mailbox_endpoint_and_saves_sent_copy(monkeypatch
     ]
     assert captured["body"]["message"]["from"] == {
         "emailAddress": {"address": "frota@carfast.pt"}
+    }
+    assert captured["body"]["message"]["body"] == {
+        "contentType": "HTML",
+        "content": "Bom dia,<br><br>Pergunta?<br><br>Cumprimentos,",
     }
 
 

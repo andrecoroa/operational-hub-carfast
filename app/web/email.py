@@ -1891,10 +1891,24 @@ def email_thread(request: Request, thread_id: int):
     if not auth:
         return RedirectResponse("/login?next=/v2-clean/email", status_code=303)
     user_id, permissions = auth
-    return_context = request.query_params.get("return_context", "")
-    if not return_context.startswith("/v2-clean/email") or return_context.startswith("//"):
-        return_context = "/v2-clean/email"
+    requested_context = request.query_params.get("return_context", "")
+    navigation_state = request.session.get("email_navigation_context", {})
+    if not isinstance(navigation_state, dict) or navigation_state.get("user_id") != user_id:
+        navigation_state = {}
+    if not requested_context and navigation_state.get("thread_id") == thread_id:
+        requested_context = str(navigation_state.get("return_context") or "")
+    parsed_context = urlparse(requested_context)
+    return_context = (
+        requested_context
+        if parsed_context.path == "/v2-clean/email"
+        and not parsed_context.scheme
+        and not parsed_context.netloc
+        and not requested_context.startswith("//")
+        else "/v2-clean/email"
+    )
     sequence_raw = request.query_params.get("sequence", "")
+    if not sequence_raw and navigation_state.get("thread_id") == thread_id:
+        sequence_raw = str(navigation_state.get("sequence") or "")
     sequence_ids = [int(item) for item in sequence_raw.split(",")[:100] if item.isdigit()]
     def _neighbor_url(raw_id: str | int | None) -> str | None:
         try:
@@ -1917,6 +1931,13 @@ def email_thread(request: Request, thread_id: int):
             db, user_id, permissions, thread.channel_id, thread=thread
         ):
             return RedirectResponse("/v2-clean/email?error=not_found", status_code=303)
+        if request.query_params.get("return_context") or request.query_params.get("sequence"):
+            request.session["email_navigation_context"] = {
+                "user_id": user_id,
+                "thread_id": thread_id,
+                "return_context": return_context,
+                "sequence": ",".join(str(item) for item in sequence_ids),
+            }
         channel = db.get(EmailChannel, thread.channel_id)
         view_data = _thread_view_data(db, thread)
         reply_channels, reply_channel_send_direct = _reply_channel_context(

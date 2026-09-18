@@ -3,6 +3,7 @@ import json
 import re
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from urllib.parse import quote
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
@@ -147,6 +148,65 @@ def test_inbox_open_is_native_full_page_navigation_and_cannot_render_inline():
     assert "window.location.assign(element.dataset.emailThreadUrl)" in script
     assert "email.js?v=20260910-email-full-page-navigation" in inbox
     assert "email.js?v=20260912-email-horizontal-workspace" in thread
+
+
+def test_thread_navigation_context_survives_post_redirects(
+    authenticated_client, db_session, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(settings, "email_storage_root", str(tmp_path))
+    _bind_email_session(monkeypatch, db_session)
+    first, _ = ingest_inbound(db_session, _payload("context-first"))
+    second, _ = ingest_inbound(db_session, _payload("context-second"))
+    return_context = "/v2-clean/email?view=all&status=triage&q=context"
+    detail_url = (
+        f"/v2-clean/email/{first.id}?return_context={quote(return_context, safe='')}"
+        f"&sequence={first.id},{second.id}"
+    )
+
+    initial = authenticated_client.get(detail_url)
+    assert initial.status_code == 200
+    assert return_context.replace("&", "&amp;") in initial.text
+
+    marked = authenticated_client.post(
+        f"/v2-clean/email/{first.id}/read", follow_redirects=False
+    )
+    reopened = authenticated_client.get(marked.headers["location"])
+    assert marked.status_code == 303
+    assert reopened.status_code == 200
+    assert return_context.replace("&", "&amp;") in reopened.text
+    assert f"/v2-clean/email/{second.id}?return_context=" in reopened.text
+    assert f"sequence={first.id},{second.id}" in reopened.text
+
+    actions = (
+        ("status", {"status": "in_progress"}),
+        ("claim", {}),
+        ("reply", {"body": "Rascunho sintético", "recipients": "cliente@example.com", "submit": "draft"}),
+        ("links", {"link_type": "entity", "link_kind": "vehicle", "label": "Viatura sintética", "reference": "AA-00-AA"}),
+        ("task", {"task_outcome": "wait"}),
+    )
+    for action, data in actions:
+        result = authenticated_client.post(
+            f"/v2-clean/email/{first.id}/{action}",
+            data=data,
+            follow_redirects=False,
+        )
+        assert result.status_code == 303
+        after_action = authenticated_client.get(result.headers["location"])
+        assert after_action.status_code == 200
+        assert return_context.replace("&", "&amp;") in after_action.text
+        assert f"sequence={first.id},{second.id}" in after_action.text
+
+
+def test_direct_thread_open_uses_unfiltered_mailbox_without_saved_context(
+    authenticated_client, db_session, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(settings, "email_storage_root", str(tmp_path))
+    _bind_email_session(monkeypatch, db_session)
+    thread, _ = ingest_inbound(db_session, _payload("direct-context"))
+
+    response = authenticated_client.get(f"/v2-clean/email/{thread.id}")
+    assert response.status_code == 200
+    assert 'href="/v2-clean/email"' in response.text
 
 
 def test_inbox_facets_apply_remaining_filters_server_side(authenticated_client, db_session, tmp_path, monkeypatch):

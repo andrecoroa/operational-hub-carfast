@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="app-shell clean-shell">
+  {% set active_menu = "clean_processes" %}{% include "_sidebar.html" %}
+  <main class="content clean-content">
+    <header class="topbar"><div><p class="eyebrow">Operador IA · auditoria de frota</p><h2>{{ process.internal_reference }} · {{ process.title }}</h2></div><a class="button-link secondary-link" href="/v2-clean/processes/supplier-audits/{{ audit.id }}">Voltar ao processo</a></header>
+    <section class="notice-inline warning">O operador recebe apenas os dados do processo e os metadados dos documentos ligados, não o conteúdo dos anexos. A análise é uma proposta sujeita à tua verificação. Nenhum email é enviado nem processo é fechado automaticamente. Ao pedir análise, os dados apresentados são transmitidos ao serviço de IA configurado.</section>
+    {% if error %}<section class="notice-inline warning" role="alert">{{ error }}</section>{% endif %}
+    <section class="clean-panel supplier-audit-phase-body">
+      <h3>Pedido</h3>
+      <form method="post" class="process-create-form">
+        <label class="process-create-wide">O que queres analisar ou preparar?<textarea name="request" rows="4" maxlength="1000" required placeholder="Ex.: Identifica lacunas de prova e prepara um pedido de esclarecimento ao fornecedor.">{{ user_request }}</textarea></label>
+        <button {% if not enabled %}disabled{% endif %}>Preparar análise</button>
+      </form>
+    </section>
+    {% if proposal %}
+      <section class="clean-panel supplier-audit-phase-body" aria-live="polite">
+        <h3>Análise proposta</h3><p>{{ proposal.summary }}</p>
+        <h4>Factos verificados nos registos</h4><ul>{% for item in proposal.verified_facts %}<li>{{ item }}</li>{% else %}<li>Sem factos suficientes.</li>{% endfor %}</ul>
+        <h4>Hipóteses a confirmar</h4><ul>{% for item in proposal.hypotheses %}<li>{{ item }}</li>{% endfor %}</ul>
+        <h4>Provas em falta</h4><ul>{% for item in proposal.missing_evidence %}<li>{{ item }}</li>{% endfor %}</ul>
+        <h4>Próximas ações sugeridas</h4><ul>{% for item in proposal.next_actions %}<li>{{ item }}</li>{% endfor %}</ul>
+      </section>
+      <section class="clean-panel supplier-audit-phase-body">
+        <h3>Comunicação proposta</h3>
+        <p>Revê o texto e escolhe o interveniente antes de o guardares como rascunho no processo. Guardar não envia.</p>
+        {% if can_write %}<form method="post" action="/v2-clean/processes/supplier-audits/{{ audit.id }}/drafts" class="process-create-form">
+          <label>Interveniente<select name="party_id"><option value="">Por definir</option>{% for party in parties %}<option value="{{ party.id }}">{{ party.entity_name }}</option>{% endfor %}</select></label>
+          <label>Assunto<input name="subject" required value="{{ proposal.draft_subject }}"></label>
+          <label class="process-create-wide">Corpo<textarea name="body" rows="12" required>{{ proposal.draft_body }}</textarea></label>
+          <input type="hidden" name="status" value="preparing">
+          <button>Guardar rascunho para revisão</button>
+        </form>{% else %}<p>Não tens permissão para guardar rascunhos.</p>{% endif %}
+      </section>
+    {% endif %}
+  </main>
+</div>
+{% endblock %}

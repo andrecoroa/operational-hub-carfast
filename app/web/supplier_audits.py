@@ -1,3 +1,4 @@
+import json
 from datetime import UTC, date, datetime
 from decimal import Decimal, InvalidOperation
 
@@ -5,6 +6,7 @@ from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy import func, select
 
+from app.core.config import settings
 from app.core.database import SessionLocal
 from app.models.admin import User
 from app.models.documents import Document, DocumentLink
@@ -21,6 +23,7 @@ from app.models.stock import StockSupplier
 from app.models.tasks import Task, TaskComment, TaskDocument, TaskHistory
 from app.models.vehicles import Vehicle
 from app.services.authorization import get_user_permission_codes
+from app.services.fleet_audit_operator import generate_audit_review
 from app.services.task_center import user_can_view_task
 from app.web.router import (
     _task_hierarchy_scope_allows,
@@ -678,8 +681,97 @@ def supplier_audit_detail(request: Request, audit_id: int):
                 "grades": GRADES,
                 "conclusions": CONCLUSIONS,
                 "draft_statuses": DRAFT_STATUSES,
+                "operator_enabled": settings.fleet_audit_operator_enabled,
             },
         )
+
+
+@supplier_audit_router.api_route(
+    "/v2-clean/processes/supplier-audits/{audit_id}/operator",
+    methods=["GET", "POST"],
+    response_class=HTMLResponse,
+)
+async def supplier_audit_operator(request: Request, audit_id: int):
+    """Human-triggered case review; never sends mail or updates case state."""
+    with SessionLocal() as db:
+        user, allowed = _can(request, db)
+        audit = _audit(db, audit_id)
+        if not allowed or not audit:
+            return RedirectResponse("/v2-clean?error=forbidden", status_code=303)
+        permission_codes = get_user_permission_codes(db, user)
+        can_read_documents = bool(permission_codes & {
+            "documents.read", "documents.write", "vehicles.read", "admin.manage"
+        })
+        process = db.get(ManagementProcess, audit.process_id)
+        vehicle = db.get(Vehicle, audit.vehicle_id) if audit.vehicle_id else None
+        parties = list(db.scalars(
+            select(SupplierAuditParty).where(SupplierAuditParty.audit_id == audit.id)
+        ))
+        links = list(db.execute(
+            select(DocumentLink, Document)
+            .join(Document, Document.id == DocumentLink.document_id)
+            .where(DocumentLink.entity_type == "supplier_audit", DocumentLink.entity_id == str(audit.id))
+            .limit(50)
+        )) if can_read_documents else []
+        tasks = [task for task in db.scalars(
+            select(Task)
+            .join(ManagementProcessAssociation,
+                  (ManagementProcessAssociation.entity_type == "task")
+                  & (ManagementProcessAssociation.entity_id == Task.id))
+            .where(ManagementProcessAssociation.process_id == process.id,
+                   ManagementProcessAssociation.active.is_(True))
+            .limit(50)
+        ) if _task_visible(db, user, task)]
+        context = {
+            "process": {"id": process.id, "reference": process.internal_reference,
+                        "title": process.title, "plate_as_reported": process.plate,
+                        "document_reference": process.document_reference},
+            "case": {"id": audit.id, "problem_type": audit.problem_type,
+                     "suspicion": audit.suspicion_description,
+                     "grade": audit.assessment_grade,
+                     "verification": audit.verification_data_json,
+                     "missing": audit.missing_elements_json,
+                     "plate_unmatched": audit.plate_unmatched},
+            "vehicle": {"id": vehicle.id, "plate": vehicle.plate, "vin": vehicle.vin} if vehicle else None,
+            "parties": [{"id": party.id, "name": party.entity_name,
+                         "role": party.role, "intervention": party.related_intervention,
+                         "position": party.position_summary, "evidence_notes": party.evidence_notes}
+                        for party in parties],
+            "documents_metadata_only": [{"id": doc.id, "name": doc.title or doc.original_name,
+                                          "type": doc.document_type, "category": link.category}
+                                         for link, doc in links],
+            "tasks": [{"id": task.id, "title": task.title, "status": task.status}
+                      for task in tasks],
+        }
+        proposal = None
+        error = None
+        user_request = ""
+        if request.method == "POST":
+            form = await request.form()
+            user_request = str(form.get("request") or "").strip()[:1000]
+            if not settings.fleet_audit_operator_enabled:
+                error = "O operador ainda não está ativado."
+            elif not user_request:
+                error = "Descreve o que pretendes analisar ou preparar."
+            else:
+                try:
+                    proposal = generate_audit_review(context, user_request)
+                except (RuntimeError, ValueError, json.JSONDecodeError):
+                    error = "Não foi possível concluir a análise. O processo não foi alterado."
+                except Exception:
+                    error = "O serviço está indisponível. O processo não foi alterado."
+                else:
+                    record_audit(db, "supplier_audit.ai_review", "supplier_audit", audit.id,
+                                 detail="Análise IA solicitada; proposta não enviada nem guardada.",
+                                 user_id=user.id)
+                    db.commit()
+        return templates.TemplateResponse(request, "supplier_audit_operator.html", {
+            "audit": audit, "process": process, "context": context,
+            "proposal": proposal, "error": error, "user_request": user_request,
+            "enabled": settings.fleet_audit_operator_enabled,
+            "can_write": _can(request, db, True)[1],
+            "parties": parties,
+        })
 
 
 @supplier_audit_router.post("/v2-clean/processes/supplier-audits/{audit_id}/tasks")

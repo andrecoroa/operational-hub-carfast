@@ -1,4 +1,5 @@
 from sqlalchemy import select
+from app.core.config import settings
 
 from app.models.documents import Document, DocumentLink
 from app.models.management_center import (
@@ -45,6 +46,42 @@ def _task(db_session, title, *, invoice_number=None, plate=None):
     db_session.commit()
     db_session.refresh(task)
     return task
+
+
+def test_operator_is_opt_in_and_does_not_save_or_send_its_proposal(
+    authenticated_client, db_session, monkeypatch
+):
+    response = authenticated_client.post(
+        "/v2-clean/processes/supplier-audits",
+        data={"title": "Verificar intervenção", "problem_type": "repair_error",
+              "suspicion_description": "Resultado por confirmar."},
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    audit = db_session.scalar(select(SupplierAuditCase).order_by(SupplierAuditCase.id.desc()))
+    path = f"/v2-clean/processes/supplier-audits/{audit.id}/operator"
+
+    monkeypatch.setattr(settings, "fleet_audit_operator_enabled", False)
+    disabled = authenticated_client.post(path, data={"request": "Analisa"})
+    assert "ainda não está ativado" in disabled.text
+
+    seen = {}
+    def fake_review(context, request):
+        seen.update({"context": context, "request": request})
+        return {"summary": "Suspeita por verificar.", "verified_facts": [],
+                "hypotheses": [], "missing_evidence": ["OR"],
+                "next_actions": ["Pedir OR"], "draft_subject": "Pedido de esclarecimento",
+                "draft_body": "Agradecemos o envio da OR."}
+
+    monkeypatch.setattr(settings, "fleet_audit_operator_enabled", True)
+    monkeypatch.setattr("app.web.supplier_audits.generate_audit_review", fake_review)
+    enabled = authenticated_client.post(path, data={"request": "Preparar pedido"})
+    assert enabled.status_code == 200
+    assert "Suspeita por verificar." in enabled.text
+    assert seen["request"] == "Preparar pedido"
+    assert seen["context"]["case"]["id"] == audit.id
+    assert db_session.scalar(select(SupplierAuditEmailDraft).where(
+        SupplierAuditEmailDraft.audit_id == audit.id)) is None
 
 
 def test_supplier_audit_lifecycle_reuses_process_vehicle_documents_and_history(

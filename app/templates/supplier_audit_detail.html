@@ -12,6 +12,7 @@
     </div><a class="button-link secondary-link" href="/v2-clean/processes/supplier-audits">Voltar</a></header>
     {% if request.query_params.get('error') %}<section class="notice-inline warning">Não foi possível concluir a ação. Confirma os dados e as permissões.</section>{% endif %}
     <section class="notice-inline warning"><strong>Suspeita em verificação.</strong> O grau “{{ labels.get(audit.assessment_grade, audit.assessment_grade) }}” não atribui responsabilidade a nenhum fornecedor.</section>
+    {% if operator_enabled %}<p><a class="button-link secondary-link" href="/v2-clean/processes/supplier-audits/{{ audit.id }}/operator">Analisar com operador IA</a></p>{% endif %}
     <div class="supplier-audit-phases">
       <details class="clean-panel supplier-audit-phase" id="registration" name="supplier-audit-phase"><summary><span><small>01</small><strong>Registo e origens</strong><span>{{ model[0] }} · {{ task_links|length }} tarefa(s) · {{ links|length }} documento(s)</span></span></summary>
         <div class="supplier-audit-phase-body">

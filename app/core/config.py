@@ -38,6 +38,9 @@ class Settings(BaseSettings):
     visual_foundation_enabled: bool = False
     task_cases_enabled: bool = False
     task_decisions_enabled: bool = True
+    fleet_audit_operator_enabled: bool = False
+    fleet_audit_operator_model: str | None = None
+    openai_api_key: str | None = None
 
     @property
     def enable_docs(self) -> bool:

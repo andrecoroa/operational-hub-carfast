@@ -22,6 +22,63 @@ from app.web.router import (
 )
 
 
+@pytest.mark.parametrize(
+    ("phase", "path"),
+    [
+        ("entrada", "/v2-clean/workshop-entry"),
+        ("validacao", "/v2-clean/workshop/validacao"),
+        ("reparacao", "/v2-clean/workshop/reparacao"),
+        ("fecho", "/v2-clean/workshop/fecho"),
+    ],
+)
+def test_simplified_process_can_be_cancelled_from_each_stage(
+    authenticated_client, db_session, phase, path
+):
+    vehicle = Vehicle(plate="SV-26-CAN", active=True, lifecycle_status="active")
+    db_session.add(vehicle)
+    db_session.flush()
+    process = WorkshopPhasedProcess(
+        process_type="workshop",
+        title="Processo de teste para cancelar",
+        creation_mode="synthetic_test",
+        status="open",
+        vehicle_id=vehicle.id,
+        plate_snapshot=vehicle.plate,
+        current_phase_code=phase,
+        priority="normal",
+        origin="v2_clean",
+        metadata_json={"workshop_flow_version": 2},
+    )
+    db_session.add(process)
+    db_session.commit()
+
+    page = authenticated_client.get(f"{path}?process_id={process.id}")
+    assert page.status_code == 200
+    assert "<summary>Cancelar processo</summary>" in page.text
+    assert f'action="/v2-clean/workshop/{process.id}/cancel"' in page.text
+    assert 'name="reason" required' in page.text
+    assert 'name="task_action" required' in page.text
+
+    cancelled = authenticated_client.post(
+        f"/v2-clean/workshop/{process.id}/cancel",
+        data={"reason": "Criado por engano", "task_action": "keep"},
+        follow_redirects=False,
+    )
+    assert cancelled.status_code == 303
+    assert cancelled.headers["location"].startswith(f"{path}?process_id={process.id}")
+    db_session.refresh(process)
+    assert process.status == "cancelled"
+
+    cancelled_page = authenticated_client.get(cancelled.headers["location"])
+    assert cancelled_page.status_code == 200
+    assert "Este processo está disponível apenas para consulta." in cancelled_page.text
+    assert "Criado por engano" in cancelled_page.text
+    assert "<summary>Reabrir processo</summary>" in cancelled_page.text
+    assert "<summary>Cancelar processo</summary>" not in cancelled_page.text
+    if phase == "entrada":
+        assert '<fieldset class="workshop-v2-entry-fields" disabled>' in cancelled_page.text
+
+
 def test_entry_permission_only_opens_own_new_entry(authenticated_client, db_session, monkeypatch):
     granted = {"workshop.entry.create"}
     permission_codes = lambda _db, _user: set(granted)
@@ -57,7 +114,9 @@ def test_entry_permission_only_opens_own_new_entry(authenticated_client, db_sess
         WorkshopPhasedProcess.plate_snapshot == "SV-26-RO"
     ))
     assert process is not None
-    assert authenticated_client.get(f"/v2-clean/workshop-entry?process_id={process.id}").status_code == 200
+    own_entry = authenticated_client.get(f"/v2-clean/workshop-entry?process_id={process.id}")
+    assert own_entry.status_code == 200
+    assert "clean-workshop-admin-menu" not in own_entry.text
     saved = authenticated_client.post(
         "/v2-clean/workshop-entry",
         data={

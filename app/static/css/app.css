@@ -30705,6 +30705,11 @@ body:has(.email-preview-dialog[open]) { overflow: hidden; }
   margin: 0;
   padding: 0;
 }
+.workshop-v2-entry-form .workshop-v2-entry-fields {
+  display: grid;
+  gap: 20px;
+  min-width: 0;
+}
 .workshop-v2-entry-form legend {
   margin-bottom: 10px;
   font-weight: 700;

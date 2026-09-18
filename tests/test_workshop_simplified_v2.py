@@ -1,4 +1,7 @@
+from io import BytesIO
+
 from fastapi.testclient import TestClient
+from PIL import Image
 import pytest
 from sqlalchemy import select
 
@@ -7,11 +10,11 @@ from app.web import router as web_router
 from app.models.vehicles import Vehicle
 from app.models.organization import Team, TeamMember
 from app.models.tasks import Task
-from app.services.users import create_user
 from app.models.workshop_phased import (
     WorkshopMaterialNeed, WorkshopPhasedProcess, WorkshopPhasedProcessPhase,
     WorkshopPhasedTechnicalReport,
 )
+from app.services.users import create_user
 from app.web.router import (
     clean_workshop_find_vehicle,
     clean_workshop_v2_authorization_valid,
@@ -27,9 +30,18 @@ def test_entry_permission_only_opens_own_new_entry(authenticated_client, db_sess
     home = authenticated_client.get("/v2-clean", follow_redirects=False)
     assert home.status_code == 303
     assert home.headers["location"] == "/v2-clean/workshop-entry?flow=2"
+    granted.add("navigation.home.access")
+    home_with_navigation = authenticated_client.get("/v2-clean")
+    assert home_with_navigation.status_code == 200
+    assert 'href="/v2-clean/workshop-entry?flow=2">Recolher viatura</a>' in home_with_navigation.text
+    granted.remove("navigation.home.access")
     entry = authenticated_client.get("/v2-clean/workshop-entry?flow=2")
     assert entry.status_code == 200
     assert "Fotografias da entrada" in entry.text
+    direct_entry = authenticated_client.get("/v2-clean/workshop-entry")
+    assert direct_entry.status_code == 200
+    assert 'name="workshop_flow_version" value="2"' in direct_entry.text
+    assert "Concluir recolha" in direct_entry.text
     assert authenticated_client.get(
         "/v2-clean/workshop-entry/vehicle-search?q=SV",
         follow_redirects=False,
@@ -46,6 +58,22 @@ def test_entry_permission_only_opens_own_new_entry(authenticated_client, db_sess
     ))
     assert process is not None
     assert authenticated_client.get(f"/v2-clean/workshop-entry?process_id={process.id}").status_code == 200
+    saved = authenticated_client.post(
+        "/v2-clean/workshop-entry",
+        data={
+            "process_id": process.id,
+            "workshop_flow_version": "2",
+            "short_description": "Recolha em curso",
+            "action": "save",
+        },
+        follow_redirects=False,
+    )
+    assert saved.status_code == 303
+    entry_phase = db_session.scalar(select(WorkshopPhasedProcessPhase).where(
+        WorkshopPhasedProcessPhase.process_id == process.id,
+        WorkshopPhasedProcessPhase.phase_code == "entrada",
+    ))
+    assert entry_phase.data_json["short_description"] == "Recolha em curso"
     assert authenticated_client.get(
         f"/v2-clean/workshop/validacao?process_id={process.id}", follow_redirects=False,
     ).status_code == 403
@@ -61,6 +89,87 @@ def test_entry_permission_only_opens_own_new_entry(authenticated_client, db_sess
         follow_redirects=False,
     )
     assert legacy.status_code == 403
+
+    submitted = authenticated_client.post(
+        "/v2-clean/workshop-entry",
+        data={
+            "process_id": process.id,
+            "workshop_flow_version": "2",
+            "action": "advance",
+            "entry_km": "12500",
+            "entry_reasons": "Revisão",
+            "reported_by_detail": "Operador de teste",
+            **{f"absence_reason_{slot}": "Fotografia não disponível na recolha de teste"
+               for slot in ("dashboard", "front", "rear", "left", "right")},
+        },
+        follow_redirects=False,
+    )
+    assert submitted.status_code == 303
+    assert submitted.headers["location"] == "/v2-clean?workshop_entry_submitted=1"
+    db_session.refresh(process)
+    assert process.current_phase_code == "validacao"
+    assert authenticated_client.get(
+        f"/v2-clean/workshop/validacao?process_id={process.id}", follow_redirects=False,
+    ).status_code == 403
+
+
+def test_entry_permission_does_not_open_or_edit_another_users_draft(
+    authenticated_client, db_session, monkeypatch, tmp_path
+):
+    granted = {"workshop.entry.create"}
+    permission_codes = lambda _db, _user: set(granted)
+    monkeypatch.setattr(app_main, "get_user_permission_codes", permission_codes)
+    monkeypatch.setattr(web_router, "get_user_permission_codes", permission_codes)
+    monkeypatch.setattr(web_router, "document_archive_root", lambda: tmp_path)
+    camera_photo = BytesIO()
+    Image.new("RGB", (2, 2), "white").save(camera_photo, format="JPEG")
+    created = authenticated_client.post(
+        "/v2-clean/workshop-entry",
+        data={"workshop_flow_version": "2", "plate": "SV-26-OWN", "action": "save"},
+        files={"dashboard_photo_camera": ("quadrante.jpg", camera_photo.getvalue(), "image/jpeg")},
+        follow_redirects=False,
+    )
+    assert created.status_code == 303
+    process = db_session.scalar(select(WorkshopPhasedProcess).where(
+        WorkshopPhasedProcess.plate_snapshot == "SV-26-OWN"
+    ))
+    assert process is not None
+    entry_phase = db_session.scalar(select(WorkshopPhasedProcessPhase).where(
+        WorkshopPhasedProcessPhase.process_id == process.id,
+        WorkshopPhasedProcessPhase.phase_code == "entrada",
+    ))
+    camera_upload = entry_phase.data_json["uploads"][0]
+    assert camera_upload["slot"] == "dashboard"
+    assert camera_upload["capture_source"] == "camera_requested"
+    assert camera_upload["source_reason"] == ""
+    photo_url = f"/v2-clean/workshop-entry/{process.id}/uploads/{camera_upload['stored_name']}"
+    assert authenticated_client.get(photo_url).status_code == 200
+    create_user(
+        db_session,
+        name="Outro operador",
+        email="outro.operador@carfast.local",
+        password="Secret123!",
+        role_codes=["operator"],
+        organizational_unit_codes=["carfast"],
+    )
+    db_session.commit()
+    authenticated_client.post("/logout", follow_redirects=False)
+    login = authenticated_client.post(
+        "/login",
+        data={"email": "outro.operador@carfast.local", "password": "Secret123!"},
+        follow_redirects=False,
+    )
+    assert login.status_code == 303
+    authenticated_client.post("/change-notice", data={"next_url": "/v2-clean"}, follow_redirects=False)
+    assert authenticated_client.get(
+        f"/v2-clean/workshop-entry?process_id={process.id}"
+    ).status_code == 404
+    assert authenticated_client.get(photo_url).status_code == 404
+    assert authenticated_client.post(
+        "/v2-clean/workshop-entry",
+        data={"process_id": process.id, "workshop_flow_version": "2", "action": "save"},
+        follow_redirects=False,
+    ).status_code == 404
 
 
 def test_entry_vehicle_suggestions_use_clean_route(authenticated_client, db_session):
@@ -182,9 +291,9 @@ def test_v2_entry_conditional_photo_reasons_and_compact_physical_checks(authenti
     assert 'data-selected-reason hidden' in page.text
     assert 'data-absence-reason hidden' in page.text
     assert 'data-no-photo' in page.text
-    assert 'name="visible_damage" value="yes"' in page.text
-    assert 'name="damage_matches_rentway" value="no"' in page.text
-    assert '<select name="visible_damage"' not in page.text
+    assert '<select name="visible_damage">' in page.text
+    assert '<select name="damage_matches_rentway">' in page.text
+    assert '<option value="not_checked" selected>Por verificar</option>' in page.text
 
     saved = authenticated_client.post(
         "/v2-clean/workshop-entry",
@@ -210,8 +319,9 @@ def test_v2_entry_conditional_photo_reasons_and_compact_physical_checks(authenti
     assert entry.data_json["physical_check_note"] == "Risco no para-choques"
     assert entry.data_json["photo_absence_reasons"]["front"] == "Fotografia impedida pela posição da viatura"
     revisited = authenticated_client.get(f"/v2-clean/workshop-entry?process_id={process.id}")
-    assert 'name="visible_damage" value="yes" checked' in revisited.text
-    assert 'name="damage_matches_rentway" value="no" checked' in revisited.text
+    assert '<select name="visible_damage">' in revisited.text
+    assert '<option value="yes" selected>Sim</option>' in revisited.text
+    assert '<option value="no" selected>Não</option>' in revisited.text
 
 
 def test_v2_analysis_requests_confirmation_before_conclusions(authenticated_client, db_session):

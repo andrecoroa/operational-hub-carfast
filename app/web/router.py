@@ -26952,10 +26952,13 @@ def clean_workshop_entry(
             request, "workshop.entry.create", "workshop.write", "admin.manage"
         ):
             return Response(status_code=403)
+        entry_only_user = not has_any_web_permission(
+            request, "workshop.write", "admin.manage"
+        )
         simplified_new_flow = bool(
             process and isinstance(process.metadata_json, dict)
             and process.metadata_json.get("workshop_flow_version") == 2
-        ) or (process is None and flow == 2)
+        ) or (process is None and (flow == 2 or entry_only_user))
         template_options = db.scalars(
             select(WorkshopTemplate)
             .where(WorkshopTemplate.active.is_(True))

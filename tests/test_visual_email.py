@@ -76,7 +76,7 @@ def test_full_email_workspace_keeps_all_actions_in_tabbed_layout() -> None:
 
 
 def test_email_workspace_assets_have_matching_cache_versions() -> None:
-    version = "20260918-email-triage-feedback"
+    version = "20260919-editor-triage"
     for page in ("clean_email_inbox.html", "clean_email_thread.html"):
         source = (ROOT / "app" / "templates" / page).read_text(encoding="utf-8")
         assert f"email.js?v={version}" in source

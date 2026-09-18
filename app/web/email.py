@@ -227,10 +227,12 @@ class _SafeEmailHTMLParser(HTMLParser):
     void_tags = {"br", "hr", "img"}
     blocked_content_tags = {"embed", "iframe", "object", "script", "style"}
 
-    def __init__(self) -> None:
+    def __init__(self, *, preserve_text_newlines: bool = False) -> None:
         super().__init__(convert_charrefs=True)
         self.parts: list[str] = []
         self.blocked_content_depth = 0
+        self.preserve_text_newlines = preserve_text_newlines
+        self.preformatted_depth = 0
 
     @staticmethod
     def _safe_url(value: str) -> tuple[str, bool] | None:
@@ -259,6 +261,8 @@ class _SafeEmailHTMLParser(HTMLParser):
             return
         if tag not in self.allowed_tags:
             return
+        if tag == "pre":
+            self.preformatted_depth += 1
         safe_attrs: list[str] = []
         for name, value in attrs:
             name, value = name.lower(), value or ""
@@ -295,9 +299,21 @@ class _SafeEmailHTMLParser(HTMLParser):
             return
         if tag in self.allowed_tags and tag not in self.void_tags:
             self.parts.append(f"</{tag}>")
+            if tag == "pre" and self.preformatted_depth:
+                self.preformatted_depth -= 1
 
     def handle_data(self, data: str) -> None:
-        if not self.blocked_content_depth:
+        if self.blocked_content_depth:
+            return
+        if (
+            self.preserve_text_newlines
+            and not self.preformatted_depth
+            and data.strip()
+            and ("\n" in data or "\r" in data)
+        ):
+            lines = data.replace("\r\n", "\n").replace("\r", "\n").split("\n")
+            self.parts.append("<br>".join(escape(line) for line in lines))
+        else:
             self.parts.append(escape(data))
 
 
@@ -3148,7 +3164,7 @@ def email_reply(
             )
         clean_html = None
         if rendered_html:
-            parser = _SafeEmailHTMLParser()
+            parser = _SafeEmailHTMLParser(preserve_text_newlines=True)
             parser.feed(rendered_html)
             clean_html = "".join(parser.parts).strip() or None
         state = {
@@ -3335,6 +3351,9 @@ def email_update_draft(
         prior_state = message.state
         message.subject = (subject.strip() or message.subject)[:500]
         message.text_body = body.strip()
+        # This legacy text-only edit endpoint has no HTML field. Never send
+        # the previous draft's HTML after its plain-text content changes.
+        message.html_body = None
         message.recipients_json = _recipient_json(to_list) if to_list else message.recipients_json
         message.cc_json = _recipient_json(cc_list)
         message.bcc_json = _recipient_json(bcc_list)

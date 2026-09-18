@@ -48,7 +48,7 @@
       <button type="submit">Filtrar</button>
     </form>
 
-    <section class="visual-document-grid{% if selected_row %} is-preview-open{% endif %}">
+    <section class="visual-document-grid document-workspace{% if selected_row %} is-preview-open{% endif %}">
       <article class="visual-document-queue" aria-label="Fila de documentos">
         <header><div><h2>Fila de documentos</h2><p>{{ pagination.total }} documentos por decidir</p></div><button type="button" aria-label="Atualizar fila" onclick="location.reload()">↻</button></header>
         <div class="visual-document-queue-list">
@@ -63,7 +63,7 @@
         <footer class="visual-document-pagination">{% if pagination.has_previous %}<a href="?q={{ q|urlencode }}&origin={{ origin|urlencode }}&confidence={{ confidence|urlencode }}&page={{ pagination.previous_page }}&page_size={{ pagination.page_size }}&view=queue">← Anterior</a>{% endif %}<span>{{ pagination.page }} / {{ pagination.total_pages }} · {{ pagination.total }} registos</span>{% if pagination.has_next %}<a href="?q={{ q|urlencode }}&origin={{ origin|urlencode }}&confidence={{ confidence|urlencode }}&page={{ pagination.next_page }}&page_size={{ pagination.page_size }}&view=queue">Seguinte →</a>{% endif %}</footer>
       </article>
 
-      <article class="visual-document-preview" aria-label="Pré-visualização do documento">
+      <article class="visual-document-preview document-workspace-viewer" aria-label="Pré-visualização do documento">
         <header><div><h2>Pré-visualização</h2><p>{% if selected_row %}{{ selected_row.title }}{% else %}Selecione um documento{% endif %}</p></div>{% if selected_row %}<a class="button-link secondary-link" href="{{ selected_row.detail_href }}">Abrir detalhe</a>{% endif %}</header>
         <div class="visual-document-toolbar" aria-label="Estado da pré-visualização"><span>Página 1 / 1</span>{% if selected_row %}<a href="{{ selected_row.preview_href }}" target="_blank" rel="noopener">Abrir ficheiro original</a><a data-document-view-link class="visual-document-next" href="?q={{ q|urlencode }}&origin={{ origin|urlencode }}&confidence={{ confidence|urlencode }}&page={{ pagination.page }}&page_size={{ pagination.page_size }}&selected={{ selected_row.document.id }}&view=validation&return_context=preview">Validar →</a>{% endif %}</div>
         {% if selected_row %}<iframe title="Documento selecionado" src="{{ selected_row.preview_href }}"></iframe>{% else %}<div class="visual-document-empty">A fila está tratada.</div>{% endif %}

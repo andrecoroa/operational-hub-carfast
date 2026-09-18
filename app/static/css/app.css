@@ -30978,3 +30978,66 @@ body:has(.email-preview-dialog[open]) { overflow: hidden; }
 .supplier-audit-plate-input small { color: #475467; font-size: 12px; font-weight: 500; }
 .supplier-audit-plate-badge { display: inline-flex; align-items: center; gap: 8px; margin: 4px 0 10px; padding: 7px 10px; border: 1px solid #b7c9df; border-radius: 8px; background: #f4f8fd; color: #475467; font-size: 12px; }
 .supplier-audit-plate-badge strong { color: #173b60; font-size: 16px; letter-spacing: .03em; }
+
+/* The same reading/treatment arrangement is used for document queues, email
+   attachments and stock invoices. Domain-specific controls remain unchanged. */
+.document-workspace-viewer {
+  min-width: 0;
+  background: #eef3f9;
+}
+.document-workspace-treatment {
+  min-width: 0;
+  background: #fff;
+}
+.document-workspace-header-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.document-workspace-viewer iframe {
+  display: block;
+  width: 100%;
+  border: 0;
+  background: #fff;
+}
+.stock-document-workspace {
+  display: grid;
+  grid-template-columns: minmax(320px, 42%) minmax(0, 58%);
+  align-items: start;
+  gap: 12px;
+}
+.stock-document-workspace > .document-workspace-viewer {
+  position: sticky;
+  top: 12px;
+  border: 1px solid #d8e0ea;
+  border-radius: 8px;
+  overflow: hidden;
+}
+.document-workspace-viewer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  background: #fff;
+  border-bottom: 1px solid #d8e0ea;
+}
+.document-workspace-viewer-header :is(h2, p) { margin: 0; }
+.document-workspace-viewer-header h2 { font-size: 1rem; }
+.stock-document-workspace .document-workspace-viewer iframe { height: min(72vh, 880px); }
+.stock-document-workspace .document-workspace-treatment > :first-child { margin-top: 0; }
+.document-workspace-fallback {
+  margin: 0;
+  padding: 8px 12px;
+  color: #52647b;
+  background: #fff;
+  font-size: .82rem;
+}
+@media (max-width: 900px) {
+  .stock-document-workspace { grid-template-columns: minmax(0, 1fr); }
+  .stock-document-workspace > .document-workspace-viewer { position: static; }
+  .stock-document-workspace .document-workspace-viewer iframe { height: min(55vh, 580px); }
+  .document-workspace-header-actions { justify-content: flex-start; }
+}

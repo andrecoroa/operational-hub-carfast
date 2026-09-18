@@ -1235,6 +1235,10 @@ def test_attachment_preview_is_explicit_and_unsupported_file_does_not_auto_downl
     assert f'data-email-attachment-preview="{attachment.id}"' in conversation.text
     assert f'/attachments/{attachment.id}/file"' not in conversation.text
     assert f'/attachments/{attachment.id}/file?download=true' in attachment_preview.text
+    assert 'class="email-attachment-preview document-workspace"' in attachment_preview.text
+    assert 'class="email-attachment-file document-workspace-viewer"' in attachment_preview.text
+    assert 'class="email-attachment-form document-workspace-treatment"' in attachment_preview.text
+    assert 'class="document-workspace-header-actions"' in attachment_preview.text
     iframe_source = f'<iframe src="/v2-clean/email/attachments/{attachment.id}/file"'
     assert iframe_source not in attachment_preview.text
     assert implicit_file.status_code == 415

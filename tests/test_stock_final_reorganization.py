@@ -779,6 +779,9 @@ def test_conference_listing_lazy_loads_document_only_in_modal(authenticated_clie
     assert "Ver e conferir" in listing.text
     assert "<iframe" in modal.text
     assert f"/v2-clean/stock/invoices/{invoice_id}/document" in modal.text
+    assert 'class="document-workspace stock-document-workspace"' in review.text
+    assert f'src="/v2-clean/stock/invoices/{invoice_id}/document#toolbar=1&navpanes=0"' in review.text
+    assert 'aria-label="Tratamento da fatura de stock"' in review.text
     assert "REF-MODAL" in modal.text
     assert "12.50 €" in modal.text
     assert "27.68 €" in modal.text

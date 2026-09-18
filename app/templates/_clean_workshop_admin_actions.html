@@ -1,6 +1,6 @@
 {% if workshop_process and workshop_admin.can_manage %}
   <details class="clean-workshop-admin-menu">
-    <summary>Administração</summary>
+    <summary>{% if simplified_new_flow %}{{ "Reabrir processo" if workshop_process.status in ["closed", "cancelled"] else "Cancelar processo" }}{% else %}Administração{% endif %}</summary>
     <div class="clean-workshop-admin-panel">
       {% if workshop_process.status in ["closed", "cancelled"] %}
         <strong>Reabrir processo</strong>

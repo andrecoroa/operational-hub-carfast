@@ -65,6 +65,6 @@
 {% if request.query_params.get("readonly") %}
   <section class="clean-panel clean-card-wide clean-phase-error" role="alert">
     <strong>Processo em modo de consulta.</strong>
-    <span>Reabre o processo através do menu Administração para voltar a editar.</span>
+    <span>Reabre o processo através de {{ "Reabrir processo" if simplified_new_flow else "Administração" }} para voltar a editar.</span>
   </section>
 {% endif %}

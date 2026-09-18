@@ -1,4 +1,5 @@
 from fastapi.testclient import TestClient
+import pytest
 from sqlalchemy import select
 
 import app.main as app_main
@@ -374,7 +375,8 @@ def test_v2_analysis_requests_confirmation_before_conclusions(authenticated_clie
     assert repair_phase.data_json["form_snapshot"]["repair_external_partner"] == "Oficina de teste"
 
 
-def test_v2_no_repair_decision_can_close_process(authenticated_client, db_session):
+@pytest.mark.parametrize("needs_confirmation", [False, True])
+def test_v2_no_repair_decision_can_close_process(authenticated_client, db_session, needs_confirmation):
     entry = authenticated_client.post(
         "/v2-clean/workshop-entry",
         data={
@@ -391,6 +393,32 @@ def test_v2_no_repair_decision_can_close_process(authenticated_client, db_sessio
     process = db_session.scalar(select(WorkshopPhasedProcess).where(
         WorkshopPhasedProcess.plate_snapshot == "SV-26-NR"
     ))
+    if needs_confirmation:
+        recipient = create_user(
+            db_session, name="Validador do fecho", email="fecho.tests@carfast.local",
+            password="Secret123!", role_codes=["manager"],
+        )
+        db_session.commit()
+        requested = authenticated_client.post(
+            "/v2-clean/workshop/validacao/save",
+            data={
+                "process_id": process.id, "action": "request_confirmation",
+                "analysis_template_code": process.template_snapshot_json["template_code"],
+                "analysis_decision": "Confirmar necessidade",
+                "analysis_orientation": "Confirmar se é necessária intervenção",
+                "confirmation_target": f"user:{recipient.id}",
+            },
+            follow_redirects=False,
+        )
+        assert "confirmation_requested=1" in requested.headers["location"]
+        task = db_session.scalar(select(Task).where(
+            Task.entity_type == "workshop_phased_process", Task.entity_id == str(process.id)
+        ))
+        assert task.assigned_to_id == recipient.id
+        authenticated_client.post(f"/v2-clean/tasks/{task.id}/close", follow_redirects=False)
+        db_session.expire_all()
+        db_session.refresh(task)
+        assert task.closed_at is not None
     analysis = authenticated_client.post(
         "/v2-clean/workshop/validacao/save",
         data={
@@ -399,6 +427,7 @@ def test_v2_no_repair_decision_can_close_process(authenticated_client, db_sessio
             "analysis_decision": "Fechar sem reparação",
             "analysis_decision_reason": "Intervenção desnecessária",
             "problem_conclusion": "A verificação não confirmou avaria",
+            "confirmation_result": "Não é necessária intervenção" if needs_confirmation else "",
         },
         follow_redirects=False,
     )

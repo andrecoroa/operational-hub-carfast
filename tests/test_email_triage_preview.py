@@ -1348,6 +1348,112 @@ def test_archive_requires_explicit_classification_validation(
     assert len(db_session.scalars(select(EmailAuditEvent)).all()) == initial_audits
 
 
+def test_manual_status_rejects_event_states_and_unclassified_resolution(
+    authenticated_client, db_session, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(settings, "email_storage_root", str(tmp_path))
+    _bind_email_session(monkeypatch, db_session)
+    thread, _ = ingest_inbound(db_session, _payload("manual-state-guards"))
+    initial_audits = len(db_session.scalars(select(EmailAuditEvent)).all())
+
+    for status in ("new_reply", "waiting_approval", "task_created", "associated", "returned"):
+        response = authenticated_client.post(
+            f"/v2-clean/email/{thread.id}/status",
+            data={"status": status},
+            follow_redirects=False,
+        )
+        assert "error=invalid_state" in response.headers["location"]
+    resolve = authenticated_client.post(
+        f"/v2-clean/email/{thread.id}/status",
+        data={"status": "resolved"},
+        follow_redirects=False,
+    )
+    db_session.expire_all()
+    assert "error=invalid_transition" in resolve.headers["location"]
+    assert db_session.get(EmailThread, thread.id).status == "triage"
+    assert len(db_session.scalars(select(EmailAuditEvent)).all()) == initial_audits
+
+    detail = authenticated_client.get(f"/v2-clean/email/{thread.id}")
+    assert '<option value="new_reply"' not in detail.text
+    assert '<option value="waiting_approval"' not in detail.text
+    assert '<option value="task_created"' not in detail.text
+
+
+def test_manual_resolution_after_validation_records_sla_once(
+    authenticated_client, db_session, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(settings, "email_storage_root", str(tmp_path))
+    _bind_email_session(monkeypatch, db_session)
+    thread, _ = ingest_inbound(db_session, _payload("manual-resolve-valid"))
+    thread.status = "in_progress"
+    thread.classification_status = "classified"
+    db_session.add(
+        EmailAuditEvent(thread_id=thread.id, action="classification_validated")
+    )
+    db_session.commit()
+
+    response = authenticated_client.post(
+        f"/v2-clean/email/{thread.id}/status",
+        data={"status": "resolved"},
+        follow_redirects=False,
+    )
+    db_session.expire_all()
+    stored = db_session.get(EmailThread, thread.id)
+    assert "saved=status" in response.headers["location"]
+    assert stored.status == "resolved"
+    assert stored.resolved_at is not None
+    audit_count = len(db_session.scalars(select(EmailAuditEvent)).all())
+
+    unchanged = authenticated_client.post(
+        f"/v2-clean/email/{thread.id}/status",
+        data={"status": "resolved"},
+        follow_redirects=False,
+    )
+    assert unchanged.headers["location"] == f"/v2-clean/email/{thread.id}"
+    assert len(db_session.scalars(select(EmailAuditEvent)).all()) == audit_count
+
+
+def test_waiting_reply_pauses_and_resumes_email_sla(
+    authenticated_client, db_session, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(settings, "email_storage_root", str(tmp_path))
+    _bind_email_session(monkeypatch, db_session)
+    thread, _ = ingest_inbound(db_session, _payload("waiting-sla-roundtrip"))
+    thread.status = "in_progress"
+    thread.sla_pause_on_waiting = True
+    thread.resolution_due_at = datetime.now(UTC) + timedelta(hours=2)
+    db_session.commit()
+
+    paused = authenticated_client.post(
+        f"/v2-clean/email/{thread.id}/status",
+        data={"status": "waiting_reply"},
+        follow_redirects=False,
+    )
+    db_session.expire_all()
+    stored = db_session.get(EmailThread, thread.id)
+    assert "saved=status" in paused.headers["location"]
+    assert stored.status == "waiting_reply"
+    assert stored.sla_paused_at is not None
+
+    resumed = authenticated_client.post(
+        f"/v2-clean/email/{thread.id}/status",
+        data={"status": "in_progress"},
+        follow_redirects=False,
+    )
+    db_session.expire_all()
+    stored = db_session.get(EmailThread, thread.id)
+    actions = set(
+        db_session.scalars(
+            select(EmailAuditEvent.action).where(EmailAuditEvent.thread_id == thread.id)
+        )
+    )
+    assert "saved=status" in resumed.headers["location"]
+    assert stored.status == "in_progress"
+    assert stored.sla_paused_at is None
+    assert stored.sla_total_paused_seconds >= 0
+    assert {"sla_paused", "sla_resumed"} <= actions
+
+
 def test_mobile_layout_is_single_column_without_body_overflow():
     css = (ROOT / "app/static/css/app.css").read_text(encoding="utf-8")
 

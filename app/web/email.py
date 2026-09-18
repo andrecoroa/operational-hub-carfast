@@ -161,6 +161,9 @@ STATUS_LABELS = {
     "resolved": "Resolvido",
     "archived": "Arquivado",
 }
+MANUAL_EMAIL_STATUSES = frozenset({
+    "triage", "in_progress", "waiting_reply", "resolved", "archived",
+})
 
 EMAIL_WORK_VIEW_LABELS = {
     "mailbox": "Por caixa",
@@ -1618,6 +1621,7 @@ def email_inbox(
                 "all_is_truncated": selected_view == "all"
                 and len(inbox_rows) < filtered_total_count,
                 "status_labels": STATUS_LABELS,
+                "manual_statuses": MANUAL_EMAIL_STATUSES,
                 "email_signal_labels": EMAIL_SIGNAL_LABELS,
                 "filters": {
                     "status": selected_status,
@@ -2049,6 +2053,7 @@ def email_thread(request: Request, thread_id: int):
                 **_classification_context(),
                 **workflow_context,
                 "status_labels": STATUS_LABELS,
+                "manual_statuses": MANUAL_EMAIL_STATUSES,
                 "can_triage": can_alter,
                 "can_reply": bool(
                     permissions.intersection({"email.reply", "email.manage", "admin.manage"})
@@ -2210,6 +2215,7 @@ def email_thread_preview(request: Request, thread_id: int):
                 **_classification_context(),
                 **workflow_context,
                 "status_labels": STATUS_LABELS,
+                "manual_statuses": MANUAL_EMAIL_STATUSES,
                 "can_triage": can_alter,
                 "can_reply": bool(
                     permissions.intersection({"email.reply", "email.manage", "admin.manage"})
@@ -2839,12 +2845,16 @@ def email_channel_access(
 @email_router.post("/v2-clean/email/{thread_id}/status")
 def email_status(request: Request, thread_id: int, status: str = Form(...)):
     auth = _auth(request, "email.triage", "email.manage", "admin.manage")
-    if not auth or status not in STATUS_LABELS:
+    if not auth:
         return RedirectResponse(f"/v2-clean/email/{thread_id}?error=forbidden", status_code=303)
+    if status not in MANUAL_EMAIL_STATUSES:
+        return RedirectResponse(
+            f"/v2-clean/email/{thread_id}?error=invalid_state", status_code=303
+        )
     user_id, _ = auth
     with SessionLocal() as db:
         thread = db.get(EmailThread, thread_id)
-        if thread and status == "archived":
+        if thread and status in {"resolved", "archived"}:
             latest_classification_action = db.scalar(
                 select(EmailAuditEvent.action)
                 .where(
@@ -2875,6 +2885,8 @@ def email_status(request: Request, thread_id: int, status: str = Form(...)):
             db, user_id, auth[1], thread.channel_id, action, thread=thread
         ):
             prior_status = thread.status
+            if prior_status == status:
+                return RedirectResponse(f"/v2-clean/email/{thread_id}", status_code=303)
             thread.status = status
             if status == "resolved":
                 mark_email_resolved(db, thread, user_id=user_id)
@@ -2924,7 +2936,8 @@ def email_status(request: Request, thread_id: int, status: str = Form(...)):
                 )
             )
             db.commit()
-    return RedirectResponse(f"/v2-clean/email/{thread_id}?saved=status", status_code=303)
+            return RedirectResponse(f"/v2-clean/email/{thread_id}?saved=status", status_code=303)
+    return RedirectResponse(f"/v2-clean/email/{thread_id}?error=forbidden", status_code=303)
 
 
 @email_router.post("/v2-clean/email/{thread_id}/read")

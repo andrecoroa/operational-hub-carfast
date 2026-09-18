@@ -31,12 +31,14 @@ from app.services.bootstrap import (
     seed_email_channels,
 )
 from app.services.email_postmark import (
+    _attachments_ready_for_close,
     ensure_email_channels,
     deterministic_rule_close_allowed,
     ingest_inbound,
     ingest_outbound_event,
     inbox_rule_matches,
     normalize_inbound_attachments,
+    reconcile_inbound_attachments,
     outbound_identity,
     reply_all_recipients,
     send_message,
@@ -163,6 +165,57 @@ def test_repeated_webhook_adopts_legacy_attachment_without_duplication(
     assert adopted.webhook_event_id is not None
     assert adopted.source_attachment_id
     assert adopted.source_provider == "postmark"
+
+
+def test_existing_blocked_attachment_is_not_counted_as_stored(
+    db_session, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(settings, "email_storage_root", str(tmp_path))
+    payload = _payload("pm-existing-blocked")
+    thread, _ = ingest_inbound(db_session, payload)
+    attachment = db_session.scalar(select(EmailAttachment))
+    message = db_session.get(EmailMessage, attachment.message_id)
+    event = db_session.get(EmailWebhookEvent, attachment.webhook_event_id)
+
+    stored_result = reconcile_inbound_attachments(
+        db_session, thread=thread, message=message, event=event, payload=payload
+    )
+    assert stored_result["existing_stored"] == 1
+    assert _attachments_ready_for_close(stored_result)
+
+    attachment.storage_path = None
+    attachment.ingest_state = "blocked"
+    db_session.flush()
+    existing_result = reconcile_inbound_attachments(
+        db_session, thread=thread, message=message, event=event, payload=payload
+    )
+    assert existing_result["payload"] == 1
+    assert existing_result["existing_blocked"] == 1
+    assert existing_result["existing_stored"] == 0
+    assert not _attachments_ready_for_close(existing_result)
+
+    attachment.ingest_state = "stored"
+    attachment.storage_path = str(tmp_path / "missing.pdf")
+    db_session.flush()
+    missing_file_result = reconcile_inbound_attachments(
+        db_session, thread=thread, message=message, event=event, payload=payload
+    )
+    assert missing_file_result["existing_blocked"] == 1
+    assert missing_file_result["existing_stored"] == 0
+    assert not _attachments_ready_for_close(missing_file_result)
+
+    attachment.webhook_event_id = None
+    attachment.source_attachment_id = None
+    attachment.storage_path = None
+    db_session.flush()
+    legacy_result = reconcile_inbound_attachments(
+        db_session, thread=thread, message=message, event=event, payload=payload
+    )
+    assert legacy_result["payload"] == 1
+    assert legacy_result["existing_blocked"] == 1
+    assert legacy_result["existing_stored"] == 0
+    assert attachment.ingest_state == "blocked"
+    assert not _attachments_ready_for_close(legacy_result)
 
 
 def test_thread_view_alerts_when_payload_and_attachment_records_diverge(
@@ -569,6 +622,239 @@ def test_auto_close_requires_structurally_deterministic_conditions():
     assert not deterministic_rule_close_allowed(broad)
 
 
+def test_any_subject_rule_closes_only_after_attachment_is_stored(
+    db_session, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(settings, "email_storage_root", str(tmp_path))
+    ensure_email_channels(db_session)
+    channel = db_session.scalar(select(EmailChannel).where(EmailChannel.code == "test"))
+    db_session.add(
+        EmailInboxRule(
+            channel_id=channel.id,
+            name="Entrada documental",
+            subject_match="",
+            match_type="any",
+            auto_task_mode="none",
+            status_action="resolved",
+            deterministic=True,
+        )
+    )
+    db_session.commit()
+
+    stored, _ = ingest_inbound(db_session, _payload("pm-any-stored"))
+    assert stored.status == "resolved"
+    attachment = db_session.scalar(
+        select(EmailAttachment).join(EmailMessage).where(EmailMessage.thread_id == stored.id)
+    )
+    assert attachment.ingest_state == "stored"
+
+    no_attachment = _payload("pm-any-empty")
+    no_attachment["Subject"] = "Sem documento"
+    no_attachment["Attachments"] = []
+    pending, _ = ingest_inbound(db_session, no_attachment)
+    assert pending.status != "resolved"
+
+    monkeypatch.setattr(settings, "email_max_attachment_bytes", 4)
+    blocked_payload = _payload("pm-any-blocked")
+    blocked_payload["Subject"] = "Documento demasiado grande"
+    blocked, _ = ingest_inbound(db_session, blocked_payload)
+    assert blocked.status != "resolved"
+    audit = db_session.scalar(
+        select(EmailAuditEvent)
+        .where(EmailAuditEvent.thread_id == blocked.id)
+        .where(EmailAuditEvent.action == "inbox_rule_applied")
+    )
+    assert "status:resolved:skipped_attachments_not_stored" in audit.details_json["actions"]
+
+
+def test_finance_rule_uses_current_message_alias_and_attachments(
+    db_session, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(settings, "email_storage_root", str(tmp_path))
+    ensure_email_channels(db_session)
+    channel = db_session.scalar(
+        select(EmailChannel).where(EmailChannel.code == "departamento_financeiro")
+    )
+    invoices = EmailChannelAlias(
+        channel_id=channel.id, address="faturas@carfast.pt", inbound_hash="faturas"
+    )
+    daf = EmailChannelAlias(
+        channel_id=channel.id, address="daf@carfast.pt", inbound_hash="daf"
+    )
+    db_session.add_all([invoices, daf])
+    db_session.flush()
+    db_session.add(
+        EmailInboxRule(
+            channel_id=channel.id,
+            recipient_alias_id=invoices.id,
+            name="Entrada de faturas",
+            subject_match="",
+            match_type="any",
+            auto_task_mode="none",
+            status_action="resolved",
+            deterministic=True,
+        )
+    )
+    db_session.commit()
+
+    def delivery(message_id: str, address: str, mailbox_hash: str) -> dict:
+        payload = _payload(message_id)
+        payload.update(
+            {
+                "OriginalMessageID": "finance-conversation",
+                "Subject": message_id,
+                "OriginalRecipient": address,
+                "To": address,
+                "ToFull": [{"Email": address}],
+                "MailboxHash": mailbox_hash,
+            }
+        )
+        return payload
+
+    first, _ = ingest_inbound(
+        db_session, delivery("pm-faturas-first", invoices.address, "faturas")
+    )
+    assert first.status == "resolved"
+    assert first.channel_id == channel.id
+    assert first.external_conversation_id == "finance-conversation"
+    assert db_session.scalar(
+        select(EmailThread).where(
+            EmailThread.channel_id == channel.id,
+            EmailThread.external_conversation_id == "finance-conversation",
+        )
+    ).id == first.id
+
+    daf_reply = delivery("pm-daf-reply", daf.address, "daf")
+    same_thread, created = ingest_inbound(db_session, daf_reply)
+    assert same_thread.channel_id == channel.id
+    assert created
+    assert same_thread.id == first.id
+    assert same_thread.status == "new_reply"
+
+    no_attachment = delivery("pm-faturas-empty-reply", invoices.address, "faturas")
+    no_attachment["Attachments"] = []
+    same_thread, created = ingest_inbound(db_session, no_attachment)
+    assert created
+    assert same_thread.id == first.id
+    assert same_thread.status == "new_reply"
+
+    mixed = delivery("pm-mixed-recipients", invoices.address, "faturas")
+    mixed["ToFull"].append({"Email": daf.address})
+    mixed_thread, _ = ingest_inbound(db_session, mixed)
+    assert mixed_thread.status == "new_reply"
+
+    unknown = delivery("pm-unknown-original", "unknown@carfast.pt", "faturas")
+    unknown["ToFull"].append({"Email": invoices.address})
+    unknown_thread, _ = ingest_inbound(db_session, unknown)
+    assert unknown_thread.status == "new_reply"
+
+    monkeypatch.setattr(settings, "email_max_attachment_bytes", 4)
+    blocked = delivery("pm-faturas-blocked", invoices.address, "faturas")
+    blocked_thread, _ = ingest_inbound(db_session, blocked)
+    assert blocked_thread.status == "new_reply"
+    assert db_session.scalar(
+        select(EmailAttachment)
+        .join(EmailMessage)
+        .where(EmailMessage.external_message_id == "pm-faturas-blocked")
+    ).ingest_state == "blocked"
+
+
+def test_finance_alias_preview_counts_messages_not_threads(
+    authenticated_client, db_session, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(settings, "email_storage_root", str(tmp_path))
+    ensure_email_channels(db_session)
+    channel = db_session.scalar(
+        select(EmailChannel).where(EmailChannel.code == "departamento_financeiro")
+    )
+    invoices = EmailChannelAlias(
+        channel_id=channel.id, address="faturas@carfast.pt", inbound_hash="faturas"
+    )
+    daf = EmailChannelAlias(
+        channel_id=channel.id, address="daf@carfast.pt", inbound_hash="daf"
+    )
+    db_session.add_all([invoices, daf])
+    db_session.commit()
+    for message_id, address, mailbox_hash in (
+        ("preview-faturas", invoices.address, "faturas"),
+        ("preview-daf", daf.address, "daf"),
+    ):
+        payload = _payload(message_id)
+        payload.update(
+            {
+                "OriginalMessageID": "preview-shared-conversation",
+                "Subject": message_id,
+                "OriginalRecipient": address,
+                "To": address,
+                "ToFull": [{"Email": address}],
+                "MailboxHash": mailbox_hash,
+            }
+        )
+        ingest_inbound(db_session, payload)
+    before = db_session.scalar(select(EmailThread).where(EmailThread.channel_id == channel.id)).status
+
+    response = authenticated_client.post(
+        "/v2-clean/admin/work-classification/email-inbox-rules/preview",
+        data={
+            "channel_id": channel.id,
+            "recipient_alias_id": invoices.id,
+            "match_type": "any",
+        },
+    )
+    assert response.status_code == 200
+    assert response.json()["evaluated"] == 2
+    assert response.json()["matched"] == 1
+    assert response.json()["samples"][0]["recipient_alias_id"] == invoices.id
+    assert "não extrai" in response.json()["note"]
+    assert db_session.scalar(select(EmailThread).where(EmailThread.channel_id == channel.id)).status == before
+
+    other_channel = db_session.scalar(select(EmailChannel).where(EmailChannel.code == "test"))
+    invalid_preview = authenticated_client.post(
+        "/v2-clean/admin/work-classification/email-inbox-rules/preview",
+        data={
+            "channel_id": other_channel.id,
+            "recipient_alias_id": invoices.id,
+            "match_type": "any",
+        },
+    )
+    assert invalid_preview.status_code == 422
+    invalid_create = authenticated_client.post(
+        "/v2-clean/admin/work-classification/email-inbox-rules",
+        data={
+            "channel_id": other_channel.id,
+            "recipient_alias_id": invoices.id,
+            "name": "Alias de outra caixa",
+            "match_type": "any",
+            "status_action": "none",
+            "active": "on",
+        },
+        follow_redirects=False,
+    )
+    assert invalid_create.status_code == 303
+    assert "invalid_rule" in invalid_create.headers["location"]
+    assert db_session.scalar(
+        select(EmailInboxRule).where(EmailInboxRule.name == "Alias de outra caixa")
+    ) is None
+
+    valid_create = authenticated_client.post(
+        "/v2-clean/admin/work-classification/email-inbox-rules",
+        data={
+            "channel_id": channel.id,
+            "recipient_alias_id": invoices.id,
+            "name": "Regra limitada a faturas",
+            "match_type": "any",
+            "status_action": "none",
+        },
+        follow_redirects=False,
+    )
+    assert valid_create.status_code == 303
+    created_rule = db_session.scalar(
+        select(EmailInboxRule).where(EmailInboxRule.name == "Regra limitada a faturas")
+    )
+    assert created_rule.recipient_alias_id == invoices.id
+    assert created_rule.active is False
+
+
 def test_deterministic_rule_applies_status_and_audits_actions(
     db_session, tmp_path, monkeypatch
 ):
@@ -655,6 +941,15 @@ def test_admin_rule_preview_is_read_only(authenticated_client, db_session, tmp_p
     assert response.status_code == 200
     assert response.json()["read_only"] is True
     assert response.json()["matched"] == 1
+    db_session.refresh(thread)
+    assert thread.status == before_status
+
+    any_subject_response = authenticated_client.post(
+        "/v2-clean/admin/work-classification/email-inbox-rules/preview",
+        data={"channel_id": channel.id, "match_type": "any"},
+    )
+    assert any_subject_response.status_code == 200
+    assert any_subject_response.json()["matched"] == 1
     db_session.refresh(thread)
     assert thread.status == before_status
 

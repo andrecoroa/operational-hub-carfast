@@ -6,6 +6,17 @@ are installation data. Administrators must map, preview and explicitly activate 
 
 REVIEWED_EMAIL_RULE_PRESETS: tuple[dict, ...] = (
     {
+        "code": "finance_document_intake",
+        "channel": "departamento_financeiro",
+        "recipient_alias": "faturas@carfast.pt (mapear alias real; não ativado)",
+        "subjects": ("Qualquer assunto apenas desse alias",),
+        "match_type": "any",
+        "auto_task_mode": "none",
+        "status_action": "resolved",
+        "deterministic": True,
+        "notes": "Resolvido significa apenas email fechado após guardar os anexos. Não extrai, classifica ou trata fiscalmente documentos; não cria alerta de desconhecidos nem copia para SharePoint/OneDrive.",
+    },
+    {
         "code": "support_newsletter_subscriber",
         "channel": "support",
         "subjects": ("Novo Subscritor à Newsletter",),

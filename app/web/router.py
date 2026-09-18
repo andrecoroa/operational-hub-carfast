@@ -76,6 +76,7 @@ from app.models.management_center import (
     ManagementProcessAssociation,
     ManagementProcessType,
     ManagementRule,
+    SupplierAuditCase,
 )
 from app.models.organization import OrganizationalUnit, Team, TeamMember, UserOrganizationalUnit
 from app.models.pilot import PilotFeedback
@@ -27201,6 +27202,9 @@ def clean_workshop_phase(
     analysis_template_options: list[WorkshopTemplate] = []
     analysis_proposed_materials: list[dict[str, str]] = []
     v2_analysis_form: dict[str, object] = {}
+    confirmation_users: list[User] = []
+    confirmation_teams: list[Team] = []
+    analysis_confirmation: dict[str, object] = {}
     v2_repair_authorization: dict[str, object] = {}
     v2_repair_proposal: dict[str, object] = {}
     v2_repair_authorized = False
@@ -27324,6 +27328,15 @@ def clean_workshop_phase(
                         .where(WorkshopTemplate.active.is_(True))
                         .order_by(WorkshopTemplate.name)
                     ).all()
+                    confirmation_users, confirmation_teams = clean_workshop_v2_confirmation_targets(
+                        db, get_web_user_id(request)
+                    )
+                    raw_confirmation = (process.metadata_json or {}).get("analysis_confirmation")
+                    analysis_confirmation = dict(raw_confirmation) if isinstance(raw_confirmation, dict) else {}
+                    if analysis_confirmation.get("task_id"):
+                        confirmation_task = db.get(Task, analysis_confirmation["task_id"])
+                        if confirmation_task and confirmation_task.closed_at and analysis_confirmation.get("status") == "pending":
+                            analysis_confirmation["status"] = "responded"
             if phase == "reparacao":
                 articles = db.scalars(
                     select(StockArticle)
@@ -27426,6 +27439,9 @@ def clean_workshop_phase(
             "phase_key": phase,
             "simplified_new_flow": simplified_new_flow,
             "analysis_template_options": analysis_template_options,
+            "confirmation_users": confirmation_users,
+            "confirmation_teams": confirmation_teams,
+            "analysis_confirmation": analysis_confirmation,
             "analysis_proposed_materials": analysis_proposed_materials,
             "v2_analysis_form": v2_analysis_form,
             "v2_repair_authorization": v2_repair_authorization,
@@ -28543,6 +28559,35 @@ async def clean_workshop_v2_repair_proposal(request: Request, process_id: int):
     return RedirectResponse(f"/v2-clean/workshop/reparacao?process_id={process_id}&proposal_updated=1", status_code=303)
 
 
+def clean_workshop_v2_confirmation_targets(
+    db: Session, actor_user_id: int | None
+) -> tuple[list[User], list[Team]]:
+    if not actor_user_id:
+        return [], []
+    users = db.scalars(select(User).where(User.active.is_(True)).order_by(User.name)).all()
+    assignable_users = [
+        user for user in users
+        if is_task_assignment_allowed(
+            db, actor_user_id=actor_user_id, target_user_id=user.id,
+            workspace="operational", queue_id=None, department_id=None,
+            category_id=None, subcategory_id=None, team_id=None,
+        )
+        and user_can_access_task_workspace(db, user, "operational", action="close")
+    ]
+    eligible_users = [user for user in assignable_users if user.id != actor_user_id]
+    eligible_ids = {user.id for user in assignable_users}
+    team_members: dict[int, set[int]] = defaultdict(set)
+    for team_id, member_id in db.execute(select(TeamMember.team_id, TeamMember.user_id)):
+        team_members[team_id].add(member_id)
+    teams = [
+        team for team in db.scalars(select(Team).where(Team.active.is_(True)).order_by(Team.name))
+        if team_members.get(team.id)
+        and team_members[team.id] <= eligible_ids
+        and bool(team_members[team.id] - {actor_user_id})
+    ]
+    return eligible_users, teams
+
+
 async def clean_workshop_v2_analysis_save(
     db: Session,
     request: Request,
@@ -28552,7 +28597,7 @@ async def clean_workshop_v2_analysis_save(
     action: str,
 ) -> RedirectResponse:
     base_url = f"/v2-clean/workshop/validacao?process_id={process.id}"
-    if process.current_phase_code != "validacao" or action not in {"save", "advance"}:
+    if process.current_phase_code != "validacao" or action not in {"save", "advance", "request_confirmation"}:
         return RedirectResponse(f"{base_url}&error=invalid_phase_order", status_code=303)
 
     now = datetime.now(UTC)
@@ -28566,9 +28611,22 @@ async def clean_workshop_v2_analysis_save(
     if not template or not version:
         return RedirectResponse(f"{base_url}&error=invalid_template", status_code=303)
 
-    decision = str(form.get("analysis_decision") or "Reparar").strip()
-    if decision not in {"Reparar", "Fechar sem reparação"}:
+    decision = str(form.get("analysis_decision") or "").strip()
+    if decision not in {"", "Confirmar necessidade", "Reparar", "Fechar sem reparação"}:
         return RedirectResponse(f"{base_url}&error=invalid_decision", status_code=303)
+    if action != "save" and not decision:
+        return RedirectResponse(f"{base_url}&error=analysis_decision_required", status_code=303)
+    if action == "request_confirmation" and decision != "Confirmar necessidade":
+        return RedirectResponse(f"{base_url}&error=invalid_decision", status_code=303)
+    if action == "advance" and decision == "Confirmar necessidade":
+        return RedirectResponse(f"{base_url}&error=confirmation_pending", status_code=303)
+    orientation = str(form.get("analysis_orientation") or "").strip()[:2000]
+    repair_location = str(form.get("analysis_repair_location") or ("internal" if "analysis_repair_location" not in form else "")).strip()
+    if repair_location not in {"", "internal", "external"}:
+        return RedirectResponse(f"{base_url}&error=analysis_location_required", status_code=303)
+    external_workshop = str(form.get("analysis_external_workshop") or "").strip()[:240]
+    confirmation_target = str(form.get("confirmation_target") or "").strip()
+    confirmation_result = str(form.get("confirmation_result") or "").strip()[:2000]
     diagnosis_mode = str(form.get("diagnostic_mode") or "").strip()
     if diagnosis_mode not in {"perform", "waived", "late_authorized"}:
         diagnosis_mode = ""
@@ -28610,19 +28668,46 @@ async def clean_workshop_v2_analysis_save(
         WorkshopPhasedTechnicalReport.process_id == process.id,
         ~WorkshopPhasedTechnicalReport.status.in_({"voided", "superseded"}),
     )).all()
+    metadata = dict(process.metadata_json or {})
+    current_confirmation = metadata.get("analysis_confirmation")
+    current_confirmation = dict(current_confirmation) if isinstance(current_confirmation, dict) else {}
+    confirmation_task = db.get(Task, current_confirmation["task_id"]) if current_confirmation.get("task_id") else None
+    if action == "request_confirmation":
+        if not orientation:
+            return RedirectResponse(f"{base_url}&error=confirmation_orientation_required", status_code=303)
+        if confirmation_task and not confirmation_task.closed_at:
+            return RedirectResponse(f"{base_url}&error=confirmation_already_pending", status_code=303)
+        target_match = re.fullmatch(r"(user|team):([1-9]\d*)", confirmation_target)
+        if not target_match:
+            return RedirectResponse(f"{base_url}&error=confirmation_target_required", status_code=303)
+        target_kind, target_id_text = target_match.groups()
+        target_id = int(target_id_text)
+        eligible_users, eligible_teams = clean_workshop_v2_confirmation_targets(db, user_id)
+        targets = eligible_users if target_kind == "user" else eligible_teams
+        target = next((item for item in targets if item.id == target_id), None)
+        if not target:
+            return RedirectResponse(f"{base_url}&error=confirmation_target_required", status_code=303)
     if action == "advance":
         error = ""
-        if not conclusion or (decision == "Reparar" and not services):
+        if decision == "Reparar" and not repair_location:
+            error = "analysis_location_required"
+        elif decision == "Reparar" and repair_location == "external" and not external_workshop:
+            error = "analysis_external_workshop_required"
+        elif confirmation_task and not confirmation_task.closed_at:
+            error = "confirmation_pending"
+        elif confirmation_task and not confirmation_result:
+            error = "confirmation_result_required"
+        elif not conclusion or (decision == "Reparar" and not services):
             error = "analysis_incomplete"
-        elif not diagnosis_mode:
+        elif decision == "Reparar" and not diagnosis_mode:
             error = "diagnostic_choice_required"
-        elif diagnosis_mode == "waived" and not waiver_reason:
+        elif decision == "Reparar" and diagnosis_mode == "waived" and not waiver_reason:
             error = "diagnostic_waiver_required"
-        elif diagnosis_mode == "late_authorized" and str(form.get("diagnostic_late_authorization_confirmed") or "") != "yes":
+        elif decision == "Reparar" and diagnosis_mode == "late_authorized" and str(form.get("diagnostic_late_authorization_confirmed") or "") != "yes":
             error = "diagnostic_late_authorization_required"
-        elif diagnosis_mode == "perform" and not diagnostic_conclusion:
+        elif decision == "Reparar" and diagnosis_mode == "perform" and not diagnostic_conclusion:
             error = "diagnostic_conclusion_required"
-        elif diagnosis_mode == "perform" and any(not clean_workshop_report_is_complete(report) for report in active_reports):
+        elif decision == "Reparar" and diagnosis_mode == "perform" and any(not clean_workshop_report_is_complete(report) for report in active_reports):
             error = "reports_pending"
         elif inspection_needed and any(value not in {"ok", "nc", "na"} for value in inspection_values.values()):
             error = "inspection_incomplete"
@@ -28637,8 +28722,7 @@ async def clean_workshop_v2_analysis_save(
     diagnostic_phase = clean_workshop_v2_ensure_phase(db, process, "diagnostico")
     inspection_phase = clean_workshop_v2_ensure_phase(db, process, "inspecao")
     audit_phase = clean_workshop_v2_ensure_phase(db, process, "auditoria")
-    if decision == "Reparar":
-        clean_workshop_v2_ensure_phase(db, process, "reparacao")
+    repair_phase = clean_workshop_v2_ensure_phase(db, process, "reparacao") if decision == "Reparar" else None
 
     quote_uploads = await clean_workshop_store_phase_uploads(
         db, process, "validacao", form, user_id
@@ -28647,9 +28731,16 @@ async def clean_workshop_v2_analysis_save(
         db, process, "inspecao", form, user_id
     ) if inspection_needed else []
 
+    validation_data = dict(validation_phase.data_json or {})
     validation_snapshot = {
+        **(validation_data.get("form_snapshot") or {}),
         "analysis_template_code": chosen_template_code,
         "analysis_decision": decision,
+        "analysis_orientation": orientation,
+        "analysis_repair_location": repair_location,
+        "analysis_external_workshop": external_workshop,
+        "confirmation_target": confirmation_target,
+        "confirmation_result": confirmation_result,
         "services_proposed": "\n".join(services),
         "problem_conclusion": conclusion,
         "analysis_decision_reason": decision_reason,
@@ -28665,10 +28756,9 @@ async def clean_workshop_v2_analysis_save(
         "quote_amount": str(form.get("quote_amount") or "").strip()[:80],
         "quote_reference": str(form.get("quote_reference") or "").strip()[:160],
         "validation_diagnostic_focus": str(form.get("diagnostic_orientation") or "").strip()[:2000],
-        "validation_closed": "Sim" if action == "advance" else "Por confirmar",
+        "validation_closed": "Sim" if action == "advance" else "Pendente de confirmação" if action == "request_confirmation" else "Por confirmar",
         "service_decision": ["Autorizar" for _ in services],
     }
-    validation_data = dict(validation_phase.data_json or {})
     validation_data["uploads"] = [
         *(validation_data.get("uploads") or []), *quote_uploads
     ]
@@ -28682,9 +28772,11 @@ async def clean_workshop_v2_analysis_save(
 
     diagnostic_data = dict(diagnostic_phase.data_json or {})
     diagnostic_data["form_snapshot"] = {
+        **(diagnostic_data.get("form_snapshot") or {}),
         "diagnostic_mode": diagnosis_mode,
         "diagnostic_closed": (
-            "Sim" if diagnosis_mode == "perform" and action == "advance"
+            "Não aplicável" if decision != "Reparar" and action == "advance"
+            else "Sim" if diagnosis_mode == "perform" and action == "advance"
             else "Dispensado" if diagnosis_mode == "waived" and action == "advance"
             else "Pendente" if diagnosis_mode == "late_authorized" and action == "advance"
             else "Por confirmar"
@@ -28696,8 +28788,11 @@ async def clean_workshop_v2_analysis_save(
     }
     diagnostic_phase.data_json = diagnostic_data
     if action == "advance":
-        diagnostic_phase.status = {"perform": "completed", "waived": "waived", "late_authorized": "pending_documents"}[diagnosis_mode]
-        if diagnosis_mode == "perform":
+        diagnostic_phase.status = (
+            {"perform": "completed", "waived": "waived", "late_authorized": "pending_documents"}[diagnosis_mode]
+            if decision == "Reparar" else "not_applicable"
+        )
+        if decision == "Reparar" and diagnosis_mode == "perform":
             diagnostic_phase.completed_at = now
             diagnostic_phase.completed_by_id = user_id
 
@@ -28706,6 +28801,7 @@ async def clean_workshop_v2_analysis_save(
         *(inspection_data.get("uploads") or []), *inspection_uploads
     ]
     inspection_data["form_snapshot"] = {
+        **(inspection_data.get("form_snapshot") or {}),
         "inspection_closed": "Sim" if inspection_needed and action == "advance" else "Não aplicável" if action == "advance" else "Por confirmar",
         "inspection_summary": inspection_summary,
         **{f"inspection_check_{code}": str(form.get(f"inspection_check_{code}") or "review")
@@ -28720,6 +28816,7 @@ async def clean_workshop_v2_analysis_save(
 
     audit_data = dict(audit_phase.data_json or {})
     audit_data["form_snapshot"] = {
+        **(audit_data.get("form_snapshot") or {}),
         "audit_closed": "Sim" if action == "advance" else "Por confirmar",
         "audit_decision_main": decision,
         "audit_decision_reason": decision_reason or conclusion,
@@ -28736,6 +28833,66 @@ async def clean_workshop_v2_analysis_save(
         audit_phase.completed_by_id = user_id
 
     metadata = dict(process.metadata_json or {})
+    if action == "request_confirmation":
+        if current_confirmation:
+            confirmation_history = list(metadata.get("analysis_confirmation_history") or [])
+            confirmation_history.append(current_confirmation)
+            metadata["analysis_confirmation_history"] = confirmation_history
+        task = Task(
+            title=f"Confirmar necessidade · {process.public_reference or process.plate_snapshot or process.id}"[:200],
+            description=orientation,
+            task_type="operational_task",
+            source="workshop_confirmation",
+            category="workshop",
+            status="new",
+            priority="normal",
+            plate=process.plate_snapshot,
+            entity_type="workshop_phased_process",
+            entity_id=str(process.id),
+            assigned_to_id=target_id if target_kind == "user" else None,
+            team_id=target_id if target_kind == "team" else None,
+            created_by_id=user_id,
+            assignment_mode="manual",
+            assignment_state="assigned_user" if target_kind == "user" else "assigned_team",
+            assigned_by_id=user_id,
+            assigned_at=now,
+        )
+        db.add(task)
+        db.flush()
+        db.add(TaskHistory(task_id=task.id, user_id=user_id, field_name="status", old_value=None, new_value="new"))
+        metadata["analysis_confirmation"] = {
+            "task_id": task.id,
+            "target_kind": target_kind,
+            "target_id": target_id,
+            "target_label": target.name,
+            "previous_operational_situation": metadata.get("operational_situation"),
+            "previous_operational_waiting_reason": metadata.get("operational_waiting_reason"),
+            "requested_at": now.isoformat(),
+            "requested_by_id": user_id,
+            "status": "pending",
+        }
+        metadata["operational_situation"] = "waiting"
+        metadata["operational_waiting_reason"] = "A aguardar confirmação de necessidade"
+        record_audit(db, action="workshop.v2.analysis.confirmation_requested",
+                     entity_type="workshop_phased_process", entity_id=process.id,
+                     user_id=user_id, after_json={"task_id": task.id, "target_kind": target_kind,
+                                                   "target_id": target_id})
+    elif action == "advance" and current_confirmation:
+        metadata["analysis_confirmation"] = {
+            **current_confirmation, "status": "resolved", "result": confirmation_result,
+            "resolved_at": now.isoformat(), "resolved_by_id": user_id,
+        }
+        if metadata.get("operational_waiting_reason") == "A aguardar confirmação de necessidade":
+            previous_situation = current_confirmation.get("previous_operational_situation")
+            previous_reason = current_confirmation.get("previous_operational_waiting_reason")
+            if previous_situation is None:
+                metadata.pop("operational_situation", None)
+            else:
+                metadata["operational_situation"] = previous_situation
+            if previous_reason is None:
+                metadata.pop("operational_waiting_reason", None)
+            else:
+                metadata["operational_waiting_reason"] = previous_reason
     active_snapshot = metadata.get("effective_template_snapshot")
     active_code = str(active_snapshot.get("template_code") or "") if isinstance(active_snapshot, dict) else original_template_code
     if chosen_template_code != active_code:
@@ -28750,11 +28907,19 @@ async def clean_workshop_v2_analysis_save(
     process.metadata_json = metadata
     if action == "advance":
         process.current_phase_code = "reparacao" if decision == "Reparar" else "fecho"
+        if repair_phase:
+            repair_data = dict(repair_phase.data_json or {})
+            repair_snapshot = dict(repair_data.get("form_snapshot") or {})
+            repair_snapshot["repair_external"] = "yes" if repair_location == "external" else "no"
+            if repair_location == "external":
+                repair_snapshot["repair_external_partner"] = external_workshop
+            repair_data["form_snapshot"] = repair_snapshot
+            repair_phase.data_json = repair_data
         next_phase = clean_workshop_v2_ensure_phase(db, process, process.current_phase_code)
         if next_phase.status == "not_started":
             next_phase.status = "pending_review"
             next_phase.started_at = now
-    record_audit(db, action="workshop.v2.analysis.advanced" if action == "advance" else "workshop.v2.analysis.saved",
+    record_audit(db, action="workshop.v2.analysis.advanced" if action == "advance" else "workshop.v2.analysis.confirmation_saved" if action == "request_confirmation" else "workshop.v2.analysis.saved",
                  entity_type="workshop_phased_process", entity_id=process.id, user_id=user_id,
                  before_json={"phase": "validacao", "template_code": active_code},
                  after_json={"phase": process.current_phase_code, "template_code": chosen_template_code,
@@ -28762,7 +28927,7 @@ async def clean_workshop_v2_analysis_save(
     db.commit()
     destination = (
         f"/v2-clean/workshop/{process.current_phase_code}?process_id={process.id}"
-        if action == "advance" else f"{base_url}&saved=1"
+        if action == "advance" else f"{base_url}&confirmation_requested=1" if action == "request_confirmation" else f"{base_url}&saved=1"
     )
     return RedirectResponse(destination, status_code=303)
 
@@ -28969,12 +29134,18 @@ async def clean_workshop_phase_save(request: Request, phase: str):
 
     action = str(form.get("action") or "save")
     allowed_actions = {"save", "save_substep", "advance_substep", "advance"}
+    if phase == "validacao":
+        allowed_actions.add("request_confirmation")
     if phase == "fecho":
         allowed_actions.update({"return_to_repair", "close_process", "close_with_pending"})
     if action not in allowed_actions:
         return redirect_with_context(
             f"{clean_workshop_phase_path(phase)}?process_id={process_id}&error=invalid_action"
         )
+    if action == "request_confirmation":
+        denied = require_any_web_permission(request, "workshop.write", "admin.manage")
+        if denied:
+            return denied
     current_substep = str(form.get("current_substep") or "").strip()
     known_substeps = clean_workshop_substeps(phase)
     if current_substep not in known_substeps:
@@ -28997,6 +29168,10 @@ async def clean_workshop_phase_save(request: Request, phase: str):
         ):
             return await clean_workshop_v2_analysis_save(
                 db, request, form, process, user_id, action
+            )
+        if action == "request_confirmation":
+            return redirect_with_context(
+                f"{clean_workshop_phase_path(phase)}?process_id={process.id}&error=invalid_action"
             )
         if (
             phase == "reparacao"
@@ -39521,6 +39696,22 @@ def task_detail(
                 ),
             ]
         detail_permissions = get_user_permission_codes(db, current_user)
+        can_view_supplier_audits = bool(detail_permissions.intersection({
+            "management_center.read", "management_center.write", "tasks.management.read",
+            "tasks.management.create", "tasks.management.update",
+        }))
+        can_create_supplier_audit = bool(detail_permissions.intersection({
+            "management_center.write", "tasks.management.create", "tasks.management.update",
+        }))
+        task_audits = list(db.execute(
+            select(SupplierAuditCase, ManagementProcess)
+            .join(ManagementProcess, ManagementProcess.id == SupplierAuditCase.process_id)
+            .join(ManagementProcessAssociation,
+                  ManagementProcessAssociation.process_id == ManagementProcess.id)
+            .where(ManagementProcessAssociation.entity_type == "task",
+                   ManagementProcessAssociation.entity_id == task.id,
+                   ManagementProcessAssociation.active.is_(True))
+        )) if is_clean_detail and can_view_supplier_audits else []
         resolver_ids = set(
             db.scalars(
                 select(UserRole.user_id)
@@ -39626,6 +39817,8 @@ def task_detail(
             ),
             {
                 "task": task,
+                "task_audits": task_audits,
+                "can_create_supplier_audit": can_create_supplier_audit,
                 "task_workspace": task_workspace,
                 "task_workspace_label": TASK_WORKSPACE_LABELS[task_workspace],
                 "task_manage_url": task_manage_url,

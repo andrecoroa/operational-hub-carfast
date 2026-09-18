@@ -74,6 +74,12 @@
           {% if can_respond_task %}<form method="post" action="/v2-clean/tasks/{{ task.id }}/comments" class="form-stack task-detail-quick-comment"><input type="hidden" name="return_url" value="{{ request.url.path }}?{{ request.url.query }}"><label>Comentário rápido<textarea name="comment" rows="3" required maxlength="4000"></textarea></label><button type="submit">Registar comentário</button></form>{% endif %}
           <div class="task-detail-activity">{% for item in comments[:8] %}<p><strong>{{ user_by_id.get(item.user_id).name if user_by_id.get(item.user_id) else 'Utilizador' }}</strong><time>{{ (item.created_at|lisbon_datetime).strftime('%d/%m/%Y %H:%M') }}</time><span>{{ item.comment }}</span></p>{% else %}<p>Sem comentários.</p>{% endfor %}</div>
         </article>
+        {% if task_audits or can_create_supplier_audit %}<article class="section" id="supplier-audit-links">
+          <div class="panel-heading compact-heading"><p class="eyebrow">Processos</p><h3>Auditoria a fornecedores</h3></div>
+          {% for audit, process in task_audits %}<p><a href="/v2-clean/processes/supplier-audits/{{ audit.id }}">{{ process.internal_reference }} · {{ process.title }}</a> — {{ process.status }}</p>{% else %}<p>Esta tarefa ainda não está associada a uma auditoria.</p>{% endfor %}
+          {% if can_create_supplier_audit %}<a class="button-link secondary-link" href="/v2-clean/processes/supplier-audits?task_id={{ task.id }}">Criar ou associar auditoria</a>{% endif %}
+          <p class="muted">A associação não fecha a tarefa. Regista a razão num comentário antes de a fechar.</p>
+        </article>{% endif %}
         {% if history %}<details class="section task-detail-history"><summary>Histórico ({{ history|length }})</summary>{% for item in history[:12] %}<p><strong>{{ user_by_id.get(item.user_id).name if user_by_id.get(item.user_id) else 'Sistema' }}</strong> · {{ item.field_name }} · {{ item.new_value or '-' }} <time>{{ (item.changed_at|lisbon_datetime).strftime('%d/%m/%Y %H:%M') }}</time></p>{% endfor %}</details>{% endif %}
       </div>
       <aside class="workshop-side-column">

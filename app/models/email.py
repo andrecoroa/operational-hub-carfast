@@ -236,6 +236,9 @@ class EmailInboxRule(TimestampMixin, Base):
     channel_id: Mapped[int] = mapped_column(
         ForeignKey("email_channels.id", ondelete="CASCADE"), index=True
     )
+    recipient_alias_id: Mapped[int | None] = mapped_column(
+        ForeignKey("email_channel_aliases.id", ondelete="RESTRICT"), index=True
+    )
     name: Mapped[str] = mapped_column(String(160))
     subject_match: Mapped[str] = mapped_column(String(500))
     match_type: Mapped[str] = mapped_column(String(20), default="contains", index=True)

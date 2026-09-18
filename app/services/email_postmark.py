@@ -674,7 +674,14 @@ def reconcile_inbound_attachments(
     provider: str = "postmark",
 ) -> dict[str, int]:
     """Idempotently materialize every source attachment or a visible blocked record."""
-    result = {"payload": 0, "stored": 0, "blocked": 0, "existing": 0}
+    result = {
+        "payload": 0,
+        "stored": 0,
+        "blocked": 0,
+        "existing": 0,
+        "existing_stored": 0,
+        "existing_blocked": 0,
+    }
     for item in normalize_inbound_attachments(payload, provider):
         result["payload"] += 1
         existing = db.scalar(
@@ -685,6 +692,13 @@ def reconcile_inbound_attachments(
         )
         if existing:
             result["existing"] += 1
+            result[
+                "existing_stored"
+                if existing.ingest_state == "stored"
+                and existing.storage_path
+                and Path(existing.storage_path).is_file()
+                else "existing_blocked"
+            ] += 1
             continue
         safe_name = re.sub(r"[^A-Za-z0-9._-]", "_", Path(item["name"]).name)
         estimated_size = item["declared_size"] or _decoded_base64_size(item["content"])
@@ -703,10 +717,19 @@ def reconcile_inbound_attachments(
             legacy.webhook_event_id = event.id
             legacy.source_provider = provider
             legacy.source_attachment_id = item["source_id"]
-            legacy.ingest_state = "stored" if legacy.storage_path else "blocked"
+            legacy.ingest_state = (
+                "stored"
+                if legacy.storage_path and Path(legacy.storage_path).is_file()
+                else "blocked"
+            )
             if legacy.ingest_state == "blocked" and not legacy.ingest_reason:
                 legacy.ingest_reason = "attachment_file_unavailable"
             result["existing"] += 1
+            result[
+                "existing_stored"
+                if legacy.ingest_state == "stored"
+                else "existing_blocked"
+            ] += 1
             db.flush()
             continue
         attachment = EmailAttachment(
@@ -751,13 +774,68 @@ def reconcile_inbound_attachments(
     return result
 
 
-def inbox_rule_matches(rule: EmailInboxRule, *, subject: str, sender: str = "") -> bool:
+def _attachments_ready_for_close(result: dict[str, int]) -> bool:
+    return (
+        result["payload"] > 0
+        and result["stored"] + result["existing_stored"] == result["payload"]
+    )
+
+
+def resolve_rule_recipient_alias_id(db: Session, payload: dict, channel_id: int) -> int | None:
+    """Use this delivery's unambiguous recipient evidence, never thread history."""
+    aliases = db.scalars(
+        select(EmailChannelAlias).where(EmailChannelAlias.active.is_(True))
+    ).all()
+    by_address: dict[str, set[int]] = {}
+    for alias in aliases:
+        for address in (alias.address, alias.inbound_forward_address):
+            if address:
+                by_address.setdefault(_address(address), set()).add(alias.id)
+    by_hash = {
+        alias.inbound_hash.strip().casefold(): alias
+        for alias in aliases
+        if alias.inbound_hash and alias.inbound_hash.strip()
+    }
+    original = _address(payload.get("OriginalRecipient"))
+    if original and len(by_address.get(original, set())) != 1:
+        return None
+    candidates: set[int] = set()
+    if original:
+        candidates.update(by_address[original])
+    for value in (payload.get("To"),):
+        for part in re.split(r"[,;]", str(value or "")):
+            candidates.update(by_address.get(_address(part), set()))
+    for field in ("ToFull", "CcFull"):
+        for item in payload.get(field) or []:
+            if isinstance(item, dict):
+                candidates.update(by_address.get(_address(item.get("Email")), set()))
+    mailbox_hash = str(payload.get("MailboxHash") or "").strip().casefold()
+    if mailbox_hash and mailbox_hash in by_hash:
+        candidates.add(by_hash[mailbox_hash].id)
+    if len(candidates) != 1:
+        return None
+    alias = next(alias for alias in aliases if alias.id in candidates)
+    return alias.id if alias.channel_id == channel_id else None
+
+
+def inbox_rule_matches(
+    rule: EmailInboxRule,
+    *,
+    subject: str,
+    sender: str = "",
+    recipient_alias_id: int | None = None,
+) -> bool:
     """Evaluate an inbox rule without side effects (also used by admin previews)."""
+    if rule.recipient_alias_id and rule.recipient_alias_id != recipient_alias_id:
+        return False
     normalized = subject.strip().casefold()
     expected = rule.subject_match.strip().casefold()
-    subject_matches = bool(expected) and (
-        (rule.match_type == "exact" and normalized == expected)
-        or (rule.match_type == "contains" and expected in normalized)
+    subject_matches = rule.match_type == "any" or (
+        bool(expected)
+        and (
+            (rule.match_type == "exact" and normalized == expected)
+            or (rule.match_type == "contains" and expected in normalized)
+        )
     )
     sender_expected = (rule.sender_match or "").strip().casefold()
     if not sender_expected:
@@ -779,9 +857,10 @@ def inbox_rule_matches(rule: EmailInboxRule, *, subject: str, sender: str = "") 
 
 
 def deterministic_rule_close_allowed(rule: EmailInboxRule) -> bool:
-    """Close only exact subjects or subject+verified sender conjunctions."""
+    """Require an explicit deterministic rule before automatic closure."""
     return bool(rule.deterministic) and (
         rule.match_type == "exact"
+        or (rule.match_type == "any" and not (rule.sender_match or "").strip())
         or (
             bool((rule.sender_match or "").strip())
             and rule.condition_operator == "and"
@@ -791,7 +870,11 @@ def deterministic_rule_close_allowed(rule: EmailInboxRule) -> bool:
 
 
 def _inbox_rule(
-    db: Session, channel_id: int, subject: str, sender: str = ""
+    db: Session,
+    channel_id: int,
+    subject: str,
+    sender: str = "",
+    recipient_alias_id: int | None = None,
 ) -> EmailInboxRule | None:
     rules = db.scalars(
         select(EmailInboxRule)
@@ -802,7 +885,12 @@ def _inbox_rule(
         .order_by(EmailInboxRule.sort_order, EmailInboxRule.id)
     ).all()
     for rule in rules:
-        if inbox_rule_matches(rule, subject=subject, sender=sender):
+        if inbox_rule_matches(
+            rule,
+            subject=subject,
+            sender=sender,
+            recipient_alias_id=recipient_alias_id,
+        ):
             return rule
     return None
 
@@ -965,7 +1053,8 @@ def ingest_inbound(db: Session, payload: dict) -> tuple[EmailThread, bool]:
     external_id = str(payload.get("MessageID") or payload.get("MessageId") or key)
     subject = str(payload.get("Subject") or "(sem assunto)")[:500]
     sender = _address(payload.get("From"))
-    rule = _inbox_rule(db, channel.id, subject, sender)
+    recipient_alias_id = resolve_rule_recipient_alias_id(db, payload, channel.id)
+    rule = _inbox_rule(db, channel.id, subject, sender, recipient_alias_id)
     headers = _headers(payload)
     conversation_id = str(payload.get("OriginalMessageID") or "").strip() or None
     thread = None
@@ -1093,7 +1182,7 @@ def ingest_inbound(db: Session, payload: dict) -> tuple[EmailThread, bool]:
             alias=channel_alias,
         )
     )
-    reconcile_inbound_attachments(
+    attachment_result = reconcile_inbound_attachments(
         db,
         thread=thread,
         message=message,
@@ -1166,6 +1255,12 @@ def ingest_inbound(db: Session, payload: dict) -> tuple[EmailThread, bool]:
         if rule.status_action != "none":
             if rule.status_action in {"resolved", "archived"} and not deterministic_rule_close_allowed(rule):
                 applied_actions.append(f"status:{rule.status_action}:skipped_non_deterministic")
+            elif (
+                rule.match_type == "any"
+                and rule.status_action in {"resolved", "archived"}
+                and not _attachments_ready_for_close(attachment_result)
+            ):
+                applied_actions.append(f"status:{rule.status_action}:skipped_attachments_not_stored")
             else:
                 thread.status = rule.status_action
                 if rule.status_action == "resolved":
@@ -1179,6 +1274,7 @@ def ingest_inbound(db: Session, payload: dict) -> tuple[EmailThread, bool]:
                 details_json={
                     "rule_id": rule.id,
                     "rule_name": rule.name,
+                    "recipient_alias_id": recipient_alias_id,
                     "conditions": {
                         "subject_match": rule.subject_match,
                         "match_type": rule.match_type,

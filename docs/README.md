@@ -19,6 +19,7 @@ Cada manual separa **Disponível agora** de **Planeado/em implementação**. Os 
 - [Processo completo da Oficina](PROCESSO_OFICINA_COMPLETO.md)
 - [Formação da Oficina](FORMACAO_PROCESSO_OFICINA.md)
 - [Integração Email/Postmark](email-postmark/README.md)
+- [Proposta de extração documental financeira](email/FINANCE_DOCUMENT_EXTRACTION_DESIGN.md) — desenho, ainda não implementado
 - [Deploy v2/production](DEPLOY_V2_PRODUCTION.md)
 
 ## Catálogo da Evolução

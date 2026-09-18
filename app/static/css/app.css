@@ -30493,10 +30493,51 @@ body:has(.email-preview-dialog[open]) { overflow: hidden; }
   margin-bottom: 12px;
 }
 .workshop-v2-choice-list label {
-  display: flex;
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   margin: 0;
+  padding: 10px 12px;
+  min-width: 0;
+  border: 1px solid #d7e1ef;
+  border-radius: 8px;
+  background: #fff;
+  cursor: pointer;
+}
+.workshop-v2-choice-list label:has(input:checked) {
+  border-color: #245bd5;
+  background: #edf4ff;
+}
+.workshop-v2-choice-list input[type="radio"],
+.workshop-v2-authorization-choice input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  min-width: 18px;
+  margin: 0;
+  padding: 0;
+  accent-color: #245bd5;
+}
+.workshop-v2-choice-list label span,
+.workshop-v2-authorization-choice span {
+  min-width: 0;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+.workshop-v2-analysis-form .workshop-v2-authorization-choice {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  align-items: start;
+  gap: 10px;
+  margin: 0;
+  padding: 11px 12px;
+  border: 1px solid #c8d9f3;
+  border-radius: 8px;
+  background: #f6f9ff;
+  cursor: pointer;
+}
+.workshop-v2-authorization-choice input[type="checkbox"] {
+  margin-top: 1px;
 }
 .workshop-v2-disclosure summary {
   cursor: pointer;

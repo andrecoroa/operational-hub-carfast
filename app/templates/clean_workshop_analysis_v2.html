@@ -46,13 +46,13 @@
             </section>
             <section id="workshop-v2-diagnostic" data-analysis-decision="Reparar"><div class="table-heading flat-heading"><div><p class="eyebrow">03 · Diagnóstico</p><h3>É necessário diagnóstico?</h3></div></div>
               <div class="workshop-v2-choice-list" role="radiogroup" aria-label="Tratamento do diagnóstico">
-                <label><input type="radio" name="diagnostic_mode" value="perform"{% if diagnostic_mode == 'perform' %} checked{% endif %}> Pedir diagnóstico</label>
-                <label><input type="radio" name="diagnostic_mode" value="waived"{% if diagnostic_mode == 'waived' %} checked{% endif %}> Dispensar com motivo</label>
-                <label><input type="radio" name="diagnostic_mode" value="late_authorized"{% if diagnostic_mode == 'late_authorized' %} checked{% endif %}> Autorizado a anexar a posteriori</label>
+                <label><input type="radio" name="diagnostic_mode" value="perform"{% if diagnostic_mode == 'perform' %} checked{% endif %}><span>Pedir diagnóstico</span></label>
+                <label><input type="radio" name="diagnostic_mode" value="waived"{% if diagnostic_mode == 'waived' %} checked{% endif %}><span>Dispensar com motivo</span></label>
+                <label><input type="radio" name="diagnostic_mode" value="late_authorized"{% if diagnostic_mode == 'late_authorized' %} checked{% endif %}><span>Autorizado a anexar a posteriori</span></label>
               </div>
               <div data-diagnostic-mode="perform"><label>Orientação para o técnico<textarea name="diagnostic_orientation" rows="2" placeholder="O que deve ser diagnosticado?">{{ plan.get('validation_diagnostic_focus', '') }}</textarea></label><p>As conclusões e os PDFs ficam na etapa seguinte, depois de realizado o diagnóstico.</p></div>
               <div data-diagnostic-mode="waived"><label>Motivo da dispensa<textarea name="diagnostic_waiver_reason" rows="2">{{ plan.get('diagnostic_waiver_reason', '') }}</textarea></label></div>
-              <div data-diagnostic-mode="late_authorized"><label><input type="checkbox" name="diagnostic_late_authorization_confirmed" value="yes"{% if diagnostic_mode == 'late_authorized' and readonly_plan %} checked{% endif %}> Autorizo, como utilizador autenticado, que os documentos de diagnóstico sejam anexados depois. A pendência mantém-se aberta.</label></div>
+              <div data-diagnostic-mode="late_authorized"><label class="workshop-v2-authorization-choice"><input type="checkbox" name="diagnostic_late_authorization_confirmed" value="yes"{% if diagnostic_mode == 'late_authorized' and readonly_plan %} checked{% endif %}><span>Autorizo, como utilizador autenticado, que os documentos de diagnóstico sejam anexados depois. A pendência mantém-se aberta.</span></label></div>
             </section>
           </fieldset>
         </form>

@@ -9,11 +9,13 @@ from app.models.email import (
     EmailChannelAlias,
     EmailChannelRole,
     EmailChannelTransport,
+    EmailExecutorEligibility,
     EmailMessage,
     EmailMessageDelivery,
     EmailTemplate,
     EmailThread,
 )
+from app.models.organization import Team
 from app.models.work_hierarchy import (
     WorkCategory,
     WorkDepartment,
@@ -27,6 +29,7 @@ from app.services.email_transport import (
     resolve_outbound_identity,
     send_channel_message,
 )
+from app.web import clean_admin as clean_admin_web
 from app.web import email as email_web
 from app.web.email import (
     _channel_access,
@@ -505,6 +508,108 @@ def test_admin_creates_edits_inactivates_and_adds_alias(
     db_session.refresh(alias)
     assert alias.address == "quality-intake-v2@example.test"
     assert alias.label == "Alias confirmado"
+
+
+def test_channel_team_assignment_ignores_stale_user_selection(
+    authenticated_client, db_session
+):
+    channel = _identity_channel(db_session, "finance-assignment")
+    stale_user = db_session.scalar(
+        select(User).where(User.email == "admin.tests@carfast.local")
+    )
+    team = Team(code="finance-assignment", name="Financeira", active=True)
+    db_session.add(team)
+    db_session.flush()
+    db_session.add(
+        EmailExecutorEligibility(
+            channel_id=channel.id,
+            team_id=team.id,
+            active=True,
+        )
+    )
+    db_session.commit()
+
+    for mode in ("auto_team", "team_claim"):
+        response = authenticated_client.post(
+            f"/v2-clean/admin/work-classification/email-channels/{channel.id}",
+            data={
+                "name": "Finance assignment",
+                "active": "on",
+                "auto_task_mode": "none",
+                "assignment_mode": mode,
+                "default_assignee_id": stale_user.id,
+                "default_team_id": team.id,
+                "reply_policy": "mailbox",
+                "warning_minutes": "60",
+            },
+            follow_redirects=False,
+        )
+
+        assert response.status_code == 303
+        assert "saved" in response.headers["location"]
+        db_session.refresh(channel)
+        assert channel.assignment_mode == mode
+        assert channel.default_team_id == team.id
+        assert channel.default_assignee_id is None
+
+
+def test_channel_editor_preserves_existing_supervisor_outside_assignment_scope(
+    authenticated_client, db_session, monkeypatch
+):
+    supervisor = User(
+        name="Mário Costa",
+        email="mario.supervisor@example.test",
+        password_hash="not-used",
+        active=True,
+    )
+    channel = _identity_channel(db_session, "supervisor-preservation")
+    db_session.add(supervisor)
+    db_session.flush()
+    channel.supervisor_user_id = supervisor.id
+    db_session.commit()
+
+    original_allowed = clean_admin_web.assignment_target_user_allowed
+
+    def target_allowed(db, *, actor_user_id, target_user_id):
+        if target_user_id == supervisor.id:
+            return False
+        return original_allowed(
+            db, actor_user_id=actor_user_id, target_user_id=target_user_id
+        )
+
+    monkeypatch.setattr(
+        clean_admin_web, "assignment_target_user_allowed", target_allowed
+    )
+
+    page = authenticated_client.get("/v2-clean/admin/work-classification?view=channels")
+    assert page.status_code == 200
+    editor = page.text.split(f'id="work-edit-channel-{channel.id}"', 1)[1].split(
+        "</dialog>", 1
+    )[0]
+    assert (
+        f'<option value="{supervisor.id}" selected>Mário Costa · atual</option>'
+        in editor
+    )
+
+    response = authenticated_client.post(
+        f"/v2-clean/admin/work-classification/email-channels/{channel.id}",
+        data={
+            "name": "Supervisor preserved",
+            "active": "on",
+            "auto_task_mode": "none",
+            "assignment_mode": "manual",
+            "supervisor_user_id": supervisor.id,
+            "reply_policy": "mailbox",
+            "warning_minutes": "60",
+        },
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert "saved" in response.headers["location"]
+    db_session.refresh(channel)
+    assert channel.name == "Supervisor preserved"
+    assert channel.supervisor_user_id == supervisor.id
 
 
 def test_channel_permission_isolation_and_sender_permissions(db_session):

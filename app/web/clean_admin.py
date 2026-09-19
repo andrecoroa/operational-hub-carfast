@@ -2212,6 +2212,7 @@ def clean_admin_work_classification(request: Request):
             reviewed_email_rule_presets=REVIEWED_EMAIL_RULE_PRESETS,
             email_templates=email_templates,
             active_users=users,
+            active_user_ids={item.id for item in users},
             active_teams=teams,
             users_by_id={item.id: item for item in all_users},
             teams_by_id={item.id: item for item in all_teams},
@@ -3432,14 +3433,23 @@ def clean_admin_update_email_channel(
         and default_due_days < 0
         or default_wait_days is not None
         and default_wait_days < 0
-        or default_assignee_id is not None
-        and default_team_id is not None
     ):
         return _redirect("/v2-clean/admin/work-classification", "error", "invalid_mode")
     with SessionLocal() as db:
         channel = db.get(EmailChannel, channel_id)
         if not channel:
             return _redirect("/v2-clean/admin/work-classification", "error", "missing")
+        # The form renders both executor selectors. When the assignment mode changes,
+        # browsers can therefore submit the previously saved value from the selector
+        # that is no longer applicable. Normalize that stale value before validating
+        # eligibility so changing between user, team and manual modes remains safe.
+        if assignment_mode == "auto_user":
+            default_team_id = None
+        elif assignment_mode in {"auto_team", "team_claim"}:
+            default_assignee_id = None
+        else:
+            default_assignee_id = None
+            default_team_id = None
         hierarchy_ids = (
             default_queue_id,
             default_department_id,
@@ -3459,8 +3469,11 @@ def clean_admin_update_email_channel(
         if supervisor_user_id and (
             not supervisor
             or not supervisor.active
-            or not assignment_target_user_allowed(
-                db, actor_user_id=access[0], target_user_id=supervisor_user_id
+            or (
+                supervisor_user_id != channel.supervisor_user_id
+                and not assignment_target_user_allowed(
+                    db, actor_user_id=access[0], target_user_id=supervisor_user_id
+                )
             )
         ):
             return _redirect(
@@ -3472,10 +3485,13 @@ def clean_admin_update_email_channel(
         if functional_owner_user_id and (
             not functional_owner
             or not functional_owner.active
-            or not assignment_target_user_allowed(
-                db,
-                actor_user_id=access[0],
-                target_user_id=functional_owner_user_id,
+            or (
+                functional_owner_user_id != channel.functional_owner_user_id
+                and not assignment_target_user_allowed(
+                    db,
+                    actor_user_id=access[0],
+                    target_user_id=functional_owner_user_id,
+                )
             )
         ):
             return _redirect(

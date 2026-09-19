@@ -190,10 +190,21 @@
         button.addEventListener("mousedown", (event) => event.preventDefault());
         button.addEventListener("click", () => {
         const command = button.dataset.emailFormat;
-        const value = command === "createLink" ? window.prompt("Endereço da ligação (https://)") : null;
+        const linkField = form.querySelector("[data-email-link-url]");
+        const value = command === "createLink" ? linkField?.value.trim() : null;
         editor.focus();
         restoreSelection();
-        if (command !== "createLink" || value) document.execCommand(command, false, value);
+        if (command === "createLink") {
+          if (!/^https?:\/\//i.test(value || "")) {
+            linkField?.setCustomValidity("Introduza um endereço completo iniciado por http:// ou https://.");
+            linkField?.reportValidity();
+            return;
+          }
+          linkField.setCustomValidity("");
+          document.execCommand(command, false, value);
+        } else {
+          document.execCommand(command, false, value);
+        }
         rememberSelection();
         sync();
         });
@@ -332,6 +343,18 @@
       setValue('[name="cc"]', addresses(payload.cc));
       setValue('[name="bcc"]', addresses(payload.bcc));
       setValue('[name="subject"]', payload.subject || "");
+      const existing = form.querySelector("[data-email-existing-attachments]");
+      const existingList = form.querySelector("[data-email-existing-attachment-list]");
+      if (existing && existingList) {
+        const rows = Array.isArray(payload.attachments) ? payload.attachments : [];
+        existing.hidden = rows.length === 0;
+        existingList.replaceChildren(...rows.map((attachment) => {
+          const row = document.createElement("p");
+          const size = Math.max(0, Number(attachment.size || 0));
+          row.textContent = `${attachment.name} · ${(size / 1024).toFixed(1)} KB`;
+          return row;
+        }));
+      }
       const editor = form.querySelector("[data-email-html-editor]");
       if (!editor) return;
       if (payload.html) editor.innerHTML = payload.html;

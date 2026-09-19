@@ -6,6 +6,7 @@ import json
 from app.models.documents import Document, DocumentEvent, VehicleDocumentRecord
 from app.models.vehicles import Vehicle
 from app.services.pending_document_importer import (
+    _vehicle_maps,
     create_pending_documents_from_preview,
     import_pending_documents,
     preview_pending_documents,
@@ -81,6 +82,72 @@ def test_pending_invoice_import_associates_by_vin_plate_and_unit(db_session, tmp
     ]
     assert records[0].metadata_json["association_method"] == "vin"
     assert records[3].metadata_json["expected_total"] == "400.50"
+
+
+def test_vehicle_maps_and_preview_ignore_empty_normalized_identifiers(
+    db_session, tmp_path
+):
+    vehicle = Vehicle(
+        plate="AR-13-LB",
+        vin="778715/",
+        rentway_unit_nr="35",
+    )
+    db_session.add(vehicle)
+    db_session.flush()
+
+    by_vin, by_plate, by_unit = _vehicle_maps(db_session)
+    assert "" not in by_vin
+    assert "" not in by_plate
+    assert "" not in by_unit
+    assert by_plate["AR13LB"] is vehicle
+    assert by_unit["35"] is vehicle
+
+    path = tmp_path / "sem-identificadores.xlsx"
+    _workbook(
+        path,
+        [
+            ["FAC 101", "01/01/2025", "Fornecedor", "500000001", "", "", "", "10,00"],
+            ["FAC 102", "02/01/2025", "Fornecedor", "500000001", "", "", "", "20,00"],
+        ],
+    )
+
+    preview = preview_pending_documents(
+        db_session,
+        path=path,
+        original_name=path.name,
+    )
+
+    assert preview["summary"]["associated"] == 0
+    assert preview["summary"]["unmatched"] == 2
+    assert [row["vehicle_id"] for row in preview["rows"]] == [None, None]
+
+
+def test_preview_still_associates_valid_plate_and_unit(db_session, tmp_path):
+    plate_vehicle = Vehicle(plate="AA-11-AA", vin=None, rentway_unit_nr=None)
+    unit_vehicle = Vehicle(plate="BB-22-BB", vin=None, rentway_unit_nr="202")
+    db_session.add_all([plate_vehicle, unit_vehicle])
+    db_session.flush()
+    path = tmp_path / "identificadores-validos.xlsx"
+    _workbook(
+        path,
+        [
+            ["FAC 103", "03/01/2025", "Fornecedor", "500000001", "", "AA11AA", "", "30,00"],
+            ["FAC 104", "04/01/2025", "Fornecedor", "500000001", "", "", "202", "40,00"],
+        ],
+    )
+
+    preview = preview_pending_documents(
+        db_session,
+        path=path,
+        original_name=path.name,
+    )
+
+    assert preview["summary"]["associated"] == 2
+    assert preview["summary"]["unmatched"] == 0
+    assert [row["vehicle_id"] for row in preview["rows"]] == [
+        plate_vehicle.id,
+        unit_vehicle.id,
+    ]
 
 
 def test_pending_invoice_import_is_idempotent(db_session, tmp_path):

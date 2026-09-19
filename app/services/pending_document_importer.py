@@ -144,12 +144,15 @@ def _vehicle_maps(db: Session) -> tuple[dict[str, Vehicle], dict[str, Vehicle], 
     by_plate: dict[str, Vehicle] = {}
     by_unit: dict[str, Vehicle] = {}
     for vehicle in db.scalars(select(Vehicle)).all():
-        if vehicle.vin:
-            by_vin[_vin(vehicle.vin)] = vehicle
-        if vehicle.plate:
-            by_plate[_plate_key(vehicle.plate)] = vehicle
-        if vehicle.rentway_unit_nr:
-            by_unit[_key(vehicle.rentway_unit_nr)] = vehicle
+        vin = _vin(vehicle.vin)
+        plate = _plate_key(vehicle.plate)
+        unit = _key(vehicle.rentway_unit_nr)
+        if vin:
+            by_vin[vin] = vehicle
+        if plate:
+            by_plate[plate] = vehicle
+        if unit:
+            by_unit[unit] = vehicle
     return by_vin, by_plate, by_unit
 
 
@@ -482,10 +485,12 @@ def _parsed_pending_rows(
         unit = _text(
             _first(row, ("Unit", "Unit nr", "Unit number", "Nº viatura", "Numero viatura"))
         )
+        plate_key = _plate_key(plate)
+        unit_key = _key(unit)
         vehicle = (
-            by_vin.get(vin)
-            or by_plate.get(_plate_key(plate))
-            or by_unit.get(_key(unit))
+            (by_vin.get(vin) if vin else None)
+            or (by_plate.get(plate_key) if plate_key else None)
+            or (by_unit.get(unit_key) if unit_key else None)
         )
         document_date = _date(_first(row, ("Data", "Data fatura", "Data factura", "Invoice date")))
         total = _decimal(_first(row, ("Total", "Valor", "Total com IVA", "Total c/ IVA")))
@@ -494,9 +499,9 @@ def _parsed_pending_rows(
             "vin"
             if vehicle and vin and by_vin.get(vin) is vehicle
             else "plate"
-            if vehicle and plate and by_plate.get(_plate_key(plate)) is vehicle
+            if vehicle and plate_key and by_plate.get(plate_key) is vehicle
             else "unit"
-            if vehicle
+            if vehicle and unit_key and by_unit.get(unit_key) is vehicle
             else None
         )
         parsed_rows.append(

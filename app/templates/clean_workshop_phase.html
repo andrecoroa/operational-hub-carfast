@@ -710,7 +710,7 @@
             {% if material_needs %}
               <div class="clean-stock-needs-list">
                 {% for need in material_needs %}
-                  <article><div><b>{{ need.material_description }}</b><span>{{ need.requested_quantity or "-" }} · {{ need.material_code or "Sem referência" }}{% if need.stock_request_reference %} · Pedido {{ need.stock_request_reference }}{% endif %}</span></div><em>{{ {"requested":"Pendente no Stock","usage_reported":"Utilização comunicada","delivered":"Entregue","applied":"Aplicado"}.get(need.stock_status, need.stock_status) }}</em></article>
+                  <article><div><b>{{ need.material_description }}</b><span>{{ need.requested_quantity or "-" }} · {{ need.material_code or "Sem referência" }}{% if need.stock_request_reference %} · Pedido {{ need.stock_request_reference }}{% endif %}</span></div><em>{{ {"requested":"Pendente no Stock","usage_reported":"Utilização comunicada","delivered":"Entregue","applied":"Aplicado","transferred":"Transferido para o processo de substituição"}.get(need.stock_status, need.stock_status) }}</em></article>
                 {% endfor %}
               </div>
             {% else %}
@@ -831,7 +831,7 @@
                       {% for need in material_needs %}
                         <article>
                           <div><b>{{ need.material_description }}</b><span>{{ need.requested_quantity or "-" }} · origem {{ need.origin }} · {{ need.operation_label }}</span></div>
-                          <em>{{ {"requested":"Pendente no Stock","usage_reported":"Utilização comunicada","delivered":"Entregue","applied":"Aplicado"}.get(need.stock_status, need.stock_status) }}</em>
+                          <em>{{ {"requested":"Pendente no Stock","usage_reported":"Utilização comunicada","delivered":"Entregue","applied":"Aplicado","transferred":"Transferido para o processo de substituição"}.get(need.stock_status, need.stock_status) }}</em>
                           {% if need.stock_status == "delivered" %}
                             <button type="submit" formmethod="post" formaction="/v2-clean/workshop/material-needs/{{ need.id }}/confirm-applied" formnovalidate>Confirmar aplicação</button>
                           {% endif %}

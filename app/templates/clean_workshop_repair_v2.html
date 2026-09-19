@@ -4,7 +4,7 @@
   {% set active_menu = "workshop" %}{% include "_sidebar.html" %}
   {% set proposal = v2_repair_proposal or {} %}
   {% set authorization = v2_repair_authorization or {} %}
-  {% set stock_labels = {'requested':'Pendente no Stock','usage_reported':'Utilização comunicada','delivered':'Entregue','applied':'Aplicado','cancelled':'Cancelado'} %}
+  {% set stock_labels = {'requested':'Pendente no Stock','usage_reported':'Utilização comunicada','delivered':'Entregue','applied':'Aplicado','cancelled':'Cancelado','transferred':'Transferido para o processo de substituição'} %}
   {% set authorization_labels = {'requested':'Pedida','approved':'Aprovada','rejected':'Rejeitada','stale':'Sem efeito após alteração'} %}
   {% set readonly_repair = workshop_process.current_phase_code != 'reparacao' or workshop_admin.is_closed or workshop_admin.is_cancelled %}
   <main class="content clean-content">

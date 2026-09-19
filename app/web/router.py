@@ -86,6 +86,7 @@ from app.models.stock import (
     StockArticleVehicleCompatibility,
     StockCategory,
     StockLocation,
+    StockMovement,
 )
 from app.models.tasks import (
     QuickRecord,
@@ -11345,6 +11346,18 @@ def clean_workshop_admin_context(
     cancellation = (
         metadata.get("cancellation") if isinstance(metadata.get("cancellation"), dict) else {}
     )
+    replacement = (
+        metadata.get("replacement") if isinstance(metadata.get("replacement"), dict) else {}
+    )
+    replaces = metadata.get("replaces") if isinstance(metadata.get("replaces"), dict) else {}
+    replacement_process = None
+    replaced_process = None
+    replacement_id = parse_int_from_text(replacement.get("process_id"))
+    replaced_id = parse_int_from_text(replaces.get("process_id"))
+    if replacement_id:
+        replacement_process = db.get(WorkshopPhasedProcess, replacement_id)
+    if replaced_id:
+        replaced_process = db.get(WorkshopPhasedProcess, replaced_id)
     operational_situation = str(metadata.get("operational_situation") or "in_progress")
     if process and process.status in {"closed", "cancelled"}:
         operational_situation = process.status
@@ -11374,6 +11387,15 @@ def clean_workshop_admin_context(
         "operational_situation": operational_situation,
         "waiting_reason": str(metadata.get("operational_waiting_reason") or "").strip(),
         "cancellation": cancellation,
+        "replacement": replacement,
+        "replacement_active": bool(
+            replacement_process and replacement_process.status != "cancelled"
+        ),
+        "replacement_href": (
+            clean_workshop_process_url(replacement_process) if replacement_process else ""
+        ),
+        "replaces": replaces,
+        "replaces_href": clean_workshop_process_url(replaced_process) if replaced_process else "",
         "open_task_count": int(open_task_count),
         "creator_name": (creator.name or creator.email) if creator else "-",
         "opened_at": (
@@ -11450,6 +11472,7 @@ def clean_workshop_create_process(
     external_repair: bool = False,
     template_code: str | None = None,
     flow_version: int = 1,
+    commit: bool = True,
 ) -> WorkshopPhasedProcess:
     user_id = get_web_user_id(request)
     vehicle = clean_workshop_find_vehicle(db, vehicle_id=vehicle_id, plate=plate)
@@ -11527,8 +11550,11 @@ def clean_workshop_create_process(
         process,
         reason_codes=normalize_workshop_reasons(entry_reasons),
     )
-    db.commit()
-    db.refresh(process)
+    if commit:
+        db.commit()
+        db.refresh(process)
+    else:
+        db.flush()
     return process
 
 
@@ -27789,6 +27815,381 @@ def clean_workshop_print_report(request: Request, process_id: int, report_type: 
         )
 
 
+def clean_workshop_cancel_in_session(
+    db: Session,
+    *,
+    process: WorkshopPhasedProcess,
+    user: User | None,
+    user_id: int,
+    reason: str,
+    observation: str,
+    task_action: str,
+    now: datetime,
+    replacement_process: WorkshopPhasedProcess | None = None,
+) -> None:
+    prior_status = process.status
+    metadata = dict(process.metadata_json or {})
+    status_history = list(metadata.get("status_history") or [])
+    cancellation = {
+        "active": True,
+        "reason": reason,
+        "observation": observation,
+        "cancelled_at": now.isoformat(),
+        "cancelled_by_id": user_id,
+        "cancelled_by": (user.name or user.email) if user else f"Utilizador #{user_id}",
+        "prior_status": prior_status,
+        "prior_phase": process.current_phase_code or "entrada",
+        "task_action": task_action,
+    }
+    if replacement_process:
+        cancellation.update(
+            {
+                "replacement_process_id": replacement_process.id,
+                "replacement_reference": clean_workshop_process_reference(replacement_process),
+            }
+        )
+    status_history.append({"from": prior_status, "to": "cancelled", **cancellation})
+    metadata["cancellation"] = cancellation
+    metadata["status_history"] = status_history
+    process.metadata_json = metadata
+    process.status = "cancelled"
+    process.closed_at = now
+
+    open_tasks = db.scalars(
+        select(Task).where(
+            Task.entity_type == "workshop_phased_process",
+            Task.entity_id == str(process.id),
+            Task.closed_at.is_(None),
+            ~Task.status.in_(TASK_ARCHIVE_STATUSES),
+        )
+    ).all()
+    if task_action == "cancel":
+        for task in open_tasks:
+            old_status = task.status
+            task.status = "cancelled"
+            task.closed_at = now
+            db.add(
+                TaskHistory(
+                    task_id=task.id,
+                    user_id=user_id,
+                    field_name="status",
+                    old_value=old_status,
+                    new_value="cancelled",
+                )
+            )
+
+    open_alerts = db.scalars(
+        select(WorkshopPhasedProcessAlert).where(
+            WorkshopPhasedProcessAlert.process_id == process.id,
+            WorkshopPhasedProcessAlert.status == "open",
+        )
+    ).all()
+    for alert in open_alerts:
+        alert.status = "resolved"
+        alert.resolved_at = now
+        alert.resolved_by_id = user_id
+
+    after_json = {
+        "status": "cancelled",
+        "task_action": task_action,
+        "observation": observation,
+    }
+    if replacement_process:
+        after_json["replacement_process_id"] = replacement_process.id
+    record_audit(
+        db,
+        action="workshop.process.cancelled",
+        entity_type="workshop_phased_process",
+        entity_id=process.id,
+        detail=f"Processo cancelado: {reason}",
+        user_id=user_id,
+        before_json={"status": prior_status, "open_tasks": len(open_tasks)},
+        after_json=after_json,
+    )
+
+
+def clean_workshop_transferable_materials(
+    db: Session,
+    process: WorkshopPhasedProcess,
+) -> list[tuple[WorkshopMaterialNeed, StockMovement]]:
+    rows: list[tuple[WorkshopMaterialNeed, StockMovement]] = []
+    needs = db.scalars(
+        select(WorkshopMaterialNeed)
+        .where(
+            WorkshopMaterialNeed.process_id == process.id,
+            WorkshopMaterialNeed.stock_status.in_(("delivered", "applied")),
+        )
+        .order_by(WorkshopMaterialNeed.id)
+    ).all()
+    for need in needs:
+        movement_id = parse_int_from_text((need.detail_json or {}).get("movement_id"))
+        movement = db.get(StockMovement, movement_id) if movement_id else None
+        if not movement:
+            raise ValueError("material_movement_missing")
+        if movement.movement_type == "reversal" or db.scalar(
+            select(StockMovement.id).where(StockMovement.reverses_movement_id == movement.id)
+        ):
+            raise ValueError("material_movement_reversed")
+        rows.append((need, movement))
+    return rows
+
+
+def clean_workshop_transfer_material_attribution(
+    db: Session,
+    *,
+    source_process: WorkshopPhasedProcess,
+    target_process: WorkshopPhasedProcess,
+    materials: list[tuple[WorkshopMaterialNeed, StockMovement]],
+    user_id: int,
+    now: datetime,
+) -> int:
+    for source_need, movement in materials:
+        source_status = source_need.stock_status
+        source_detail = dict(source_need.detail_json or {})
+        transfer = {
+            "from_process_id": source_process.id,
+            "to_process_id": target_process.id,
+            "transferred_at": now.isoformat(),
+            "transferred_by_id": user_id,
+            "movement_id": movement.id,
+            "source_material_need_id": source_need.id,
+        }
+        target_need = WorkshopMaterialNeed(
+            process_id=target_process.id,
+            phase_code=source_need.phase_code,
+            origin=source_need.origin,
+            operation_code=source_need.operation_code,
+            operation_label=source_need.operation_label,
+            vehicle_id=target_process.vehicle_id,
+            vehicle_variant=source_need.vehicle_variant,
+            technician_user_id=source_need.technician_user_id or user_id,
+            location_id=source_need.location_id,
+            material_code=source_need.material_code,
+            material_description=source_need.material_description,
+            requested_quantity=source_need.requested_quantity,
+            stock_status=source_status,
+            stock_request_reference=f"MIG-{target_process.id}-{source_need.id}",
+            applied_confirmed_by_id=source_need.applied_confirmed_by_id,
+            applied_confirmed_at=source_need.applied_confirmed_at,
+            detail_json={
+                **source_detail,
+                "source_stock_request_reference": source_need.stock_request_reference,
+                "stock_attribution_transfer": transfer,
+            },
+        )
+        db.add(target_need)
+        db.flush()
+        transfer["target_material_need_id"] = target_need.id
+        target_need.detail_json = {
+            **dict(target_need.detail_json or {}),
+            "stock_attribution_transfer": transfer,
+        }
+        source_need.stock_status = "transferred"
+        source_need.detail_json = {
+            **source_detail,
+            "stock_attribution_transfer": transfer,
+        }
+        record_audit(
+            db,
+            action="workshop.material_need.transferred",
+            entity_type="workshop_material_need",
+            entity_id=target_need.id,
+            detail=(
+                f"Material transferido de {clean_workshop_process_reference(source_process)} "
+                f"para {clean_workshop_process_reference(target_process)} "
+                "sem novo movimento de Stock."
+            ),
+            user_id=user_id,
+            before_json={
+                "process_id": source_process.id,
+                "material_need_id": source_need.id,
+                "stock_status": source_status,
+                "movement_id": movement.id,
+            },
+            after_json={
+                "process_id": target_process.id,
+                "material_need_id": target_need.id,
+                "stock_status": target_need.stock_status,
+                "movement_id": movement.id,
+            },
+        )
+    return len(materials)
+
+
+@web_router.post("/v2-clean/workshop/{process_id}/replace", response_class=HTMLResponse)
+def clean_workshop_replace_process(
+    request: Request,
+    process_id: int,
+    observation: str = Form(""),
+    task_action: str = Form(""),
+):
+    user_id = get_web_user_id(request)
+    if not user_id:
+        return RedirectResponse("/login", status_code=303)
+    clean_observation = observation.strip()
+    now = datetime.now(UTC)
+    with SessionLocal() as db:
+        user = db.get(User, user_id)
+        process = db.scalar(
+            select(WorkshopPhasedProcess)
+            .where(WorkshopPhasedProcess.id == process_id)
+            .with_for_update()
+        )
+        if not process:
+            return RedirectResponse("/v2-clean/workshop", status_code=303)
+        process_url = clean_workshop_process_url(process)
+        metadata = dict(process.metadata_json or {})
+        existing_replacement = (
+            metadata.get("replacement")
+            if isinstance(metadata.get("replacement"), dict)
+            else {}
+        )
+        existing_replacement_id = parse_int_from_text(existing_replacement.get("process_id"))
+        if existing_replacement_id:
+            existing = db.get(WorkshopPhasedProcess, existing_replacement_id)
+            if existing:
+                return RedirectResponse(
+                    f"{clean_workshop_process_url(existing)}&replacement_exists=1",
+                    status_code=303,
+                )
+        if not can_manage_admin(db, user):
+            return RedirectResponse(f"{process_url}&admin_error=forbidden", status_code=303)
+        if not clean_observation or task_action not in {"keep", "cancel"}:
+            return RedirectResponse(
+                f"{process_url}&admin_error=replacement_required", status_code=303
+            )
+        if process.status == "closed":
+            return RedirectResponse(
+                f"{process_url}&admin_error=reopen_closed_first", status_code=303
+            )
+        if process.status == "cancelled":
+            return RedirectResponse(f"{process_url}&admin_error=not_active", status_code=303)
+
+        try:
+            materials = clean_workshop_transferable_materials(db, process)
+            source_entry = clean_workshop_get_phase(db, process.id, "entrada")
+            source_entry_data = (
+                dict(source_entry.data_json or {})
+                if source_entry and isinstance(source_entry.data_json, dict)
+                else {}
+            )
+            entry_reasons = source_entry_data.get("entry_reasons") or metadata.get(
+                "entry_reasons"
+            ) or []
+            if isinstance(entry_reasons, str):
+                entry_reasons = [entry_reasons]
+            replacement = clean_workshop_create_process(
+                db,
+                request=request,
+                vehicle_id=process.vehicle_id,
+                plate=process.plate_snapshot,
+                historical=True,
+                entry_reasons=[str(value) for value in entry_reasons if str(value).strip()],
+                external_repair=str(source_entry_data.get("external_repair") or "").lower()
+                in {"yes", "sim", "true", "1"},
+                flow_version=2,
+                commit=False,
+            )
+            intervention_at = (
+                process.opened_at or process.received_at or process.created_at or now
+            )
+            if intervention_at.tzinfo is None:
+                intervention_at = intervention_at.replace(tzinfo=UTC)
+            replacement.opened_at = intervention_at
+            replacement.received_at = intervention_at
+            replacement.initial_km = process.initial_km
+            replacement.initial_observation = process.initial_observation
+            replacement_entry = clean_workshop_get_phase(db, replacement.id, "entrada")
+            if replacement_entry:
+                replacement_entry.data_json = {
+                    **source_entry_data,
+                    "entry_reasons": [
+                        str(value) for value in entry_reasons if str(value).strip()
+                    ],
+                    "entry_km": str(
+                        source_entry_data.get("entry_km") or process.initial_km or ""
+                    ),
+                    "historical_intervention_date": intervention_at.date().isoformat(),
+                    "historical_process_status": "Em curso",
+                    "replacement_source_process_id": process.id,
+                    "replacement_source_reference": clean_workshop_process_reference(process),
+                    "replacement_note": clean_observation,
+                }
+            replacement_metadata = dict(replacement.metadata_json or {})
+            replacement_metadata["replaces"] = {
+                "process_id": process.id,
+                "reference": clean_workshop_process_reference(process),
+                "reason": "Substituição pelo novo fluxo de Oficina",
+                "observation": clean_observation,
+                "replaced_at": now.isoformat(),
+                "replaced_by_id": user_id,
+            }
+            replacement.metadata_json = replacement_metadata
+            transferred_count = clean_workshop_transfer_material_attribution(
+                db,
+                source_process=process,
+                target_process=replacement,
+                materials=materials,
+                user_id=user_id,
+                now=now,
+            )
+            source_metadata = dict(process.metadata_json or {})
+            source_metadata["replacement"] = {
+                "process_id": replacement.id,
+                "reference": clean_workshop_process_reference(replacement),
+                "reason": "Substituição pelo novo fluxo de Oficina",
+                "observation": clean_observation,
+                "replaced_at": now.isoformat(),
+                "replaced_by_id": user_id,
+                "transferred_material_count": transferred_count,
+            }
+            process.metadata_json = source_metadata
+            prior_status = process.status
+            clean_workshop_cancel_in_session(
+                db,
+                process=process,
+                user=user,
+                user_id=user_id,
+                reason="Transferido para outro processo",
+                observation=clean_observation,
+                task_action=task_action,
+                now=now,
+                replacement_process=replacement,
+            )
+            record_audit(
+                db,
+                action="workshop.process.replaced",
+                entity_type="workshop_phased_process",
+                entity_id=process.id,
+                detail=(
+                    f"{clean_workshop_process_reference(process)} substituído por "
+                    f"{clean_workshop_process_reference(replacement)}."
+                ),
+                user_id=user_id,
+                before_json={
+                    "process_id": process.id,
+                    "status": prior_status,
+                    "material_count": transferred_count,
+                },
+                after_json={
+                    "replacement_process_id": replacement.id,
+                    "replacement_reference": clean_workshop_process_reference(replacement),
+                    "status": "cancelled",
+                    "material_count": transferred_count,
+                },
+            )
+            db.commit()
+        except (IntegrityError, ValueError):
+            db.rollback()
+            return RedirectResponse(
+                f"{process_url}&admin_error=replacement_failed", status_code=303
+            )
+        return RedirectResponse(
+            f"{clean_workshop_process_url(replacement)}&replaced_from={process.id}",
+            status_code=303,
+        )
+
+
 @web_router.post("/v2-clean/workshop/{process_id}/cancel", response_class=HTMLResponse)
 def clean_workshop_cancel_process(
     request: Request,
@@ -27818,71 +28219,15 @@ def clean_workshop_cancel_process(
             return RedirectResponse(f"{process_url}&admin_error=reopen_closed_first", status_code=303)
         if process.status == "cancelled":
             return RedirectResponse(f"{process_url}&cancelled=1", status_code=303)
-
-        prior_status = process.status
-        metadata = dict(process.metadata_json or {})
-        status_history = list(metadata.get("status_history") or [])
-        cancellation = {
-            "active": True,
-            "reason": clean_reason,
-            "observation": clean_observation,
-            "cancelled_at": now.isoformat(),
-            "cancelled_by_id": user_id,
-            "cancelled_by": (user.name or user.email) if user else f"Utilizador #{user_id}",
-            "prior_status": prior_status,
-            "prior_phase": process.current_phase_code or "entrada",
-            "task_action": task_action,
-        }
-        status_history.append({"from": prior_status, "to": "cancelled", **cancellation})
-        metadata["cancellation"] = cancellation
-        metadata["status_history"] = status_history
-        process.metadata_json = metadata
-        process.status = "cancelled"
-        process.closed_at = now
-
-        open_tasks = db.scalars(
-            select(Task).where(
-                Task.entity_type == "workshop_phased_process",
-                Task.entity_id == str(process.id),
-                Task.closed_at.is_(None),
-                ~Task.status.in_(TASK_ARCHIVE_STATUSES),
-            )
-        ).all()
-        if task_action == "cancel":
-            for task in open_tasks:
-                old_status = task.status
-                task.status = "cancelled"
-                task.closed_at = now
-                db.add(
-                    TaskHistory(
-                        task_id=task.id,
-                        user_id=user_id,
-                        field_name="status",
-                        old_value=old_status,
-                        new_value="cancelled",
-                    )
-                )
-
-        open_alerts = db.scalars(
-            select(WorkshopPhasedProcessAlert).where(
-                WorkshopPhasedProcessAlert.process_id == process.id,
-                WorkshopPhasedProcessAlert.status == "open",
-            )
-        ).all()
-        for alert in open_alerts:
-            alert.status = "resolved"
-            alert.resolved_at = now
-            alert.resolved_by_id = user_id
-
-        record_audit(
+        clean_workshop_cancel_in_session(
             db,
-            action="workshop.process.cancelled",
-            entity_type="workshop_phased_process",
-            entity_id=process.id,
-            detail=f"Processo cancelado: {clean_reason}",
+            process=process,
+            user=user,
             user_id=user_id,
-            before_json={"status": prior_status, "open_tasks": len(open_tasks)},
-            after_json={"status": "cancelled", "task_action": task_action, "observation": clean_observation},
+            reason=clean_reason,
+            observation=clean_observation,
+            task_action=task_action,
+            now=now,
         )
         db.commit()
         return RedirectResponse(f"{process_url}&cancelled=1", status_code=303)
@@ -27915,6 +28260,19 @@ def clean_workshop_reopen_process(
 
         old_status = process.status
         metadata = dict(process.metadata_json or {})
+        replacement = (
+            metadata.get("replacement")
+            if isinstance(metadata.get("replacement"), dict)
+            else {}
+        )
+        replacement_id = parse_int_from_text(replacement.get("process_id"))
+        replacement_process = (
+            db.get(WorkshopPhasedProcess, replacement_id) if replacement_id else None
+        )
+        if replacement_process and replacement_process.status != "cancelled":
+            return RedirectResponse(
+                f"{process_url}&admin_error=replacement_active", status_code=303
+            )
         cancellation = dict(metadata.get("cancellation") or {})
         restored_status = str(cancellation.get("prior_status") or "open") if old_status == "cancelled" else "open"
         if restored_status in {"closed", "cancelled"}:

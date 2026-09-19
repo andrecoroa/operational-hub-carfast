@@ -12148,9 +12148,25 @@ def clean_workshop_next_phase_key(
         (index for index, step in enumerate(steps) if step["key"] == active_key),
         None,
     )
-    if step_index is None or step_index >= len(steps) - 1:
+    if step_index is not None and step_index < len(steps) - 1:
+        return str(steps[step_index + 1]["key"])
+
+    # Some migrated processes retain a partial legacy template snapshot.  A
+    # missing phase after the current one must not make an operational phase
+    # look like the end of the workflow: the generic phase saver interprets a
+    # real end-of-workflow as permission to close the process.  Recover the
+    # standard successor and reserve ``None`` for the actual closing phase.
+    default_index = next(
+        (
+            index
+            for index, step in enumerate(CLEAN_WORKSHOP_STEP_DEFS)
+            if step["key"] == active_key
+        ),
+        None,
+    )
+    if default_index is None or default_index >= len(CLEAN_WORKSHOP_STEP_DEFS) - 1:
         return None
-    return str(steps[step_index + 1]["key"])
+    return str(CLEAN_WORKSHOP_STEP_DEFS[default_index + 1]["key"])
 
 
 

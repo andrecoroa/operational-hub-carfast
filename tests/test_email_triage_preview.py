@@ -893,6 +893,11 @@ def test_reply_all_mode_and_mailbox_policy_controls_are_present():
     assert "can_change_sender" in template
     assert "can_edit_recipients" in template
     assert "can_use_cc_bcc" in template
+    assert "data-email-link-url" in template
+    assert "Aplicar ligação" in template
+    assert "window.prompt" not in script
+    assert "^https?:\\/\\/" in script
+    assert "data-email-existing-attachments" in template
 
 
 def test_reply_attachment_is_stored_with_draft(
@@ -929,6 +934,10 @@ def test_reply_attachment_is_stored_with_draft(
     assert outbound.html_body == "<p>Segue o <strong>documento</strong>.</p>"
     assert attachment.file_name == "resposta.txt"
     assert Path(attachment.storage_path).read_bytes() == b"conteudo"
+    detail = authenticated_client.get(f"/v2-clean/email/{thread.id}")
+    assert detail.status_code == 200
+    assert '"attachments":' in detail.text
+    assert '"name":"resposta.txt"' in detail.text.replace(" ", "")
 
 
 def test_reopened_draft_sends_its_previously_saved_attachment(

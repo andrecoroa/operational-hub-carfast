@@ -1043,6 +1043,18 @@ def _thread_view_data(db, thread: EmailThread) -> dict:
             for position, message in enumerate(messages, 1)
         },
         "attachments_by_message": grouped,
+        "draft_attachment_payloads": {
+            message.id: [
+                {
+                    "id": row["item"].id,
+                    "name": row["item"].file_name,
+                    "size": row["item"].size,
+                }
+                for row in grouped[message.id]
+            ]
+            for message in messages
+            if message.direction == "outbound" and message.state == "draft"
+        },
         "embedded_images_by_message": embedded,
         "attachment_ingest_alerts": attachment_ingest_alerts,
         "deliveries_by_message": deliveries_by_message,

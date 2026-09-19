@@ -395,10 +395,23 @@ class _Config:
             setattr(self, key, value)
 
 
-def test_transport_defaults_to_postmark_for_legacy_or_disabled_config():
-    assert email_transport.provider_for_channel(_FakeDb(None), 1) == "postmark"
-    config = _Config(enabled=False, provider="microsoft365")
-    assert email_transport.provider_for_channel(_FakeDb(config), 1) == "postmark"
+def test_transport_without_explicit_configuration_does_not_fall_back_to_postmark():
+    assert email_transport.provider_for_channel(_FakeDb(None), 1) is None
+
+
+def test_send_without_explicit_transport_fails_closed():
+    try:
+        email_transport.send_channel_message(
+            _FakeDb(None),
+            type("Channel", (), {"id": 7})(),
+            object(),
+            '"Central" <central@carfast.pt>',
+            reply_to="central@carfast.pt",
+        )
+    except RuntimeError as exc:
+        assert "não recorrerá automaticamente ao Postmark" in str(exc)
+    else:
+        raise AssertionError("Expected an unconfigured mailbox to fail closed")
 
 
 def test_transport_switch_is_scoped_to_enabled_mailbox_config():

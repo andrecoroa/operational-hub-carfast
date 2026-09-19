@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 from sqlalchemy import func, select
@@ -137,7 +138,7 @@ def channel_transport(
     )
 
 
-def provider_for_channel(db: Session, channel_id: int) -> str:
+def provider_for_channel(db: Session, channel_id: int) -> str | None:
     config = db.scalar(
         select(EmailChannelTransport).where(
             EmailChannelTransport.channel_id == channel_id,
@@ -145,9 +146,15 @@ def provider_for_channel(db: Session, channel_id: int) -> str:
             EmailChannelTransport.enabled.is_(True),
         ).order_by(EmailChannelTransport.id)
     )
-    if not config or not config.enabled:
-        return POSTMARK
-    return config.provider
+    if config and config.enabled:
+        return config.provider
+    explicit = db.scalar(
+        select(EmailChannelTransport).where(
+            EmailChannelTransport.channel_id == channel_id,
+            EmailChannelTransport.enabled.is_(True),
+        ).order_by(EmailChannelTransport.id)
+    )
+    return explicit.provider if explicit else None
 
 
 def outbound_enabled_for_channel(db: Session, channel_id: int) -> bool:
@@ -173,9 +180,24 @@ def send_channel_message(
     postmark_sender: Callable[..., dict[str, Any]] = send_postmark_message,
     microsoft365_sender: Callable[..., dict[str, Any]] = send_shared_mailbox_message,
 ) -> dict[str, Any]:
+    for attachment in attachments or []:
+        if (
+            attachment.ingest_state != "stored"
+            or not attachment.storage_path
+            or not Path(attachment.storage_path).is_file()
+        ):
+            raise RuntimeError(
+                f"O anexo {attachment.file_name!r} não está disponível; "
+                "a mensagem não foi enviada."
+            )
     sender_address = sender.rsplit("<", 1)[-1].rstrip(">").strip().casefold()
     config = channel_transport(db, channel.id, sender_address=sender_address)
-    provider = POSTMARK if not config or not config.enabled else config.provider
+    if not config or not config.enabled:
+        raise RuntimeError(
+            "A caixa não tem um transporte de envio ativo. "
+            "O sistema não recorrerá automaticamente ao Postmark."
+        )
+    provider = config.provider
     if provider == POSTMARK:
         return postmark_sender(
             message,

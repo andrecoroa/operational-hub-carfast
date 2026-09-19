@@ -1425,6 +1425,16 @@ def test_email_approval_keeps_the_recipient_selected_on_the_reply(
         sessionmaker(bind=db_session.get_bind(), autoflush=False, autocommit=False),
     )
     thread, _ = ingest_inbound(db_session, _payload("pm-sender-approval"))
+    channel = db_session.get(EmailChannel, thread.channel_id)
+    db_session.add(
+        EmailChannelTransport(
+            channel_id=channel.id,
+            provider="postmark",
+            enabled=True,
+            mailbox_address=channel.from_address,
+        )
+    )
+    db_session.commit()
     authenticated_client.post(
         f"/v2-clean/email/{thread.id}/reply",
         data={
@@ -1458,6 +1468,44 @@ def test_email_approval_keeps_the_recipient_selected_on_the_reply(
     db_session.refresh(message)
     assert message.state == "sent"
     assert message.external_message_id == "pm-sender-sent"
+
+
+def test_authorized_approver_can_reject_message_back_to_draft(
+    authenticated_client, db_session, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(settings, "email_storage_root", str(tmp_path))
+    monkeypatch.setattr(
+        email_web,
+        "SessionLocal",
+        sessionmaker(bind=db_session.get_bind(), autoflush=False, autocommit=False),
+    )
+    thread, _ = ingest_inbound(db_session, _payload("approval-reject"))
+    authenticated_client.post(
+        f"/v2-clean/email/{thread.id}/reply",
+        data={"body": "Versão a rever.", "submit": "approval"},
+    )
+    message = db_session.scalar(
+        select(EmailMessage).where(
+            EmailMessage.thread_id == thread.id,
+            EmailMessage.direction == "outbound",
+        )
+    )
+
+    response = authenticated_client.post(
+        f"/v2-clean/email/{thread.id}/messages/{message.id}/reject",
+        follow_redirects=False,
+    )
+    db_session.expire_all()
+
+    assert response.headers["location"].endswith("saved=rejected")
+    assert db_session.get(EmailMessage, message.id).state == "draft"
+    assert db_session.get(EmailThread, thread.id).status == "in_progress"
+    event = db_session.scalar(
+        select(EmailAuditEvent)
+        .where(EmailAuditEvent.message_id == message.id)
+        .order_by(EmailAuditEvent.id.desc())
+    )
+    assert event.action == "approval_rejected"
 
 
 def test_email_approval_allows_enabled_microsoft365_channel_when_legacy_switch_is_off(

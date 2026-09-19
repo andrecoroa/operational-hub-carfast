@@ -111,6 +111,8 @@
           const raw = subject.value.replace(/^(Re|Fwd):\s*/i, "");
           subject.value = `${mode === "forward" ? "Fwd" : "Re"}: ${raw}`;
         }
+        const forwardedAttachments = form?.querySelector("[data-email-forward-attachments]");
+        if (forwardedAttachments) forwardedAttachments.hidden = mode !== "forward";
       }));
     });
   };
@@ -146,6 +148,20 @@
       const plain = form.querySelector("[data-email-body-plain]");
       const html = form.querySelector("[data-email-body-html]");
       if (!editor || !plain || !html) return;
+      let savedRange = null;
+      const rememberSelection = () => {
+        const selection = window.getSelection();
+        if (!selection?.rangeCount) return;
+        const range = selection.getRangeAt(0);
+        if (editor.contains(range.commonAncestorContainer)) savedRange = range.cloneRange();
+      };
+      const restoreSelection = () => {
+        if (!savedRange) return false;
+        const selection = window.getSelection();
+        selection.removeAllRanges();
+        selection.addRange(savedRange);
+        return true;
+      };
       const sync = () => {
         plain.value = editor.innerText.trim();
         // A pasted plain-text newline is visible in this pre-wrapped editor,
@@ -167,14 +183,21 @@
         html.value = copy.innerHTML.trim();
       };
       editor.addEventListener("input", sync);
+      editor.addEventListener("keyup", rememberSelection);
+      editor.addEventListener("mouseup", rememberSelection);
       form.addEventListener("submit", sync);
-      form.querySelectorAll("[data-email-format]").forEach((button) => button.addEventListener("click", () => {
-        editor.focus();
+      form.querySelectorAll("[data-email-format]").forEach((button) => {
+        button.addEventListener("mousedown", (event) => event.preventDefault());
+        button.addEventListener("click", () => {
         const command = button.dataset.emailFormat;
         const value = command === "createLink" ? window.prompt("Endereço da ligação (https://)") : null;
+        editor.focus();
+        restoreSelection();
         if (command !== "createLink" || value) document.execCommand(command, false, value);
+        rememberSelection();
         sync();
-      }));
+        });
+      });
     });
   };
   const bindPanelSwitch = (root) => {

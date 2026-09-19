@@ -612,6 +612,59 @@ def test_channel_editor_preserves_existing_supervisor_outside_assignment_scope(
     assert channel.supervisor_user_id == supervisor.id
 
 
+def test_current_administrator_can_list_and_save_active_admin_supervisor(
+    authenticated_client, db_session
+):
+    actor = db_session.scalar(
+        select(User).where(User.email == "admin.tests@carfast.local")
+    )
+    current_admin_role = db_session.scalar(select(Role).where(Role.code == "admin"))
+    assert current_admin_role is not None
+    current_admin_role.code = "admin_new"
+    db_session.flush()
+    legacy_admin_role = Role(code="admin", name="Admin", active=True)
+    db_session.add(legacy_admin_role)
+    db_session.flush()
+
+    supervisor = User(
+        name="Mário Costa",
+        email="mariocosta@example.test",
+        password_hash="not-used",
+        active=True,
+    )
+    channel = _identity_channel(db_session, "admin-supervisor-selection")
+    db_session.add(supervisor)
+    db_session.flush()
+    db_session.add(UserRole(user_id=supervisor.id, role_id=legacy_admin_role.id))
+    db_session.commit()
+
+    page = authenticated_client.get("/v2-clean/admin/work-classification?view=channels")
+    assert page.status_code == 200
+    editor = page.text.split(f'id="work-edit-channel-{channel.id}"', 1)[1].split(
+        "</dialog>", 1
+    )[0]
+    assert f'<option value="{supervisor.id}" >Mário Costa</option>' in editor
+
+    response = authenticated_client.post(
+        f"/v2-clean/admin/work-classification/email-channels/{channel.id}",
+        data={
+            "name": "Admin supervisor selection",
+            "active": "on",
+            "auto_task_mode": "none",
+            "assignment_mode": "manual",
+            "supervisor_user_id": supervisor.id,
+            "reply_policy": "mailbox",
+            "warning_minutes": "60",
+        },
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert "saved" in response.headers["location"]
+    db_session.refresh(channel)
+    assert channel.supervisor_user_id == supervisor.id
+
+
 def test_channel_permission_isolation_and_sender_permissions(db_session):
     role = Role(code="functional_email_test", name="Functional email test", active=True)
     user = User(

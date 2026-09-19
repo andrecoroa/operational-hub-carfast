@@ -27,6 +27,7 @@ WORKSHOP_STOCK_STATUSES = {
     "delivered",
     "applied",
     "returned",
+    "transferred",
 }
 
 BASE_PHASES = [

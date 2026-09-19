@@ -2,15 +2,32 @@
   <details class="clean-workshop-admin-menu">
     <summary>{% if simplified_new_flow %}{{ "Reabrir processo" if workshop_process.status in ["closed", "cancelled"] else "Cancelar processo" }}{% else %}Administração{% endif %}</summary>
     <div class="clean-workshop-admin-panel">
+      {% if request.query_params.get("admin_error") == "replacement_required" %}
+        <p class="clean-rule-note">Indica a justificação e o tratamento das tarefas antes de substituir o processo.</p>
+      {% elif request.query_params.get("admin_error") == "replacement_failed" %}
+        <p class="clean-rule-note">A substituição não foi efetuada. O processo e o Stock ficaram inalterados.</p>
+      {% elif request.query_params.get("admin_error") == "replacement_active" %}
+        <p class="clean-rule-note">Este processo não pode ser reaberto enquanto o processo de substituição estiver ativo.</p>
+      {% endif %}
+      {% if workshop_admin.replacement and workshop_admin.replacement_href %}
+        <p><strong>Processo substituído.</strong> O tratamento continua em <a href="{{ workshop_admin.replacement_href }}">{{ workshop_admin.replacement.reference or ("processo #" ~ workshop_admin.replacement.process_id) }}</a>.</p>
+      {% elif workshop_admin.replaces and workshop_admin.replaces_href %}
+        <p><strong>Processo de substituição.</strong> Mantém a data e o histórico de <a href="{{ workshop_admin.replaces_href }}">{{ workshop_admin.replaces.reference or ("processo #" ~ workshop_admin.replaces.process_id) }}</a>.</p>
+      {% endif %}
       {% if workshop_process.status in ["closed", "cancelled"] %}
-        <strong>Reabrir processo</strong>
-        <p>Reativa a edição. As tarefas anteriormente canceladas não são reabertas automaticamente.</p>
-        <form method="post" action="/v2-clean/workshop/{{ workshop_process.id }}/reopen">
-          <label>Justificação obrigatória
-            <textarea name="justification" required placeholder="Indicar porque é necessário reabrir o processo..."></textarea>
-          </label>
-          <button class="button-link secondary-link" type="submit" onclick="return confirm('Confirmar a reabertura deste processo?')">Reabrir processo</button>
-        </form>
+        {% if workshop_admin.replacement_active %}
+          <strong>Processo arquivado após substituição</strong>
+          <p>A edição permanece bloqueada para evitar dois processos ativos para a mesma intervenção.</p>
+        {% else %}
+          <strong>Reabrir processo</strong>
+          <p>Reativa a edição. As tarefas anteriormente canceladas não são reabertas automaticamente.</p>
+          <form method="post" action="/v2-clean/workshop/{{ workshop_process.id }}/reopen">
+            <label>Justificação obrigatória
+              <textarea name="justification" required placeholder="Indicar porque é necessário reabrir o processo..."></textarea>
+            </label>
+            <button class="button-link secondary-link" type="submit" onclick="return confirm('Confirmar a reabertura deste processo?')">Reabrir processo</button>
+          </form>
+        {% endif %}
       {% else %}
         <strong>Cancelar processo</strong>
         <p>O processo fica apenas para consulta. Documentos, dados e histórico são preservados.</p>
@@ -37,6 +54,23 @@
             </select>
           </label>
           <button class="button-link danger-link" type="submit" onclick="return confirm('Cancelar este processo? Esta ação ficará registada no histórico.')">Cancelar processo</button>
+        </form>
+        <hr>
+        <strong>Substituir pelo novo fluxo</strong>
+        <p>Cria primeiro um processo histórico no fluxo simplificado, mantém a data original e transfere a atribuição dos materiais já entregues ou aplicados sem voltar a descontar Stock. Só depois cancela este processo.</p>
+        <form method="post" action="/v2-clean/workshop/{{ workshop_process.id }}/replace">
+          <label>Justificação obrigatória
+            <textarea name="observation" required placeholder="Explicar porque o processo passa para o novo fluxo..."></textarea>
+          </label>
+          <label>Tarefas abertas associadas ({{ workshop_admin.open_task_count }})
+            <select name="task_action" required>
+              <option value="">Escolher ação</option>
+              <option value="keep">Manter tarefas abertas</option>
+              <option value="cancel">Cancelar tarefas abertas</option>
+            </select>
+          </label>
+          <p>O processo atual ficará cancelado e apenas para consulta. A operação é única, auditada e não altera a existência física do Stock.</p>
+          <button class="button-link danger-link" type="submit" onclick="return confirm('Criar o processo de substituição e cancelar este processo? Confirma primeiro que pretende transferir também os materiais já aplicados.')">Criar substituição</button>
         </form>
       {% endif %}
     </div>

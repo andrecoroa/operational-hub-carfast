@@ -23,7 +23,12 @@ from app.models.email import (
     EmailMessage,
     EmailThread,
 )
-from app.models.work_hierarchy import WorkCategory, WorkDepartment, WorkQueue
+from app.models.work_hierarchy import (
+    WorkCategory,
+    WorkDepartment,
+    WorkQueue,
+    WorkSubcategory,
+)
 from app.models.tasks import Task
 from app.services.email_postmark import ingest_inbound, send_message
 from app.services.email_task_events import reconcile_completed_email_tasks
@@ -493,6 +498,37 @@ def test_email_work_views_group_without_duplicates_and_mine_stays_scoped(
     mine.assigned_to_id = admin.id
     mine.assignment_state = "assigned_user"
     mine.status = "in_progress"
+    queue = WorkQueue(code="email-listing", name="Fila da listagem", active=True)
+    db_session.add(queue)
+    db_session.flush()
+    department = WorkDepartment(
+        queue_id=queue.id,
+        code="email-listing-department",
+        name="Departamento da listagem",
+        active=True,
+    )
+    db_session.add(department)
+    db_session.flush()
+    category = WorkCategory(
+        department_id=department.id,
+        code="email-listing-category",
+        name="Categoria visível na listagem",
+        active=True,
+    )
+    db_session.add(category)
+    db_session.flush()
+    subcategory = WorkSubcategory(
+        category_id=category.id,
+        code="email-listing-subcategory",
+        name="Subcategoria visível na listagem",
+        active=True,
+    )
+    db_session.add(subcategory)
+    db_session.flush()
+    mine.work_queue_id = queue.id
+    mine.work_department_id = department.id
+    mine.work_category_id = category.id
+    mine.work_subcategory_id = subcategory.id
     other_payload = _payload("view-other")
     other_payload["Subject"] = "Conversa atribuída a outra pessoa"
     other, _ = ingest_inbound(db_session, other_payload)
@@ -511,6 +547,10 @@ def test_email_work_views_group_without_duplicates_and_mine_stays_scoped(
     )
     mine_view = authenticated_client.get("/v2-clean/email?view=mine&status=all")
     restored = authenticated_client.get("/v2-clean/email?status=all")
+    mine_channel = db_session.get(EmailChannel, mine.channel_id)
+    mailbox_detail = authenticated_client.get(
+        f"/v2-clean/email?view=mailbox&status=all&channel={mine_channel.code}"
+    )
     all_view = authenticated_client.get("/v2-clean/email?view=all&status=all")
 
     assert 'data-email-work-view="mailbox"' in first_access.text
@@ -519,12 +559,21 @@ def test_email_work_views_group_without_duplicates_and_mine_stays_scoped(
     assert f'data-email-preview="{other.id}"' not in mailbox.text
     assert f'data-email-preview="{unassigned.id}"' not in mailbox.text
     assert mailbox.text.count("Abrir caixa") >= 1
+    assert "view=mailbox&status=all&channel=" in mailbox.text
     assert "novas" in mailbox.text and "por tratar" in mailbox.text
     assert 'data-email-work-view="mine"' in mine_view.text
     assert mine.subject in mine_view.text
     assert other.subject not in mine_view.text
     assert unassigned.subject not in mine_view.text
     assert "Em tratamento" in mine_view.text
+    assert "Categoria / subcategoria" in mine_view.text
+    assert "Categoria visível na listagem" in mine_view.text
+    assert "Subcategoria visível na listagem" in mine_view.text
+    assert '<details class="email-work-group">' in mine_view.text
+    assert '<details class="email-work-group" open>' not in mine_view.text
+    assert mine.subject in mailbox_detail.text
+    assert '<details class="email-work-group">' in mailbox_detail.text
+    assert '<details class="email-work-group" open>' not in mailbox_detail.text
     assert 'data-email-work-view="mine"' in restored.text
     assert 'data-email-work-view="all"' in all_view.text
     assert all_view.text.count(f'data-email-thread-url="/v2-clean/email/{mine.id}') == 1

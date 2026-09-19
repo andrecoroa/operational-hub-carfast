@@ -859,8 +859,10 @@ def test_approval_is_invalidated_when_message_changes(
     )
     assert response.status_code == 303
     assert "approval_invalidated" in response.headers["location"]
-    db_session.refresh(draft)
+    db_session.expire_all()
+    draft = db_session.get(EmailMessage, draft.id)
     assert draft.state == "draft"
+    assert db_session.get(EmailThread, thread.id).status == "draft"
 
 
 def test_template_priority_version_context_and_missing_placeholders(db_session):

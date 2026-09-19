@@ -1105,14 +1105,12 @@ def test_forward_includes_only_explicitly_selected_original_attachment(
     assert cloned.source_attachment_id == f"email-attachment:{source.id}"
 
 
-def test_saved_draft_keeps_triage_and_can_be_continued_without_creating_a_second_message(
+def test_saved_draft_sets_draft_status_and_can_be_continued_without_creating_a_second_message(
     authenticated_client, db_session, tmp_path, monkeypatch
 ):
     monkeypatch.setattr(settings, "email_storage_root", str(tmp_path))
     _bind_email_session(monkeypatch, db_session)
     thread, _ = ingest_inbound(db_session, _payload("draft-continuation"))
-    original_status = thread.status
-
     first = authenticated_client.post(
         f"/v2-clean/email/{thread.id}/reply",
         data={
@@ -1134,7 +1132,7 @@ def test_saved_draft_keeps_triage_and_can_be_continued_without_creating_a_second
     detail = authenticated_client.get(f"/v2-clean/email/{thread.id}")
 
     assert first.status_code == 303
-    assert db_session.get(EmailThread, thread.id).status == original_status
+    assert db_session.get(EmailThread, thread.id).status == "draft"
     assert "Continuar rascunho" in detail.text
     assert "Rascunho · não enviado" in detail.text
     assert "Guardado:" in detail.text and "· Lisboa" in detail.text
@@ -1168,7 +1166,7 @@ def test_saved_draft_keeps_triage_and_can_be_continued_without_creating_a_second
     assert drafts[0].id == draft.id
     assert drafts[0].text_body == "Segunda versão persistida."
     assert drafts[0].content_revision == 2
-    assert db_session.get(EmailThread, thread.id).status == original_status
+    assert db_session.get(EmailThread, thread.id).status == "draft"
 
 
 def test_editor_line_breaks_survive_draft_save_and_reopen(
@@ -1201,6 +1199,7 @@ def test_editor_line_breaks_survive_draft_save_and_reopen(
     detail = authenticated_client.get(f"/v2-clean/email/{thread.id}")
 
     assert response.status_code == 303
+    assert db_session.get(EmailThread, thread.id).status == "draft"
     assert draft.text_body == body
     assert draft.html_body == (
         "Bom dia,<br><br>Primeira pergunta?<br>Segunda pergunta?"
@@ -1229,6 +1228,7 @@ def test_editor_line_breaks_survive_draft_save_and_reopen(
     pending = db_session.get(EmailMessage, draft.id)
     assert approval.status_code == 303
     assert pending.state == "pending_approval"
+    assert db_session.get(EmailThread, thread.id).status == "waiting_approval"
     assert pending.text_body == body
     assert pending.html_body == draft.html_body
 
@@ -1280,6 +1280,7 @@ def test_text_only_draft_edit_does_not_keep_stale_html(
     assert response.status_code == 303
     assert saved.text_body == "Texto novo\n\nSegunda linha"
     assert saved.html_body is None
+    assert db_session.get(EmailThread, thread.id).status == "draft"
 
 
 def test_pdf_preview_is_server_rendered_with_explicit_fallback(
@@ -1718,7 +1719,14 @@ def test_manual_status_rejects_event_states_and_unclassified_resolution(
     thread, _ = ingest_inbound(db_session, _payload("manual-state-guards"))
     initial_audits = len(db_session.scalars(select(EmailAuditEvent)).all())
 
-    for status in ("new_reply", "waiting_approval", "task_created", "associated", "returned"):
+    for status in (
+        "new_reply",
+        "draft",
+        "waiting_approval",
+        "task_created",
+        "associated",
+        "returned",
+    ):
         response = authenticated_client.post(
             f"/v2-clean/email/{thread.id}/status",
             data={"status": status},
@@ -1737,6 +1745,7 @@ def test_manual_status_rejects_event_states_and_unclassified_resolution(
 
     detail = authenticated_client.get(f"/v2-clean/email/{thread.id}")
     assert '<option value="new_reply"' not in detail.text
+    assert '<option value="draft"' not in detail.text
     assert '<option value="waiting_approval"' not in detail.text
     assert '<option value="task_created"' not in detail.text
 

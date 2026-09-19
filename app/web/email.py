@@ -133,6 +133,7 @@ templates.env.globals["nav_has_permission"] = lambda request, *codes: bool(
 STATUS_LABELS = {
     "triage": "Por triar",
     "in_progress": "Em tratamento",
+    "draft": "Rascunho",
     "waiting_reply": "A aguardar resposta",
     "new_reply": "Nova resposta",
     "waiting_approval": "A aguardar aprovação",
@@ -1888,7 +1889,13 @@ def email_new_message(
         thread = EmailThread(
             channel_id=channel.id,
             subject=clean_subject[:500],
-            status="waiting_approval" if state == "pending_approval" else "in_progress",
+            status=(
+                "waiting_approval"
+                if state == "pending_approval"
+                else "draft"
+                if state == "draft"
+                else "in_progress"
+            ),
             sender_email=recipient_list[0][:255],
             sender_name=recipient_list[0][:255],
             work_queue_id=queue_id,
@@ -3362,9 +3369,25 @@ def email_reply(
             )
         outbound_attachments = _outbound_message_attachments(db, message.id)
         if state == "pending_approval":
+            transition_email_waiting(
+                db,
+                thread,
+                waiting=False,
+                user_id=user_id,
+                reason="Resposta submetida para aprovação",
+            )
             thread.status = "waiting_approval"
         elif submit == "send":
             thread.status = "in_progress"
+        else:
+            transition_email_waiting(
+                db,
+                thread,
+                waiting=False,
+                user_id=user_id,
+                reason="Resposta guardada como rascunho",
+            )
+            thread.status = "draft"
         if submit == "send":
             prior_messages = db.scalars(
                 select(EmailMessage)
@@ -3508,6 +3531,14 @@ def email_update_draft(
         message.approved_by_id = None
         message.approved_at = None
         message.approved_revision = None
+        transition_email_waiting(
+            db,
+            thread,
+            waiting=False,
+            user_id=user_id,
+            reason="Resposta devolvida a rascunho",
+        )
+        thread.status = "draft"
         db.add(
             EmailAuditEvent(
                 thread_id=thread.id,
@@ -3562,6 +3593,14 @@ def email_approve(request: Request, thread_id: int, message_id: int):
             message.approved_by_id = None
             message.approved_at = None
             message.approved_revision = None
+            transition_email_waiting(
+                db,
+                thread,
+                waiting=False,
+                user_id=user_id,
+                reason="Aprovação invalidada; resposta devolvida a rascunho",
+            )
+            thread.status = "draft"
             db.add(
                 EmailAuditEvent(
                     thread_id=thread.id,
@@ -3693,7 +3732,14 @@ def email_reject(request: Request, thread_id: int, message_id: int):
         message.approved_by_id = None
         message.approved_at = None
         message.approved_revision = None
-        thread.status = "in_progress"
+        transition_email_waiting(
+            db,
+            thread,
+            waiting=False,
+            user_id=user_id,
+            reason="Aprovação rejeitada; resposta devolvida a rascunho",
+        )
+        thread.status = "draft"
         db.add(
             EmailAuditEvent(
                 thread_id=thread.id,

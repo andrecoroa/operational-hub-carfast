@@ -1079,7 +1079,7 @@ def ingest_inbound(db: Session, payload: dict) -> tuple[EmailThread, bool]:
             thread = db.get(EmailThread, parent.thread_id)
     created_thread = thread is None
     preserve_new_reply = bool(
-        thread and thread.status in {"waiting_approval", "task_created"}
+        thread and thread.status in {"draft", "waiting_approval", "task_created"}
     )
     if not thread:
         now = datetime.now(UTC)
@@ -1148,7 +1148,12 @@ def ingest_inbound(db: Session, payload: dict) -> tuple[EmailThread, bool]:
         db.add(thread)
         db.flush()
     elif thread.status in {
-        "waiting_reply", "waiting_approval", "task_created", "resolved", "archived"
+        "draft",
+        "waiting_reply",
+        "waiting_approval",
+        "task_created",
+        "resolved",
+        "archived",
     }:
         transition_email_waiting(
             db,

@@ -724,6 +724,10 @@ def test_finance_rule_uses_current_message_alias_and_attachments(
         )
     ).id == first.id
 
+    # Uma nova resposta do cliente tem prioridade sobre um rascunho e sobre
+    # qualquer ação automática da regra de entrada.
+    first.status = "draft"
+    db_session.commit()
     daf_reply = delivery("pm-daf-reply", daf.address, "daf")
     same_thread, created = ingest_inbound(db_session, daf_reply)
     assert same_thread.channel_id == channel.id
@@ -1499,7 +1503,7 @@ def test_authorized_approver_can_reject_message_back_to_draft(
 
     assert response.headers["location"].endswith("saved=rejected")
     assert db_session.get(EmailMessage, message.id).state == "draft"
-    assert db_session.get(EmailThread, thread.id).status == "in_progress"
+    assert db_session.get(EmailThread, thread.id).status == "draft"
     event = db_session.scalar(
         select(EmailAuditEvent)
         .where(EmailAuditEvent.message_id == message.id)

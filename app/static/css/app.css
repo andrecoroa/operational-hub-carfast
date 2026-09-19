@@ -28538,6 +28538,7 @@ body:has(.email-preview-dialog[open]) { overflow: hidden; }
 .email-due-today { color:#9a5b00; }
 .email-due-planned { color:#245f4a; }
 .email-badge { display:inline-block; padding:5px 8px; background:#fff0d6; color:#80520d; font-weight:700; }
+.email-badge.status-draft { background:#eef2f7; color:#475569; }
 .email-badge.status-resolved,.email-badge.status-associated,.email-badge.status-task_created { background:#e1f3e9; color:#176c45; }
 .email-thread-toolbar { padding:12px; border:1px solid #d8e0ea; background:#fff; }
 .email-thread-toolbar form { display:flex; align-items:end; gap:8px; }

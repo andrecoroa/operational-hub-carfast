@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_document_workflow_strip.html" import document_workflow_strip %}
 {% block body %}
 <div class="app-shell clean-shell">{% set active_menu="stock" %}{% include "_sidebar.html" %}
 <main class="content clean-content stock-page">{% set stock_nav="invoices" %}{% include "_clean_stock_nav.html" %}
@@ -14,6 +15,15 @@
   {% if request.query_params.get('received') %}<div class="stock-notice success">Receção #{{ request.query_params.get('received') }} confirmada e existências atualizadas.</div>{% endif %}
   {% if request.query_params.get('linked_receipt') %}<div class="stock-notice success">Fatura associada à receção #{{ request.query_params.get('linked_receipt') }}. As existências não foram alteradas.</div>{% endif %}
   {% if invoice_import.error_details %}<div class="stock-notice{% if invoice_import.status != 'validated' %} danger{% endif %}">{{ invoice_import.error_details }}</div>{% endif %}
+
+  {{ document_workflow_strip(
+    received='completed',
+    classified='completed',
+    associated='completed' if invoice_import.supplier_id else 'current',
+    extracted='completed' if invoice_import.extractor_name or invoice_import.raw_extraction_json else ('error' if invoice_import.error_details else 'pending'),
+    validated='completed' if invoice_import.status == 'validated' else 'pending',
+    archived='na'
+  ) }}
 
   <div class="document-workspace stock-document-workspace">
     <section class="document-workspace-viewer" aria-label="Pré-visualização da fatura de stock">

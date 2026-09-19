@@ -1392,12 +1392,12 @@ def email_inbox(
             )
         }
         ordered_query = query.order_by(EmailThread.last_message_at.desc())
-        if selected_view == "mailbox":
+        if selected_view == "mailbox" and not channel:
             # The mailbox view is a navigation summary.  Messages are only
             # loaded after the operator opens a mailbox, avoiding hidden work
             # and long pages when many mailboxes are available.
             rows = []
-        elif selected_view == "mine":
+        elif selected_view == "mine" or (selected_view == "mailbox" and channel):
             rows = [
                 row
                 for status_code in STATUS_LABELS
@@ -1549,6 +1549,28 @@ def email_inbox(
         teams_by_id = {
             item.id: item for item in db.scalars(select(Team).order_by(Team.name))
         }
+        category_ids = {
+            thread.work_category_id for thread, _ in rows if thread.work_category_id
+        }
+        subcategory_ids = {
+            thread.work_subcategory_id
+            for thread, _ in rows
+            if thread.work_subcategory_id
+        }
+        categories_by_id = {
+            item.id: item
+            for item in db.scalars(
+                select(WorkCategory).where(WorkCategory.id.in_(category_ids or {-1}))
+            )
+        }
+        subcategories_by_id = {
+            item.id: item
+            for item in db.scalars(
+                select(WorkSubcategory).where(
+                    WorkSubcategory.id.in_(subcategory_ids or {-1})
+                )
+            )
+        }
         inbox_rows = []
         for thread, thread_channel in rows:
             due_at = thread.due_at
@@ -1570,6 +1592,16 @@ def email_inbox(
                     reference=thread_reference(thread),
                     assignee=users_by_id.get(thread.assigned_to_id),
                     functional_owner=users_by_id.get(thread.functional_owner_user_id),
+                    category_name=(
+                        categories_by_id[thread.work_category_id].name
+                        if thread.work_category_id in categories_by_id
+                        else None
+                    ),
+                    subcategory_name=(
+                        subcategories_by_id[thread.work_subcategory_id].name
+                        if thread.work_subcategory_id in subcategories_by_id
+                        else None
+                    ),
                     assignment_label=assignment_label(
                         state=thread.assignment_state,
                         user_name=(
@@ -1588,7 +1620,7 @@ def email_inbox(
                 )
             )
         grouped_rows: list[SimpleNamespace] = []
-        if selected_view == "mailbox":
+        if selected_view == "mailbox" and not channel:
             for item in channels:
                 if item.id in mailbox_group_counts:
                     group_counts = mailbox_group_counts[item.id]
@@ -1620,7 +1652,7 @@ def email_inbox(
                             is_truncated=False,
                         )
                     )
-        elif selected_view == "mine":
+        elif selected_view == "mine" or (selected_view == "mailbox" and channel):
             for status_code, status_label in STATUS_LABELS.items():
                 group_rows = [
                     row for row in inbox_rows if row.thread.status == status_code

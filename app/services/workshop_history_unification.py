@@ -81,7 +81,7 @@ class WorkshopHistoryPlanItem:
     title: str
     original_status: str
     proposed_status: str
-    action: str
+    plan_operation: str
     source_records: list[str] = field(default_factory=list)
     legacy_references: list[str] = field(default_factory=list)
     issues: list[str] = field(default_factory=list)
@@ -149,7 +149,9 @@ def build_workshop_history_unification_plan(
             title=process.title,
             original_status=process.status,
             proposed_status=process.status,
-            action="keep_canonical" if process.canonical_sequence else "renumber_existing",
+            plan_operation=(
+                "keep_canonical" if process.canonical_sequence else "renumber_existing"
+            ),
             source_records=[f"workshop_phased_process:{process.id}"],
             legacy_references=[reference],
             issues=issues,
@@ -186,7 +188,7 @@ def build_workshop_history_unification_plan(
             title=process.title,
             original_status=process.status,
             proposed_status=proposed_status,
-            action="create_historical",
+            plan_operation="create_historical",
             source_records=[f"workshop_process:{process.id}"],
             legacy_references=[reference],
             issues=issues,
@@ -213,8 +215,8 @@ def build_workshop_history_unification_plan(
             continue
         for item in group:
             item.issues.append("possible_duplicate_same_vehicle_and_date")
-            if item.action == "create_historical":
-                item.action = "review_before_import"
+            if item.plan_operation == "create_historical":
+                item.plan_operation = "review_before_import"
 
     plan_items.sort(
         key=lambda item: (
@@ -258,7 +260,7 @@ def build_workshop_history_unification_plan(
             and item.target_process_id is None
         ),
         "to_create": sum(item.target_process_id is None for item in plan_items),
-        "to_renumber": sum(item.action == "renumber_existing" for item in plan_items),
+        "to_renumber": sum(item.plan_operation == "renumber_existing" for item in plan_items),
         "review_required": sum(bool(item.issues) for item in plan_items),
         "possible_duplicates": sum(
             "possible_duplicate_same_vehicle_and_date" in item.issues for item in plan_items

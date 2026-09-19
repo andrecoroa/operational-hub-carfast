@@ -57,9 +57,9 @@ def test_plan_numbers_legacy_and_current_processes_chronologically(db_session: S
     relevant = [item for item in plan.items if item.vehicle_id == vehicle.id]
 
     assert [item.canonical_reference for item in relevant] == ["OF-000001", "OF-000002"]
-    assert relevant[0].action == "create_historical"
+    assert relevant[0].plan_operation == "create_historical"
     assert relevant[0].legacy_references == [f"OFI-2024-{legacy.id:06d}"]
-    assert relevant[1].action == "renumber_existing"
+    assert relevant[1].plan_operation == "renumber_existing"
     assert relevant[1].legacy_references == ["OF-2026-0009"]
 
 
@@ -136,7 +136,7 @@ def test_same_vehicle_and_date_is_reviewed_not_automatically_merged(db_session: 
     assert len(relevant) == 2
     assert all("possible_duplicate_same_vehicle_and_date" in item.issues for item in relevant)
     legacy_item = next(item for item in relevant if item.target_process_id is None)
-    assert legacy_item.action == "review_before_import"
+    assert legacy_item.plan_operation == "review_before_import"
     assert "legacy_non_terminal_status_requires_review" in legacy_item.issues
 
 

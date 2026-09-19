@@ -20,7 +20,7 @@ def _write_csv(path: Path, rows: list[dict]) -> None:
         "title",
         "original_status",
         "proposed_status",
-        "action",
+        "plan_operation",
         "source_records",
         "legacy_references",
         "issues",

@@ -35,6 +35,10 @@ ASSIGNMENT_STATES = {
 SLA_STATES = {"within", "warning", "overdue", "completed", "paused", "not_configured"}
 ROLE_ASSIGNMENT_RANK = {
     "admin": 50,
+    # The current administrator profile uses this stable code. Keep it at the
+    # same rank as the legacy Admin profile so administrators can select one
+    # another as supervisors without changing mailbox access grants.
+    "admin_new": 50,
     "functional_admin": 40,
     "manager": 30,
     "auditor": 25,

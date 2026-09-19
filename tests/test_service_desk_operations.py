@@ -25,6 +25,7 @@ from app.models.work_hierarchy import (
 )
 from app.services.bootstrap import seed_email_channels, seed_service_desk
 from app.services.service_desk import (
+    assignment_target_user_allowed,
     assign_task_executor,
     category_user_is_eligible,
     claim_task,
@@ -57,6 +58,44 @@ def _category(db_session) -> WorkCategory:
     db_session.add(category)
     db_session.flush()
     return category
+
+
+def test_current_administrator_profile_can_select_active_admin_supervisor(db_session):
+    current_admin_role = db_session.scalar(select(Role).where(Role.code == "admin"))
+    assert current_admin_role is not None
+    current_admin_role.code = "admin_new"
+    db_session.flush()
+    legacy_admin_role = Role(code="admin", name="Admin", active=True)
+    db_session.add(legacy_admin_role)
+    db_session.flush()
+
+    actor = User(
+        name="Current administrator",
+        email="current-admin@example.test",
+        password_hash="not-used",
+        active=True,
+    )
+    supervisor = User(
+        name="Mário Costa",
+        email="mario-admin@example.test",
+        password_hash="not-used",
+        active=True,
+    )
+    db_session.add_all([actor, supervisor])
+    db_session.flush()
+    db_session.add_all(
+        [
+            UserRole(user_id=actor.id, role_id=current_admin_role.id),
+            UserRole(user_id=supervisor.id, role_id=legacy_admin_role.id),
+        ]
+    )
+    db_session.flush()
+
+    assert assignment_target_user_allowed(
+        db_session,
+        actor_user_id=actor.id,
+        target_user_id=supervisor.id,
+    )
 
 
 def test_service_desk_bootstrap_is_idempotent_and_keeps_legacy_tasks(db_session):

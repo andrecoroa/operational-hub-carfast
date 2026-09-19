@@ -931,6 +931,95 @@ def test_reply_attachment_is_stored_with_draft(
     assert Path(attachment.storage_path).read_bytes() == b"conteudo"
 
 
+def test_reopened_draft_sends_its_previously_saved_attachment(
+    authenticated_client, db_session, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(settings, "email_storage_root", str(tmp_path))
+    monkeypatch.setattr(settings, "email_outbound_enabled", True)
+    _bind_email_session(monkeypatch, db_session)
+    thread, _ = ingest_inbound(db_session, _payload("draft-send-existing-attachment"))
+    authenticated_client.post(
+        f"/v2-clean/email/{thread.id}/reply",
+        data={"body": "Guardar primeiro.", "recipients": "cliente@example.com", "submit": "draft"},
+        files={"attachments": ("guardado.txt", b"persistido", "text/plain")},
+    )
+    draft = db_session.scalar(
+        select(EmailMessage).where(
+            EmailMessage.thread_id == thread.id,
+            EmailMessage.direction == "outbound",
+        )
+    )
+    captured = {}
+
+    def fake_send(*args, **kwargs):
+        captured["attachment_names"] = [item.file_name for item in kwargs["attachments"]]
+        return {"MessageID": "m365-existing-attachment"}
+
+    monkeypatch.setattr(email_web, "outbound_enabled_for_channel", lambda *args: True)
+    monkeypatch.setattr(email_web, "send_channel_message", fake_send)
+    response = authenticated_client.post(
+        f"/v2-clean/email/{thread.id}/reply",
+        data={
+            "draft_message_id": str(draft.id),
+            "body": "Enviar agora.",
+            "recipients": "cliente@example.com",
+            "submit": "send",
+        },
+        follow_redirects=False,
+    )
+
+    assert response.headers["location"].endswith("saved=sent")
+    assert captured["attachment_names"] == ["guardado.txt"]
+
+
+def test_forward_includes_only_explicitly_selected_original_attachment(
+    authenticated_client, db_session, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(settings, "email_storage_root", str(tmp_path))
+    _bind_email_session(monkeypatch, db_session)
+    thread, _ = ingest_inbound(
+        db_session,
+        _payload("forward-selected-attachment", attachment_name="original.pdf"),
+    )
+    inbound = db_session.scalar(
+        select(EmailMessage).where(
+            EmailMessage.thread_id == thread.id,
+            EmailMessage.direction == "inbound",
+        )
+    )
+    source = db_session.scalar(
+        select(EmailAttachment).where(EmailAttachment.message_id == inbound.id)
+    )
+
+    response = authenticated_client.post(
+        f"/v2-clean/email/{thread.id}/reply",
+        data={
+            "body": "Reencaminhamento controlado.",
+            "recipients": "destino@example.com",
+            "mode": "forward",
+            "reply_source_message_id": str(inbound.id),
+            "forward_attachment_ids": str(source.id),
+            "submit": "draft",
+        },
+        follow_redirects=False,
+    )
+    outbound = db_session.scalar(
+        select(EmailMessage).where(
+            EmailMessage.thread_id == thread.id,
+            EmailMessage.direction == "outbound",
+        )
+    )
+    cloned = db_session.scalar(
+        select(EmailAttachment).where(EmailAttachment.message_id == outbound.id)
+    )
+
+    assert response.status_code == 303
+    assert cloned.file_name == source.file_name
+    assert cloned.storage_path == source.storage_path
+    assert cloned.source_provider == "forward"
+    assert cloned.source_attachment_id == f"email-attachment:{source.id}"
+
+
 def test_saved_draft_keeps_triage_and_can_be_continued_without_creating_a_second_message(
     authenticated_client, db_session, tmp_path, monkeypatch
 ):

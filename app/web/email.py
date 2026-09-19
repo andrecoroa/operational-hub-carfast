@@ -374,6 +374,79 @@ def _store_outbound_attachments(
     return stored
 
 
+def _outbound_message_attachments(db, message_id: int) -> list[EmailAttachment]:
+    """Return every attachment already associated with an outbound message.
+
+    A reopened draft must send its persisted attachments, not only files uploaded
+    in the final HTTP request.
+    """
+    return list(
+        db.scalars(
+            select(EmailAttachment)
+            .where(EmailAttachment.message_id == message_id)
+            .order_by(EmailAttachment.id)
+        )
+    )
+
+
+def _include_forwarded_attachments(
+    db,
+    *,
+    thread: EmailThread,
+    message: EmailMessage,
+    attachment_ids: list[int],
+) -> list[EmailAttachment]:
+    """Associate explicitly selected source attachments with the forward draft.
+
+    The physical file is not copied or deleted; a new immutable association is
+    created so the outgoing message has its own attachment audit trail.
+    """
+    if not attachment_ids:
+        return []
+    source_rows = list(
+        db.scalars(
+            select(EmailAttachment)
+            .join(EmailMessage, EmailMessage.id == EmailAttachment.message_id)
+            .where(
+                EmailAttachment.id.in_(set(attachment_ids)),
+                EmailMessage.thread_id == thread.id,
+                EmailMessage.direction == "inbound",
+            )
+            .order_by(EmailAttachment.id)
+        )
+    )
+    if len(source_rows) != len(set(attachment_ids)):
+        raise ValueError("invalid_forward_attachment")
+    existing_sources = {
+        row.source_attachment_id
+        for row in _outbound_message_attachments(db, message.id)
+        if row.source_provider == "forward"
+    }
+    included: list[EmailAttachment] = []
+    for source in source_rows:
+        source_key = f"email-attachment:{source.id}"
+        if source_key in existing_sources:
+            continue
+        clone = EmailAttachment(
+            message_id=message.id,
+            file_name=source.file_name,
+            content_type=source.content_type,
+            content_id=None,
+            size=source.size,
+            storage_path=source.storage_path,
+            sha256=source.sha256,
+            source_provider="forward",
+            source_attachment_id=source_key,
+            ingest_state=source.ingest_state,
+            ingest_reason=source.ingest_reason,
+            status="associated",
+        )
+        db.add(clone)
+        included.append(clone)
+    db.flush()
+    return included
+
+
 def _auth(request: Request, *required: str):
     raw_id = request.session.get("user_id") if hasattr(request, "session") else None
     if not raw_id:
@@ -3030,6 +3103,7 @@ def email_reply(
     template_id: str = Form(""),
     submit: str = Form("draft"),
     attachments: Annotated[list[UploadFile] | None, File()] = None,
+    forward_attachment_ids: Annotated[list[int] | None, Form()] = None,
 ):
     auth = _auth(request, "email.reply", "email.manage", "admin.manage")
     if not auth:
@@ -3219,17 +3293,30 @@ def email_reply(
         db.add(message)
         db.flush()
         try:
-            outbound_attachments = _store_outbound_attachments(
+            _store_outbound_attachments(
                 db,
                 thread=thread,
                 message=message,
                 uploads=attachments or [],
             )
-        except ValueError:
+            if mode == "forward":
+                _include_forwarded_attachments(
+                    db,
+                    thread=thread,
+                    message=message,
+                    attachment_ids=forward_attachment_ids or [],
+                )
+        except ValueError as exc:
+            error_code = (
+                "attachment_too_large"
+                if str(exc) == "attachment_too_large"
+                else "invalid_attachment"
+            )
             return RedirectResponse(
-                f"/v2-clean/email/{thread_id}?error=attachment_too_large",
+                f"/v2-clean/email/{thread_id}?error={error_code}",
                 status_code=303,
             )
+        outbound_attachments = _outbound_message_attachments(db, message.id)
         if state == "pending_approval":
             thread.status = "waiting_approval"
         elif submit == "send":
@@ -3536,6 +3623,44 @@ def email_approve(request: Request, thread_id: int, message_id: int):
         )
         db.commit()
     return RedirectResponse(f"/v2-clean/email/{thread_id}?saved=sent", status_code=303)
+
+
+@email_router.post("/v2-clean/email/{thread_id}/messages/{message_id}/reject")
+def email_reject(request: Request, thread_id: int, message_id: int):
+    auth = _auth(request, "email.approve", "email.manage", "admin.manage")
+    if not auth:
+        return RedirectResponse(f"/v2-clean/email/{thread_id}?error=forbidden", status_code=303)
+    user_id, permissions = auth
+    with SessionLocal() as db:
+        thread = db.get(EmailThread, thread_id)
+        message = db.get(EmailMessage, message_id)
+        if (
+            not thread
+            or not message
+            or message.thread_id != thread.id
+            or message.state != "pending_approval"
+            or not _can_use_channel(db, user_id, permissions, thread.channel_id, "approve")
+        ):
+            return RedirectResponse(
+                f"/v2-clean/email/{thread_id}?error=forbidden", status_code=303
+            )
+        message.state = "draft"
+        message.approval_fingerprint = None
+        message.approved_by_id = None
+        message.approved_at = None
+        message.approved_revision = None
+        thread.status = "in_progress"
+        db.add(
+            EmailAuditEvent(
+                thread_id=thread.id,
+                message_id=message.id,
+                user_id=user_id,
+                action="approval_rejected",
+                details_json={"content_revision": message.content_revision},
+            )
+        )
+        db.commit()
+    return RedirectResponse(f"/v2-clean/email/{thread_id}?saved=rejected", status_code=303)
 
 
 @email_router.post("/v2-clean/email/{thread_id}/links")

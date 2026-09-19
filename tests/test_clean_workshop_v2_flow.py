@@ -181,6 +181,80 @@ def test_validation_visible_save_advances_legacy_template_snapshot(authenticated
     assert db_session.get(WorkshopPhasedProcess, process.id).current_phase_code == "diagnostico"
 
 
+def test_validation_save_does_not_close_process_with_truncated_legacy_snapshot(
+    authenticated_client, db_session
+):
+    process = WorkshopPhasedProcess(
+        public_reference="OF-TEST-TRUNCATED-WORKFLOW",
+        process_type="general",
+        title="Truncated legacy workflow",
+        creation_mode="historical",
+        status="active",
+        plate_snapshot="ZZ-96-ZZ",
+        current_phase_code="validacao",
+        priority="normal",
+        origin="v2_clean",
+        metadata_json={},
+        template_snapshot_json={
+            "config": {
+                "phases": [
+                    {
+                        "code": "validacao",
+                        "substeps": ["prerequisitos", "pedido", "orientacao"],
+                    }
+                ]
+            }
+        },
+    )
+    db_session.add(process)
+    db_session.flush()
+    db_session.add(
+        WorkshopPhasedProcessPhase(
+            process_id=process.id,
+            phase_code="validacao",
+            name="Validação",
+            status="in_progress",
+            sort_order=2,
+            data_json={},
+        )
+    )
+    db_session.commit()
+
+    saved = authenticated_client.post(
+        "/v2-clean/workshop/validacao/save",
+        data={
+            "process_id": str(process.id),
+            "action": "save_substep",
+            "current_substep": "pedido_orientacao",
+            "form_state_json": json.dumps(
+                {
+                    "service_decision": "Seguir diagnóstico",
+                    "validation_closed": "Sim",
+                }
+            ),
+        },
+        follow_redirects=False,
+    )
+
+    assert saved.status_code == 303
+    assert saved.headers["location"] == (
+        f"/v2-clean/workshop/diagnostico?process_id={process.id}"
+    )
+    db_session.expire_all()
+    updated = db_session.get(WorkshopPhasedProcess, process.id)
+    assert updated.status == "active"
+    assert updated.closed_at is None
+    assert updated.current_phase_code == "diagnostico"
+    close_audit = db_session.scalar(
+        select(AuditLog).where(
+            AuditLog.entity_type == "workshop_phased_process",
+            AuditLog.entity_id == str(process.id),
+            AuditLog.action == "workshop.process.closed",
+        )
+    )
+    assert close_audit is None
+
+
 def test_diagnostic_suggestions_do_not_nest_forms_or_break_phase_save(authenticated_client, db_session):
     process = WorkshopPhasedProcess(
         public_reference="OF-TEST-DIAGNOSTIC-FORM",

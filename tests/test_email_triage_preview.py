@@ -580,6 +580,31 @@ def test_email_work_views_group_without_duplicates_and_mine_stays_scoped(
     assert 'name="view" value="all"' in all_view.text
 
 
+def test_email_defaults_to_mailbox_with_active_status(
+    authenticated_client, db_session, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(settings, "email_storage_root", str(tmp_path))
+    monkeypatch.setattr(settings, "visual_foundation_enabled", True)
+    _bind_email_session(monkeypatch, db_session)
+    active_payload = _payload("default-active-email")
+    active_payload["Subject"] = "Conversa ativa por defeito"
+    active, _ = ingest_inbound(db_session, active_payload)
+    active.status = "in_progress"
+    closed_payload = _payload("default-closed-email")
+    closed_payload["Subject"] = "Conversa fechada fora do defeito"
+    closed, _ = ingest_inbound(db_session, closed_payload)
+    closed.status = "archived"
+    db_session.commit()
+
+    default_view = authenticated_client.get("/v2-clean/email")
+    all_active = authenticated_client.get("/v2-clean/email?view=all")
+
+    assert 'data-email-work-view="mailbox"' in default_view.text
+    assert '<option value="active" selected>Estados ativos</option>' in default_view.text
+    assert "Conversa ativa por defeito" in all_active.text
+    assert "Conversa fechada fora do defeito" not in all_active.text
+
+
 def test_return_to_inbox_keeps_search_and_status_filters(
     authenticated_client, db_session, tmp_path, monkeypatch
 ):

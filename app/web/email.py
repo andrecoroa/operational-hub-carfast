@@ -1197,7 +1197,7 @@ async def postmark_events(request: Request, authorization: str | None = Header(d
 def email_inbox(
     request: Request,
     view: str = "",
-    status: str = "triage",
+    status: str = "active",
     channel: str = "",
     q: str = "",
     responsible: str = "",
@@ -1238,7 +1238,7 @@ def email_inbox(
         selected_status = (
             status
             if status in STATUS_LABELS or status in {"all", "active"}
-            else "triage"
+            else "active"
         )
         selected_signal = signal if signal in EMAIL_SIGNAL_LABELS else ""
         query = (

@@ -140,6 +140,7 @@
               <a class="clean-workshop-process-link" href="{{ row.workbench_url }}">
                 <strong>{{ process.plate_snapshot or "Sem matrícula" }}</strong>
                 <span>{{ process.public_reference or process.title or "Processo de oficina" }}</span>
+                {% if row.legacy_references %}<small>Ref. anterior: {{ row.legacy_references|join(' · ') }}</small>{% endif %}
               </a>
               <span class="clean-workshop-vehicle-name">{{ row.vehicle_brand_model }} · {{ row.vehicle_group }}</span>
               </div>

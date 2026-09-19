@@ -21,6 +21,7 @@ class WorkshopPhasedProcess(TimestampMixin, Base):
     __tablename__ = "workshop_phased_processes"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    canonical_sequence: Mapped[int | None] = mapped_column(Integer, unique=True, index=True)
     public_reference: Mapped[str | None] = mapped_column(String(20), unique=True, index=True)
     opened_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
     process_type: Mapped[str] = mapped_column(String(80), index=True)
@@ -59,6 +60,72 @@ class WorkshopPublicCounter(Base):
         server_default=func.now(),
         onupdate=func.now(),
     )
+
+
+class WorkshopUnifiedCounter(Base):
+    """Transactional counter reserved for the global Workshop reference series."""
+
+    __tablename__ = "workshop_unified_counters"
+
+    series: Mapped[str] = mapped_column(String(40), primary_key=True)
+    last_value: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+
+class WorkshopProcessReferenceAlias(Base):
+    """Searchable reference retained when a process receives a canonical number."""
+
+    __tablename__ = "workshop_process_reference_aliases"
+    __table_args__ = (
+        UniqueConstraint(
+            "process_id",
+            "normalized_reference",
+            "source_system",
+            name="uq_workshop_process_reference_alias",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    process_id: Mapped[int] = mapped_column(
+        ForeignKey("workshop_phased_processes.id", ondelete="CASCADE"),
+        index=True,
+    )
+    reference: Mapped[str] = mapped_column(String(120))
+    normalized_reference: Mapped[str] = mapped_column(String(120), index=True)
+    reference_kind: Mapped[str] = mapped_column(String(40), default="legacy", index=True)
+    source_system: Mapped[str] = mapped_column(String(80), index=True)
+    source_entity_id: Mapped[str | None] = mapped_column(String(120), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class WorkshopProcessSourceLink(Base):
+    """Idempotent mapping between a source record and its unified process."""
+
+    __tablename__ = "workshop_process_source_links"
+    __table_args__ = (
+        UniqueConstraint(
+            "source_system",
+            "source_entity_type",
+            "source_entity_id",
+            name="uq_workshop_process_source_link",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    process_id: Mapped[int] = mapped_column(
+        ForeignKey("workshop_phased_processes.id", ondelete="CASCADE"),
+        index=True,
+    )
+    source_system: Mapped[str] = mapped_column(String(80), index=True)
+    source_entity_type: Mapped[str] = mapped_column(String(80), index=True)
+    source_entity_id: Mapped[str] = mapped_column(String(120), index=True)
+    source_reference: Mapped[str | None] = mapped_column(String(120), index=True)
+    detail_json: Mapped[dict | None] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class WorkshopTemplate(TimestampMixin, Base):
@@ -211,7 +278,9 @@ class WorkshopPhasedProcessAlert(TimestampMixin, Base):
     code: Mapped[str] = mapped_column(String(120), index=True)
     message: Mapped[str] = mapped_column(String(240))
     severity: Mapped[str] = mapped_column(String(40), default="warning", index=True)
-    status: Mapped[str] = mapped_column(String(40), default="open", server_default="open", index=True)
+    status: Mapped[str] = mapped_column(
+        String(40), default="open", server_default="open", index=True
+    )
     source: Mapped[str | None] = mapped_column(String(120), index=True)
     detail_json: Mapped[dict | None] = mapped_column(JSON)
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

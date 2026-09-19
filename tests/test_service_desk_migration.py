@@ -14,7 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 MIGRATION_REVISION = "ffbe1e2f3a4c"
 PREVIOUS_REVISION = "ffad1e2f3a4b"
 CURRENT_HEAD_REVISION = "fffd028c9e10"
-REPOSITORY_HEAD_REVISION = "100045ab67cd"
+REPOSITORY_HEAD_REVISION = "10007b1c23cd"
 MIGRATION_PATH = (
     ROOT / "migrations" / "versions" / "ffbe1e2f3a4c_add_service_desk_email_operations.py"
 )

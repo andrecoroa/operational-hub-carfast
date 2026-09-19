@@ -227,9 +227,12 @@ from app.models.workshop_phased import (
     WorkshopPhasedTechnicalCheck,
     WorkshopPhasedTechnicalIncident,
     WorkshopPhasedTechnicalReport,
+    WorkshopProcessReferenceAlias,
+    WorkshopProcessSourceLink,
     WorkshopPublicCounter,
     WorkshopTemplate,
     WorkshopTemplateVersion,
+    WorkshopUnifiedCounter,
 )
 
 __all__ = [
@@ -420,9 +423,12 @@ __all__ = [
     "WorkshopPhasedTechnicalCheck",
     "WorkshopPhasedTechnicalIncident",
     "WorkshopPhasedTechnicalReport",
+    "WorkshopProcessReferenceAlias",
+    "WorkshopProcessSourceLink",
     "WorkshopPublicCounter",
     "WorkshopTemplate",
     "WorkshopTemplateVersion",
+    "WorkshopUnifiedCounter",
     "RoleWorkScope",
     "ServiceDeskCategoryExecutor",
     "ServiceDeskCategoryPolicy",

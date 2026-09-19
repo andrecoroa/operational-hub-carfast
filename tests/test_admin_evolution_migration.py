@@ -13,7 +13,7 @@ from alembic.script import ScriptDirectory
 ROOT = Path(__file__).resolve().parents[1]
 MIGRATION_REVISION = "ffcf2a3b4c5d"
 CURRENT_HEAD = "fffd028c9e10"
-REPOSITORY_HEAD = "100045ab67cd"
+REPOSITORY_HEAD = "10007b1c23cd"
 PHOTO_ACTION_REVISION = "fff15d6e7f8b"
 FUNCTIONAL_MAILBOX_REVISION = "ffd02a3b4c5e"
 EMAIL_DELIVERY_REVISION = "ffe04c5d6e7f"

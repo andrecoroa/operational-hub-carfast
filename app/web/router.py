@@ -157,6 +157,7 @@ from app.models.workshop_phased import (
     WorkshopPhasedProcessPhase,
     WorkshopPhasedProcessService,
     WorkshopPhasedTechnicalReport,
+    WorkshopProcessReferenceAlias,
     WorkshopTemplate,
     WorkshopTemplateVersion,
 )
@@ -10493,7 +10494,9 @@ def clean_workshop_dashboard(
     pagination_query = urlencode({"scope": scope, **filter_params})
     with SessionLocal() as db:
         v2_process_filter = or_(
-            WorkshopPhasedProcess.origin == "v2_clean",
+            WorkshopPhasedProcess.origin.in_(
+                ("v2_clean", "legacy_migration", "history_unification")
+            ),
             WorkshopPhasedProcess.origin.is_(None),
         )
         linked_brands = (
@@ -10655,6 +10658,13 @@ def clean_workshop_dashboard(
                     WorkshopPhasedProcess.public_reference.ilike(search_term),
                     WorkshopPhasedProcess.title.ilike(search_term),
                     WorkshopPhasedProcess.initial_observation.ilike(search_term),
+                    select(WorkshopProcessReferenceAlias.id)
+                    .where(
+                        WorkshopProcessReferenceAlias.process_id
+                        == WorkshopPhasedProcess.id,
+                        WorkshopProcessReferenceAlias.reference.ilike(search_term),
+                    )
+                    .exists(),
                 )
             )
         if sort == "age":
@@ -10691,6 +10701,15 @@ def clean_workshop_dashboard(
         recent_processes = db.scalars(
             recent_query.order_by(*order_columns).limit(page_size).offset((page - 1) * page_size)
         ).all()
+        process_ids = {process.id for process in recent_processes}
+        legacy_references_by_process: dict[int, list[str]] = defaultdict(list)
+        if process_ids:
+            for alias in db.scalars(
+                select(WorkshopProcessReferenceAlias)
+                .where(WorkshopProcessReferenceAlias.process_id.in_(process_ids))
+                .order_by(WorkshopProcessReferenceAlias.id)
+            ).all():
+                legacy_references_by_process[alias.process_id].append(alias.reference)
         vehicle_ids = {process.vehicle_id for process in recent_processes if process.vehicle_id}
         vehicles_by_id = {
             vehicle.id: vehicle
@@ -10767,6 +10786,7 @@ def clean_workshop_dashboard(
                     "location_detail": external_name if external_repair and external_name else ("Oficina externa" if external_repair else "Oficina Carfast"),
                     "operational_situation": operational_situation,
                     "waiting_reason": str(metadata.get("operational_waiting_reason") or "").strip(),
+                    "legacy_references": legacy_references_by_process.get(process.id, []),
                 }
             return_query = urlencode(
                 {

@@ -777,6 +777,8 @@ def test_conference_listing_lazy_loads_document_only_in_modal(authenticated_clie
 
     assert "<iframe" not in listing.text
     assert "Ver e conferir" in listing.text
+    assert f'href="/v2-clean/stock/invoices/{invoice_id}"' in listing.text
+    assert "conference-dialog" not in listing.text
     assert "<iframe" in modal.text
     assert f"/v2-clean/stock/invoices/{invoice_id}/document" in modal.text
     assert 'class="document-workspace stock-document-workspace"' in review.text

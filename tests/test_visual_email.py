@@ -198,7 +198,7 @@ def test_email_operational_indicators_match_task_center_language_and_density() -
     css = CONTRACT_CSS.read_text(encoding="utf-8")
 
     for code, label in (
-        ("to_treat", "Por tratar"),
+        ("to_treat", "Em aberto"),
         ("new", "Novas / por triar"),
         ("unassigned", "Por atribuir"),
         ("overdue", "Atrasados"),

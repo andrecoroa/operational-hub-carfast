@@ -561,6 +561,8 @@ def test_email_work_views_group_without_duplicates_and_mine_stays_scoped(
     assert mailbox.text.count("Abrir caixa") >= 1
     assert "view=mailbox&status=all&channel=" in mailbox.text
     assert "novas" in mailbox.text and "por tratar" in mailbox.text
+    assert 'class="email-mailbox-counter is-open"' in mailbox.text
+    assert 'class="email-mailbox-counter is-new"' in mailbox.text
     assert 'data-email-work-view="mine"' in mine_view.text
     assert mine.subject in mine_view.text
     assert other.subject not in mine_view.text

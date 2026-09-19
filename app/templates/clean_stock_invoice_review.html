@@ -1,10 +1,11 @@
 {% extends "base.html" %}
+{% from "_document_workflow_strip.html" import document_workflow_strip %}
 {% block body %}
 <div class="app-shell clean-shell">{% set active_menu="stock" %}{% include "_sidebar.html" %}
 <main class="content clean-content stock-page">{% set stock_nav="invoices" %}{% include "_clean_stock_nav.html" %}
   <header class="stock-header">
     <div><p class="eyebrow">Fatura de stock #{{ invoice_import.id }}</p><h1>{{ invoice_import.invoice_number or document.title or document.original_name }}</h1><p>Conferência documental e receção física no mesmo fluxo.</p></div>
-    <div class="stock-actions"><a class="button-link secondary-link" href="/v2-clean/stock/invoices">Voltar</a><a class="button-link secondary-link" href="/v2-clean/documentation/invoices">Ver documento</a>{% if can_operate_stock and invoice_import.status != 'validated' %}<form method="post" action="/v2-clean/stock/invoices/{{ invoice_import.id }}/extract"><button>Extrair PDF</button></form>{% endif %}</div>
+    <div class="stock-actions"><a class="button-link secondary-link" href="/v2-clean/stock/invoices">Voltar</a>{% if can_operate_stock and invoice_import.status != 'validated' %}<form method="post" action="/v2-clean/stock/invoices/{{ invoice_import.id }}/extract"><button>Extrair PDF</button></form>{% endif %}</div>
   </header>
   <div class="stock-notice">Guardar a conferência não altera existências. O stock só aumenta quando confirmas abaixo as quantidades fisicamente recebidas.</div>
   {% if request.query_params.get('error') %}<div class="stock-notice danger">{{ request.query_params.get('error') }}</div>{% endif %}
@@ -14,6 +15,23 @@
   {% if request.query_params.get('received') %}<div class="stock-notice success">Receção #{{ request.query_params.get('received') }} confirmada e existências atualizadas.</div>{% endif %}
   {% if request.query_params.get('linked_receipt') %}<div class="stock-notice success">Fatura associada à receção #{{ request.query_params.get('linked_receipt') }}. As existências não foram alteradas.</div>{% endif %}
   {% if invoice_import.error_details %}<div class="stock-notice{% if invoice_import.status != 'validated' %} danger{% endif %}">{{ invoice_import.error_details }}</div>{% endif %}
+
+  {{ document_workflow_strip(
+    received='completed',
+    classified='completed',
+    associated='completed' if invoice_import.supplier_id else 'current',
+    extracted='completed' if invoice_import.extractor_name or invoice_import.raw_extraction_json else ('error' if invoice_import.error_details else 'pending'),
+    validated='completed' if invoice_import.status == 'validated' else 'pending',
+    archived='na'
+  ) }}
+
+  <div class="document-workspace stock-document-workspace">
+    <section class="document-workspace-viewer" aria-label="Pré-visualização da fatura de stock">
+      <header class="document-workspace-viewer-header"><div><p class="eyebrow">Documento original</p><h2>Fatura de stock</h2></div><a class="button-link secondary-link" href="/v2-clean/stock/invoices/{{ invoice_import.id }}/document" target="_blank" rel="noopener">Abrir ficheiro</a></header>
+      <iframe title="Fatura de stock {{ invoice_import.invoice_number or invoice_import.id }}" src="/v2-clean/stock/invoices/{{ invoice_import.id }}/document#toolbar=1&navpanes=0"></iframe>
+      <p class="document-workspace-fallback">Se a pré-visualização não estiver disponível, use «Abrir ficheiro».</p>
+    </section>
+    <div class="document-workspace-treatment" aria-label="Tratamento da fatura de stock">
 
   {% if invoice_import.status != 'validated' %}
   <form class="stock-review-form" method="post" action="/v2-clean/stock/invoices/{{ invoice_import.id }}/validate">
@@ -69,6 +87,8 @@
   </form>
   <section class="stock-card"><div class="stock-card-heading"><div><h2>Receções já ligadas</h2><p>Histórico físico desta fatura.</p></div></div><div class="stock-table-wrap"><table class="stock-table"><thead><tr><th>Receção</th><th>Data</th><th>Local</th><th>Origem física</th></tr></thead><tbody>{% for receipt,location in linked_receipts %}<tr><td>#{{ receipt.id }}</td><td>{{ receipt.confirmed_at.strftime('%d/%m/%Y %H:%M') }}</td><td>{{ location.name }}</td><td>{{ receipt.source_reference or receipt.source_type }}</td></tr>{% else %}<tr><td colspan="4" class="stock-empty">Ainda não foi confirmada qualquer receção.</td></tr>{% endfor %}</tbody></table></div></section>
   {% endif %}
+    </div>
+  </div>
 </main></div>
 <script>(()=>{const button=document.getElementById('add-stock-line');const body=document.getElementById('stock-lines');if(!button||!body)return;button.addEventListener('click',()=>{const row=body.querySelector('tr:last-child');if(!row)return;const clone=row.cloneNode(true);clone.querySelectorAll('input,textarea').forEach(el=>{if(el.name==='line_number')el.value=body.rows.length+1;else if(el.name==='quantity')el.value='1';else if(!['unit','discount','eco_value','tax_rate','unit_cost'].includes(el.name))el.value='';});body.appendChild(clone);});})();</script>
 {% endblock %}

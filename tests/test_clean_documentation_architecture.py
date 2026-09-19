@@ -1081,6 +1081,10 @@ def test_treatment_groups_invoices_by_supplier_and_keeps_preview_links(
     assert "Fatura agrupada 2" not in response.text
     assert f'data-preview-src="/v2-clean/documents/{documents[0].id}/file?inline=1"' in response.text
     assert 'action="/v2-clean/documentation/treatment/bulk"' in response.text
+    assert 'class="doc-treatment-dialog document-workspace"' in response.text
+    assert 'class="doc-treatment-document-pane document-workspace-viewer"' in response.text
+    assert 'id="doc-treatment-workflow"' in response.text
+    assert 'data-document-stage="validated"' in response.text
 
 
 def test_treatment_other_group_filters_the_document_list(

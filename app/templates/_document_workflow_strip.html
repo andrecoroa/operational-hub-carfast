@@ -1,0 +1,14 @@
+{% macro document_workflow_strip(received='completed', classified='pending', associated='pending', extracted='pending', validated='pending', archived='pending', element_id='') -%}
+<nav class="document-workflow-strip"{% if element_id %} id="{{ element_id }}"{% endif %} aria-label="Percurso do documento">
+  {% for code, label, state in [
+    ('received', 'Recebido', received),
+    ('classified', 'Classificado', classified),
+    ('associated', 'Associado', associated),
+    ('extracted', 'Extraído', extracted),
+    ('validated', 'Validado', validated),
+    ('archived', 'Arquivado', archived)
+  ] %}
+    <span class="document-workflow-step is-{{ state }}" data-document-stage="{{ code }}" data-state="{{ state }}"><b>{{ loop.index }}</b><span>{{ label }}</span><small>{{ {'completed':'Concluído','pending':'Pendente','current':'Em curso','error':'Erro','blocked':'Bloqueado','na':'Não aplicável'}.get(state, state) }}</small></span>
+  {% endfor %}
+</nav>
+{%- endmacro %}

@@ -275,13 +275,13 @@
                         <span class="{% if row.status == 'classified' %}is-complete{% else %}is-pending{% endif %}"><b>5</b> Validação</span>
                       </nav>
                     {% endif %}
-                    <div class="clean-doc-expanded-detail-grid clean-doc-expanded-detail-grid-compact{% if row.source_label == 'FA' or row.archive_group == 'invoices' %} clean-doc-invoice-focus-grid{% endif %}">
+                    <div class="clean-doc-expanded-detail-grid clean-doc-expanded-detail-grid-compact document-workspace{% if row.source_label == 'FA' or row.archive_group == 'invoices' %} clean-doc-invoice-focus-grid{% endif %}">
                       {% if (row.source_label == "FA" or row.archive_group == "invoices") and row.kind == "document" and row.preview_href %}
-                        <section class="clean-doc-invoice-document-preview">
+                        <section class="clean-doc-invoice-document-preview document-workspace-viewer">
                           <iframe title="{{ row.detail_label or row.archive_label or row.title or 'Documento' }}" data-lazy-src="{{ row.preview_href }}#toolbar=1&navpanes=0"></iframe>
                         </section>
                       {% endif %}
-                      {% if row.source_label == "FA" or row.archive_group == "invoices" %}<div class="clean-doc-invoice-treatment-pane">{% endif %}
+                      {% if row.source_label == "FA" or row.archive_group == "invoices" %}<div class="clean-doc-invoice-treatment-pane document-workspace-treatment">{% endif %}
                       <section class="clean-doc-detail-card clean-doc-detail-document-card">
                         <h4>1. Dados extraídos</h4>
                         <dl>

@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_document_workflow_strip.html" import document_workflow_strip %}
 {% block body %}
 {% macro dimension_badge(dimension) -%}
   <span class="doc-dimension-state is-{{ dimension.status }}">{{ dimension.label }}</span>
@@ -218,14 +219,15 @@
       {% if pagination.has_next %}<a href="?family={{ document_family }}&group={{ selected_group|urlencode }}&stage={{ stage }}&q={{ q|urlencode }}&page={{ pagination.next_page }}&page_size={{ pagination.page_size }}">Seguinte</a>{% endif %}
     </nav>
 
-    <dialog class="doc-treatment-dialog" id="doc-treatment-preview">
+    <dialog class="doc-treatment-dialog document-workspace" id="doc-treatment-preview">
       <header>
         <div><p class="eyebrow">Tratamento integral</p><h2 id="doc-treatment-preview-title">Documento</h2></div>
         <div class="doc-treatment-header-actions"><a class="button-link secondary-link" id="doc-treatment-preview-expand" href="#" target="_blank" rel="noopener">Ampliar PDF</a><button type="button" class="secondary" data-close-treatment-preview>Fechar</button></div>
       </header>
+      {{ document_workflow_strip(element_id='doc-treatment-workflow') }}
       <div class="doc-treatment-preview-grid">
-        <div class="doc-treatment-document-pane" id="doc-treatment-document-pane"></div>
-        <form method="post" action="/v2-clean/documentation/treatment/bulk" class="doc-treatment-preview-form">
+        <div class="doc-treatment-document-pane document-workspace-viewer" id="doc-treatment-document-pane"></div>
+        <form method="post" action="/v2-clean/documentation/treatment/bulk" class="doc-treatment-preview-form document-workspace-treatment">
           <input type="hidden" name="item_refs" id="doc-treatment-preview-ref">
           <input type="hidden" name="return_url" id="doc-treatment-preview-return-url" value="{{ return_url }}">
           <section data-real-document-section><h3>Natureza da fatura</h3><label>Natureza<select name="invoice_nature" id="doc-treatment-preview-nature"><option value="">Manter natureza</option><option value="por_classificar">Por classificar</option><option value="operacional">Operacional</option><option value="financeira">Financeira</option><option value="stock">Fatura de stock</option></select></label></section>
@@ -321,6 +323,23 @@
       document.getElementById('doc-treatment-preview-destination').value = button.dataset.destination || '';
       document.getElementById('doc-treatment-preview-plate').value = button.dataset.plate || '';
       document.getElementById('doc-treatment-preview-plate-context').value = button.dataset.plateContext || '';
+      const workflow = document.getElementById('doc-treatment-workflow');
+      const stageStates = {
+        received: 'completed',
+        classified: button.dataset.natureStatus || 'pending',
+        associated: button.dataset.associationStatus || 'pending',
+        extracted: button.dataset.extractionStatus || 'pending',
+        validated: button.dataset.validationStatus || 'pending',
+        archived: button.dataset.validationStatus === 'completed' ? 'current' : 'pending',
+      };
+      const stateLabels = { completed: 'Concluído', pending: 'Pendente', current: 'Em curso', error: 'Erro', blocked: 'Bloqueado', na: 'Não aplicável' };
+      workflow?.querySelectorAll('[data-document-stage]').forEach((step) => {
+        const state = stageStates[step.dataset.documentStage] || 'pending';
+        step.dataset.state = state;
+        step.className = `document-workflow-step is-${state}`;
+        const label = step.querySelector('small');
+        if (label) label.textContent = stateLabels[state] || state;
+      });
       const plateWarning = document.getElementById('doc-treatment-preview-plate-warning');
       if (plateWarning) {
         plateWarning.textContent = button.dataset.plateWarning || '';

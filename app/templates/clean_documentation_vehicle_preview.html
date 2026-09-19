@@ -25,8 +25,8 @@
     <section class="doc-arch-kpis doc-vehicle-preview-kpis"><div><strong>{{ real_invoice_rows|length }}</strong><span>Faturas reais</span></div><div><strong>{{ expected_rows|length }}</strong><span>Faturas esperadas</span></div><div><strong>{{ work_order_rows|length }}</strong><span>Folhas de obra</span></div><div><strong>{{ diagnostic_rows|length }}</strong><span>Diagnósticos/relatórios</span></div><div><strong>{{ other_rows|length }}</strong><span>Outros documentos</span></div></section>
 
     {% if foundation_ui_enabled %}
-    <section class="vehicle-document-preview-grid" id="document-preview">
-      <article class="vehicle-document-preview-pane" aria-label="Pré-visualização documental">
+    <section class="vehicle-document-preview-grid document-workspace" id="document-preview">
+      <article class="vehicle-document-preview-pane document-workspace-viewer" aria-label="Pré-visualização documental">
         <header><div><p class="eyebrow">Pré-visualização</p><h2>{% if selected_row %}{{ selected_row.title }}{% else %}Nenhum documento selecionado{% endif %}</h2></div>{% if selected_row and selected_row.open_href %}<a class="button-link secondary-link" href="{{ selected_row.open_href }}?return_to={{ request.url.path|urlencode }}">Abrir detalhe</a>{% endif %}</header>
         {% if selected_row and selected_row.preview_href %}<iframe title="Pré-visualização de {{ selected_row.title }}" src="{{ selected_row.preview_href }}"></iframe>{% else %}<div class="vehicle-document-preview-empty"><strong>Pré-visualização indisponível</strong><span>Registos esperados e documentos em falta não expõem ficheiros inexistentes.</span></div>{% endif %}
       </article>
